@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-cli-expected-flags-rename",
+  "title": "Phase 1B: rename --expected-result to --expected-flags",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2b"
+  ],
+  "brief": "Снизить неоднозначность UX: переименовать параметр bruteforce в --expected-flags, сохранить обратную совместимость через alias --expected-result.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Переименовать CLI параметр и обновить связанные тесты/вывод.",
+      "done_at": "2026-04-21T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить compile/tests и help нового параметра.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Mini-report: переименован primary флаг в --expected-flags, оставлен alias --expected-result для совместимости. Семантика валидации сохранена: expected_flags == (derived_flags & flags_mask). Проверка тестами/чеком пройдена. На Windows целевой target\\debug\\pwm.exe иногда может быть заблокирован внешним процессом; для верификации help использован отдельный target-dir."
+}

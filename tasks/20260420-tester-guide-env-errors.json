@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "20260420-tester-guide-env-errors",
+  "title": "Tester guide: environment errors + recovery",
+  "status": "done",
+  "mvp_checklist": [
+    "§8b Tester guide: типовые ошибки окружения и быстрые шаги восстановления"
+  ],
+  "brief": "Подготовить эксплуатационную памятку: частые ошибки окружения, диагностика и короткие recovery-шаги для тестеров.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать tester-guide-env-errors-recovery.md и отметить пункт §8b.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["c3d3c93"],
+  "artifacts": {
+    "doc": "docs/tester-guide-env-errors-recovery.md"
+  },
+  "notes": "Мини-отчет: pwm-coding завершил docs-only задачу по типовым ошибкам окружения и быстрому восстановлению, пункт §8b отмечен выполненным в чеклисте. Код и тесты не менялись. Повторяемые вводные: end-user/tester стиль, без deep internals, краткие шаги проверить/исправить/повторить."
+}

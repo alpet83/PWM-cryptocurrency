@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "20260423-tui-f3-unlock-wallet-passphrase-timeout",
+  "title": "TUI: F3 Unlock — пароль кошелька и таймаут разблокировки",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/TUI_SPEC_v0.md"
+  ],
+  "brief": "Добавить модалку F3 Unlock для encrypted кошелька: ввод passphrase, разблокировка signing key в памяти на время (по умолчанию 300с, настраиваемо env/CLI). После истечения — повторная блокировка и явный статус в UI. Не писать секреты в логи.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать F3 unlock flow + таймер блокировки + интеграция с существующей загрузкой wallet.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить сценарии encrypted/plaintext, таймаут, отсутствие утечек в логах; cargo test pwm-tui.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "948e836",
+    "5d5e9a6"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Требование пользователя: F3 Unlock с формой пароля и таймаутом по умолчанию 300с. Делегация pwm-coding: F3 модалка, auto-lock, env/CLI unlock secs, блок F6 при locked, docs/tests. Делегация pwm-testing: cargo test -p pwm-tui PASS (35); остаточные риски: нет unit-тестов на default/override unlock secs и нет автотеста F6+locked."
+}

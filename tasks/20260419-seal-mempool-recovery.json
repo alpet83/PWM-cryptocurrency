@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260419-seal-mempool-recovery",
+  "title": "Не терять tx при ошибке Chain::seal после Mpool::take",
+  "status": "done",
+  "mvp_checklist": ["§4 приоритет ревью", "§3 тесты seal+mempool"],
+  "brief": "При Err(seal) вернуть изъятый пакет в голову FIFO. Chain::seal возвращает txs обратно в ошибке; Mpool::prepend_block; pwmd вызывает prepend на Err.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовано оркестратором в том же шаге (малый срез)",
+      "done_at": "2026-04-19"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Отчёт pwm-seal-mempool-20260419.md",
+      "done_at": "2026-04-19"
+    }
+  ],
+  "commits": ["ded93ac"],
+  "artifacts": {
+    "review_md": "docs/reviews/pwm-seal-mempool-20260419.md"
+  },
+  "notes": "Основной коммит ded93ac."
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "YYYYMMDD-slug",
+  "title": "Краткий заголовок",
+  "status": "open",
+  "mvp_checklist": ["§4 …"],
+  "brief": "Цель, ограничения, критерий done.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Что именно делегировано",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Объём ревью (дифф / последний коммит)",
+      "done_at": null
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": ""
+}

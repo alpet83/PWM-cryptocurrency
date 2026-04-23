@@ -1,0 +1,48 @@
+[ignore]
+dirs = [
+  ".git",
+  ".cursor",
+  ".idea",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".tox",
+  ".venv",
+  "node_modules",
+  "target",
+  "target_verify",
+  "tmp",
+]
+file_patterns = [
+  "*.pyc",
+  "*.pyo",
+  "*.log",
+  "*.sqlite",
+  "*.jsonl",
+  "tmp_*",
+  "commit_prepare_report.json",
+  "**/commit_prepare_report.json",
+]
+
+[scan]
+text_extensions = [
+  ".rs", ".toml", ".md", ".txt", ".json", ".yaml", ".yml", ".sh",
+]
+
+[commit]
+public_repo = "P:/GitHub/PWM-cryptocurrency"
+
+[[mappings]]
+name = "pwm_main"
+src = "{target_dir}"
+dst = "P:/GitHub/PWM-cryptocurrency"
+exclude_globs = [
+  "target/**",
+  "target_verify/**",
+  "tmp/**",
+  "commit_prepare_report.json",
+  "**/commit_prepare_report.json",
+  ".cursor/**",
+  ".idea/**",
+]

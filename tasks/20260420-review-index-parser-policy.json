@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "20260420-review-index-parser-policy",
+  "title": "Review: постоянный парсер CQDS-индекса и политика обновления",
+  "status": "done",
+  "mvp_checklist": ["процесс ревью/индексации"],
+  "brief": "Добавить постоянный скрипт разбора CQDS index и правила: refresh только при росте модулей, иначе точечные правки.",
+  "delegations": [],
+  "commits": ["fcb4ac9"],
+  "artifacts": {},
+  "notes": "Разрешено исключение для pwm-review на поддержку scripts/cqds_index_digest.py."
+}

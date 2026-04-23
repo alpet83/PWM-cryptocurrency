@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-ui-design-spec-and-cy-domain-lo-investigation",
+  "title": "UI design spec baseline + CY domain_lo investigation",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "Сформировать единую спецификацию UI/UX для TUI-форм и диалогов (чтобы использовать как стандартный контекст для pwm-coding), доработать форму добавления в address_book полноценным inline-редактором с курсором, и отдельно расследовать причину, почему у CY-адресов domain_lo оказывается 0.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Создать общую UI дизайн-спеку и доработать address_book modal editor с курсором.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить генерацию CY-адресов и источник domain_lo=0 (bruteforce/render/parse/canonical decode).",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: оператор подтвердил успешный flow до append address book, запросил общую дизайн-спеку и указал подозрение на некорректный domain_lo=0 для CY. Делегация pwm-coding выполнена: добавлен docs/TUI_DESIGN_SPEC_v1.md, обновлен TUI_SPEC, в modal append label внедрен inline editor с курсором и value-only style, cargo test -p pwm-tui PASS (17). Делегация pwm-testing выполнена: расследование domain_lo показало, что генерация даёт разные low-byte; 'CY/00' возникает для legacy pretty без /LO или как редкий случай 1/256; критический баг не подтвержден."
+}

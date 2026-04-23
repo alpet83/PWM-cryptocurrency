@@ -1,0 +1,15 @@
+/target/
+.cqds_mcp_active.pid
+.cqds_index_bench.txt
+.cursor/
+**/*.rs.bk
+*.swp
+.DS_Store
+pwm-data.json
+
+# Local scratch / verification artifacts (not part of the repo contract)
+/tmp/
+/target_verify/
+/pwm-data-verify.json
+/typescript
+/commit_prepare_report.json

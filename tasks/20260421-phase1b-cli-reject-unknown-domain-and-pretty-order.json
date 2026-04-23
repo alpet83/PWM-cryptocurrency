@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-cli-reject-unknown-domain-and-pretty-order",
+  "title": "Phase 1B: reject unknown-domain addresses and align pretty order",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2",
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 1"
+  ],
+  "brief": "Запретить в CLI прямую работу с адресами без распознанного домена для send/burn путей и привести pretty-формат к порядку, заданному спецификацией.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Ввести policy reject unknown-domain в tx путях и исправить pretty layout под spec-order.",
+      "done_at": "2026-04-21T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить, что unknown-domain адреса не проходят в send/burn и pretty соответствует спецификации.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Mini-report: в tx-send/tx-burn-mark добавлена policy-валидация получателя: unknown-domain reject, reserve reject, witness reject для обычного user-flow. Pretty-формат выровнен под spec-order: `pwm1-<label>-f...-t...|pwm1...`. Ретест показал корректные явные ошибки и сохраненную совместимость canonical/legacy-парсинга."
+}

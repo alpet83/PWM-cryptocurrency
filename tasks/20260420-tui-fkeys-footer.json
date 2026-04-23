@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "20260420-tui-fkeys-footer",
+  "title": "pwm-tui: нижняя строка подсказок F1–F10",
+  "status": "done",
+  "mvp_checklist": ["§6 Нижняя строка с подсказками F1–F10 (как mc)"],
+  "brief": "Добавить в footer явные подсказки по F-клавишам (минимум F5/F6/F10 + nav/tab) без внедрения полноценных модалок.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать footer-hints в pwm-tui и отметить чеклист.",
+      "done_at": "2026-04-20"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить срез через cq_process_ctl host mode (`cargo check -p pwm-tui`).",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["065d6de"],
+  "artifacts": {},
+  "notes": "Мини-отчёт pwm-coding: footer-hints добавлены, чеклист обновлён. Мини-отчёт pwm-testing: cq_process_ctl host mode pass, watchdog не сработал; один неверный cwd исправлен."
+}

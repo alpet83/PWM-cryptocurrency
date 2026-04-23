@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "20260420-stage9-autotest-workspace",
+  "title": "Стадия §9: автотесты workspace (регрессия перед ручным прогоном)",
+  "status": "done",
+  "mvp_checklist": [
+    "§11 Веха: параллельная валидация — поток тестов",
+    "§9 Запуск (devnet) — предусловие: зелёные тесты"
+  ],
+  "brief": "Прогнать `cargo test --workspace` на Windows-хосте из `P:\\\\opt\\\\docker\\\\PWM-cryptocurrency` с таймаутом (watchdog), зафиксировать длительность, exit code, краткий лог упавших тестов (если есть). Критерий done: все тесты зелёные на текущем HEAD.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Запустить cargo test --workspace с watchdog; отчёт PASS/FAIL + длительность.",
+      "done_at": "2026-04-21"
+    }
+  ],
+  "commits": ["324e8d8", "8f19542"],
+  "artifacts": {},
+  "notes": "Мини-отчёт pwm-testing: `cargo test --workspace` на Windows-хосте (P:\\\\opt\\\\docker\\\\PWM-cryptocurrency) завершился за ~9–10с, exit code 0, PASS; pwm-core: 9 тестов ok, pwmd: 9 тестов ok, остальные крейты без тестовых целей. Зависаний не было. Дальше: ручной прогон §9 (отдельные тикеты)."
+}

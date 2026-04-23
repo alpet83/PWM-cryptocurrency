@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260423-phase1-wallet-backup-recovery",
+  "title": "Phase 1: backup/recovery сценарии wallet",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Доп. расширения / Backup-recovery"
+  ],
+  "brief": "Закрыть базовые backup/recovery сценарии для dual-mode wallet: экспорт/импорт безопасным путём, валидация целостности файла, пошаговый recovery flow и проверка ошибок (wrong passphrase/corrupted payload).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать минимальные wallet backup/recover флоу и тесты по wrong passphrase/corrupted payload.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить корректность backup/recover flow, тесты и документацию.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "3bd77c0"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Закрыто: добавлены команды `wallet backup`/`wallet recover`, валидация encrypted/plaintext payload, user-facing ошибки на wrong passphrase/corrupted wallet и playbook `docs/WALLET_BACKUP_RECOVERY_PLAYBOOK.md`. pwm-testing: PASS, рекомендованы дополнительные follow-up тесты (non-blocking)."
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-pwmd-snapshot-canonical-only-and-self-verified",
+  "title": "pwmd snapshot canonical-only and self-verified",
+  "status": "in_progress",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 3"
+  ],
+  "brief": "Закрыть класс проблем с непроверяемыми данными в pwm-data.json: формализовать canonical-only snapshot контракт, добавить строгую валидацию при загрузке и безопасную миграцию/отказ для legacy/невалидных полей.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Внедрить self-verified canonical snapshot policy для pwmd.",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить загрузку snapshot, миграцию legacy и отказ на невалидных данных.",
+      "done_at": null
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь хочет исключить непроверяемые данные в pwm-data.json и оставить только canonical хранение."
+}

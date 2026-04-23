@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "20260423-tui-status-line-priority-and-truncate-tip",
+  "title": "TUI: статус-строка — приоритет ошибок и сокращение tip",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/TUI_SPEC_v0.md"
+  ],
+  "brief": "Улучшить нижнюю строку статуса: критические сигналы (RPC offline/timeout, ошибки опроса) выводить в начале строки, чтобы были видны при узком терминале; длинные поля (например tip=64 hex) сокращать до разумной длины с эллипсисом. Сохранить красный индикатор RPC offline/timeout.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать приоритетный порядок сегментов footer и усечение длинных значений (tip/head).",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить unit-тесты и короткий smoke: узкий терминал, offline RPC, длинный tip.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "948e836",
+    "5d5e9a6"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Из вчерашнего TODO: при узкой ширине RPC offline уезжает вправо; tip занимает слишком много места. Делегация pwm-coding: реализован приоритетный footer + ellipsis tip, docs обновлены, cargo test -p pwm-tui PASS (31). Делегация pwm-testing: PASS по тестам и коду; остаточный риск — ручной визуальный чек цвета в терминале."
+}

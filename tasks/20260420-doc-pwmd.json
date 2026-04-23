@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "20260420-doc-pwmd",
+  "title": "Подробная документация: нода pwmd",
+  "status": "done",
+  "mvp_checklist": ["§8 Док: нода pwmd"],
+  "brief": "Создать подробную техдокументацию по архитектуре, runtime-потокам, snapshot/genesis/CORS/RPC в pwmd.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить docs/pwmd.md и отметить пункт чеклиста.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["d355f8d"],
+  "artifacts": {},
+  "notes": "Мини-отчёт pwm-coding: добавлен docs/pwmd.md и обновлён §8 чеклиста; задача doc-only, без правок кода."
+}

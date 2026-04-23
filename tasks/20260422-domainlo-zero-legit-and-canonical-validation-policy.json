@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260422-domainlo-zero-legit-and-canonical-validation-policy",
+  "title": "Domain LO=00 is legit; canonical-only validation policy",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2",
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 3",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1"
+  ],
+  "brief": "Скорректировать предыдущую remediation-политику: domain_lo=00 считается валидным и не блокируется. Убрать reject/filter симптомов (`/00`), перейти к корректному источнику истины: canonical address + checksum валидация, canonical-only хранение в address_book, pretty только как клиентский render слой.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Откатить блокировку/фильтрацию /00 и внедрить canonical-only policy без бизнес-запрета low-byte.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить, что /00 снова валиден, а защита основана на canonical/checksum и формате.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь подтвердил, что /00 должен оставаться допустимым (в т.ч. как потенциальный спец-уровень в будущем), и попросил убрать symptom-driven блокировки. Делегация pwm-coding: сняты low-byte ban/filter ограничения, сохранена корректная защита через canonical+checksum и canonical-only address_book, docs/tests обновлены. Делегация pwm-testing: PASS по всем пунктам, /00 снова валиден в CLI/TUI/pwmd путях."
+}

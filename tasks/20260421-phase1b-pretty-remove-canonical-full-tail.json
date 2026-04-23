@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-pretty-remove-canonical-full-tail",
+  "title": "Phase 1B: pretty without canonical embed and full tail",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2"
+  ],
+  "brief": "Убрать в pretty-адресе вшитый canonical payload и показывать хвост без секвестрации/усечения.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Изменить рендер pretty: без `|pwm1...`, полный tail; обновить парсер/доки/тесты.",
+      "done_at": "2026-04-21T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить отсутствие embedded canonical и полный tail в pretty.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Mini-report: pretty-рендер переведен на strict-формат без embedded canonical (`|pwm1...` удален), tail сделан полным (52 hex). Парсер принимает новый pretty без canonical-суффикса; canonical/legacy остаются отдельными поддерживаемыми формами. Тесты pwm-core/pwm-cli и smoke-проверки пройдены."
+}

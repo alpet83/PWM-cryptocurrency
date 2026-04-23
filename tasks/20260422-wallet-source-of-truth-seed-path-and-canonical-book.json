@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-wallet-source-of-truth-seed-path-and-canonical-book",
+  "title": "Wallet truth = seed+path; canonical-only address_book",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 3",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1"
+  ],
+  "brief": "Изменить policy загрузки wallet: источник истины для owner-адреса — derivation от MASTER_SEED_HEX + DERIVATION_PATH (и/или signing key derivation path), а не account_id_human/account_id_hex. Убрать блокирующий mismatch-fail по справочным полям. Перевести address_book на canonical-only хранение; legacy pretty entries игнорировать при загрузке (с явным предупреждением/счётчиком), рендерить pretty на лету в UI/CLI.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Переписать wallet loader policy и canonical-only address_book handling.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить загрузку legacy wallet без mismatch-fail и поведение address_book canonical-only.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь получил mismatch error на legacy wallet и уточнил желаемую source-of-truth модель. Делегация pwm-coding: loader policy переключена на truth-source seed/path, mismatch-fail убран, address_book canonical-only + ignore legacy pretty with counter/warning, docs/tests обновлены. Делегация pwm-testing: reproduce на legacy wallet PASS, mismatch error отсутствует, canonical-only behavior подтвержден, cargo test -p pwm-core -p pwm-cli -p pwm-tui PASS."
+}

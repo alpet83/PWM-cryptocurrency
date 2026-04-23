@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "20260420-cqds-codebase-index",
+  "title": "CQDS cache: человеко-читаемый индекс кодовой базы",
+  "status": "done",
+  "mvp_checklist": ["после тестирования: индекс кодовой базы для навигации"],
+  "brief": "Собрать упрощённый Markdown-индекс структуры/энтити по кэшу CQDS (`project_id=5`) и сохранить в docs/reviews.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Получить cached index через CQDS и подготовить компактный codebase digest.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["0df152a"],
+  "artifacts": {
+    "review_md": "docs/reviews/pwm-codebase-index-20260420.md"
+  },
+  "notes": "Мини-отчёт pwm-review: индекс собран на базе CQDS cache, добавлены caveats по дублям/target."
+}

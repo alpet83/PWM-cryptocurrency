@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260423-phase1-uri-address-format",
+  "title": "Phase 1: URI-формат адресов pwm:<address>?amount=",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Доп. расширения / URI-формат"
+  ],
+  "brief": "Добавить минимальную поддержку URI-формата `pwm:<address>?amount=`: парсинг/валидация в CLI, совместимость со strict pretty + canonical, негативные кейсы malformed URI и неподдерживаемых параметров.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать минимальную поддержку pwm URI в CLI send/burn и добавить автотесты.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить совместимость с plain-address flow и правила amount URI/CLI.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "49cb281"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Закрыто: реализован парсинг `pwm:<address>?amount=` для CLI tx-send и URI wrapper для tx-burn-mark beneficiary, включая allow-list query params и конфликт amount URI/CLI. pwm-testing: PASS, рекомендованы дополнительные negative-тесты как follow-up quality hardening."
+}

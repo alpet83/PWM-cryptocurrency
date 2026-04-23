@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "20260420-doc-offchain",
+  "title": "Подробная документация: оффчейн batch / Merkle",
+  "status": "done",
+  "mvp_checklist": ["§8 Док: оффчейн batch (dev-related)"],
+  "brief": "Подготовить техдокументацию по offchain-stub: Merkle root, batch preimage, provider signature, CLI demo flow и ограничения MVP.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать docs/offchain-batch.md и обновить чеклист §8.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["c3d3c93"],
+  "artifacts": {
+    "doc": "docs/offchain-batch.md"
+  },
+  "notes": "Мини-отчет: pwm-coding завершил doc-only задачу, добавил docs/offchain-batch.md и отметил пункт §8 в MVP-checklist. Зафиксирована коррекция регрессии чеклиста: пункт pwm-tui сохранен как выполненный. Код и тесты не менялись. Повторяемые вводные: project_id=5, user-cqds_mcp_mini, CQDS help via cq_help."
+}

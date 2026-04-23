@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "20260423-phase1-tui-operations-history",
+  "title": "Phase 1: история операций в TUI",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Доп. расширения / История операций в TUI"
+  ],
+  "brief": "Добавить минимальный UX истории операций в TUI: список последних tx/status (pending/ok/error), источник данных из существующих RPC endpoint/локального кэша, базовая навигация и отображение ошибок.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить минимальную history modal в TUI (H), статусы операций и docs/tests.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить корректность user-flow истории и отсутствие регрессий send-flow.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "7b3e0fd",
+    "2867a67"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Закрыто: history modal реализована (`H`, empty/pending/ok/error), а в 2867a67 исправлен race-кейс pending-after-close (обновление status по req_id независимо от открытости send form). pwm-testing повторно подтвердил PASS (cargo test -p pwm-tui: 51/51)."
+}

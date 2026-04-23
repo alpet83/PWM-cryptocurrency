@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "20260421-testing-cy-large-stats",
+  "title": "Testing: large-sample CY bruteforce statistics",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2b"
+  ],
+  "brief": "Собрать устойчивую статистику по времени/попыткам для user-profile bruteforce (CY, low-10 flags).",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Выполнить >=30 успешных запусков и посчитать mean/median/p95.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "runs_csv": "tmp/stats-cy/runs.csv",
+    "wallet_dir": "tmp/stats-cy/"
+  },
+  "notes": "40 успешных прогонов. attempts: mean=298338.975 median=232286.5 p95=810261 min=14672 max=999388. elapsed_sec: mean=38.101 median=31.205 p95=102.595. avg attempts/sec=7776.271. По геометрии 2^18=262144; наблюдение ~1.138x от теории при нормальном хвосте распределения."
+}

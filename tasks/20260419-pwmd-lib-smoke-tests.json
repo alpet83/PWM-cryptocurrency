@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "20260419-pwmd-lib-smoke-tests",
+  "title": "pwmd: lib + axum oneshot smoke; документация CQDS index",
+  "status": "done",
+  "mvp_checklist": ["§3 smoke pwmd", "tasks/README CQDS index"],
+  "brief": "Вынести логику в lib.rs; router() -> Router после with_state; тесты v1/head, POST tx, 413; main тонкий; README про cq_files_ctl rebuild_index.",
+  "delegations": [],
+  "commits": ["62fb673"],
+  "artifacts": {},
+  "notes": "MCP cqds_mcp_mini в этой сессии недоступен — rebuild_index вручную при открытом сервере."
+}

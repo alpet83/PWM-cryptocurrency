@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-api-canonical-only-and-client-pretty-render",
+  "title": "API canonical-only; pretty render only in clients",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 3"
+  ],
+  "brief": "Локализовать источник некорректных pretty адресов вида CY/00 в данных, приходящих через API, и привести серверную policy к canonical-only для всех account/address полей. Pretty формирование должно выполняться только на стороне CLI/TUI из canonical id.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Определить endpoint/поля API, где отдаются pretty вместо canonical, и минимальный reproduce.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Исправить API на canonical-only и обновить клиенты/доки под server-client boundary.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь видит некорректные account addresses из API (пример pwm1-CY/00-...), перезапуск pwmd не помогает. Делегация pwm-testing: серверная утечка pretty не подтверждена; /v1/accounts и /v1/account/:id возвращают hex canonical id, pretty формируется в pwm-tui на клиенте. Делегация pwm-coding как фикс API не потребовалась (policy уже canonical-only на сервере); обновление не выполнялось."
+}

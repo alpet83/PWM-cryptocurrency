@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260423-phase1-security-page-dev-vs-prod",
+  "title": "Phase 1: короткая security-страница (dev vs production-like)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Доп. расширения / Security-страница"
+  ],
+  "brief": "Подготовить короткую user-facing security-страницу: чётко развести режимы `plaintext_dev` и encrypted production-like, риски/ограничения, минимальные рекомендации по хранению seed/passphrase и operational hygiene.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить краткую security-страницу по режимам wallet: plaintext_dev vs encrypted.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить практичность документа и корректность cross-links/ссылок на реальные команды.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "9995f55"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Закрыто: добавлен `docs/WALLET_SECURITY_MODES.md`, а также cross-links в `docs/pwm-cli.md`, `docs/TUI_SPEC_v0.md`, `docs/tester-guide-cli-tui-scenarios.md`. pwm-testing: PASS, блокирующих замечаний нет."
+}

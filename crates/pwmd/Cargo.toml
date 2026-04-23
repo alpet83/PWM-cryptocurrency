@@ -1,0 +1,29 @@
+[package]
+name = "pwmd"
+version = "0.1.1"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pwmd"
+path = "src/main.rs"
+
+[dependencies]
+pwm-core = { path = "../pwm-core" }
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tower-http = { version = "0.5", features = ["cors"] }
+clap.workspace = true
+slip10_ed25519 = "0.1.3"
+ed25519-dalek.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

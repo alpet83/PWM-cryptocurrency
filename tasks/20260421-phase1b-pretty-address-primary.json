@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-pretty-address-primary",
+  "title": "Phase 1B: make pretty address primary across forms",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1"
+  ],
+  "brief": "Сделать pretty-формат адреса основным UX-представлением и обеспечить автоматическую поддержку pretty/canonical во всех CLI формах ввода/вывода.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Внедрить pretty как primary и парсинг pretty во всех релевантных CLI местах.",
+      "done_at": "2026-04-21T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить совместимость pretty/canonical/legacy на вводе и корректность вывода.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Mini-report: pretty-формат сделан primary в user-facing выводе, canonical bech32DX выдается отдельным полем для технической совместимости. Парсер принимает pretty/canonical/legacy (PWMv0/hex). После UX-fix ошибки malformed pretty теперь человекочитаемые (Accepted formats...) без panic stack noise."
+}

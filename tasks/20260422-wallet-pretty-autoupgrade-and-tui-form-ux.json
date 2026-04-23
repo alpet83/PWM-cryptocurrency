@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-wallet-pretty-autoupgrade-and-tui-form-ux",
+  "title": "Wallet pretty auto-upgrade + TUI send visual UX",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "По операторскому фидбеку: устранить несоответствие формата account_id_human (CY/00 в таблице vs CY в форме отправки) через авто-апгрейд в parser-loader кошелька; в TUI send-форме визуально подсветить только редактируемые поля тёмно-серым фоном, убрать маркеры [edited], обеспечить видимый курсор при переключениях. Подготовить почву для следующего шага: запрос пользователю на шифрование открытого кошелька после auto-upgrade.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать wallet pretty auto-upgrade и визуальные UX-правки F6 формы.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить тестами и smoke-логикой отсутствие регрессий по wallet load и TUI send UX.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: ручной отчёт пользователя — в TUI owner отображается как CY/00, но from в send форме остаётся CY. Делегация pwm-coding выполнена: общий wallet loader с normalize+optional auto-upgrade account_id_human, TUI F6 editable background/caret, hook под будущий prompt шифрования, docs update. Делегация pwm-testing: cargo test -p pwm-core -p pwm-tui PASS; точечный test pwm-cli loader PASS. Остаточный риск: финальное визуальное подтверждение цветов/caret оператором в живом терминале."
+}

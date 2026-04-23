@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "20260423-tui-f4-encrypt-wallet-rekey",
+  "title": "TUI: F4 Encrypt — шифрование / смена passphrase",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/TUI_SPEC_v0.md"
+  ],
+  "brief": "Добавить модалку F4 Encrypt: для plaintext_dev — перевод в encrypted с KDF+AEAD; для уже encrypted — разрешить смену passphrase при успешной разблокировке (re-key). Форма: passphrase + confirm; валидация совпадения; атомарная перезапись YAML; откат при ошибке. Не хранить passphrase в логах.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать F4 encrypt/re-key, переиспользовать pwm-core/crypto wallet helpers где возможно.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить roundtrip wallet файла, негативные кейсы (несовпадение passphrase, битый файл), cargo test.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "948e836",
+    "cef61fd",
+    "5d5e9a6"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Требование пользователя: F4 Encrypt с подтверждением пароля; смена пароля для ранее зашифрованного и разблокированного кошелька. Делегация pwm-coding: общая крипто-логика вынесена в pwm-core (`wallet_crypto.rs`), CLI переведён на неё, TUI F4 encrypt/re-key + атомарная перезапись wallet YAML. Делегация pwm-testing: cargo test для pwm-core/pwm-cli/pwm-tui PASS по отчёту; остаточные риски — нет полного автотеста на успешный encrypted re-key roundtrip и возможные edge-кейсы atomic replace на Windows."
+}

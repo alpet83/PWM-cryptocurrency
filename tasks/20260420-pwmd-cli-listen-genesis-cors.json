@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "20260420-pwmd-cli-listen-genesis-cors",
+  "title": "pwmd: --listen, --genesis-file, CORS по loopback / PWM_CORS_ORIGINS",
+  "status": "done",
+  "mvp_checklist": ["§4 CORS", "§4 флаги CLI"],
+  "brief": "clap в бинарнике; run_with(cfg); genesis JSON (gen_cfg + validator_seeds_hex); CORS permissive только на loopback.",
+  "delegations": [],
+  "commits": ["2a2dd52"],
+  "artifacts": {},
+  "notes": "Субагенты не вызывались. cq_files_ctl rebuild_index project_id=5 → HTTP 500 (env_max_incremental_revisions) — эскалация на сторону CQDS."
+}

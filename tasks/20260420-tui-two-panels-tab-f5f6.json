@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "20260420-tui-two-panels-tab-f5f6",
+  "title": "pwm-tui: две панели, Tab-фокус, F5/F6 заглушки",
+  "status": "done",
+  "mvp_checklist": ["§6 панели владелец/получатели + Tab + F5/F6"],
+  "brief": "Сделать минимальный публичный UX: две таблицы (owner/receivers), переключение фокуса Tab, всплывающие заглушки F5/F6 (без отправки tx).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать две панели + focus + F5/F6 modal stubs в crates/pwm-tui/src/main.rs, обновить чеклист.",
+      "done_at": "2026-04-20"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить срез через cq_process_ctl host mode (`cargo check -p pwm-tui`).",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["bfea39d"],
+  "artifacts": {},
+  "notes": "Мини-отчёт pwm-coding: две панели + Tab + F5/F6 TODO popup реализованы, cargo check зелёный. Мини-отчёт pwm-testing: cq_process_ctl host mode pass, watchdog не сработал. Повторяемые вводные для handoff: project_id=5, CQDS server user-cqds_mcp_mini, testing через pwm-testing/cq_process_ctl host mode."
+}

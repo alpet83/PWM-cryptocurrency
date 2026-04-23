@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "20260422-pwmd-startup-port-print-and-tui-lag-audit",
+  "title": "pwmd startup port print + TUI lag audit handoff",
+  "status": "in_progress",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1"
+  ],
+  "brief": "Сделать явный вывод listen URL в консоль pwmd независимо от уровня логирования и зафиксировать audit bottlenecks для laggy TUI (без рефакторинга в этом тикете).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить always-visible startup port print в pwmd.",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить startup вывод порта и отсутствие регрессий сборки/тестов.",
+      "done_at": null
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь не видит порт старта pwmd и жалуется на лаги TUI; lag audit собран отдельной делегацией pwm-review."
+}

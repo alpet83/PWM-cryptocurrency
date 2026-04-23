@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-bruteforce-domain-labels-only",
+  "title": "Phase 1B: enforce label-only domain input for bruteforce",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2b",
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 1"
+  ],
+  "brief": "Для addr-bruteforce принимать domain только как строковый код из domain_index (например CY, MSFT), числовые raw-коды отклонять. Сделать сокращённые коды основным отображаемым значением доменов.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Внедрить label-only input в bruteforce и short-code domain labels.",
+      "done_at": "2026-04-21T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить help/валидацию label-only и регрессии parser/format.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Mini-report: addr-bruteforce переведен на label-only domain input (например CY/MSFT), числовые raw-значения отклоняются явной ошибкой. Domain labels нормализованы в короткие коды (US, CY, MSFT, NVDA, TSLA и т.д.) с legacy alias-совместимостью по полным именам. Тесты pwm-core/pwm-cli зеленые."
+}

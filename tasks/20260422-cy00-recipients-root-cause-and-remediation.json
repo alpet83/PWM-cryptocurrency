@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-cy00-recipients-root-cause-and-remediation",
+  "title": "CY/00 recipients: root cause and remediation",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "Найти точный источник появления получателей вида CY/00 в правой панели TUI (данные состояния/исторические tx/legacy flow), и внедрить корректирующее решение: либо исправление входного пути, либо безопасная remediation-процедура для уже существующих данных.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Трассировать происхождение CY/00 аккаунтов в chain state и дать воспроизводимый отчёт.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать fix/remediation для источника CY/00 и обновить docs/tests.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь продолжает видеть CY/00 в правой панели TUI и хочет устранить источник, а не маскировать отображением. Делегация pwm-testing (этап 1): root cause подтвержден по данным цепи — исторические tx-init с domain_code=0x2c00. Делегация pwm-coding: введен policy reject новых init regulatory /00, wallet init/import исключают LO=00, TUI receivers фильтрует regulatory /00 из selectable списка, docs/tests обновлены. Делегация pwm-testing (этап 2): e2e проверка PASS, на fresh pwmd tx-init 0x2c00 => 400; старые /00 в API остаются как исторические, но не попадают в receivers."
+}

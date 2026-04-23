@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "20260423-wallet-encrypted-rekey-roundtrip-test",
+  "title": "Тесты: roundtrip encrypted wallet re-key (YAML)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/TUI_SPEC_v0.md"
+  ],
+  "brief": "Добавить автотест на успешный сценарий: encrypted wallet → unlock → re-key (новый passphrase) → перезагрузка/повторная расшифровка новым passphrase. Включить негативные кейсы: mismatch confirm, битый ciphertext.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить encrypted re-key roundtrip и негативные кейсы в автотестах TUI.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить наличие теста на corrupted ciphertext отдельно от mismatch confirm.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "d21289c",
+    "03730e1"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Закрыто: d21289c добавил успешный re-key roundtrip и mismatch/empty валидацию passphrase inputs; 03730e1 добавил явный corruption-case на encrypted_payload_b64 (`wallet_rekey_corrupted_ciphertext_fails_safely`). pwm-testing подтвердил PASS."
+}

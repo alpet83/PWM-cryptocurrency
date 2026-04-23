@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260421-sprint1c-tui-send-and-validation",
+  "title": "Sprint 1C: TUI send-flow + validation",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 3"
+  ],
+  "brief": "Закрыть Sprint 1C: рабочая send-форма в TUI, валидации/submit, smoke и фиксация релизной документации.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать TUI send-flow (F6), локальные валидации, submit в /v1/tx и отображение статуса.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Прогнать workspace tests + CLI/TUI smoke и подготовить факт-отчёт для закрытия Sprint 1C.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "5d5e9a6"
+  ],
+  "artifacts": {},
+  "notes": "Sprint 1C закрыт: автотесты и smoke подтверждены, ручной F6 send smoke (happy + 2–3 негатива) дополнительно подтверждён оператором визуально. PHASE1_CHECKLIST §1C.2 отмечен как выполненный."
+}

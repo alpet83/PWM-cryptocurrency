@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "20260423-tui-f3-auto-toggle-unlock-lock",
+  "title": "TUI: F3 авто-переключение Unlock/Lock",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/TUI_SPEC_v0.md",
+    "docs/tester-guide-cli-tui-scenarios.md"
+  ],
+  "brief": "Изменить поведение F3: если encrypted wallet сейчас locked — запускать Unlock flow (как сейчас), если уже unlocked — выполнять явный Lock (очистка signing key/decrypted cache, сброс countdown/статуса), а подпись в статус-строке/хелпе показывать контекстно (Unlock или Lock).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать F3 toggle Unlock/Lock с немедленным lock и очисткой чувствительного состояния.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить безопасность и корректность toggle-поведения F3, включая тесты и sanitized unlock errors.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "be7330d",
+    "4addb22"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Делегация pwm-coding: реализован контекстный F3 (unlock/lock), lock объединён с auto-lock через общий хелпер очистки signing key + decrypted cache + unlock timer, docs обновлены, cargo test -p pwm-tui PASS (38). Делегация pwm-testing: PASS; подтверждены контекстный label F3, единая очистка при ручном/авто-lock и санитизированная ошибка unlock."
+}

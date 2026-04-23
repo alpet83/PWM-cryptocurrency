@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "20260420-doc-pwm-cli",
+  "title": "Подробная документация: pwm-cli",
+  "status": "done",
+  "mvp_checklist": ["§8 Док: pwm-cli (dev-related)"],
+  "brief": "Подготовить техдокументацию по командам/flow `pwm-cli` и отметить пункт в чеклисте.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать docs/pwm-cli.md и обновить чеклист §8.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["a52d7a1"],
+  "artifacts": {},
+  "notes": "Мини-отчёт pwm-coding: добавлен docs/pwm-cli.md и обновлён §8 чеклиста; задача doc-only, без правок кода."
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "20260423-tui-tests-unlock-secs-default-and-override",
+  "title": "Тесты TUI: default/override таймаута разблокировки кошелька",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/TUI_SPEC_v0.md"
+  ],
+  "brief": "Добавить unit/integration тесты, которые фиксируют дефолтный таймаут разблокировки (300с) и корректность override через env/CLI (без зависимости от реального wall-clock — через инъекцию времени/конфига, если архитектура позволяет).",
+  "delegations": [],
+  "commits": [
+    "d21289c"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Follow-up из pwm-testing по F3: сейчас поведение покрыто в основном интеграционно/ручными сценариями; нужен регрессионный тест на конфиг."
+}

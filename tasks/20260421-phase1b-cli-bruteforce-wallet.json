@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-cli-bruteforce-wallet",
+  "title": "Phase 1B: pwm-cli single-thread bruteforce + wallet save",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2b",
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / Wallet v1"
+  ],
+  "brief": "Добавить в pwm-cli однопоточный bruteforce адреса по domain + flags mask, benchmark-вывод и сохранение найденного derivation path/seed в wallet YAML (base64+hex поля).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать wallet schema + brute command + save result в wallet file.",
+      "done_at": "2026-04-21"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить сборку и smoke команды bruteforce/wallet.",
+      "done_at": "2026-04-21"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Требование пользователя: single-thread only, linear derivation scan, benchmark готов к запуску сегодня. Мини-отчет pwm-coding: добавлены `addr-bruteforce`, модуль single-thread bruteforce, wallet YAML (`plaintext_dev`) с base64/hex полями и сохранением derivation path/ключевого материала. Мини-отчет pwm-testing: `cargo test -p pwm-cli`, `cargo check -p pwm-cli`, `cargo test -p pwm-core`, `cargo run -p pwm-cli --bin pwm -- addr-bruteforce --help` — PASS."
+}

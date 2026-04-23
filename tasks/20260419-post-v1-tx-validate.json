@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "20260419-post-v1-tx-validate",
+  "title": "pwmd: validate_tx_shape + лимит тела POST /v1/tx",
+  "status": "done",
+  "mvp_checklist": ["§4 POST /v1/tx"],
+  "brief": "До mpool: validate_tx_shape (подпись + domain). Axum DefaultBodyLimit 256 KiB на весь Router pwmd.",
+  "delegations": [],
+  "commits": ["3b147e7"],
+  "artifacts": {},
+  "notes": "Коммит 3b147e7."
+}

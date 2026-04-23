@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-tui-panels-compact-and-last-row-selection-fix",
+  "title": "TUI compact panels + last-row selection fix",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "Исправить баг выбора последней строки в правой панели (и при необходимости в обеих), упростить таблицы по умолчанию до минимального набора колонок Address + PWM, и настроить пропорции ширины: адрес существенно шире, баланс заметно уже.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Исправить навигацию последней строки и сделать компактный layout колонок Address/PWM.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить навигацию до последней строки и компактный layout панелей.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь наблюдает /00-адреса в правой панели и баг выбора самой нижней строки; запрос на лаконичный вывод панелей без лишних деталей. Делегация pwm-coding: off-by-one фикс навигации правой панели, симметричные границы выбора, compact таблицы Address+PWM и новые пропорции колонок, docs/tests обновлены. Делегация pwm-testing: PASS по пунктам, cargo test -p pwm-tui = 22 passed."
+}

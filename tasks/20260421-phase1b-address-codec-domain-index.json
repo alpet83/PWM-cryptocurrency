@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-address-codec-domain-index",
+  "title": "Phase 1B: встречные преобразования адресов + domain index v1",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B",
+    "docs/ADDRESS_SPEC_PHASE1_bech32dx.md §3, §6"
+  ],
+  "brief": "Реализовать encode/decode bech32DX с policy-проверкой домена через domain index v1, добавить fallback-формат домена `$`+Pascal HEX при domain miss, и подготовить широкое покрытие стран+TNC с разреженным индексом (шаг > 1).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать кодек+domain index+fallback formatting по спецификации.",
+      "done_at": "2026-04-21"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Прогнать тесты/сборку и проверить базовый smoke новых конвертеров.",
+      "done_at": "2026-04-21"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Требование пользователя: широкое покрытие стран и TNC, сортировка по алфавиту, разреженное распределение доменных значений для скрытого резерва. Мини-отчет pwm-coding: добавлен `domain_index.rs`, расширены encode/decode и fallback formatting в `types.rs`, минимальная интеграция в CLI (`domain_display/domain_known`). Мини-отчет pwm-testing: `cargo test -p pwm-core`, `cargo check -p pwm-cli`, `cargo check -p pwm-tui` — PASS."
+}

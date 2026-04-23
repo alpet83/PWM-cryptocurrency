@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "20260423-tui-tests-f6-blocked-when-wallet-locked",
+  "title": "Тесты TUI: F6 заблокирован при locked encrypted wallet",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/TUI_SPEC_v0.md",
+    "docs/tester-guide-cli-tui-scenarios.md"
+  ],
+  "brief": "Добавить тест(ы), которые проверяют, что операции, требующие signing key (в т.ч. F6), недоступны/не выполняются, пока encrypted кошелёк locked после истечения unlock timer.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить автотесты на locked-wallet guard для F6/submit path.",
+      "done_at": "2026-04-23"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить, что есть именно F6-сценарий после истечения unlock timer.",
+      "done_at": "2026-04-23"
+    }
+  ],
+  "commits": [
+    "d21289c",
+    "03730e1"
+  ],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Закрыто: d21289c добавил locked-wallet guard тест, а 03730e1 добавил явный тест F6-path после истечения unlock timer (`f6_path_after_unlock_timeout_shows_locked_modal_message`). pwm-testing подтвердил PASS и допустимость unit-level покрытия для этого DoD."
+}

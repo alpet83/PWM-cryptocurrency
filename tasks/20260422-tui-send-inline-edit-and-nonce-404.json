@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-tui-send-inline-edit-and-nonce-404",
+  "title": "TUI F6 inline editing + nonce 404 fallback",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "По операторскому фидбеку: в F6 подсвечивать только область вводимого значения (без label), добавить перемещение курсора внутри текста и правку в середине строки, а также снять блокировку отправки при `nonce: http 404 not found` (согласовать с CLI-политикой fallback nonce=0 для отсутствующего аккаунта).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать inline editor в F6 и nonce 404 fallback в pwm-tui.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить тестами и smoke-логикой F6 editing UX и nonce fallback.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: оператор сообщил, что подсветка сейчас включает label (`amount:`/`fee:`), и отправка блокируется `nonce: http 404 not found`. Делегация pwm-coding: выполнено (value-only highlight, inline cursor editing, nonce non-success=>0). Делегация pwm-testing: PASS по пунктам, cargo test -p pwm-tui зелёный."
+}

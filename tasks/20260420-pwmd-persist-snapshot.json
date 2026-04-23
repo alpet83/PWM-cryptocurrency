@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "20260420-pwmd-persist-snapshot",
+  "title": "pwmd: persist chain snapshot to disk",
+  "status": "done",
+  "mvp_checklist": ["§4 Persist цепи на диск", "§9 запуск --data-file"],
+  "brief": "Добавить JSON snapshot (`blocks` + `state`) в `--data-file`, загрузку на старте с проверкой совместимости genesis, сохранение после seal/tx.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Прогнать обязательные тесты `pwmd`/`pwm-core`, устранить блокеры до зелёного.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["266161b"],
+  "artifacts": {},
+  "notes": "Мини-отчёт: pwm-testing поймал блокер сериализации состояния snapshot (map key [u8;32] в JSON) и исправил serde bridge. CQDS process tools: `cargo` отсутствует в среде, использован локальный fallback с watchdog без зависаний."
+}

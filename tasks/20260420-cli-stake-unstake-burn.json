@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "20260420-cli-stake-unstake-burn",
+  "title": "pwm-cli: tx-stake / tx-unstake / tx-burn-mark",
+  "status": "done",
+  "mvp_checklist": ["§5 tx-stake / tx-unstake / tx-burn-mark"],
+  "brief": "Добавить три CLI-команды для отправки SignedTx в /v1/tx: stake, unstake, burn-mark (с nonce через RPC как в tx-send).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать команды в crates/pwm-cli/src/main.rs с минимальным дублированием.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["498f3bf"],
+  "artifacts": {},
+  "notes": "Мини-отчёт pwm-coding: команды добавлены, чеклист §5 обновлён, cargo check -p pwm-cli зелёный. Перед шагом сделан enqueue code_index через cq_files_ctl (sync timeout + background queued)."
+}

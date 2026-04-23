@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "20260421-testing-cy-flags70-benchmark",
+  "title": "Testing: CY zone bruteforce benchmark (>=70% flags bits match)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2b",
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2"
+  ],
+  "brief": "Прогнать однопоточный addr-bruteforce 3-5 минут для зоны CY и условия совпадения >=70% бит flags (через flags_mask+expected_result), собрать фактическую скорость, ETA и оценить реалистичность.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Benchmark brute-force 3-5 min for CY domain and 23-bit masked flags target; report realism and ETA mismatch.",
+      "done_at": "2026-04-21"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Assumption for CY domain in this run: raw u16 0x4359 (ASCII 'CY'), пока без отдельного справочника country-code -> domain_raw. Mini-report pwm-testing: sample_flags=0x00A5C3DE, flags_mask=0x007FFFFF (23 bits), expected_result=0x0025C3DE. Фактический запуск ~4m19s (exit 101/no match), скорость ~7.7k attempts/sec, ETA ~117 weeks. Теоретика 2^39 попыток (~549.8B) при наблюдаемой скорости даёт ~819 дней (~117 недель) — совпадает с прогнозом. Вердикт: для типичного laptop и текущего single-thread подхода сценарий нереалистичен."
+}

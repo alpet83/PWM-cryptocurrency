@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "20260420-tester-guide-cli-tui-scenarios",
+  "title": "Tester guide: CLI/TUI scenarios",
+  "status": "done",
+  "mvp_checklist": [
+    "§8b Tester guide: сценарии CLI/TUI проверки и ожидаемые результаты"
+  ],
+  "brief": "Подготовить эксплуатационный сценарный гайд для тестеров: последовательные CLI/TUI проверки и ожидаемые outcomes.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать tester-guide-cli-tui-scenarios.md и отметить пункт §8b.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["c3d3c93"],
+  "artifacts": {
+    "doc": "docs/tester-guide-cli-tui-scenarios.md"
+  },
+  "notes": "Мини-отчет: pwm-coding добавил сценарный tester guide по CLI/TUI и отметил пункт §8b в чеклисте. Оркестратор внес пост-правку команды tx-burn-mark (`--mark-amount`) для соответствия фактическому CLI. Код/тесты не менялись. Повторяемые вводные: end-user/tester стиль, минимум реализации, явные ожидания PASS/FAIL."
+}

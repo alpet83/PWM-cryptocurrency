@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260421-testing-cy-twohits-phase1-userprofile",
+  "title": "Testing: CY two-hit benchmark after Phase1 user-profile alignment",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2b"
+  ],
+  "brief": "Проверить фактическое время подбора 2 адресов для CY после перехода на user-profile: country label only, domain_hi match, low-10 flags policy.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Сделать 2 успешных прогона addr-bruteforce для CY и посчитать средние метрики.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "wallet_files": [
+      "tmp/bf_run1.yaml",
+      "tmp/bf_run2.yaml"
+    ]
+  },
+  "notes": "Mini-report: policy-checks пройдены (corporate label rejected, flags>10bit rejected). 2 успешных прогона: run1 attempts=42304 elapsed_ms=5261.109 rate=8040.890/s; run2 attempts=95808 elapsed_ms=12180.888 rate=7865.436/s. Средние: elapsed=8.721s, rate=7953.163/s, attempts=69056. Выборка из 2 запусков мала для устойчивого сравнения с ожидаемым 262144."
+}

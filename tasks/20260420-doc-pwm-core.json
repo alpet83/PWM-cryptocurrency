@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "20260420-doc-pwm-core",
+  "title": "Подробная документация: крейт pwm-core",
+  "status": "done",
+  "mvp_checklist": ["§8 Док: крейт pwm-core"],
+  "brief": "Создать подробную, но компактную техническую документацию по модульной структуре и data-flow pwm-core.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Собрать и записать docs по pwm-core, обновить чеклист.",
+      "done_at": "2026-04-20"
+    }
+  ],
+  "commits": ["7c46697"],
+  "artifacts": {},
+  "notes": "Мини-отчёт pwm-coding: добавлен docs/pwm-core.md и обновлён §8 чеклиста; задача doc-only, без правок кода."
+}

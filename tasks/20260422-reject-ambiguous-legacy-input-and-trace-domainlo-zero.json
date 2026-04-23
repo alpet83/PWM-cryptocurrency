@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-reject-ambiguous-legacy-input-and-trace-domainlo-zero",
+  "title": "Trace domain_lo=00 sources + reject ambiguous legacy input",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "Найти реальные пути, через которые в chain state попадают account id с domain_lo=00, и закрыть двусмысленный runtime-ввод legacy pretty формата без /LO (например pwm1-CY-f...). Для CLI/TUI сделать явный reject с понятной ошибкой и рекомендацией использовать strict pretty LABEL/LO или canonical.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Локализовать источники domain_lo=00 в сценариях tx/wallet/address_book/state.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить runtime reject ambiguous legacy pretty в CLI/TUI input-paths и обновить docs/tests.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: API canonical-only подтвержден, но пользователь видит CY/00 в рендере аккаунтов; нужно закрыть источники появления таких id через input policy и трассировку состояния. Делегация pwm-testing: write-path проанализирован, API pretty leak не найден, runtime ambiguous input в ключевых путях подтверждён/локализован. Делегация pwm-coding: введён parse_account_id_for_user_input, runtime reject ambiguous legacy pretty в CLI/TUI адресных полях, docs/tests обновлены; cargo test -p pwm-core -p pwm-cli -p pwm-tui PASS."
+}

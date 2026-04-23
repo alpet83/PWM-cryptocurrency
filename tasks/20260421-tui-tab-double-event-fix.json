@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260421-tui-tab-double-event-fix",
+  "title": "TUI: устранить двойную реакцию Tab на Windows",
+  "status": "done",
+  "mvp_checklist": [
+    "§9 Запуск (devnet) — pwm-tui",
+    "docs/tester-guide-cli-tui-scenarios.md — TUI-P02 (Tab focus)"
+  ],
+  "brief": "Исправить обработку ввода в pwm-tui: Tab должен переключать панель один раз на нажатие, без отката на отпускании клавиши. Критерий done: в Windows/PowerShell Tab стабильно переводит фокус Owner <-> Receivers по одному шагу.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить фильтрацию key event по KeyEventKind::Press в обработчике TUI.",
+      "done_at": "2026-04-21"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить сборку и тесты после фикса (минимум cargo check -p pwm-tui).",
+      "done_at": "2026-04-21"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Источник дефекта: ручной прогон пользователя на стадии §9 (Tab срабатывает дважды: press/release). Реализация: в crates/pwm-tui/src/main.rs добавлен фильтр KeyEventKind::Press (release/repeat игнорируются), чтобы действия выполнялись только на нажатие. Проверка pwm-testing: cargo check -p pwm-tui = PASS (~1.19s), cargo test --workspace = PASS (~2.41s). Ручной ретест пользователя: Tab работает корректно; дефект закрыт. Доп. визуальное замечание по нижней панели пока принято как неблокирующий UX-артефакт."
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-wallet-init-country-autobruteforce",
+  "title": "Phase 1B: wallet init with country and auto-bruteforce",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 3",
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 2b"
+  ],
+  "brief": "Добавить user-mode команду инициализации кошелька с кодом страны, автопоиском первого адреса и сохранением derivation path.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать `wallet init --country ...` с автоподбором и записью в wallet YAML.",
+      "done_at": "2026-04-21T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Добавлена команда `wallet init` (country label only, user-profile policy), автоподбор адреса, сохранение страны/пути деривации/ключевого материала и вывод Bech32DX. Тесты pwm-cli: passed (14)."
+}

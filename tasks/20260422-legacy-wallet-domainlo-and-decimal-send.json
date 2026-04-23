@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-legacy-wallet-domainlo-and-decimal-send",
+  "title": "Legacy wallet domain_lo fix + decimal amount/fee",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "Воспроизвести кейс старого кошелька (например cy-wallet.yml), где после загрузки в TUI и адресов из API наблюдается domain_lo=00, локализовать причину и исправить. Параллельно обновить send-форму TUI: принимать amount/fee в десятичном формате с точкой, а не только integer.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Воспроизвести и локализовать баг domain_lo=00 именно на legacy wallet файлах.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Исправить root cause legacy wallet domain_lo=00 и добавить decimal parsing в send form.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь сообщил, что проблема проявляется именно на старом кошельке; также нужен decimal ввод amount/fee в TUI send. Делегация pwm-testing: воспроизведение подтверждено на legacy формате без /LO, root cause локализован (silent mapping to base label raw). Делегация pwm-coding: реализован migration-safe parsing без silent /00, wallet/address_book legacy checks, decimal send parser (scale 1e6), docs и тесты; cargo test -p pwm-core -p pwm-cli -p pwm-tui PASS."
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-pwmd-fast-start-background-snapshot-load",
+  "title": "pwmd fast startup with background snapshot load",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "Сделать быстрый старт RPC в pwmd за счёт фоновой загрузки/инициализации snapshot-пути без долгой блокировки старта сервера; при этом сохранить корректность состояния и явный статус готовности.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать архитектуру fast-start pwmd с фоновой обработкой snapshot и безопасной синхронизацией состояния.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить, что RPC стартует быстрее и поведение snapshot/load корректно без регрессий.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь просит отдельную coding-сессию на ускорение старта pwmd. Делегация pwm-coding: введены startup phases, endpoint /v1/status, fast-start listener + background snapshot load, readiness gating (503 до ready), build bump pwmd 0.1.0->0.1.1, docs update. Делегация pwm-testing: PASS по runtime smoke и тестам (loading_snapshot/ready/ready_degraded сценарии подтверждены)."
+}

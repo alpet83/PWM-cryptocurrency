@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "20260418-orchestrator-tasks-json",
+  "title": "Оркестратор: pwm-coding / pwm-review, коммиты, каталог tasks/",
+  "status": "done",
+  "mvp_checklist": ["docs/AGENT_PROMPT_orchestrator.md", "docs/AGENT_PROMPTS.md", "tasks/README.md"],
+  "brief": "Зафиксировать роль оркестратора: делегирование кодинга и ревью субагентам, локальные коммиты за смысловые шаги, JSON-тикеты в tasks/ для трассировки.",
+  "delegations": [],
+  "commits": ["641da4f"],
+  "artifacts": {},
+  "notes": "Коммит 641da4f: CLI RPC, тесты state, доки оркестратора и tasks/, чеклист, ревью-отчёт в docs/reviews."
+}

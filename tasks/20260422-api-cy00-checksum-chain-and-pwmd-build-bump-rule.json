@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-api-cy00-checksum-chain-and-pwmd-build-bump-rule",
+  "title": "Re-trace CY/00 via API + pwmd build-bump rule",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 3"
+  ],
+  "brief": "Повторно трассировать через API путь появления CY/00 с проверкой checksum-гипотезы и причинно-следственной цепочки по данным chain/snapshot. Дополнительно закрепить в AGENT_PROMPT_coding правило: при изменении API-поведения pwmd повышать build/version marker.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Собрать end-to-end цепочку появления CY/00 через API/state и проверить checksum-гипотезу.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Обновить AGENT_PROMPT_coding правилом про build/version bump pwmd при API-изменениях.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: после перезапуска pwmd CY/00 остаются; пользователь запросил повторную API-трассировку и правило версионирования для API-правок. Делегация pwm-testing: checksum-гипотеза не подтвердилась, API отдаёт hex id, CY/00 подтверждены как персистентные on-chain аккаунты из tx-init в snapshot blocks/state. Делегация pwm-coding: в docs/AGENT_PROMPT_coding.md добавлена секция про обязательный build/version bump pwmd при изменении публичного API-поведения."
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260421-phase1b-domain-index-sqlite-plan",
+  "title": "Phase 1B: domain_index data source to sqlite3",
+  "status": "in_progress",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1B / 1"
+  ],
+  "brief": "Убрать избыточный хардкод domain list из Rust-кода: подготовить sqlite3-источник и thin loader/lookup API для domain_index.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Предложить и внедрить sqlite-backed domain index с минимальным runtime-overhead.",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить корректность lookup/format и регрессии encode/decode.",
+      "done_at": null
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Причина: масштабирование списка regulatory/TNC без раздувания domain_index.rs; нужен удобный pipeline пополнения данных."
+}

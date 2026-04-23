@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260422-tui-performance-optimization-batch-and-offline-red-status",
+  "title": "TUI performance batch + red RPC offline status",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 1",
+    "docs/PHASE1_CHECKLIST.md Sprint 1C / 2"
+  ],
+  "brief": "Последовательно закрыть тикеты оптимизации TUI по findings pwm-review: убрать блокирующие RPC с UI-потока, снизить input latency, дросселировать debug fetch, и сделать красный вывод статуса RPC offline в нижней строке.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализовать пакет оптимизаций TUI responsiveness и красный статус RPC offline.",
+      "done_at": "2026-04-22"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить latency/offline сценарии TUI и корректность red status индикации.",
+      "done_at": "2026-04-22"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Основание: пользователь попросил вторую coding-сессию на оптимизацию TUI по ревью и красный offline-индикатор. Делегация pwm-coding: RPC worker вынесен из UI-loop, debug fetch throttled+cache, submit flow async, footer red status for RPC offline/timeout, docs/tests update. Делегация pwm-testing: PASS по коду/тестам/короткому smoke; отмечен остаточный риск ручной визуальной проверки цвета в alt-screen."
+}

@@ -1,0 +1,10 @@
+# Exclude build/artifact and VCS noise from CQDS file scan/index
+(^|/)target/
+(^|/)\.git/
+(^|/)\.cursor/
+(^|/)\.idea/
+(^|/)node_modules/
+(^|/)dist/
+(^|/)build/
+(^|/)\.pytest_cache/
+(^|/)__pycache__/

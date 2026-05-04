@@ -308,10 +308,9 @@
 
 | Path | Description |
 |------|-------------|
-| `state/pwm-data.json` | Neutral relay-default snapshot |
+| `state/neutral/<listen-tag>/pwm-data.json` | Neutral relay-default snapshot (`:` → `+` in tag) |
 | `state/domain-hi-0xNN/pwm-data.json` | Explicit domain namespace snapshot |
-| `state/shard-a/pwm-data.json` | Alias shard A snapshot |
-| `state/shard-b/pwm-data.json` | Alias shard B snapshot |
+| `epochs/` next to snapshot | JsonFile epoch JSONL + manifest (see storage guide) |
 | `logs/` | Node log files (rotated) |
 | `state/` | Default `--state-root` directory |
 

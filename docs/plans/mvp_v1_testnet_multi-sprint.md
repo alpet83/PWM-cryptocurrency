@@ -231,8 +231,8 @@ isProject: false
 - **Scope:**
   - default runtime mode: `relay` (без shard-enforced validation);
   - shard-support включается только при явной domain-конфигурации (`cluster_domain_hi`/mode);
-  - `--shard A|B` остаётся как deprecated compat alias (soft-break + warning);
-  - storage namespace для нового пути строится по `domain_hi`, а legacy alias держится через compat mapping;
+  - операторский контракт без legacy `--shard` / `state/shard-*` (domain-first + neutral baseline);
+  - storage namespace для shard-capable режима строится по `domain_hi` (`domain-hi-0xNN`);
   - обновление tx-policy guards: shard-enforced правила применяются только в соответствующем режиме;
   - синхронизация docs/operator guides и acceptance матрицы под новую модель.
 - **Файлы/модули:**
@@ -240,7 +240,7 @@ isProject: false
   - [crates/pwm-cli/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-cli/src/main.rs)
   - [crates/pwm-tui/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-tui/src/main.rs)
   - [docs/reviews/](p:/opt/docker/PWM-cryptocurrency/docs/reviews/)
-- **Demo-ready output:** `pwmd` стартует в relay-default; domain_hi-mode включает shard-enforced path; legacy `--shard` работает с deprecation warning; regression/conformance pack зелёный.
+- **Demo-ready output:** `pwmd` стартует в relay-default; domain_hi-mode включает shard-enforced path; regression/conformance pack зелёный.
 
 ## Sprint 12 (Week 23-24): Final Optimization Sprint after `pwm-optimus` Review
 - **Цель:** выполнить финальный, заранее ограниченный optimization pass после стабилизации domain_hi migration (Sprint 11).

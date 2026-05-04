@@ -251,29 +251,11 @@ Operational SLO examples (non-normative):
 
 ---
 
-## 10. Migration Path from `--shard A|B`
+## 10. Historical note: legacy CLI `--shard` and `state/shard-*` paths
 
-### 10.1 Current baseline
+Earlier iterations exposed a dev-only `--shard A|B` mapping and snapshot directories `state/shard-a` / `state/shard-b`. That compatibility surface and those paths are **removed** from the supported operator contract; production-style and MVP docs assume **explicit cluster-bound launch** (`--network-id`, `--domain-hi` / `--cluster-domain-hi`, `--cluster-id`, `--node-id`) or **neutral relay baseline**, with snapshot namespaces `domain-hi-0xNN` and `neutral/<listen-tag>` only.
 
-Current runtime launch in operator flow uses process label (`--shard A|B`) suitable for two-process dev/test orchestration.
-
-### 10.2 Migration stages
-
-1. Introduce explicit cluster-bound runtime config:
-   - `--network-id`,
-   - `--cluster-domain-hi`,
-   - `--cluster-id`,
-   - `--node-id`,
-   - capability flags.
-2. Keep `--shard A|B` as compatibility alias for operator convenience in transition period.
-3. Define deterministic mapping for alias mode in docs only (no heuristic runtime inference).
-4. Mark alias mode deprecated once cluster-bound config is stable and verified.
-
-### 10.3 Backward compatibility constraints
-
-- Existing local shard demo flow remains operable during migration.
-- Protocol routing invariants from `WHITE_SPEC_v0` and `RFC 0006` remain unchanged.
-- No range-based `domain_hi` heuristics are introduced at any migration stage.
+Protocol routing invariants from `WHITE_SPEC_v0` and `RFC 0006` are unchanged; no range-based `domain_hi` heuristics apply in identity logic.
 
 ---
 
@@ -291,7 +273,7 @@ Implementation is accepted when all criteria below are met:
    - degraded-state failover signaling.
 5. Anti-spoof checks enforce signature, replay window, and network/genesis compatibility.
 6. Minimal metrics/logs from Section 9 are emitted and documented.
-7. Migration compatibility with `--shard A|B` is documented and tested.
+7. Operator docs describe explicit/neutral launch only (no legacy `--shard` / `state/shard-*` paths).
 8. No contradiction with `WHITE_SPEC_v0` and `RFC 0006` shard semantics.
 9. No use of range heuristics (`0x80 split` or analogs) in identity/routing/priority logic.
 

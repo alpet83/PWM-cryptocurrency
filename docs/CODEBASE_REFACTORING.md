@@ -311,7 +311,7 @@ pwm-rpc-client/
 |-------|----------|----------------|
 | Mixed naming for "shard" vs "domain" | `ShardId` (A/B) vs `domain_hi` (0x10/0x20) vs `cluster_domain_hi` | Document the mapping clearly; consider deprecating `ShardId` in favor of domain-based identity |
 | `transport_real` vs `transport_peer_listen` vs `transport_peer_seed` | CLI flags in `pwmd/main.rs` | Group transport flags under `--transport.*` namespace in help text |
-| `--shard` deprecated but kept | `pwmd/main.rs:19-20` | Add `#[deprecated]` attribute to compiler-enforce migration |
+| Legacy `--shard` CLI (if still present) | `pwmd/main.rs` | Remove after operators migrate; operator docs no longer describe this path |
 
 ---
 
@@ -325,7 +325,7 @@ pwm-rpc-client/
 | 2 | Move `dial_stub_attempt()` and `run_transport_tick()` to `#[cfg(test)]` in transport.rs | Clean separation | 30 min |
 | 3 | Move `hello_stub()` in federation.rs to test module | Clean separation | 15 min |
 | 4 | Extract shared `TextInput` struct in TUI | Eliminates ~160 lines copy-paste | 2 hours |
-| 5 | Add `#[deprecated]` attribute to `--shard` flag | Compiler-enforced migration | 15 min |
+| 5 | Delete deprecated `--shard` CLI surface once tree is clean | Align binary with domain-first docs | TBD |
 
 ### Phase 2: Code Sharing (1 week)
 

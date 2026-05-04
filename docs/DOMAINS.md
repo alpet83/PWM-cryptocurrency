@@ -233,8 +233,8 @@
 ## Runtime notes для `pwmd`
 
 - Domain-first запуск использует `--domain-hi` / `--domain-cluster` + identity tuple.
-- Запуск без explicit identity и без `--shard` использует neutral namespace (`state/pwm-data.json`).
-- `--shard A|B` остается deprecated compat path и не заменяет domain-first конфиг.
+- Запуск без explicit identity использует neutral relay baseline; snapshot по умолчанию под `state/neutral/<listen-tag>/pwm-data.json` (см. `guide-node-storage-and-snapshot.md`).
+- Устаревший CLI `--shard` и пути `state/shard-a|shard-b` в поддерживаемом операторском контракте **не используются**.
 
 ## Источник истины
 

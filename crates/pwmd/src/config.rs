@@ -28,7 +28,7 @@ impl Default for PersistSnapKind {
     }
 }
 
-/// Runtime options for `pwmd` (domain-first identity with legacy shard compat fallback).
+/// Runtime options for `pwmd` (domain-first identity; internal `ShardId` for Phase1 guards).
 #[derive(Clone, Debug)]
 pub struct PwmdConfig {
     pub listen: SocketAddr,

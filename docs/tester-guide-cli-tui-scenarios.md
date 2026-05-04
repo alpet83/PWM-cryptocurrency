@@ -6,7 +6,6 @@
 
 - Установлены Rust и `cargo`.
 - Понимание: primary UX — explicit domain config (`--domain-hi` / `--domain-cluster`, `--cluster-id`, `--node-id`).
-- `--shard` использовать только как deprecated compat alias для legacy-сценариев.
 - Для двух процессов нужны разные `--listen` и разные `--state-root`.
 
 ## 2) Поднять ноду для конкретного домена
@@ -234,11 +233,7 @@ Negative expectations:
 Операторский пошаговый runbook (happy + negative suite): [ROAMING-SAMPLE.md](./ROAMING-SAMPLE.md).
 Простое объяснение модели geo-shard/roaming: [GEO-SHARDING-EXPLANATION.md](./GEO-SHARDING-EXPLANATION.md).
 
-## 10) Compat note for `--shard`
-
-`--shard A|B` сохраняется как deprecated compat alias для legacy-операций и старых сценариев. Он не описывает целевой domain-first операторский путь и не должен использоваться как primary UX для новых прогонов.
-
-## 11) См. также
+## 10) См. также
 
 - [tester-guide-devnet-smoke.md](./tester-guide-devnet-smoke.md)
 - `docs/reviews/sprint-9-checklist.md`

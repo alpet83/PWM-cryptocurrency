@@ -8,8 +8,9 @@ By default `pwmd` stores node state under `--state-root state` and chooses a nam
 
 - neutral default: `state/neutral/<listen-addr>/pwm-data.json`;
 - explicit domain mode: `state/domain-hi-0xNN/pwm-data.json`;
-- legacy `--shard A|B`: `state/shard-a|shard-b/pwm-data.json`;
 - explicit override: `--data-file <PATH>`.
+
+Historical note: older trees may still contain `state/shard-a` / `state/shard-b` directories from pre–domain-first tooling; current `pwmd` does not write or prefer those paths.
 
 For JsonFile epoch storage, `pwm-data.json` is the summary file. It contains canonical state, genesis identity rows, roaming/cross-shard state, `blocks_stored = "epochs"`, and `checkpoint_height`. Older inline snapshots may still contain the full `blocks` array in `pwm-data.json`; those are legacy/compat inputs.
 

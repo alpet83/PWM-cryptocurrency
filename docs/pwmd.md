@@ -26,20 +26,19 @@
 - `genesis: GenesisSource` — источник genesis (`DevNet` или `JsonFile(PathBuf)`);
 - `data_file: PathBuf` — путь JSON snapshot-файла.
 - `snapshot_verify_chain: bool` — audit/recovery режим полной replay-проверки epoch snapshot при загрузке; по умолчанию выключен.
-- `shard: ShardId` — deprecated compat alias (`A|B`), сохранен для мягкой обратной совместимости.
-- `identity: RuntimeIdentity` — эффективный launch identity tuple (`network_id`, `cluster_domain_hi`, `cluster_id`, `node_id`) + режим (`explicit` или `alias`).
+- `shard: ShardId` — внутренняя метка **process shard** (Phase 1 map по домену отправителя), выводится в статусе и участвует в preflight-guards; задаётся конфигурацией identity, **не** отдельным устаревшим CLI-флагом.
+- `identity: RuntimeIdentity` — эффективный launch identity tuple (`network_id`, `cluster_domain_hi`, `cluster_id`, `node_id`) + режим (`explicit` или neutral relay baseline).
 - `transport: TransportConfig` — stateful peer transport (`peer_listen`, seed peers, connect/handshake/heartbeat timeout, retry knobs).
 
 `PwmdConfig::default()`:
 - `listen = 127.0.0.1:3030`;
 - `genesis = DevNet`;
-- `data_file = state/pwm-data.json` (neutral relay-baseline default, без shard-specific namespace);
+- `data_file = state/neutral/127.0.0.1+3030/pwm-data.json` (neutral relay-baseline: изоляция по RPC listen);
 - `identity` поднимается в relay-baseline профиле; shard-enforced semantics включаются только при explicit domain-конфиге.
 
 ## CLI-флаги `pwmd`
 
 Бинарник `crates/pwmd/src/main.rs` мапит аргументы в `PwmdConfig`:
-- `--shard <A|B>` (без implicit default) — deprecated compat alias для legacy namespace/identity path; не является primary domain-first UX;
 - `--listen <ADDR>` (default `127.0.0.1:3030`);
 - `--genesis-file <PATH>` (если не задан, используется встроенный `dev_net()`);
 - `--state-root <DIR>` (default `state`, используется для default data path);
@@ -86,21 +85,14 @@ Cross-shard observability (Sprint 15+): в логах искать префик�
 
 Identity launch rules:
 - если все четыре explicit-поля (`network_id`, `cluster_domain_hi`, `cluster_id`, `node_id`) заданы, `pwmd` стартует в `explicit` mode;
-- если не задано ни одно и не передан `--shard` — стартует neutral relay baseline (без `A|B` affinity; shard-enforced guards не активируются);
-- если explicit-поля не заданы, но передан `--shard A|B` — стартует deprecated compat alias path;
+- если ни одно из explicit-полей не задано — стартует **neutral relay baseline** (отдельный snapshot namespace под listen; shard-enforced guards не активируются);
 - частично заданный набор explicit-полей (например только `cluster_id`) отклоняется на старте.
 
-Deterministic alias mapping (transition contract):
-- `--shard A` -> `network_id=devnet`, `cluster_domain_hi=0x10`, `cluster_id=compat-shard-a`, `node_id=compat-node-a`;
-- `--shard B` -> `network_id=devnet`, `cluster_domain_hi=0x20`, `cluster_id=compat-shard-b`, `node_id=compat-node-b`.
-
-Важно: alias mapping фиксирован и явный; range-эвристики (`0x80 split` и аналоги) не используются.
-
-Storage namespace migration policy (Sprint 11+):
-- target: explicit identity mode использует domain-based namespace `domain-hi-0xNN` (по `cluster_domain_hi`);
-- default neutral: запуск без `--shard` использует `state/pwm-data.json` и state namespace `neutral`;
-- compat mapping: явный alias mode (`--shard`) сохраняет legacy namespace `shard-a|shard-b`;
-- policy migration-only: без wire/API расширения и без hard-break для alias path.
+Storage namespace (domain-first):
+- **explicit** identity: snapshot под `state/domain-hi-0xNN/pwm-data.json` (и рядом `epochs/` при epoch-хранилище);
+- **neutral** relay baseline: `state/neutral/<listen-tag>/pwm-data.json` (`:` → `+` в теге), см. `guide-node-storage-and-snapshot.md`;
+- переопределение: `--data-file`;
+- каталоги вида `state/shard-a` / `state/shard-b` относятся к старым деревьям на диске и **не** описывают текущий контракт путей.
 
 ## Operator quick path (domain-first)
 
@@ -359,10 +351,10 @@ Roaming MVP status contract (Sprint 13) формализован отдельн�
 
 Ключевые валидации и ограничения:
 - JSON-тело больше 256 KiB -> `413 PAYLOAD_TOO_LARGE` (body-limit слой);
-- до `validate_tx_shape` применяется dev/test process guard для `pwmd --shard A|B`:
+- до `validate_tx_shape` применяется dev/test **process guard** (Phase 1):
   - Phase 1 **prefilter получателя** для user-facing потоков (`TRANSFER`, `BURN_MARK` с `beneficiary`) по правилам RFC 1 §7 (reserve/witness/unknown-domain) -> `400 BAD_REQUEST`; стабильный контракт сообщений: содержит `recipient domain` и class-specific причину (`reserve`, `witness-only`, `not recognized`);
   - тот же recipient-prefilter применяется и к `EXPORT` по полю `to` (`400 BAD_REQUEST` для reserve/witness/unknown-domain);
-  - выбор **process shard** для ноды pinned к Phase 1 классу домена отправителя из `pwm_core::domain_index` (**Regulatory -> shard A**, **Sector -> shard B**); несовпадение с `--shard` -> `409 CONFLICT`;
+  - выбор **process shard** отправителя по Phase 1 классу домена из `pwm_core::domain_index` (**Regulatory -> shard A**, **Sector -> shard B**); несовпадение с **локальным** process shard ноды (из конфигурации `cluster_domain_hi` / identity) -> `409 CONFLICT`;
   - для `TRANSFER` локальный путь допускает только `domain_hi(sender) == domain_hi(receiver)`; иначе -> `409 CONFLICT` (явный `EXPORT/IMPORT` track);
 - для `IMPORT` до `apply_tx` проверяется provenance/replay guard на текущем state (RPC prefilter):
   - уже импортированный `export_id` -> `409 CONFLICT` (`duplicate import`);
@@ -507,8 +499,7 @@ Roaming MVP status contract (Sprint 13) формализован отдельн�
 
 ## Clarification: process shard vs spec-level geo-shard
 
-- `pwmd --shard A|B` в текущем runtime - это исключительно dev/test process partition (операционная сегментация экземпляров процесса).
-- Это не является протокольной гео-шард моделью и не должно трактоваться как mapping "A/B = диапазоны `domain_hi`".
+- В Phase 1 preflight метки **process shard** `A`/`B` отражают класс домена отправителя (см. `pwm_core::domain_index`: Regulatory vs Sector) при проверках на стороне ноды; это **не** протокольная гео-шард модель и не задаётся отдельным legacy CLI.
 - Spec-level geo-shard semantics фиксируется в спецификациях как кластер с фиксированным `domain_hi` и может поддерживать островизацию на уровне доменных кластеров.
 - Практическое правило безопасности: не использовать диапазонные эвристики (`domain_hi < 0x80` vs `>= 0x80`) для маршрутизации или policy-решений.
 

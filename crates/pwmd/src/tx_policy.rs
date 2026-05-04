@@ -15,7 +15,7 @@ const RECIPIENT_MISSING_ERR_TEXT: &str =
 const RECIPIENT_UNINIT_ERR_TEXT: &str =
     "recipient account not initialized; recipient must run tx-init first";
 
-/// Devnet/testnet **process** shard selection for `pwmd --shard A|B`.
+/// Devnet/testnet **process** shard label from Phase 1 domain class (Regulatory vs Sector).
 ///
 /// This is intentionally **not** a protocol rule for `TRANSFER` same-shard routing.
 /// Phase 1 domain classes are defined in `pwm_core::domain_index` (see RFC 1 §5.1).

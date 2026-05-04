@@ -2,7 +2,7 @@
 
 **Языки:** [English — README.md](README.md) · Русский (этот файл)
 
-PWM — **утилитарно ориентированная нативная цепочка** (Rust): PoA-нода для devnet (`pwmd`), CLI `pwm`, `pwm-tui` и доменно-первый операторский контур. Цель проекта — **практичный криптовалютный стек в первую очередь для задач IT-безопасности** (аудируемые операции, явные границы доверия, управляемый шардинг и семантика roaming), а не розничные платежи или универсальный DeFi.
+PWM — **нативная криптовалюта с моделью matrixchain** (см. толкование v0 в [MATRIXCHAIN_SPEC_v0.md](docs/MATRIXCHAIN_SPEC_v0.md): «матрица» идентичности, одномерная цепь в коде, операционные geo-шарды). Реализация на **Rust**: PoA-нода (`pwmd`), CLI `pwm`, `pwm-tui`, доменно-первый операторский контур. Проект **утилитарный**, ориентирован **прежде всего на IT-безопасность** (аудируемые операции, явные границы доверия, шардинг и roaming), а не на розницу или универсальный DeFi.
 
 ![Интерфейс оператора pwm-tui (демо)](tui-demo-screenshot.png)
 
@@ -83,6 +83,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 - README (English): [README.md](README.md)
 - Черновик whitepaper: `DRAFT_WHITEPAPER.md`
 - Whitepaper (RU): `DRAFT_WHITEPAPER-ru.md`
+- Matrixchain (термин и v0): `docs/MATRIXCHAIN_SPEC_v0.md`
 - White spec: `docs/WHITE_SPEC_v0.md`
 - Geo-sharding (простое объяснение): `docs/GEO-SHARDING-EXPLANATION.md`
 - Runbook cross-domain roaming: `docs/ROAMING-SAMPLE.md`

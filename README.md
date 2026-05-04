@@ -2,7 +2,7 @@
 
 **Languages:** English (this file) · [Русский — README-ru.md](README-ru.md)
 
-PWM is a **utility-oriented native chain** (Rust): PoA devnet node (`pwmd`), `pwm` CLI, `pwm-tui`, and a domain-first operator model. The project goal is a **practical cryptocurrency stack aimed mainly at IT security** use cases (auditable ops, explicit trust boundaries, controllable sharding and roaming semantics), not at retail payments or generic DeFi.
+PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAIN_SPEC_v0.md](docs/MATRIXCHAIN_SPEC_v0.md) for how *matrixchain* maps to v0 (identity grid, single-chain projection, geo-shard ops). The implementation is **Rust**: PoA devnet node (`pwmd`), `pwm` CLI, `pwm-tui`, and a domain-first operator model. The project is **utility-oriented** and aimed mainly at **IT security** use cases (auditable ops, explicit trust boundaries, controllable sharding and roaming semantics), not at retail payments or generic DeFi.
 
 ![pwm-tui operator UI (demo)](tui-demo-screenshot.png)
 
@@ -83,6 +83,7 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 - README (Russian): [README-ru.md](README-ru.md)
 - Draft whitepaper: `DRAFT_WHITEPAPER.md`
 - Whitepaper (RU): `DRAFT_WHITEPAPER-ru.md`
+- Matrixchain (term vs v0 code): `docs/MATRIXCHAIN_SPEC_v0.md`
 - White spec: `docs/WHITE_SPEC_v0.md`
 - Geo sharding (simple): `docs/GEO-SHARDING-EXPLANATION.md`
 - Cross-domain roaming runbook: `docs/ROAMING-SAMPLE.md`

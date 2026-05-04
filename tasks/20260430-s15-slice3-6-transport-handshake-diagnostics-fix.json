@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-6-transport-handshake-diagnostics-fix",
+  "title": "S15-S3.6: transport handshake diagnostics and peer connectivity fix",
+  "status": "completed",
+  "brief": "Исправить ситуацию, когда --transport-peer-seed стучится raw-handshake в HTTP port без production accept path, и усилить диагностику проблем подключения/genesis mismatch.",
+  "scope": [
+    "Согласовать transport seed handshake с реальным production listener/API",
+    "Добавить подробные WARN/статусные причины: connect refused/timeout, HTTP-vs-raw mismatch, genesis/hash mismatch, network/identity mismatch",
+    "Обновить operator docs для запуска двух нод",
+    "Не менять S15-S4 snapshot/DB scope"
+  ],
+  "acceptance": [
+    "Две ноды с reciprocal --transport-peer-seed дают live_peer_count > 0 или явную причину отказа",
+    "Разный genesis hash явно логируется и виден в status",
+    "Ошибки запуска/подключения не сводятся к одному live_peer_count=0 без причины",
+    "Focused tests и review artifacts созданы"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-6-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-6-testing.md",
+    "review": "docs/reviews/sprint-15-s3-6-review.md"
+  }
+}

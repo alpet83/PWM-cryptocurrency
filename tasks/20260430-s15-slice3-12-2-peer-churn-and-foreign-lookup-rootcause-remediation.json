@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-2-peer-churn-and-foreign-lookup-rootcause-remediation",
+  "title": "S15-S3.12.2: root-cause remediation for churn and foreign lookup",
+  "status": "in_progress",
+  "brief": "Закрыть оставшиеся блокеры после S3.12.1: устойчивый ~2s hello churn и отсутствие authoritative foreign lookup (ok) при живом trusted канале.",
+  "scope": [
+    "Root-cause review по transport/session lifecycle и foreign account view path",
+    "Кодовая remediation в том же слайсе",
+    "Сохранение strict trust boundary и explicit unknown/unavailable semantics",
+    "Focused tests + live-ready validation notes"
+  ],
+  "acceptance": [
+    "Нет постоянного re-hello loop ~2s в steady state",
+    "CY -> DO foreign lookup выходит в home_lookup_status=ok при доступной trusted path",
+    "При потере peer path сохраняется explicit unavailable/unknown",
+    "Есть coding/testing/review artifacts"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-12-2-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-2-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-2-review.md"
+  }
+}

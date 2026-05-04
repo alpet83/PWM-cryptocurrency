@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260429-s15-slice3-2-tui-xshard-interactive-step-flow",
+  "title": "S15-S3.2: TUI интерактивный пошаговый cross-shard flow",
+  "status": "completed",
+  "brief": "Сделать пошаговый интерактивный cross-shard flow в TUI: ENTER для следующего шага, авто-шаг через 5 секунд, фиксация ошибки с удержанием формы до ESC, защита от replay по ENTER.",
+  "scope": [
+    "Интерактивная state-machine шагов send-flow в TUI",
+    "Автоматический переход шага по таймеру 5 сек",
+    "Запрет повторного старта send-flow по повторному ENTER"
+  ],
+  "acceptance": [
+    "Шаги выполняются по ENTER или автоматически через 5 секунд",
+    "При ошибке форма не закрывается до ESC",
+    "Повторный ENTER не перезапускает уже активный процесс отправки"
+  ],
+  "out_of_scope": [
+    "Изменение backend-протокола pwmd",
+    "Слайсы S15-S4+ (snapshot abstraction/DB)"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-2-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-2-testing.md",
+    "review": "docs/reviews/sprint-15-s3-2-review.md"
+  }
+}

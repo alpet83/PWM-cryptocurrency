@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-10-foreign-account-peer-lookup",
+  "title": "S15-S3.10: foreign account balance/init via peer lookup",
+  "status": "in_progress",
+  "brief": "Баланс и init-статус foreign-адресов должны получаться только через peer протокол home shard; при недоступности показывать неизвестно/??? вместо ложного 0.",
+  "scope": [
+    "Peer query для foreign account balance/init status",
+    "TUI/CLI отображение unknown/??? при недоступности home shard",
+    "Не считать local foreign view authoritative",
+    "Документация UX-семантики"
+  ],
+  "acceptance": [
+    "Если DO peer доступен, CY-клиент может получить DO balance/init через peer lookup",
+    "Если DO peer недоступен, TUI показывает ???, а не 0",
+    "local_state_balance не смешивается с authoritative foreign balance",
+    "Есть tests и review artifacts"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-10-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-10-testing.md",
+    "review": "docs/reviews/sprint-15-s3-10-review.md"
+  }
+}

@@ -40,8 +40,9 @@ mod tests {
     use super::*;
     use slip10_ed25519::derive_ed25519_private_key;
 
+    /// `brute_cluster_address` finds index 0 for seed-derived domain (formerly `brute_finds_i0_for_derived_domain`).
     #[test]
-    fn brute_finds_i0_for_derived_domain() {
+    fn brute_idx0_der_domain_hit() {
         let seed = [7u8; 32];
         let sk_bytes = derive_ed25519_private_key(&seed, &[0, 0]);
         let sk = SigningKey::from_bytes(&sk_bytes);

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "20260429-s14-slice27-remove-wallet-active-account",
+  "title": "Sprint 14 Slice 27: remove wallet-level active account",
+  "status": "in_progress",
+  "brief": "Удалить обязательную связь wallet schema/runtime с active_account_id_hex. Кошелёк v3 должен грузиться как accounts[] + master material; TUI выбирает sender runtime Owner selection, CLI требует явный/детерминированный account selection.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Remove active_account_id_hex requirement from wallet/TUI/CLI paths and update docs/tests.",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate wallets without active_account_id_hex, TUI loading, selected-owner signing, and CLI behavior.",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review schema/runtime consistency and migration risk.",
+      "done_at": null
+    }
+  ],
+  "artifacts": {
+    "coding_md": null,
+    "testing_md": null,
+    "review_md": null
+  },
+  "notes": "User edited wallet and TUI failed with missing active_account_id_hex. Remove feature rather than restoring field."
+}

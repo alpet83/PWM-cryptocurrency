@@ -9,11 +9,29 @@
     {
       "agent": "pwm-coding",
       "prompt_summary": "Что именно делегировано",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
       "done_at": null
     },
     {
       "agent": "pwm-review",
       "prompt_summary": "Объём ревью (дифф / последний коммит)",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
       "done_at": null
     }
   ],

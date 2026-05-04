@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "20260512-s15-slice-O1-wave10-tui-draw-remainder",
+  "title": "S15-O.1 wave10: tui_loop remainder of term.draw (warning/head/chrome)",
+  "status": "done",
+  "brief": "render_main_panels, panel_head_row, render_warn_strip; term.draw — тонкий wiring.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Remainder draw extraction wave10",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-tui/src/tui_loop.rs"],
+      "tokens": { "source": "estimate", "total": 12000, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt, 88 tests pwm-tui, workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 2000, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Thin draw wiring wave10",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 15200, "confidence": "low" },
+      "done_at": "2026-05-01"
+    }
+  ],
+  "commits": ["61f48c9"],
+  "notes": "След.: §6.2 вынесение тестов из main.rs."
+}

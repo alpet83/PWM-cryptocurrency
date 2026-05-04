@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "20260424-sprint3-orchestrated",
+  "title": "Sprint 3: kickoff через строгую оркестрацию субагентов",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/AGENT_PROMPT_orchestrator.md",
+    "docs/AGENT_PROMPTS.md",
+    "docs/MVP-checklist.md"
+  ],
+  "brief": "Запустить Sprint 3 через делегирование pwm-coding -> pwm-testing -> pwm-review с минимальным контекстом оркестратора. Критерии kickoff: создан sprint-3 checklist, status note, зафиксированы scope/acceptance/gate order без inline-реализации.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сформировать kickoff-артефакты Sprint 3: checklist + status note на базе Sprint 2 closeout и baseline specs.",
+      "done_at": "2026-04-24T07:18:06Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить test-gate матрицу Sprint 3 и достаточность negative/evidence схемы.",
+      "done_at": "2026-04-24T07:19:41Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимый coherence-review Sprint 3 kickoff scope vs specs; verdict PASS/REQUEST CHANGES.",
+      "done_at": "2026-04-24T07:31:12Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implementation pass Sprint 3: устранение shard semantics ambiguity (spec-level geo-shard vs pwmd process partition), anti-0x80 heuristic note, traceability sync.",
+      "done_at": "2026-04-24T07:27:14Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate после implementation pass: consistency check geo-shard semantics, docs-only confirmation, regression sanity.",
+      "done_at": "2026-04-24T07:29:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Post-implementation review gate: audit geo-shard semantics clarification, anti-0x80 emphasis, artifact consistency.",
+      "done_at": "2026-04-24T07:33:30Z"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Sprint 3 closeout snapshot: sync checklist/status/task and record final decision ready_for_next_sprint.",
+      "done_at": "2026-04-24T10:18:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "checklist_md": "docs/reviews/sprint-3-checklist.md",
+    "status_note_md": "docs/reviews/sprint-3-status-note.md",
+    "review_md": "docs/reviews/sprint-3-review-report.md"
+  },
+  "notes": "Инициировано после closeout Sprint 2 по запросу пользователя: продолжить в том же оркестраторном режиме с делегированием и мини-репортами.\n\nMini-report pwm-coding (kickoff Sprint 3): создан `docs/reviews/sprint-3-checklist.md` с фиксированным scope следующего инкремента после Sprint 2, role matrix, strict gate order `coding -> testing -> review -> orchestrator decision`, acceptance criteria, negative scenario matrix и risk register без конфликтов с baseline specs; создан `docs/reviews/sprint-3-status-note.md` как kickoff snapshot и зафиксировано текущее gate-состояние.\n\nMini-report pwm-testing (kickoff Sprint 3 test-gate): проверена operational sufficiency acceptance/negative matrix из `docs/reviews/sprint-3-checklist.md` против Sprint 2 baseline (`docs/reviews/sprint-2-checklist.md`, `docs/reviews/sprint-2-test-report.md`) и текущего покрытия в `crates/pwmd/src/lib.rs`; конфликтов не выявлено. Выполнен baseline `cargo test -p pwmd` -> PASS (`23 passed; 0 failed`). Создан артефакт `docs/reviews/sprint-3-test-report.md` с verdict `pass`, evidence и residual risks.\n\nMini-report pwm-review (kickoff Sprint 3 coherence gate): устранены блокеры REQUEST CHANGES по артефактной несинхронизации. Синхронизирован gate-state в `docs/reviews/sprint-3-status-note.md` (testing=pass), опубликован `docs/reviews/sprint-3-review-report.md` с verdict `PASS`, в `docs/reviews/sprint-3-checklist.md` ужесточены message-contract формулировки negative matrix (без `or equivalent`).\n\nMini-report pwm-coding (implementation pass Sprint 3, shard semantics hardening): в `docs/WHITE_SPEC_v0.md` зафиксировано нормативное определение spec-level geo-shard как фиксированного `domain_hi` кластера, добавлено допущение островизации доменных кластеров и явный запрет диапазонной эвристики `0x80 split`; в `docs/rfc/6-policy-engine.md` добавлен нормативный блок про shard semantics и запрет range-based routing; в `docs/pwmd.md` закреплено, что `--shard A|B` это dev/test process partition, а не протокольная геошард-семантика. Обновлены трассировочные артефакты Sprint 3 (`sprint-3-checklist`, `sprint-3-status-note`, `sprint-3-test-report`) без изменения бизнес-логики.\n\nMini-report pwm-testing (implementation-pass testing gate): подтверждена консистентность shard semantics формулировок между `docs/WHITE_SPEC_v0.md`, `docs/rfc/6-policy-engine.md` и `docs/pwmd.md` (fixed `domain_hi` cluster, islandization allowed, `A/B` как process partition, `0x80 split` не source-of-truth). Проверка docs-only характера изменения пройдена на уровне gate-артефактов; regression sanity `cargo test -p pwmd` -> PASS (`23 passed; 0 failed`). Verdict testing gate: `pass`.\n\nMini-report pwm-review (implementation-pass review gate): обновлен `docs/reviews/sprint-3-review-report.md` до post-implementation формата, подтверждено отсутствие protocol drift, закреплено разведение spec-level geo-shard vs process partition и анти-`0x80 split` акцент. Verdict review gate: `pass`; remaining step — orchestrator closeout snapshot.\n\nMini-report orchestrator (Sprint 3 closeout): финализированы verdict-поля в `docs/reviews/sprint-3-checklist.md` (`coding/testing/review = pass`), `docs/reviews/sprint-3-status-note.md` переведен в closeout snapshot c финальным статусом `ready_for_next_sprint`, carry-over зафиксирован как non-blocking. Тикет `tasks/20260424-sprint3-orchestrated.json` переведен в `done`."
+}

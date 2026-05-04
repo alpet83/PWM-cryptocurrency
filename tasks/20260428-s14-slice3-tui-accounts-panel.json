@@ -1,0 +1,16 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice3-tui-accounts-panel",
+  "title": "Sprint 14 Slice 3: TUI accounts left panel",
+  "status": "done",
+  "mvp_checklist": ["Sprint 14 / Slice 3 (docs/reviews/sprint-14-checklist.md)"],
+  "brief": "Показ всех owned accounts в левой панели TUI и выделение active аккаунта для wallet schema v3.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Обновить pwm-tui для отображения всех accounts[] и active-highlight.", "done_at": "2026-04-28T05:55:00Z"},
+    {"agent": "pwm-testing", "prompt_summary": "Smoke/targeted tests для TUI wallet v3 list/active.", "done_at": "2026-04-28T05:59:00Z"},
+    {"agent": "pwm-review", "prompt_summary": "Независимый review UX/security (no secret leaks) и совместимость с v2.", "done_at": "2026-04-28T06:03:00Z"}
+  ],
+  "commits": [],
+  "artifacts": {"review_md": "docs/reviews/sprint-14-slice3-review.md"},
+  "notes": "Оркестратор: конвейер выполнен. Mini-report pwm-coding: v3 owned accounts выведены в left panel, active mark добавлен, v2 fallback сохранен. Mini-report pwm-testing: 69/69 pwm-tui tests green, добавлен тест v2 fallback split. Mini-report pwm-review: approve with minor (status drift docs), блокеров нет."
+}

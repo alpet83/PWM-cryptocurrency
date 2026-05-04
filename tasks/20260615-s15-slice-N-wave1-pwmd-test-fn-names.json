@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "id": "20260615-s15-slice-N-wave1-pwmd-test-fn-names",
+  "title": "S15-N wave1: pwmd test fn short names + docstrings",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-N-plan.md — wave N.1",
+    "docs/reviews/sprint-15-slice-N-checklist.md"
+  ],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review**.\n\n**Цель:** только тестовый код **`pwmd`** в **`crates/pwmd/src/tests/**`** и **`crates/pwmd/src/transport/tests/**`**. Переименовать **`#[test] fn`** и **test-only** хелперы так, чтобы в каждом имени было **≤ 5 сегментов** `snake_case` (части по **`_`**). Перенести описание сценария в **`///`** (предпочтительно) или одну строку **`//`** непосредственно над функцией.\n\n**Инварианты:** не менять утверждения, порядок вызовов и прод‑код вне этих деревьев (кроме обновления ссылок на переименованные хелперы внутри тех же модулей).\n\n**Стиль:** `docs/AGENT_PROMPT_coding.md` §Style, `docs/AGENT_PROMPT_testing.md` §Naming.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwmd`, `cargo check --workspace`.\n\n**Ревью:** `docs/reviews/sprint-15-slice-N-wave1-pwmd-test-fn-names-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "rename pwmd src/tests + transport/tests fn to ≤5 segments + docstrings",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/tests/helpers.rs",
+        "crates/pwmd/src/tests/http_export.rs",
+        "crates/pwmd/src/tests/http_status.rs",
+        "crates/pwmd/src/tests/snapshot_roaming.rs",
+        "crates/pwmd/src/tests/transport_peer.rs",
+        "crates/pwmd/src/transport/tests/peer_harness.rs",
+        "crates/pwmd/src/transport/tests/production.rs",
+        "crates/pwmd/src/transport/tests/wire_decode.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 24000,
+        "output": 9600,
+        "total": 33600,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwmd + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwmd (194 lib + 3 integration)",
+        "cargo check --workspace"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate N.1 rename-only + naming budget",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-N-wave1-pwmd-test-fn-names-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 2800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    }
+  ],
+  "commits": [
+    "28a3ec20b8cea6a15e609a2d282364ef2545639b",
+    "3d25ddbf333fb8cb1d83b3dfb5b375c09a89cbac",
+    "f4fe520b5a09a86e271d0d1461d635d22ba41aa2"
+  ],
+  "parent_chain": [
+    "tasks/20260614-s15-module-banners-test-names-style.json"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-15-slice-N-wave1-pwmd-test-fn-names-review.md"
+  },
+  "notes": "Микро-слайс N: первая волна только pwmd integration/unit test trees. Волна N.2+ — отдельные тикеты."
+}

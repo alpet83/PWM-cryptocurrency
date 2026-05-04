@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260524-s15-slice-O1-wave21-pwmd-transport-handshake-incoming",
+  "title": "S15-O.1 wave21: pwmd transport handshake_state + incoming_hello",
+  "status": "done",
+  "brief": "Вынести HandshakeState / TrustedAccountStreamState / genesis guard типы в transport/handshake_state.rs; process_incoming_peer_hello в transport/incoming_hello.rs (classify через policy::classify_peer(local, peer)). Уточнить lib.rs: HandshakeValidationCtx только под cfg(test); NodeHello импорт в transport.rs для подмодулей.",
+  "acceptance": ["cargo fmt", "cargo test -p pwmd", "cargo check --workspace"],
+  "delegations": [
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "extract handshake_state + incoming_hello modules",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/handshake_state.rs",
+        "crates/pwmd/src/transport/incoming_hello.rs",
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/lib.rs"
+      ],
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["dc26e6c"],
+  "parent_chain": ["tasks/20260523-s15-slice-O1-wave20-pwmd-transport-lifecycle.json"],
+  "artifacts": { "audit": "docs/CODEBASE_REFACTORING.md" },
+  "notes": "Приёмка слайса — эксплуатационное тестирование по закрытию."
+}

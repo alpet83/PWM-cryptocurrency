@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-3-peer-session-diagnostic-logging-and-tests",
+  "title": "S15-S3.12.3: peer session diagnostic logging and tests",
+  "status": "completed",
+  "brief": "Сделать отладку peer transport продуктивной: покрыть логами и тестами TCP connect, handshake completion, session close reason, reconnect reason и отсутствие тупого timer-redial.",
+  "scope": [
+    "Добавить контекстные transport logs: tcp_connect, handshake_started/completed/failed, session_open, session_close(reason), reconnect_decision",
+    "Явно различать штатное закрытие, wire timeout, EOF, protocol error и timer-driven retry",
+    "Покрыть тестами причины разрыва и запрет бессмысленного reconnect при healthy session",
+    "Не менять trust boundary и foreign unknown/unavailable semantics"
+  ],
+  "acceptance": [
+    "По логам можно ответить: TCP установлен ли, handshake завершён ли, почему закрылась сессия",
+    "Тесты покрывают connect/handshake/close/reconnect decision",
+    "Нет silent reconnect loop без logged reason",
+    "Есть coding/testing/review artifacts"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-12-3-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-3-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-3-review.md"
+  }
+}

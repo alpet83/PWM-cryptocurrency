@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-15-1-relay-http-seed-vs-peer-tcp",
+  "title": "S15-S3.15.1: relay HTTP must target RPC listen, not peer TCP seed",
+  "status": "completed",
+  "brief": "Live: relay fail `seed …:3131 status unavailable` — HTTP запрос идёт на peer wire порт; RPC на 303x. Разделить адреса relay HTTP и TCP peer seeds. Отдельно: оценка долгой загрузки при ~7600 пустых блоках (pwm-review).",
+  "symptoms": [
+    "`select_target` использует `peer_seeds` как `http://{seed}/v1/status`, но seed — это `--transport-peer-seed` (TCP handshake), не `--listen` удалённой ноды.",
+    "Балансы через peer wire работают; relay one-window требует HTTP к target."
+  ],
+  "scope": [
+    "pwm-testing: CLI проверка GET /v1/status на :3030/:3031 vs :3130/:3131 при включённых нодах; зафиксировать в sprint-15-s3-15-1-testing.md.",
+    "pwm-coding: кандидаты HTTP для relay — либо новый флаг `--transport-relay-http-seed`, либо вывод по соглашению rpc+100=peer → relay HTTP = peer−100 (как в resolve_peer_listen). Не ломать тесты с нестандартными портами.",
+    "pwm-review: UX TUI красный статус до шага 1; производительность старта при длинной цепочке блоков (профилирование/оценка без обязательного кода)."
+  ],
+  "acceptance": [
+    "Двухнодовый relay к target HTTP работает при типичных скриптах (peer TCP + RPC разведены).",
+    "Документация в issues-report или help `--help` для оператора.",
+    "Артефакты review/testing/coding для 3.15.1."
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "CLI compare status ports 303x vs 313x",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-15-1-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T20:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Relay uses RPC base for HTTP, not peer TCP port",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/relay.rs",
+        "crates/pwmd/src/lib.rs",
+        "crates/pwmd/Cargo.toml",
+        "issues-report.md",
+        "docs/reviews/sprint-15-s3-15-1-coding.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T21:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "TUI red preflight; startup block scan cost",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-15-1-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 7000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T21:30:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "testing": "docs/reviews/sprint-15-s3-15-1-testing.md",
+    "coding": "docs/reviews/sprint-15-s3-15-1-coding.md",
+    "review": "docs/reviews/sprint-15-s3-15-1-review.md"
+  },
+  "commits": [],
+  "notes": "Порядок: testing → coding → review. Логи пользователя: reqwest к http://127.0.0.1:3131/v1/status."
+}

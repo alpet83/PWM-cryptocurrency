@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "id": "20260503-s15-slice-7-incremental-storage-architecture",
+  "title": "Sprint15 Slice 7: incremental storage architecture (db per network + table per cluster)",
+  "status": "done",
+  "depends_on": [
+    "20260506-s15-slice-6-snapshot-backend-replay-benches"
+  ],
+  "artifacts": {
+    "pre_review": "docs/reviews/sprint-15-slice-7-pre-architecture-review.md",
+    "plan": "docs/reviews/sprint-15-slice-7-plan.md",
+    "checklist": "docs/reviews/sprint-15-slice-7-checklist.md",
+    "testing": null,
+    "review_wave1": "docs/reviews/sprint-15-slice-7-wave1-review.md",
+    "review_wave2": "docs/reviews/sprint-15-slice-7-wave2-review.md",
+    "review_wave3": "docs/reviews/sprint-15-slice-7-wave3-review.md",
+    "review_wave4": "docs/reviews/sprint-15-slice-7-wave4-review.md",
+    "bench_wave4": "docs/reviews/sprint-15-slice-7-wave4-bench.md"
+  },
+  "acceptance": [
+    "Pre-implementation pwm-review completed on architecture risks and feasibility",
+    "DB path uses one row per block inserts and checkpoint policy every 100 blocks",
+    "JsonFile path uses epoch files (1000 blocks each) with backward-compatible fallback load",
+    "In-memory chain block cache bounded to <=1000 recent blocks",
+    "Design includes explorer-oriented fields (at least tx_count, shard_balance) and explains trade-offs",
+    "Slice split into waves with clear coding/testing/review gates"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "wave1 foundation: canonical height groundwork + json epoch scaffolding without runtime behavior switch",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwmd/src/api/common.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/snapshot/mod.rs",
+        "crates/pwmd/src/snapshot/epoch.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 21000,
+        "output": 2600,
+        "total": 23600,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T11:09:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "pre-implementation architecture review for incremental storage design (CH block-row + JSON epochs + bounded memory)",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-7-pre-architecture-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 78000,
+        "output": 5200,
+        "total": 83200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T10:26:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "wave1 foundation validation with target/debug preflight, fmt/test/check and bench no-run",
+      "result": "PASS",
+      "artifacts": [
+        "test-run summary for tasks/20260503-s15-slice-7-incremental-storage-architecture.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 16000,
+        "output": 2200,
+        "total": 18200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T11:09:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "integrated wave1 review for canonical_h groundwork and epoch scaffolding safety",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-7-wave1-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 42000,
+        "output": 3200,
+        "total": 45200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T11:09:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "wave2 JsonFile incremental epoch append JSONL + checkpoint summary pwm-data every 100 blocks + load via manifest",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/store.rs",
+        "crates/pwmd/src/snapshot/types.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/relay.rs",
+        "issues-report.md",
+        "crates/pwmd/Cargo.toml"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 12000,
+        "total": 40000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "wave2 validation: preflight fmt test pwmd/pwm-core check workspace ch feature bench no-run",
+      "result": "PASS",
+      "artifacts": ["handoff wave2 pwm-testing"],
+      "preflight_target_debug_mib": 2466,
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 2800,
+        "total": 16800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "integrated wave2 JsonFile incremental + checkpoint summary safety and acceptance gaps",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-7-wave2-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": 95000,
+        "output": 2900,
+        "total": 97900,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "wave3 VecDeque tail cap 1000 + ClickHouse per-block insert + checkpoints every 100 + ch_load replay + DDL",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwmd/src/snapshot/store.rs",
+        "crates/pwmd/src/snapshot/ch_http.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "tools/docker/sql/clickhouse_pwm_snapshots.sql",
+        "crates/pwmd/Cargo.toml",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 52000,
+        "output": 9500,
+        "total": 61500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T14:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "wave3 fmt test pwm-core pwmd clickhouse-snapshot check workspace",
+      "result": "PASS",
+      "artifacts": ["handoff wave3 pwm-testing"],
+      "tokens": {
+        "source": "estimate",
+        "input": 2800,
+        "output": 950,
+        "total": 3750,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T14:05:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "wave3 integrated review bounded tail + CH incremental + DDL ops nits",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-7-wave3-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 2800,
+        "total": 14800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T14:10:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "wave4 shard_balance json, validators_accept cfg+DDL, runbook, bench template, DDL row_key sort",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/ch_http.rs",
+        "crates/pwmd/Cargo.toml",
+        "docs/runbook-store-snapshots.md",
+        "tools/docker/sql/clickhouse_pwm_snapshots.sql",
+        "docs/reviews/sprint-15-slice-7-plan.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 4500,
+        "total": 16500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T18:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "wave4 pwm-core + pwmd clickhouse-snapshot (temp target when P: full)",
+      "result": "PASS",
+      "artifacts": ["handoff wave4 orchestrator"],
+      "tokens": {
+        "source": "estimate",
+        "input": 4000,
+        "output": 800,
+        "total": 4800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T18:15:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "wave4 integrated review DDL shard_balance validators runbook",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-7-wave4-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": 8000,
+        "output": 1200,
+        "total": 9200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T18:20:00+03:00"
+    }
+  ],
+  "commits": [
+    "96d830c",
+    "ed1db8a",
+    "cb3dc17",
+    "551ce84"
+  ],
+  "notes": "Wave4 merged (551ce84): DDL ORDER BY row_key + checkpoint cols + validators_accept DDL; shard_balance §6.1; SnapChCfg validators stem; runbook + bench template; pwm-testing PASS (CARGO_TARGET_DIR on F: if P: disk full); pwm-review PASS with nits (fill bench numbers when fixtures ready)."
+}

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260508-s15-slice-O1-wave6-tui-render-split-imports",
+  "title": "S15-O.1 wave6: tui_loop explicit imports + render helper split",
+  "status": "done",
+  "brief": "Убран use crate::*; явные импорты; split_main_layout + render_footer_area из term.draw. Имена ≤5 слов.",
+  "acceptance": [
+    "Нет wildcard crate import в tui_loop.rs",
+    "Два+ helper отрисовки",
+    "pwm-testing PASS"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Explicit imports; split_main_layout, render_footer_area",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-tui/src/tui_loop.rs"],
+      "tokens": { "source": "estimate", "total": 9800, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt --check, test pwm-tui 88, workspace check",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 175, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Equivalence refactor wave6",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 6100, "confidence": "medium" },
+      "done_at": "2026-05-01"
+    }
+  ],
+  "commits": ["b4fb061", "061e2a8"],
+  "notes": "Следующая волна: modal-stack helper или разнос тестов §6.2."
+}

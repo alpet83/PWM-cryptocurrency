@@ -40,7 +40,7 @@ Security-режимы wallet (`plaintext_dev` vs `encrypted`): [WALLET_SECURITY_
 | Колонка | Смысл |
 |---------|--------|
 | Address | User-facing адрес (pretty), при выборе деталь `init/nonce` остаётся в нижней строке |
-| PWM | Баланс монеты |
+| Balance | Баланс монеты в decimal PWM; raw-precision сохраняется шкалой `1 PWM = 1_000_000 raw` |
 
 Источник данных: существующий `GET /v1/accounts` (агрегат по сети). Это **не** замена левой/правой панели кошелька, но **приемлемый публичный** вид вместо JSON.
 
@@ -55,12 +55,13 @@ Security-режимы wallet (`plaintext_dev` vs `encrypted`): [WALLET_SECURITY_
 Реализовано в `pwm-tui`:
 - Парсинг шапки кошелька YAML: тип `pwm_core::WalletReadHeader` (единый с `pwm-core` набор полей identity + `address_book` + KDF-метаданные для TUI; при расширении формата править core и TUI вместе).
 - Две панели (Owner/Receivers) с переключением `Tab`, навигация стрелками.
-- Таблицы в обеих панелях по умолчанию compact: только колонки `Address` и `PWM` (служебные `Staked/Marks/Init` скрыты для раннего публичного UX).
+- Таблицы в обеих панелях по умолчанию compact: только колонки `Address` и `Balance` (служебные `Staked/Marks/Init` скрыты для раннего публичного UX).
 - В таблицах panels используется пропорция `Address` значительно шире `PWM`.
 - Отображение user-facing адресов в текущем primary strict pretty формате (`pwm1-...-f...-t...`).
 - При загрузке wallet owner-адрес вычисляется из truth-source (`master_seed_hex + derivation_path` или эквивалентно `signing_key_hex + derivation_index`); `account_id_human`/`account_id_hex` считаются кеш-полями и нормализуются на лету.
 - Legacy mismatch `account_id_human/account_id_hex` больше не блокирует загрузку, если owner восстанавливается из truth-source.
-- `F6` открывает рабочую форму отправки c полями `from/to/amount/fee/confirm`: `from` всегда фиксирован, `to` фиксируется по выбранному получателю в правой панели.
+- `F6` открывает рабочую форму отправки c полями `from/to/amount/fee/confirm`: `from` всегда фиксирован по выделенной строке **Owner** (`owner_rows[owner_sel]`), `to` фиксируется по выбранному получателю в правой панели.
+- Runtime selection в панели **Owner** является авторитетным источником sender для TUI. Wallet v3 без `active_account_id_hex` загружается нормально; legacy-поле не переопределяет выбранную Owner-строку при F6/подписи.
 - История операций доступна по `H` в отдельной модалке `Operations History` (read-only, latest-first).
 - Источник истории в Phase 1 — локальный in-memory кэш отправок из существующего send-flow (`POST /v1/tx`): при submit запись создаётся как `pending`, по RPC-ответу обновляется в `ok`/`error`.
 - Для истории реализованы базовые состояния UX: пустой список (`No operations yet`), статус `pending/ok/error` и текст последней ошибки submit (где доступно).
@@ -71,9 +72,10 @@ Security-режимы wallet (`plaintext_dev` vs `encrypted`): [WALLET_SECURITY_
 - Блокирующие ошибки валидации/submit внутри `F6` подсвечиваются красным.
 - Локальная проверка формы перед submit (`from/to` parse, `amount > 0`, `fee >= 0`, `confirm == yes`).
 - Runtime policy для user-input адреса в `F6/to`: ambiguous legacy pretty без `/LO` (пример `pwm1-CY-f...`) отклоняется с явной подсказкой использовать strict pretty `pwm1-LABEL/XX-f...-t...` или canonical bech32dx `pwm1...`.
+- Recipient init policy для `F6`: если выбранный/введённый recipient известен текущему shard view как missing или `initialized=false`, submit блокируется до RPC submit с подсказкой выполнить `tx-init` на target shard. Для cross-shard recipient без доступного target RPC TUI показывает/полагается на roaming/import lifecycle, где target `tx-import` также отклоняет missing/uninitialized recipient.
 - `domain_lo == 00` валиден и не фильтруется: получатели вида `.../00` остаются selectable наравне с другими low-byte.
-- Поля `amount` и `fee` принимают decimal PWM (`12`, `12.34`, `0.001`); scale фиксирован: **1 PWM = 1_000_000 base units**, максимум 6 знаков после точки, округление не применяется (over-precision -> reject).
-- Submit выполняется в `POST /v1/tx`; статус/ошибка показывается в модалке.
+- Поля `amount` и `fee` принимают decimal PWM (`12`, `12.34`, `0.001`); scale фиксирован: **1 PWM = 1_000_000 raw**, максимум 6 знаков после точки, округление не применяется (over-precision -> reject). Балансы в публичных таблицах показываются в той же decimal PWM-шкале; raw остаётся форматом RPC/internal state.
+- Submit выполняется в `POST /v1/tx` после recipient preflight; статус/ошибка показывается в модалке.
 - Nonce для submit: политика как в CLI — если `GET /v1/account/:id` вернул non-success (включая `404`) или невалидный JSON, используется fallback `nonce=0`; блокирующая ошибка остаётся только для offline/timeout.
 - Источник owner identity: **wallet-first** (`--wallet` или `PWM_TUI_WALLET`); если wallet не передан явно, но в **текущей рабочей директории** есть файл `default.yml`, он подхватывается как wallet автоматически; иначе — fallback на `PWM_TUI_MASTER_SEED`; в UI постоянно показывается жёлтая строка предупреждения: `FALLBACK MODE: wallet not provided, owner derived from seed/default path`.
 - Список **получателей** (правая панель): активная книга хранится в wallet как canonical-only (`bech32dx`). В UI адреса рендерятся в pretty на лету.

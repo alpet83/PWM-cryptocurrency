@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "id": "20260605-s15-slice-O1-cli-wave11-main-rpc-to-rpc_helpers",
+  "title": "S15-O.1 pwm-cli wave11: main.rs RPC HTTP helpers → rpc_helpers (§2.3 row 10)",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C pwm-cli §2.3"],
+  "brief": "**Конвейер:** **pwm-coding** → **pwm-testing** → **pwm-review** → оркестратор (тикет/checklist/plan/review).\n\n**Цель (`CODEBASE_REFACTORING.md` §2.3 ряд 10):** перенести из **`main.rs`** в **`rpc_helpers.rs`**: **`parse_nonce_init`**, **`fetch_nonce_init_opt`**, **`parse_nonce_init_response`**, **`preflight_recipient_init`**, **`fetch_nonce`**, **`post_signed_tx`**, **`load_handoff_json`**; обновить импорты **`cmd_tx`**, **`cmd_roaming`**, **`tests`**.\n\n**Инварианты:** без изменения поведения.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**pwm-review:** `docs/reviews/sprint-15-slice-O1-cli-wave11-main-rpc-to-rpc_helpers-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "move nonce/preflight/post_tx/handoff helpers main→rpc_helpers; fix imports",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/main.rs",
+        "crates/pwm-cli/src/rpc_helpers.rs",
+        "crates/pwm-cli/src/cmd_tx.rs",
+        "crates/pwm-cli/src/cmd_roaming.rs",
+        "crates/pwm-cli/src/tests/mod.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 15000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T23:59:59Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check (+ оркестратор после правки импортов)",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-cli (141)",
+        "cargo check --workspace",
+        "cargo check -p pwm-cli без предупреждений после orchestrator import cleanup"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 500,
+        "output": 200,
+        "total": 700,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T00:15:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit wave11 conveyor closure",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-wave11-main-rpc-to-rpc_helpers-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T00:20:00Z"
+    }
+  ],
+  "commits": [
+    "1715c49bf1237e9d4659899c55bc22a077eee211",
+    "20e4c5887b662539aec864ff977ab1a2ff97133d"
+  ],
+  "parent_chain": ["tasks/20260604-s15-slice-O1-cli-wave10-cmd-addr.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3 row 10",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-wave11-main-rpc-to-rpc_helpers-review.md"
+  },
+  "notes": "Второй SHA в commits[] — документирование закрытия + orchestrator cleanup импортов (убраны неиспользуемые pub(crate) use в main для DomainMatchMode/resolve_wallet_out_path)."
+}

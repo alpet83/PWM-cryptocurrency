@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-9-xshard-export-import-ledger-summary",
+  "title": "S15-S3.9: cross-shard export/import ledger and periodic summary",
+  "status": "completed",
+  "brief": "Довести консистентность cross-shard трансфера: каждая участвующая шарда должна иметь проверяемый журнал export/import фактов и периодически логировать summary.",
+  "scope": [
+    "Зафиксировать export/import facts в runtime/snapshot/status так, чтобы source и target могли сверять sent/imported",
+    "Синхронизировать export/import summary через stateful peer transport",
+    "Логировать export/import summary каждые 500 блоков",
+    "Не внедрять отдельный планетарный блокчейн в этом слайсе"
+  ],
+  "acceptance": [
+    "Source видит сколько отправлено в target по export facts",
+    "Target видит сколько импортировано по import facts",
+    "Status/API даёт агрегаты sent/imported/pending by domain",
+    "Каждые 500 блоков в логах есть compact export/import summary",
+    "Snapshot/restart не теряет summary"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-9-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-9-testing.md",
+    "review": "docs/reviews/sprint-15-s3-9-review.md"
+  }
+}

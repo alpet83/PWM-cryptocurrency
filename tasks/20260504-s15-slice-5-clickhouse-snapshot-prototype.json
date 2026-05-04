@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "20260504-s15-slice-5-clickhouse-snapshot-prototype",
+  "title": "Sprint15 Slice 5: ClickHouse snapshot prototype + Docker smoke",
+  "status": "done_conveyor",
+  "artifacts": {
+    "plan": "docs/reviews/sprint-15-slice-5-plan.md",
+    "review": "docs/reviews/sprint-15-slice-5-review.md",
+    "smoke": "docs/reviews/sprint-15-slice-5-smoke.md"
+  },
+  "depends_on": [
+    "20260503-s15-slice-4-snapshot-store-abstraction"
+  ],
+  "acceptance": [
+    "Default: cargo fmt --all && cargo test --workspace PASS without ClickHouse",
+    "Optional feature or gated integration test + Docker compose + smoke doc",
+    "Canonical snapshot JSON compatible with validate_snapshot",
+    "pwm-testing + pwm-review gates"
+  ],
+  "notes": "Slice 6: formal cross-backend replay tests. Conveyor remediation: MergeTree ORDER BY without DESC-in-tuple (CH 24.8); smoke/issues-report aligned with snapshot-store-key charset."
+}

@@ -1,0 +1,3 @@
+CRITICAL: The built-in "grep" tool is broken and causes hangs. 
+NEVER use the internal grep or codebase search tools.
+Instead, always use my custom MCP server user-cqds_mcp_mini ( cq_files_ctl -> start_grep ) for searching files or run 'rg' via terminal if you need to find text.

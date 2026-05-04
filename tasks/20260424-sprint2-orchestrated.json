@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "20260424-sprint2-orchestrated",
+  "title": "Sprint 2: старт через строгую оркестрацию субагентов",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/AGENT_PROMPT_orchestrator.md",
+    "docs/AGENT_PROMPTS.md",
+    "docs/MVP-checklist.md"
+  ],
+  "brief": "Запустить Sprint 2 только через делегирование: pwm-coding -> pwm-testing -> pwm-review. Критерии done на kickoff: сформирован sprint-2 checklist, зафиксирован status note, определены acceptance criteria и gate-последовательность без inline-реализации в оркестраторе.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сформировать kickoff-артефакты Sprint 2: checklist + status note на основе baseline docs и Sprint 1 итогов.",
+      "done_at": "2026-04-24T09:21:55.0794488+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить тестовую матрицу Sprint 2 и достаточность негативных сценариев для gate.",
+      "done_at": "2026-04-24T09:23:30.0137522+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимый coherence-review Sprint 2 scope vs specs; verdict PASS/REQUEST CHANGES.",
+      "done_at": "2026-04-24T09:25:10+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implementation pass Sprint 2: детерминированные recipient prefilter tests (reserve/witness/unknown), проверка guard-контракта 409, минимальное doc/task обновление.",
+      "done_at": "2026-04-24T09:40:06.0309194+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Независимая execution-верификация после coding pass: cargo test -p pwmd, deterministic prefilter checks, guard 409 contracts, обновление execution test report.",
+      "done_at": "2026-04-24T09:41:47.1480517+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Post-implementation review gate: coherence/spec audit после coding+testing, финальный verdict PASS/REQUEST CHANGES.",
+      "done_at": "2026-04-24T09:43:15+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Closeout sync после PASS от testing/review: обновить sprint-2 checklist/status-note и финализировать orchestrated task status.",
+      "done_at": "2026-04-24T10:02:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "checklist_md": "docs/reviews/sprint-2-checklist.md",
+    "status_note_md": "docs/reviews/sprint-2-status-note.md",
+    "review_md": "docs/reviews/sprint-2-review-report.md"
+  },
+  "notes": "Инициировано по запросу пользователя: снизить загрязнение контекста оркестратора, все substantive шаги через профильных субагентов. Мини-отчёт делегирования pwm-coding (2026-04-24): созданы kickoff-артефакты `docs/reviews/sprint-2-checklist.md` и `docs/reviews/sprint-2-status-note.md`; в checklist зафиксированы scope Sprint 2 как next increment после Sprint 1, role matrix, строгая gate-последовательность `coding -> testing -> review -> orchestrator decision`, acceptance criteria и negative scenarios без противоречий baseline-спекам. Мини-отчёт делегирования pwm-testing (2026-04-24): выполнен quick-audit test matrix и `crates/pwmd/src/lib.rs` без heavy long-run; матрица уточнена expected contract по HTTP status/message для gate-кейсов. Текущий verdict readiness: partial (направление покрытий подтверждено, но отдельные recipient prefilter кейсы reserve/witness/unknown требуется явно зафиксировать в Sprint 2 execution evidence). Мини-отчёт делегирования pwm-review (2026-04-24): verdict PASS для kickoff coherence gate; критичных расхождений не выявлено, но для следующего gate обязательно закрыть evidence-блок по recipient prefilter негативам. Мини-отчёт текущего coding-pass (2026-04-24): в `crates/pwmd/src/lib.rs` добавлены отдельные deterministic тесты `v1_tx_rejects_reserve_recipient_prefilter`, `v1_tx_rejects_witness_recipient_prefilter`, `v1_tx_rejects_unknown_recipient_prefilter` с контрактом `400 BAD_REQUEST` и стабильными подстроками (`recipient domain` + class reason); существующие guard-тесты `wrong process shard -> 409` и `cross-domain transfer disabled -> 409` сохранены и проходят. Мини-отчёт делегирования pwm-testing execution gate (2026-04-24): выполнен `cargo test -p pwmd` с итогом PASS (`23 passed; 0 failed`); подтверждена детерминированность recipient prefilter кейсов reserve/witness/unknown (`400` + стабильные подстроки), подтверждена сохранность existing guard-контрактов (`wrong process shard -> 409`, `domain_hi mismatch transfer -> 409`); `docs/reviews/sprint-2-test-report.md` обновлён до execution-level verdict PASS. Мини-отчёт делегирования pwm-review post-implementation gate (2026-04-24): финальный review verdict PASS; protocol/spec coherence подтверждён, 0x80 эвристика отсутствует, separation process-shard vs protocol routing сохранён, recipient prefilter контракт подтверждён; остаточный non-blocking риск — синхронизировать статусные документы Sprint 2 перед финальным closeout. Мини-отчёт closeout-sync шага (2026-04-24): синхронизированы `docs/reviews/sprint-2-checklist.md` и `docs/reviews/sprint-2-status-note.md` с фактическими gate verdicts (`coding/testing/review = pass`, orchestrator status = `ready_for_next_sprint`), зафиксирован carry-over только по out-of-scope направлениям (perf/load hardening, cross-shard finality), тикет `tasks/20260424-sprint2-orchestrated.json` переведён в `done`."
+}

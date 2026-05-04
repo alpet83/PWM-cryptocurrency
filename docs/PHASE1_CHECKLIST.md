@@ -31,7 +31,7 @@
 ### 2. Доменное поле и диапазоны RAW-значений
 
 - [x] Описать диапазон для стран.
-- [x] Описать диапазон для TNC (transnational companies).
+- [x] Описать диапазон для sector-класса.
 - [x] Описать резервный диапазон.
 - [x] Описать расширенный диапазон witness-адресов.
 - [x] Добавить критерий выбора 16/20 бит по UX-метрике (время brute-force).
@@ -45,7 +45,7 @@
 
 **Факт Sprint 1A:**
 - Спецификации/доки: `docs/ADDRESS_SPEC_PHASE1_bech32dx.md` (готово для Sprint 1A).
-- Принята 16-битная split-модель: `domain_hi` (195 country + 16 corporate + 16 reserve + 29 witness), `domain_lo` как future-region для country и company selector для corporate.
+- Принята 16-битная split-модель: `domain_hi/domain_raw` policy classes = 195 country (regulatory, indexed) + 11 sector (indexed) + reserve range (`0xE000..=0xEFFF`) + witness range (`0xF000..=0xFFFF`); `domain_lo` как future-region для country и selector для sector.
 - Открытые вопросы: нет блокирующих для Sprint 1A; детальная policy-валидация `flags`/witness переносится в Sprint 1B.
 
 ---

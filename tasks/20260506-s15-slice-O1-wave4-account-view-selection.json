@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "20260506-s15-slice-O1-wave4-account-view-selection",
+  "title": "S15-O.1 wave4: pwm-tui account_view + selection",
+  "status": "done",
+  "brief": "Декомпозиция main.rs по docs/CODEBASE_REFACTORING.md §2.1 п.13–14: account_view (Ui, RpcTask/RpcEvent, PollSnapshot, DebugCache, poll_snapshot, fetch_debug_account, start_rpc_worker, owner_and_receivers, format_acct_cell) и selection (навигация по панелям). Граница перед preflight/init и run().",
+  "acceptance": [
+    "Новые crates/pwm-tui/src/account_view.rs и selection.rs; mod + pub(crate) use в main.rs",
+    "cargo fmt и cargo check -p pwm-tui; pwm-testing: cargo test -p pwm-tui",
+    "pwm-review на дифф волны",
+    "CQDS rebuild_index background при крупном диффе"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Wave4 extraction account_view + selection до границы preflight; fmt/check pwm-tui",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-tui/src/account_view.rs",
+        "crates/pwm-tui/src/selection.rs",
+        "crates/pwm-tui/src/main.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt --check, cargo test -p pwm-tui, cargo check --workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1900,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Поведенческая эквивалентность wave4 diff",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-01"
+    }
+  ],
+  "commits": ["31473f6"],
+  "artifacts": {
+    "checklist": "docs/reviews/sprint-15-slice-O-checklist.md",
+    "audit": "docs/CODEBASE_REFACTORING.md"
+  },
+  "notes": "Конвейер: coding → testing → review. Оркестратор: коммит и тикет."
+}

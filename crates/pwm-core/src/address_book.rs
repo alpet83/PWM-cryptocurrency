@@ -67,7 +67,7 @@ pub fn validate_recipient_domain_policy(
         } else {
             format!("recipient domain '{domain_display}' is witness-only.")
         }),
-        Some(DomainCategory::Regulatory) | Some(DomainCategory::Tnc) => {
+        Some(DomainCategory::Regulatory) | Some(DomainCategory::Sector) => {
             if domain_index::lookup_for_display(domain_raw).is_none() {
                 Err(if let Some(field) = cli_field {
                     format!(
@@ -164,8 +164,9 @@ pub fn append_wallet_yaml_address_book(
 mod tests {
     use super::*;
 
+    /// `address_book_contains` parses mixed entry types (formerly `address_book_contains_uses_account_id_parse`).
     #[test]
-    fn address_book_contains_uses_account_id_parse() {
+    fn ab_contains_acct_parse() {
         let id = [2u8; 32];
         let hex_id = hex::encode(id);
         let e = AddressBookEntry::AddressOnly(hex_id.clone());
@@ -177,8 +178,9 @@ mod tests {
         assert!(address_book_contains(&[e2], &id));
     }
 
+    /// Reserve-domain errors differ for CLI vs neutral wording (formerly `validate_recipient_domain_policy_cli_vs_neutral_wording`).
     #[test]
-    fn validate_recipient_domain_policy_cli_vs_neutral_wording() {
+    fn dom_err_wording_modes() {
         let mut id = [0u8; 32];
         id[0] = 0xE0;
         id[1] = 0x03;
@@ -188,8 +190,9 @@ mod tests {
         assert!(neutral.starts_with("recipient domain"));
     }
 
+    /// YAML append rejects duplicate book entry (formerly `append_wallet_yaml_address_book_rejects_duplicate_same_account_id`).
     #[test]
-    fn append_wallet_yaml_address_book_rejects_duplicate_same_account_id() {
+    fn ab_yaml_dup_err() {
         let path = std::env::temp_dir().join(format!(
             "pwm_core_addrbook_dup_{}.yaml",
             rand::random::<u128>()

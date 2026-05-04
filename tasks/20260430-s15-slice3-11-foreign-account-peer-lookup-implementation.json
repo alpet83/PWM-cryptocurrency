@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-11-foreign-account-peer-lookup-implementation",
+  "title": "S15-S3.11: implement foreign account peer lookup contract",
+  "status": "completed",
+  "brief": "Реализовать контракт S3.10: authoritative foreign balance/init только через trusted peer path и unknown/??? при недоступности home shard.",
+  "scope": [
+    "pwmd API: peer-backed foreign account lookup with explicit status",
+    "pwmd status/account payload: separate local vs authoritative foreign semantics",
+    "pwm-tui rendering: show ??? for unknown foreign balance/init",
+    "focused tests for reachable/unreachable home shard behavior"
+  ],
+  "acceptance": [
+    "Foreign account returns authoritative fields only when trusted peer/home path is available",
+    "Unavailable foreign lookup does not fallback to false 0-balance semantics",
+    "TUI shows ??? for foreign unknown balance/init",
+    "Docs and review artifacts exist"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-11-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-11-testing.md",
+    "review": "docs/reviews/sprint-15-s3-11-review.md"
+  }
+}

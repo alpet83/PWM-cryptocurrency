@@ -1,3 +1,5 @@
+//! Human-facing account ID codecs (BECH32DX/legacy) and display helpers.
+
 use bech32::{self, FromBase32, ToBase32, Variant};
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +52,9 @@ pub fn parse_account_id(input: &str) -> Result<AccountId, String> {
 ///
 /// Rejects ambiguous legacy pretty addresses where a regulatory label is used
 /// without explicit `/LO` suffix (for example `pwm1-CY-f...`).
-pub fn parse_account_id_for_user_input(input: &str) -> Result<AccountId, String> {
+///
+/// Previously: `parse_account_id_for_user_input`.
+pub fn parse_acct_id_for_user(input: &str) -> Result<AccountId, String> {
     let s = input.trim();
     if let Some(domain_part) = pretty_domain_part(s) {
         reject_ambiguous_legacy_pretty_domain(domain_part, true)?;
@@ -284,12 +288,13 @@ mod tests {
     use super::{
         account_id_to_bech32dx, account_id_to_human, decode_bech32dx, format_domain_for_display,
         format_domain_pascal_hex, format_domain_pascal_hex_width, parse_account_id,
-        parse_account_id_for_migration, parse_account_id_for_user_input, BECH32DX_HRP,
+        parse_account_id_for_migration, parse_acct_id_for_user, BECH32DX_HRP,
         LEGACY_HUMAN_ACCOUNT_PREFIX,
     };
 
+    /// Parses raw hex plus legacy `pwm1` prefixed hex (formerly `parse_accepts_hex_and_human_prefix`).
     #[test]
-    fn parse_accepts_hex_and_human_prefix() {
+    fn parse_hex_or_pwm1_hex() {
         let id = [7u8; 32];
         let hex = hex::encode(id);
         assert_eq!(parse_account_id(&hex).unwrap(), id);
@@ -308,8 +313,9 @@ mod tests {
         assert_eq!(parse_account_id(&human).unwrap(), id);
     }
 
+    /// Pretty account string embeds `-f`/`-t` hints without piping canonical form (formerly `pretty_render_has_hints_and_no_canonical_embedding`).
     #[test]
-    fn pretty_render_has_hints_and_no_canonical_embedding() {
+    fn pretty_hints_no_pipe_emb() {
         let mut id = [9u8; 32];
         id[0] = 0x2C;
         id[1] = 0x7E;
@@ -324,8 +330,9 @@ mod tests {
         assert_eq!(parsed[1], 0x7E);
     }
 
+    /// Full tail bytes rendered after `-t` (formerly `pretty_render_includes_full_tail_bytes`).
     #[test]
-    fn pretty_render_includes_full_tail_bytes() {
+    fn pretty_tail_hex_full() {
         let mut id = [0u8; 32];
         for (i, b) in id.iter_mut().enumerate() {
             *b = i as u8;
@@ -343,8 +350,9 @@ mod tests {
         assert_eq!(parse_account_id(&addr).unwrap(), id);
     }
 
+    /// `decode_bech32dx` recovers domain/flags/metadata (formerly `decode_bech32dx_reads_domain_and_flags`).
     #[test]
-    fn decode_bech32dx_reads_domain_and_flags() {
+    fn decode_bdx_domain_flags_id() {
         let mut id = [0u8; 32];
         id[0] = 0x00;
         id[1] = 0x7E;
@@ -360,28 +368,32 @@ mod tests {
     fn domain_hit_uses_label() {
         let (display, ok) = format_domain_for_display(0x2A00);
         assert!(ok);
-        assert_eq!(display, "US");
+        assert_eq!(display, "CU");
     }
 
+    /// Unknown domain uses Pascal-width hex fallback (formerly `domain_miss_uses_pascal_hex_fallback`).
     #[test]
-    fn domain_miss_uses_pascal_hex_fallback() {
-        let (display, ok) = format_domain_for_display(0xBF10);
+    fn domain_miss_pascal_hex_fb() {
+        // Below COUNTRY_RANGE.lo — category_for_raw is None; no regulatory hi fallback.
+        let (display, ok) = format_domain_for_display(0x0200);
         assert!(!ok);
-        assert_eq!(display, "$BF10");
+        assert_eq!(display, "$0200");
     }
 
+    /// Human render appends `$####!` fallback for unknown domains (formerly `human_render_appends_fallback_for_unknown_domain`).
     #[test]
-    fn human_render_appends_fallback_for_unknown_domain() {
+    fn human_fb_unknown_dom() {
         let mut id = [0u8; 32];
-        id[0] = 0xBF;
-        id[1] = 0x10;
+        id[0] = 0x02;
+        id[1] = 0x00;
         let human = account_id_to_human(&id);
-        assert!(human.contains("$BF10!-f"));
+        assert!(human.contains("$0200!-f"));
         assert_eq!(parse_account_id(&human).unwrap(), id);
     }
 
+    /// Regulatory high-byte lookup keeps fractional low byte labeling (formerly `regulatory_hi_hit_does_not_fallback_on_random_low_byte`).
     #[test]
-    fn regulatory_hi_hit_does_not_fallback_on_random_low_byte() {
+    fn cylabel_stable_lo_human() {
         let mut id = [0u8; 32];
         id[0] = 0x2C;
         id[1] = 0x7F;
@@ -392,8 +404,9 @@ mod tests {
         assert!(human.contains("CY/7F-f"));
     }
 
+    /// Permissive parser accepts deprecated pretty without `/LO` (formerly `parse_accepts_legacy_pretty_domain_without_lo_suffix`).
     #[test]
-    fn parse_accepts_legacy_pretty_domain_without_lo_suffix() {
+    fn parse_legacy_plain_no_slolo() {
         let mut id = [0u8; 32];
         id[0] = 0x2C;
         id[1] = 0x00;
@@ -408,31 +421,35 @@ mod tests {
         assert_eq!(parse_account_id(&legacy).unwrap(), id);
     }
 
+    /// Migration rejects regulatory legacy pretty missing `/LO` (formerly `parse_for_migration_rejects_legacy_pretty_without_lo_for_regulatory`).
     #[test]
-    fn parse_for_migration_rejects_legacy_pretty_without_lo_for_regulatory() {
+    fn migr_rejects_miss_lo() {
         let legacy = "pwm1-CY-fBB921800-t25cb00000000000000000000000000000000000000000000000000";
         let err = parse_account_id_for_migration(legacy).expect_err("must reject");
         assert!(err.contains("missing '/LO'"));
     }
 
+    /// User-input parser rejects ambiguous legacy pretty without `/LO` (formerly `parse_for_user_input_rejects_ambiguous_legacy_pretty_without_lo`).
     #[test]
-    fn parse_for_user_input_rejects_ambiguous_legacy_pretty_without_lo() {
+    fn user_in_reject_ambig_legacy() {
         let legacy = "pwm1-CY-fBB921800-t25cb00000000000000000000000000000000000000000000000000";
-        let err = parse_account_id_for_user_input(legacy).expect_err("must reject");
+        let err = parse_acct_id_for_user(legacy).expect_err("must reject");
         assert!(err.contains("missing '/LO'"));
         assert!(err.contains("strict pretty"));
         assert!(err.contains("canonical bech32dx"));
     }
 
+    /// User-input path still allows raw hex when policy permits (formerly `parse_for_user_input_still_accepts_hex_legacy_when_policy_allows`).
     #[test]
-    fn parse_for_user_input_still_accepts_hex_legacy_when_policy_allows() {
+    fn user_hex_ok_via_policy() {
         let id = [0xAA; 32];
         let hex = hex::encode(id);
-        assert_eq!(parse_account_id_for_user_input(&hex).unwrap(), id);
+        assert_eq!(parse_acct_id_for_user(&hex).unwrap(), id);
     }
 
+    /// Pretty `CY/LO` suffix round-trips (formerly `parse_accepts_pretty_label_with_lo_suffix`).
     #[test]
-    fn parse_accepts_pretty_label_with_lo_suffix() {
+    fn parse_pretty_label_with_lo() {
         let mut id = [0u8; 32];
         id[0] = 0x2C;
         id[1] = 0x4B;
@@ -447,8 +464,9 @@ mod tests {
         assert_eq!(parse_account_id(&pretty).unwrap(), id);
     }
 
+    /// Unknown-domain pretty without canonical column still parses (formerly `parse_accepts_pretty_without_canonical_part`).
     #[test]
-    fn parse_accepts_pretty_without_canonical_part() {
+    fn parse_pretty_no_canon_col() {
         let id = [3u8; 32];
         let pretty = "pwm1-$0303!-f03030303-t0303030303030303030303030303030303030303030303030303";
         assert_eq!(parse_account_id(&pretty).unwrap(), id);
@@ -461,8 +479,9 @@ mod tests {
         assert_eq!(parse_account_id(&canonical).unwrap(), id);
     }
 
+    /// Bad bech32dx checksum is rejected (formerly `parse_rejects_canonical_bech32dx_with_bad_checksum`).
     #[test]
-    fn parse_rejects_canonical_bech32dx_with_bad_checksum() {
+    fn parse_bdx_bad_checksum() {
         let canonical = account_id_to_bech32dx(&[4u8; 32]);
         let mut bad = canonical.clone();
         let last = bad.pop().expect("non-empty canonical");
@@ -472,8 +491,9 @@ mod tests {
         assert!(!err.is_empty());
     }
 
+    /// Pascal hex width helper widens sparse domain codes (formerly `pascal_hex_uses_20bit_width_when_needed`).
     #[test]
-    fn pascal_hex_uses_20bit_width_when_needed() {
+    fn pascal_hex_width_sparse() {
         assert_eq!(format_domain_pascal_hex_width(0x0A3F2, 5), "$0A3F2");
         assert_eq!(format_domain_pascal_hex(0x00AF), "$00AF");
     }

@@ -1,0 +1,1714 @@
+{
+  "schema_version": 1,
+  "id": "20260424-sprint6-optimization",
+  "title": "Sprint 6: optimization slices (transport/state quick wins)",
+  "status": "in_progress",
+  "mvp_checklist": [
+    "docs/MVP-checklist.md",
+    "docs/WHITE_SPEC_v0.md",
+    "docs/reviews/sprint-6-checklist.md"
+  ],
+  "brief": "Запустить Sprint 6 optimization. Slice #1: убрать дублирование transport/churn metrics/state updates в pwmd без изменения поведения и без архитектурных переносов.\n\nОркестрация (2026-04-25): дальнейшие micro-оптимизации батчить по 3–4 правки на один slice/closeout. Декомпозиция crates/pwmd/src/lib.rs по модулям — отдельный спринт, вне узкого Sprint 6 conveyor.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #1: low-risk refactor transport/churn metrics updates в crates/pwmd/src/lib.rs + baseline artifacts.",
+      "done_at": "2026-04-24T15:24:16.9706786+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #1 testing gate: full cargo test -p pwmd + helper-sensitive/regression checks + artifacts sync.",
+      "done_at": "2026-04-24T15:25:56.2278008+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #1 review: accept baseline reset, confirm no semantic blockers, enforce strict optimization-only scope for next slices.",
+      "done_at": "2026-04-24T16:05:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #2: optimization-only extraction of shared native-live/degraded helpers across policy/transport/dev readback paths.",
+      "done_at": "2026-04-24T15:37:45.0026902+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #2 testing gate: full cargo test -p pwmd + helper extraction parity checks + regression/dev compatibility checks + artifacts sync.",
+      "done_at": "2026-04-24T15:39:18.8679815+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 optimization slice #2 review gate: strict optimization-only scope discipline plus semantic/invariant checks.",
+      "done_at": "2026-04-24T16:25:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #3: unify duplicate backoff/retry delay calculators in crates/pwmd/src/lib.rs without algorithm or API semantics changes.",
+      "done_at": "2026-04-24T17:10:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #3 testing gate: cargo test -p pwmd + backoff delay parity checks + regression/dev compatibility checks + artifacts sync.",
+      "done_at": "2026-04-24T17:22:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 optimization slice #3 review gate: backoff helper unification semantic/invariant checks plus strict narrow-diff evidence evaluation.",
+      "done_at": "2026-04-24T17:35:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #4: reduce stringly-typed transport class labels via typed constants/enum mapping helper, behavior-preserving and evidence-focused.",
+      "done_at": "2026-04-24T18:05:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #4 testing gate: cargo test -p pwmd + label keys/metrics parity checks + tx-path/no-range/dev compatibility regression checks + artifacts sync.",
+      "done_at": "2026-04-24T16:00:04.2689235+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 optimization slice #4 review gate: typed class-label refactor semantic/invariant checks plus strict narrow-diff evidence evaluation.",
+      "done_at": "2026-04-24T18:20:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #5: optimization-only transport key composition helper extraction + pre-review scope-proof evidence package updates.",
+      "done_at": "2026-04-24T19:05:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #5 testing gate: cargo test -p pwmd + dial counter key parity checks + tx-path/no-range/dev compatibility regression checks + artifacts sync.",
+      "done_at": "2026-04-24T16:14:41.2346821+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 optimization slice #5 review gate: key-composition helper semantic/invariant checks plus strict process-evidence evaluation.",
+      "done_at": "2026-04-24T19:20:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #6: optimization-only class-state key helper centralization for last_result_by_class/last_attempt_ms_by_class + structured review evidence manifest.",
+      "done_at": "2026-04-24T17:02:22.4550055+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #6 testing gate: cargo test -p pwmd + class-state key parity checks for last_attempt/last_result maps + tx-path/no-range/dev compatibility regression checks + artifacts sync.",
+      "done_at": "2026-04-24T17:04:35.5421508+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 optimization slice #6 review gate: class-state key helper centralization with manifest-backed process evidence evaluation.",
+      "done_at": "2026-04-24T17:20:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #7: optimization-only centralization of reject_reason_total string key updates + manifest-driven scope-proof artifacts.",
+      "done_at": "2026-04-24T17:19:16.9386448+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #7 testing gate: cargo test -p pwmd + reject_reason_total parity checks after helper extraction + tx-path/no-range/dev compatibility regression checks + artifacts sync.",
+      "done_at": "2026-04-24T17:32:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 optimization slice #7 review gate: reject_reason_total helper centralization with manifest-backed process evidence evaluation.",
+      "done_at": "2026-04-24T17:45:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #8: manifest-driven centralization of class_accept_total updates into single private helper without semantic/API changes.",
+      "done_at": "2026-04-24T17:37:51.2205489+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #8 testing gate: cargo test -p pwmd + class_accept_total parity checks after helper extraction + tx-path/no-range/dev compatibility regression checks + artifacts sync.",
+      "done_at": "2026-04-24T17:39:47.8082738+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 optimization slice #8 review gate: class_accept_total helper centralization with manifest-backed semantic/process evaluation.",
+      "done_at": "2026-04-24T18:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #9: manifest-driven shared increment_class_bucket helper for class_accept_total + connected_by_class aggregation (narrow scope, no API/tx changes).",
+      "done_at": "2026-04-24T20:50:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #9 testing gate: cargo test -p pwmd + class_accept_total/connected_by_class parity after increment_class_bucket + artifacts sync.",
+      "done_at": "2026-04-24T21:05:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #9 review gate: shared class-bucket helper semantic/process evaluation with finalized review-sync.",
+      "done_at": "2026-04-24T21:10:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #10: manifest-driven liveish status predicate helper extraction (`is_peer_liveish`) replacing repeated Accepted/Connected/Retrying checks in 3 local sites.",
+      "done_at": "2026-04-24T20:45:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #10 testing gate: cargo test -p pwmd + liveish filter parity checks (Accepted|Connected|Retrying) + artifacts sync.",
+      "done_at": "2026-04-24T20:42:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #10 review gate: is_peer_liveish helper semantic/process evaluation with finalized review-sync.",
+      "done_at": "2026-04-24T20:55:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #11: manifest-driven is_native_for_local helper replacing repeated classify_peer==Native checks in prioritize_peer_candidates and count_native_live_peers.",
+      "done_at": "2026-04-24T21:36:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #11 testing gate: cargo test -p pwmd + native classification parity after is_native_for_local + artifacts sync.",
+      "done_at": "2026-04-24T21:38:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #11 review gate: is_native_for_local helper semantic/process evaluation with finalized review-sync.",
+      "done_at": "2026-04-24T21:40:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #12: classify_peer_for_hs thin wrapper + два production call-site (run_transport_tick_with, process_incoming_peer_hello) без семантики/API drift.",
+      "done_at": "2026-04-24T22:18:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #12 testing gate: cargo test -p pwmd + parity classify_peer через classify_peer_for_hs + артефакты sync.",
+      "done_at": "2026-04-24T22:22:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #12 review gate: manifest slice #12 semantic/process evaluation после testing gate.",
+      "done_at": "2026-04-24T22:28:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #13: optimization-only increment_string_u64_bucket + делегирование increment_reject_reason_total / increment_class_bucket без семантического drift + manifest artifacts.",
+      "done_at": "2026-04-24T23:05:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #13 testing gate: cargo test -p pwmd + parity string-keyed u64 counters + артефакты sync.",
+      "done_at": "2026-04-24T23:15:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #13 review gate: manifest slice #13 semantic/process evaluation после testing gate.",
+      "done_at": "2026-04-24T23:18:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #14: optimization-only reuse increment_string_u64_bucket в record_transport_attempt / record_churn_attempt без семантического drift + manifest artifacts.",
+      "done_at": "2026-04-24T23:40:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 optimization slice #14 testing gate: cargo test -p pwmd + parity dial_attempt_by_class_result / seed_attempt_by_result после helper delegation + артефакты sync.",
+      "done_at": "2026-04-24T23:52:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #14 review gate: manifest slice #14 semantic/process evaluation после testing gate.",
+      "done_at": "2026-04-24T23:55:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #15: slice-artifacts.ps1 режим patch-manifest-numstat — точечное обновление scoped_diff_stat/generated_at без полного ConvertTo-Json (UTF-8 кириллица в task json) + README.",
+      "done_at": "2026-04-25T00:30:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #15 testing gate: smoke pwsh -File slice-artifacts.ps1 -Mode patch-manifest-numstat -DryRun + cargo test -p pwmd (регрессия без изменений Rust).",
+      "done_at": "2026-04-25T00:35:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #15 review gate: tooling-only scope, manifest slice #15, DryRun patch-manifest-numstat evidence.",
+      "done_at": "2026-04-25T00:40:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #16: optimization-only transport_outbound_slot helper in run_transport_tick_with (single match for limit + scheduled counter) + sprint-6 artifacts.",
+      "done_at": "2026-04-25T14:05:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #16 testing gate: cargo test -p pwmd + transport scheduler/outbound parity after helper extraction.",
+      "done_at": "2026-04-25T14:12:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #16 review gate: manifest slice #16 semantic/process evaluation after testing gate.",
+      "done_at": "2026-04-25T14:18:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #17: optimization-only dial_attempt_class_key helper for seed dial class string + sprint-6 artifacts.",
+      "done_at": "2026-04-25T15:40:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #17 testing gate: cargo test -p pwmd + dial class key parity for real transport seed path.",
+      "done_at": "2026-04-25T15:45:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #17 review gate: manifest slice #17 semantic/process evaluation after testing gate.",
+      "done_at": "2026-04-25T15:50:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #18: optimization-only enqueue_seed_by_last_peer_class helper in run_real_transport_tick + sprint-6 artifacts.",
+      "done_at": "2026-04-25T16:10:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #18 testing gate: cargo test -p pwmd + seed queue ordering parity.",
+      "done_at": "2026-04-25T16:15:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #18 review gate: manifest slice #18 semantic/process evaluation after testing gate.",
+      "done_at": "2026-04-25T16:20:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #19: batched optimization-only helper extraction in transport/seed paths (4 micro-refactors) + artifacts.",
+      "done_at": "2026-04-25T09:25:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #19 testing gate: cargo test -p pwmd + parity checks for batched transport/seed helpers.",
+      "done_at": "2026-04-25T09:28:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #19 review gate: semantic/process evaluation for batched helper extraction after testing gate.",
+      "done_at": "2026-04-25T09:30:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #20: batched optimization-only helper extraction in real transport tick paths (rotate/order/state/reconnect streak) + artifacts.",
+      "done_at": "2026-04-25T10:30:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #20 testing gate: cargo test -p pwmd + parity checks for batched real-transport helpers.",
+      "done_at": "2026-04-25T10:35:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #20 review gate: semantic/process evaluation for batched real-transport helper extraction after testing gate.",
+      "done_at": "2026-04-25T10:40:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #21: batched optimization-only helper extraction in real transport tick orchestration (pre/due/apply/finalize) + artifacts.",
+      "done_at": "2026-04-25T12:25:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #21 testing gate: cargo test -p pwmd + parity checks for batched real-transport orchestration helpers.",
+      "done_at": "2026-04-25T12:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #21 review gate: semantic/process evaluation for batched real-transport orchestration extraction after testing gate.",
+      "done_at": "2026-04-25T12:35:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #22: optimization-only cleanup batch in transport/state helpers (refresh_native_health, record_transport_attempt, collect_due_seed_attempts).",
+      "done_at": "2026-04-25T12:45:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #22 testing gate: cargo test -p pwmd + parity checks for cleanup batch.",
+      "done_at": "2026-04-25T12:50:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #22 review gate: semantic/process evaluation for cleanup batch after testing gate.",
+      "done_at": "2026-04-25T12:55:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #23: optimization-only cleanup batch in transport/classification helpers (class_label/is_native_for_local/seed class refs).",
+      "done_at": "2026-04-25T13:05:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #23 testing gate: cargo test -p pwmd + parity checks for classification cleanup batch.",
+      "done_at": "2026-04-25T13:10:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #23 review gate: semantic/process evaluation for classification cleanup batch after testing gate.",
+      "done_at": "2026-04-25T13:14:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint 6 slice #24: optimization-only cleanup batch in transport/state helpers (priority rank/native health/key compose/counter fast-path).",
+      "done_at": "2026-04-25T14:20:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Sprint 6 slice #24 testing gate: cargo test -p pwmd + parity checks for transport/state micro-optimization batch.",
+      "done_at": "2026-04-25T14:28:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Sprint 6 slice #24 review gate: semantic/process evaluation for helper-level optimization batch after testing gate.",
+      "done_at": "2026-04-25T14:34:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "checklist_md": "docs/reviews/sprint-6-checklist.md",
+    "status_note_md": "docs/reviews/sprint-6-status-note.md",
+    "review_md": "docs/reviews/sprint-6-review-report.md"
+  },
+  "mini_report_slice1_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T15:24:16.9706786+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Вынесены helper-функции record_transport_attempt(...) и record_churn_attempt(...) для устранения дублирования обновлений transport/churn state.",
+      "Stub и real transport paths переведены на единообразный код записи dial counters и last-attempt/last-result state.",
+      "Семантика поведения сохранена: no range heuristics, без изменений tx-path, без API drift.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice1_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T15:25:56.2278008+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Helper-sensitive сценарии подтверждены: transport snapshot counters consistency, churn counters consistency, stub vs real transport path parity по ключевым метрикам.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics invariant, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate синхронизированы: sprint-6-status-note.md, sprint-6-test-report.md, task json delegation/mini-report."
+    ]
+  },
+  "notes": "Sprint 6 slice #1: coding/testing gates passed; awaiting independent review gate.\nBaseline reset accepted by orchestrator: proceed with strict optimization-only slices from current state.",
+  "mini_report_slice1_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T16:05:00+03:00",
+    "verdict": "pass_with_scope_note",
+    "notes": [
+      "semantic blockers were not confirmed by testing evidence; slice #1 accepted as baseline reset",
+      "scope drift acknowledged as process issue; next slices must use strict optimization-only narrow diffs",
+      "recommended next step: isolate shared native-live/degraded helper extraction in slice #2"
+    ]
+  },
+  "mini_report_slice2_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T15:37:45.0026902+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлены private helpers `count_native_live_peers(...)` и `refresh_native_health(...)` для устранения дублирования native-live/degraded вычислений.",
+      "Повторяющийся код заменен в transport tick, policy path (после peer hello) и dev readback path (`v1_dev_peers`) без изменения endpoint-контрактов и tx-guard логики.",
+      "Transport degraded evaluation сохранен только для transport tick path; в policy/dev путях используется только policy refresh, как и ранее.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice2_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T15:39:18.8679815+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Helper extraction parity подтвержден: policy/degraded calculations unchanged, transport degraded/underflow semantics unchanged, dev readback consistency unchanged.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #2 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "mini_report_slice2_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T16:25:00+03:00",
+    "verdict": "request_changes_scope_evidence",
+    "notes": [
+      "no semantic blockers confirmed in helper extraction paths",
+      "request changes is process-level: strict narrow-diff evidence insufficient in broad working tree context",
+      "orchestrator baseline policy keeps progress; next slice requires explicit narrow scope evidence package"
+    ]
+  },
+  "mini_report_slice3_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T17:10:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен единый private helper `compute_backoff_delay_ms(...)` для формулы delay (`base/max/attempts`).",
+      "`backoff_delay_ms(...)` и `retry_delay_ms(...)` переведены на общий helper; дублирование калькулятора устранено без изменения алгоритма.",
+      "Семантика сохранена: transport/retry path порядок применения delay и значения не изменены; tx-path/API/endpoints не затронуты.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice3_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T17:22:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Backoff parity подтвержден: значения/поведение delay не изменились (transport envelope transitions 2000->4000->8000, real retry timeout окно [1400,1500], policy envelope selection contract preserved).",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #3 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "mini_report_slice3_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T17:35:00+03:00",
+    "verdict": "request_changes_process_evidence",
+    "notes": [
+      "no semantic blockers confirmed for backoff helper unification",
+      "request changes is process-level: strict narrow-diff evidence remains insufficient in broad working-tree context",
+      "orchestrator keeps slice #3 as accepted baseline and proceeds iteratively with stronger scope evidence package"
+    ]
+  },
+  "mini_report_slice4_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T18:05:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private enum `ClassLabel` и helper `ClassLabel::from_peer_class(...)` для типобезопасного mapping class -> label.",
+      "`class_label(...)`, `PeerPolicyConfig::default().class_weights` и transport class-key fallback переведены с raw строк на typed labels без изменения текстовых ключей (`native`/`foreign`/`unknown`).",
+      "Семантика сохранена: tx-path/tx guards, endpoints/routes, response fields и error messages не изменялись.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice4_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T16:00:04.2689235+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Label parity подтвержден: ключи `native`/`foreign`/`unknown` и class-based metrics/counters behavior не изменились после typed labels refactor.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #4 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "mini_report_slice4_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T18:20:00+03:00",
+    "verdict": "request_changes_process_evidence_semantic_pass",
+    "notes": [
+      "semantic inspection passed for typed label refactor; no tx/API/endpoints drift confirmed by available tests and inspected scope",
+      "request changes is process-level: strict narrow-diff evidence still insufficient in broad working-tree context",
+      "optimization value acknowledged (reduced stringly-typed duplication) and kept as accepted baseline by orchestrator policy"
+    ]
+  },
+  "mini_report_slice5_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T19:05:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `compose_class_result_key(...)` и устранено дублирование формирования map-key для `dial_attempt_by_class_result` в transport path.",
+      "`record_transport_attempt(...)` переведен на helper; формат ключей и значения сохранены (`<class>:<result>`), business logic не изменялась.",
+      "Собран pre-review scope proof package: allowed files, touched symbols, explicit no-change assertions, scoped diff stat snapshot template в `docs/reviews/sprint-6-review-report.md`.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice5_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T16:14:41.2346821+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity ключей dial counters после helper extraction подтвержден: формат `<class>:<result>` сохранен, ключи `native:success`, `foreign:retryable_fail`, `unknown:retryable_fail` подтверждены зелеными тестами.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #5 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "mini_report_slice5_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T19:20:00+03:00",
+    "verdict": "request_changes_process_evidence_semantic_pass",
+    "notes": [
+      "semantic inspection passed for key-composition helper refactor; no tx/API/endpoints drift confirmed by available checks",
+      "request changes remains process-level in broad working-tree context despite added pre-review scope proof",
+      "slice #5 is kept as accepted baseline by orchestrator policy; iterative optimization continues"
+    ]
+  },
+  "mini_report_slice6_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T17:02:22.4550055+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `compose_class_state_key(...)` и централизовано формирование map-key для `last_attempt_ms_by_class`/`last_result_by_class` access paths.",
+      "`record_transport_attempt(...)` переведен на helper для обоих insert-path без изменения значений ключей и поведения transport logic.",
+      "Собран structured pre-review evidence package для slice #6 в review artifacts + task manifest.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice6_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T17:04:35.5421508+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity class-state keys после helper centralization подтвержден: в `record_transport_attempt(...)` оба map-path (`last_attempt_ms_by_class` и `last_result_by_class`) используют единый `compose_class_state_key(...)` без contract drift по class labels.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #6 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "review_evidence_manifest_slice6": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "compose_class_state_key(...)",
+      "record_transport_attempt(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (scoped git diff --stat: 2515 lines changed; broad pre-existing working-tree context)",
+      "docs/reviews/sprint-6-checklist.md | untracked",
+      "docs/reviews/sprint-6-status-note.md | untracked",
+      "docs/reviews/sprint-6-review-report.md | untracked",
+      "tasks/20260424-sprint6-optimization.json | untracked"
+    ],
+    "generated_at": "2026-04-24T17:02:22.4550055+03:00"
+  },
+  "mini_report_slice7_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T17:19:16.9386448+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `increment_reject_reason_total(...)` для централизации string key updates у `reject_reason_total`.",
+      "Reject-path в `process_incoming_peer_hello(...)` переведен на helper без изменения reject label mapping и инкремента `rejected_total`.",
+      "Собран pre-review scope proof package для slice #7 в review artifacts + task manifest.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice7_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T17:32:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity `reject_reason_total` после helper extraction подтвержден: reject-path использует `increment_reject_reason_total(...)` без contract drift; `bad_signature` counters подтверждены в HTTP и real-transport тестах.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #7 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "review_evidence_manifest_slice7": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "increment_reject_reason_total(...)",
+      "process_incoming_peer_hello(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (scoped git diff --stat: 2519 lines changed; broad pre-existing working-tree context)",
+      "docs/reviews/sprint-6-checklist.md | untracked",
+      "docs/reviews/sprint-6-status-note.md | untracked",
+      "docs/reviews/sprint-6-review-report.md | untracked",
+      "tasks/20260424-sprint6-optimization.json | untracked"
+    ],
+    "generated_at": "2026-04-24T17:19:16.9386448+03:00"
+  },
+  "mini_report_slice8_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T17:38:37.5522423+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `increment_class_accept_total(...)` для централизации обновления `class_accept_total`.",
+      "Accept-path в `process_incoming_peer_hello(...)` переведен на helper без изменения class label keys и инкремента `accepted_total`.",
+      "Собран pre-review scope proof package для slice #8 в review artifacts + task manifest.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice8_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T17:39:47.8082738+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity `class_accept_total` после helper extraction подтвержден: accept-path использует `increment_class_accept_total(...)` без contract drift; `native` и `foreign` counters подтверждены status endpoint тестами.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #8 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "review_evidence_manifest_slice8": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "increment_class_accept_total(...)",
+      "process_incoming_peer_hello(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (scoped git diff --stat: 12 lines changed in current slice workspace snapshot)",
+      "docs/reviews/sprint-6-checklist.md | modified (22 insertions)",
+      "docs/reviews/sprint-6-review-report.md | modified (34 insertions)",
+      "docs/reviews/sprint-6-status-note.md | modified (11 insertions)",
+      "tasks/20260424-sprint6-optimization.json | modified (45 insertions)"
+    ],
+    "generated_at": "2026-04-24T17:38:37.5522423+03:00"
+  },
+  "mini_report_slice9_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T20:50:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `increment_class_bucket(...)` для единого паттерна инкремента `HashMap<String, u64>` по ключу `class_label(class)`.",
+      "`increment_class_accept_total(...)` делегирует в `increment_class_bucket(...)`; агрегация `connected_by_class` в `v1_dev_peers(...)` использует тот же helper вместо дублирующего inline map update.",
+      "Семантика сохранена: без изменений tx-path/guards, HTTP routes, response fields, error messages и без новых API полей.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice9_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T21:05:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена: `increment_class_bucket(...)` используется и для `class_accept_total` (через `increment_class_accept_total`), и для `connected_by_class` в `v1_dev_peers(...)` при прежнем фильтре статусов.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #9 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "review_evidence_manifest_slice9": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "increment_class_bucket(...)",
+      "increment_class_accept_total(...)",
+      "v1_dev_peers(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics",
+      "class_accept_total and connected_by_class key strings and counting rules"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 6 insertions, 7 deletions)",
+      "docs/reviews/sprint-6-checklist.md | modified (22 insertions)",
+      "docs/reviews/sprint-6-review-report.md | modified (62 insertions)",
+      "docs/reviews/sprint-6-status-note.md | modified (22 insertions)",
+      "docs/reviews/sprint-6-test-report.md | modified (37 insertions)",
+      "tasks/20260424-sprint6-optimization.json | modified (80 insertions)"
+    ],
+    "generated_at": "2026-04-24T21:10:00+03:00"
+  },
+  "mini_report_slice6_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T17:20:00+03:00",
+    "verdict": "approve_with_nits",
+    "notes": [
+      "semantic inspection passed; no tx/API/endpoints/messages drift confirmed for slice #6",
+      "process-evidence quality improved materially via review_evidence_manifest_slice6 and pre-review scope proof",
+      "remaining note is procedural (broad pre-existing working-tree context), non-blocking for iterative optimization baseline"
+    ]
+  },
+  "mini_report_slice7_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T17:45:00+03:00",
+    "verdict": "request_changes_process_evidence_semantic_pass",
+    "notes": [
+      "semantic inspection passed; no tx/API/routes/messages drift confirmed for slice #7",
+      "request changes is process-level: strict gate required complete review-sync trace at decision time",
+      "manifest-driven evidence pattern remains effective and should continue for next slices"
+    ]
+  },
+  "mini_report_slice8_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T18:00:00+03:00",
+    "verdict": "request_changes_process_evidence_semantic_pass",
+    "notes": [
+      "semantic inspection passed; no tx/API/routes/messages drift confirmed for slice #8",
+      "request changes was process-level: strict gate required finalized review-sync entries at decision time",
+      "manifest-driven evidence remains effective and is retained for subsequent slices"
+    ]
+  },
+  "mini_report_slice9_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T21:10:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope: `increment_class_bucket`, `increment_class_accept_total`, `v1_dev_peers` aggregation",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged",
+      "process: review-sync для slice #9 завершён (review report + status note + task json) в одном closeout с testing evidence"
+    ]
+  },
+  "mini_report_slice10_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T20:45:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `is_peer_liveish(...)` для централизации repeated status predicate (`Accepted | Connected | Retrying`).",
+      "Вызовы в `prioritize_peer_candidates(...)`, `count_native_live_peers(...)` и `v1_dev_peers(...)` переведены на helper без изменения фильтра статусов.",
+      "Семантика сохранена: без изменений tx-path/guards, HTTP routes, response fields, error messages и без новых API полей.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "review_evidence_manifest_slice10": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "is_peer_liveish(...)",
+      "prioritize_peer_candidates(...)",
+      "count_native_live_peers(...)",
+      "v1_dev_peers(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics",
+      "liveish status set semantics (Accepted | Connected | Retrying)"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 11 insertions, 14 deletions)",
+      "docs/reviews/sprint-6-checklist.md | modified (git diff --numstat vs HEAD: 22 insertions, 0 deletions)",
+      "docs/reviews/sprint-6-status-note.md | modified (git diff --numstat vs HEAD: 22 insertions, 0 deletions)",
+      "docs/reviews/sprint-6-review-report.md | modified (git diff --numstat vs HEAD: 63 insertions, 0 deletions)",
+      "docs/reviews/sprint-6-test-report.md | modified (git diff --numstat vs HEAD: 38 insertions, 0 deletions)",
+      "tasks/20260424-sprint6-optimization.json | modified (git diff --numstat vs HEAD: 79 insertions, 0 deletions)"
+    ],
+    "generated_at": "2026-04-24T20:55:00+03:00"
+  },
+  "mini_report_slice10_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T20:42:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity liveish-фильтра подтверждена: `is_peer_liveish(...)` и его call-sites в `prioritize_peer_candidates(...)`, `count_native_live_peers(...)`, `v1_dev_peers(...)` используют тот же набор статусов (`Accepted | Connected | Retrying`) без drift.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #10 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "mini_report_slice10_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T20:55:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope (`is_peer_liveish`, `prioritize_peer_candidates`, `count_native_live_peers`, `v1_dev_peers`) is behavior-preserving.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: review-sync для slice #10 завершен (review report + status note + task json)."
+    ]
+  },
+  "mini_report_slice11_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T21:36:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `is_native_for_local(...)` для централизации предиката `classify_peer(local, peer_domain_hi) == PeerClass::Native`.",
+      "`prioritize_peer_candidates(...)` и `count_native_live_peers(...)` переведены на helper без изменения domain-equality правила классификации.",
+      "Семантика сохранена: без изменений tx-path/guards, HTTP routes, response fields, error messages и без новых API полей.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "review_evidence_manifest_slice11": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "is_native_for_local(...)",
+      "prioritize_peer_candidates(...)",
+      "count_native_live_peers(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics",
+      "peer class mapping rule (domain equality via classify_peer)"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 7 insertions, 4 deletions)",
+      "docs/reviews/sprint-6-checklist.md | modified (21 insertions)",
+      "docs/reviews/sprint-6-review-report.md | modified (64 insertions)",
+      "docs/reviews/sprint-6-status-note.md | modified (22 insertions)",
+      "docs/reviews/sprint-6-test-report.md | modified (38 insertions)",
+      "tasks/20260424-sprint6-optimization.json | modified (80 insertions)"
+    ],
+    "generated_at": "2026-04-24T21:40:00+03:00"
+  },
+  "mini_report_slice11_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T21:38:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity native-классификации подтверждена: `is_native_for_local(...)` эквивалентен прежнему `classify_peer(...) == PeerClass::Native` в call-sites slice #11.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #11 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json delegation/mini-report."
+    ]
+  },
+  "mini_report_slice11_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T21:40:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope (`is_native_for_local`, `prioritize_peer_candidates`, `count_native_live_peers`) is behavior-preserving.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: review-sync для slice #11 завершен (review report + status note + task json + test report)."
+    ]
+  },
+  "mini_report_slice12_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T22:18:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `classify_peer_for_hs(...)` как thin wrapper `classify_peer(hs.local_domain_hi, peer_domain_hi)`.",
+      "`run_transport_tick_with(...)` и `process_incoming_peer_hello(...)` переведены на helper; ровно два production call-site, семантика классификации peer без изменений.",
+      "Семантика сохранена: без изменений tx-path/guards, HTTP routes, response fields, error messages и без новых API полей.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice12_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T22:45:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена: `classify_peer_for_hs(hs, peer_domain_hi)` эквивалентен `classify_peer(hs.local_domain_hi, peer_domain_hi)` для двух production call-site slice #12.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #12 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json mini-report."
+    ]
+  },
+  "mini_report_slice12_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T22:48:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope (`classify_peer_for_hs`, `run_transport_tick_with`, `process_incoming_peer_hello`) is behavior-preserving.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: review-sync slice #12 завершён оркестратором после testing gate (review report + status note + task json + test report)."
+    ]
+  },
+  "review_evidence_manifest_slice12": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "classify_peer_for_hs(...)",
+      "run_transport_tick_with(...)",
+      "process_incoming_peer_hello(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics",
+      "peer classification semantics (classify_peer rule unchanged)"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 6 insertions, 2 deletions)",
+      "docs/reviews/sprint-6-checklist.md | modified (20 insertions)",
+      "docs/reviews/sprint-6-review-report.md | modified (64 insertions)",
+      "docs/reviews/sprint-6-status-note.md | modified (22 insertions)",
+      "docs/reviews/sprint-6-test-report.md | modified (38 insertions)",
+      "tasks/20260424-sprint6-optimization.json | modified (80 insertions)"
+    ],
+    "generated_at": "2026-04-24T22:48:00+03:00"
+  },
+  "mini_report_slice13_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T23:05:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлен private helper `increment_string_u64_bucket(...)` для единого паттерна инкремента `HashMap<String, u64>` по string key.",
+      "`increment_reject_reason_total(...)` и `increment_class_bucket(...)` делегируют в helper с прежними ключами (`reason_label.to_string()`, `class_label(class).to_string()`) и теми же map без семантического drift.",
+      "Семантика сохранена: без изменений tx-path/guards, HTTP routes, response fields, error messages и без новых API полей.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice13_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T23:15:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity string-keyed counters: `increment_string_u64_bucket(...)` сохраняет прежние ключи для `reject_reason_total` и class buckets (`class_label` / reason labels) без drift.",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #13 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json mini-report."
+    ]
+  },
+  "mini_report_slice13_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T23:18:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope (`increment_string_u64_bucket`, `increment_reject_reason_total`, `increment_class_bucket`) is behavior-preserving.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest `scoped_diff_stat`/`generated_at` заполнены оркестратором по `git diff --numstat HEAD` (без повторного ConvertTo-Json на весь файл — избежание mojibake)."
+    ]
+  },
+  "review_evidence_manifest_slice13": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "increment_string_u64_bucket(...)",
+      "increment_reject_reason_total(...)",
+      "increment_class_bucket(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics",
+      "string counter semantics unchanged"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 6 insertions, 5 deletions)",
+      "docs/reviews/sprint-6-checklist.md | modified (21 insertions)",
+      "docs/reviews/sprint-6-review-report.md | modified (63 insertions)",
+      "docs/reviews/sprint-6-status-note.md | modified (22 insertions)",
+      "docs/reviews/sprint-6-test-report.md | modified (37 insertions)",
+      "tasks/20260424-sprint6-optimization.json | modified (80 insertions)"
+    ],
+    "generated_at": "2026-04-24T23:20:00+03:00"
+  },
+  "mini_report_slice14_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T23:40:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` `record_transport_attempt(...)` после `compose_class_result_key(...)` инкрементирует `dial_attempt_by_class_result` через `increment_string_u64_bucket(...)` с передачей ключа `String` по ownership.",
+      "`record_churn_attempt(...)` переведён на `increment_string_u64_bucket(&mut churn.seed_attempt_by_result, result.as_label().to_string())` — те же ключи, что при прежнем `entry(...).or_insert(0) += 1`.",
+      "Логика last_attempt/last_result maps в `record_transport_attempt` без изменений; tx-path/guards, HTTP routes, response fields, error messages не затронуты.",
+      "Проверки coding gate выполнены: cargo fmt, cargo check -p pwmd (тесты не запускались по задаче)."
+    ]
+  },
+  "mini_report_slice14_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T23:52:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "Полный regression прогон выполнен: cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity dial/churn counters: `increment_string_u64_bucket` для `dial_attempt_by_class_result` и `seed_attempt_by_result` с прежними ключами (`compose_class_result_key` / `result.as_label()`).",
+      "Регрессии не выявлены: tx-path invariants, no-range heuristics, dev endpoints compatibility сохранены.",
+      "Артефакты testing gate slice #14 синхронизированы одним батч-патчем: sprint-6-test-report.md, sprint-6-status-note.md, task json."
+    ]
+  },
+  "mini_report_slice14_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T23:55:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only reuse `increment_string_u64_bucket` in `record_transport_attempt` / `record_churn_attempt`.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest `scoped_diff_stat` / `generated_at` заполнены оркестратором одним батч-патчем (без `slice-artifacts fill-diff` на весь JSON)."
+    ]
+  },
+  "review_evidence_manifest_slice14": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "increment_string_u64_bucket(...)",
+      "record_transport_attempt(...)",
+      "record_churn_attempt(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics",
+      "dial/churn counter key semantics unchanged"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 5 insertions, 9 deletions)",
+      "docs/reviews/sprint-6-checklist.md | modified (20 insertions)",
+      "docs/reviews/sprint-6-review-report.md | modified (65 insertions)",
+      "docs/reviews/sprint-6-status-note.md | modified (22 insertions)",
+      "docs/reviews/sprint-6-test-report.md | modified (33 insertions)",
+      "tasks/20260424-sprint6-optimization.json | modified (80 insertions)"
+    ],
+    "generated_at": "2026-04-24T23:55:00+03:00"
+  },
+  "mini_report_slice15_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T00:30:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В tools/slice-artifacts.ps1 добавлен режим patch-manifest-numstat: UTF-8 raw read/write, замена только блока scoped_diff_stat и generated_at внутри review_evidence_manifest_sliceN без ConvertTo-Json всего файла.",
+      "Формат строк scoped_diff_stat выровнен с существующими sprint-6 manifest (insertions / git diff --numstat vs HEAD).",
+      "tools/README-slice-artifacts.md: описание режима и предпочтение над fill-diff для кириллических task-json.",
+      "Проверки: pwsh -File tools/slice-artifacts.ps1 -SliceNumber 15 -Mode patch-manifest-numstat -DryRun (после появления manifest slice #15)."
+    ]
+  },
+  "mini_report_slice15_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T00:35:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "DryRun patch-manifest-numstat для slice #15 выполнен без ошибок разбора JSON.",
+      "cargo test -p pwmd -> 55 passed, 0 failed (Rust код не менялся; регрессия зелёная).",
+      "Артефакты testing gate slice #15 синхронизированы батч-патчем: sprint-6-test-report.md, sprint-6-status-note.md, task json."
+    ]
+  },
+  "mini_report_slice15_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T00:40:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic/tooling review: patch-manifest-numstat ограничивает запись manifest-полей, снижая риск mojibake от полной пересборки JSON.",
+      "process: manifest slice #15; scoped_diff_stat — только code/tool paths (crates/**, tools/**), без sprint markdown и без строки по task-json (политика README-slice-artifacts).",
+      "no Rust/tx/API drift (tools-only slice)."
+    ]
+  },
+  "review_evidence_manifest_slice15": {
+    "allowed_files": [
+      "tools/slice-artifacts.ps1",
+      "tools/README-slice-artifacts.md",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "Build-ManifestScopedDiffStatHumanStrings(...)",
+      "Find-ScopedDiffStatArrayBoundsRaw(...)",
+      "Update-TaskManifestNumstatRaw(...)",
+      "patch-manifest-numstat mode"
+    ],
+    "asserted_unchanged": [
+      "crates/pwmd Rust sources",
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics"
+    ],
+    "scoped_diff_stat": [
+      "tools/README-slice-artifacts.md | modified (git diff --numstat vs HEAD: 13 insertions, 1 deletions)",
+      "tools/slice-artifacts.ps1 | modified (git diff --numstat vs HEAD: 49 insertions, 10 deletions)"
+    ],
+    "generated_at": "2026-04-24T22:20:38.1554808+03:00"
+  },
+  "mini_report_slice16_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T14:05:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs добавлен private helper transport_outbound_slot(...) -> (&mut u32, u32) для единого match PeerClass на пару (scheduled counter, outbound limit).",
+      "run_transport_tick_with(...) переведён на helper вместо двух последовательных match class; семантика лимитов и инкремента scheduled без изменений.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice16_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T14:12:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity: outbound caps и scheduled_native/scheduled_foreign через transport_outbound_slot без drift; transport scheduler / backoff / degraded harness зелёные.",
+      "Артефакты testing gate slice #16 синхронизированы: sprint-6-test-report.md, sprint-6-status-note.md, task json."
+    ]
+  },
+  "mini_report_slice16_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T14:18:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope (transport_outbound_slot, run_transport_tick_with).",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #16; scoped_diff_stat через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice16": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "transport_outbound_slot(...)",
+      "run_transport_tick_with(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "transport scheduling/backoff semantics outside limit/counter selection",
+      "select_backoff_for_class / record_transport_attempt call contracts"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 18 insertions, 8 deletions)"
+    ],
+    "generated_at": "2026-04-25T08:37:07.7703315+03:00"
+  },
+  "mini_report_slice17_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T15:40:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs добавлен private helper dial_attempt_class_key(Option<&PeerClass>) -> String на базе class_label / ClassLabel::Unknown.",
+      "run_real_transport_tick: формирование class_key для record_transport_attempt переведено на helper; семантика label-строк без изменений.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice17_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T15:45:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity dial class key для seed path; real transport harness зелёный.",
+      "Артефакты testing gate slice #17 синхронизированы батч-патчем."
+    ]
+  },
+  "mini_report_slice17_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T15:50:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope (dial_attempt_class_key, run_real_transport_tick seed loop).",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #17; scoped_diff_stat через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice17": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "dial_attempt_class_key(...)",
+      "run_real_transport_tick(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "attempt_seed_connect result semantics",
+      "record_transport_attempt / record_churn_attempt ordering"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 7 insertions, 4 deletions)"
+    ],
+    "generated_at": "2026-04-25T08:44:07.0147709+03:00"
+  },
+  "mini_report_slice18_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T16:10:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs добавлен private helper enqueue_seed_by_last_peer_class для раскладки seed по Option<PeerClass> (native/foreign/unknown векторы).",
+      "run_real_transport_tick: inline match заменён вызовом helper; порядок extend и бюджет попыток без изменений.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice18_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T16:15:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity seed queue routing; real transport harness зелёный.",
+      "Артефакты testing gate slice #18 синхронизированы батч-патчем."
+    ]
+  },
+  "mini_report_slice18_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T16:20:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only scope (enqueue_seed_by_last_peer_class, run_real_transport_tick).",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #18; scoped_diff_stat через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice18": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "enqueue_seed_by_last_peer_class(...)",
+      "run_real_transport_tick(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "seed rotation / backoff skip / attempt budget semantics",
+      "due.extend ordering (native, unknown, foreign)"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 15 insertions, 5 deletions)"
+    ],
+    "generated_at": "2026-04-25T08:52:10.6333273+03:00"
+  },
+  "mini_report_slice19_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T09:25:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs выполнен batched micro-refactor (4 helper extraction): apply_transport_peer_result, seed_peer_state_mut, update_known_peer_status, retryable_connect_outcome.",
+      "run_transport_tick_with, attempt_seed_connect и run_real_transport_tick переведены на helper-вызовы; семантика scheduler/backoff/churn/status transitions без изменений.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice19_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T09:28:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена для scheduler/backoff/degraded, real reconnect/status transitions и dev snapshot visibility.",
+      "Регрессий не выявлено в пределах существующего test suite."
+    ]
+  },
+  "mini_report_slice19_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T09:30:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only batched scope (transport/seed helper extraction).",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #19; scoped_diff_stat заполняется через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice19": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "apply_transport_peer_result(...)",
+      "seed_peer_state_mut(...)",
+      "update_known_peer_status(...)",
+      "retryable_connect_outcome()",
+      "run_transport_tick_with(...)",
+      "attempt_seed_connect(...)",
+      "run_real_transport_tick(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "scheduler/backoff/churn semantics",
+      "peer status transition semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 70 insertions, 34 deletions)"
+    ],
+    "generated_at": "2026-04-25T09:33:24.2050928+03:00"
+  },
+  "mini_report_slice20_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T10:30:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs выполнен batched micro-refactor (4 helper extraction): rotate_seed_order, update_seed_peer_after_attempt, set_seed_peer_next_due, apply_reconnect_streak_tick.",
+      "run_real_transport_tick переведен на helper-вызовы; семантика scheduler/backoff/churn/status transitions без изменений.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice20_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T10:35:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена для scheduler/backoff/degraded, real reconnect/status transitions и dev snapshot visibility.",
+      "Регрессий не выявлено в пределах существующего test suite."
+    ]
+  },
+  "mini_report_slice20_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T10:40:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only batched scope (real transport tick helper extraction).",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #20; scoped_diff_stat заполняется через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice20": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "rotate_seed_order(...)",
+      "update_seed_peer_after_attempt(...)",
+      "set_seed_peer_next_due(...)",
+      "apply_reconnect_streak_tick(...)",
+      "run_real_transport_tick(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "scheduler/backoff/churn semantics",
+      "peer status transition semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 82 insertions, 36 deletions)"
+    ],
+    "generated_at": "2026-04-25T10:33:45.7758544+03:00"
+  },
+  "mini_report_slice21_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T12:25:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs выполнен batched micro-refactor (4 helper extraction): soak_counter_cap, refresh_real_tick_state, collect_due_seed_attempts, apply_seed_attempt_result/finalize_real_tick.",
+      "run_real_transport_tick переведен на helper-вызовы; семантика scheduler/backoff/churn/status transitions без изменений.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice21_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T12:30:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена для scheduler/backoff/degraded, real reconnect/status transitions и dev snapshot visibility.",
+      "Регрессий не выявлено в пределах существующего test suite."
+    ]
+  },
+  "mini_report_slice21_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T12:35:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only batched scope (real transport tick orchestration helper extraction).",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #21; scoped_diff_stat заполняется через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice21": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "soak_counter_cap(...)",
+      "refresh_real_tick_state(...)",
+      "collect_due_seed_attempts(...)",
+      "apply_seed_attempt_result(...)",
+      "finalize_real_tick(...)",
+      "run_real_transport_tick(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "scheduler/backoff/churn semantics",
+      "peer status transition semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 158 insertions, 135 deletions)"
+    ],
+    "generated_at": "2026-04-25T12:29:12.9448491+03:00"
+  },
+  "mini_report_slice22_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T12:45:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs выполнен optimization-only cleanup batch: локализация snapshot-доступа в refresh_native_health, упрощение key-write в record_transport_attempt, удаление compose_class_state_key, локальный due_len в collect_due_seed_attempts.",
+      "Изменения behavior-preserving: ветвления/пороги/формулы и contracts не изменены.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice22_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T12:50:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена для scheduler/backoff/degraded, real reconnect/status transitions и dev snapshot visibility.",
+      "Регрессий не выявлено в пределах существующего test suite."
+    ]
+  },
+  "mini_report_slice22_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T12:55:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only cleanup scope in transport/state helpers.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #22; scoped_diff_stat заполняется через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice22": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "refresh_native_health(...)",
+      "record_transport_attempt(...)",
+      "collect_due_seed_attempts(...)",
+      "compose_class_state_key(...) removed"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "scheduler/backoff/churn semantics",
+      "peer status transition semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 14 insertions, 24 deletions)"
+    ],
+    "generated_at": "2026-04-25T12:48:11.3650767+03:00"
+  },
+  "mini_report_slice23_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T13:05:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs выполнен optimization-only cleanup batch: class_label переведён на прямой match, удалён неиспользуемый ClassLabel::from_peer_class, is_native_for_local упрощён до прямого сравнения domain_hi, в seed-приоритизации убран лишний clone класса.",
+      "Изменения behavior-preserving: ветвления/пороги/формулы и contracts не изменены.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice23_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T13:10:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена для scheduler/backoff/degraded, real reconnect/status transitions и dev snapshot visibility.",
+      "Регрессий не выявлено в пределах существующего test suite."
+    ]
+  },
+  "mini_report_slice23_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T13:14:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only cleanup scope in transport/classification helpers.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #23; scoped_diff_stat заполняется через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice23": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "class_label(...)",
+      "ClassLabel::from_peer_class(...) removed",
+      "is_native_for_local(...)",
+      "enqueue_seed_by_last_peer_class(...)",
+      "collect_due_seed_attempts(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "scheduler/backoff/churn semantics",
+      "peer status transition semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 9 insertions, 13 deletions)"
+    ],
+    "generated_at": "2026-04-25T13:27:59.9093561+03:00"
+  },
+  "mini_report_slice24_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-25T14:20:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В crates/pwmd/src/lib.rs выполнен optimization-only cleanup batch: выделен peer_priority_rank в prioritize_peer_candidates, локализован under_native_min в refresh_native_health, оптимизирован compose_class_result_key, добавлен fast-path в increment_string_u64_bucket с синхронизацией callsites.",
+      "Изменения behavior-preserving: ветвления/пороги/формулы и contracts не изменены.",
+      "Проверки coding gate: cargo fmt, cargo check -p pwmd."
+    ]
+  },
+  "mini_report_slice24_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-25T14:28:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd -> 55 passed, 0 failed.",
+      "Parity подтверждена для scheduler/backoff/degraded, real reconnect/status transitions и dev snapshot visibility.",
+      "Регрессий не выявлено в пределах существующего test suite."
+    ]
+  },
+  "mini_report_slice24_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-25T14:34:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "semantic inspection passed; optimization-only cleanup scope in transport/state helpers.",
+      "no tx-path/guards/routes/response fields/error messages drift; API surface unchanged.",
+      "process: manifest slice #24; scoped_diff_stat заполняется через patch-manifest-numstat (code paths only)."
+    ]
+  },
+  "review_evidence_manifest_slice24": {
+    "allowed_files": [
+      "crates/pwmd/src/lib.rs",
+      "docs/reviews/sprint-6-checklist.md",
+      "docs/reviews/sprint-6-status-note.md",
+      "docs/reviews/sprint-6-review-report.md",
+      "docs/reviews/sprint-6-test-report.md",
+      "tasks/20260424-sprint6-optimization.json"
+    ],
+    "touched_symbols": [
+      "prioritize_peer_candidates(...)",
+      "peer_priority_rank(...)",
+      "refresh_native_health(...)",
+      "compose_class_result_key(...)",
+      "increment_string_u64_bucket(...)",
+      "increment_reject_reason_total(...)",
+      "increment_class_bucket(...)",
+      "record_transport_attempt(...)",
+      "record_churn_attempt(...)"
+    ],
+    "asserted_unchanged": [
+      "tx-path/tx guards",
+      "HTTP routes",
+      "response fields",
+      "error messages",
+      "new API fields",
+      "scheduler/backoff/churn semantics",
+      "peer status transition semantics"
+    ],
+    "scoped_diff_stat": [
+      "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 28 insertions, 21 deletions)"
+    ],
+    "generated_at": "2026-04-25T14:58:30.1299637+03:00"
+  }
+}

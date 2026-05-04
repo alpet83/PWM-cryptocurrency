@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-14-lib-green-and-federation-gossip",
+  "title": "S15-S3.14: green pwmd --lib + federation table as distributed epidemic view",
+  "status": "completed",
+  "brief": "Закрыть долги после S3.13: восстановить `cargo test -p pwmd --lib`. Дополнить federation так, чтобы локальная таблица могла обогащаться **косвенно** по mesh (trusted gossip реле строк шардов), и зафиксировать это в ревью как распределённый объект с eventual consistency (аналог эпидемического распространения при ограниченной степени узла).",
+  "scope": [
+    "**Долг тестов:** по классификации `docs/reviews/sprint-15-s3-13-testing.md` — выровнять тесты с контрактом export-readiness (`POST /v1/export-readiness` где нужно, ожидания 409 где намеренно без readiness); отдельно починить `lifecycle::seal_writes_snapshot_file_when_data_file_is_configured`, `v1_status_and_tx_do_not_deadlock_with_snapshot_persist`, `slice20_two_shard_e2e_flows_contract` (init/harness), чтобы `cargo test -p pwmd --lib` был зелёным.",
+    "**Federation gossip (trusted):** сейчас merge идёт только из hello/hb **непосредственного** пира (одна строка о его шарде). Добавить **передачу набора известных federation-строк** в доверенном wire-пути (или эквивалент с лимитом размера/TTL/merge на приёме), чтобы узел с ограниченным числом соседей получал сведения о других шардах **через цепочку** доверенных обменов — без ослабления trust boundary для inbound-untrusted.",
+    "**Тест конвергенции:** минимальный сценарий (юнит или интеграция): цепочка из ≥3 узлов/сессий или симуляция merge-потока, показывающая что строка о шарде X доходит до узла без прямого канала к носителю X (при полностью trusted реле по цепочке).",
+    "При изменении wire/API — bump `pwmd`, артефакты coding/testing/review как в предыдущих слайсах.",
+    "**pwm-review обязан** явно ответить на вопрос распределённости: таблица на каждой ноде — **локальный срез** глобального epidemic-объекта; при связном trusted-подграфе и периодических обменах знание о высотах шардов **распространяется индиректно** (каждый узел с небольшим fan-out может со временем видеть все шарды, как в «торренте»/gossip — с оговорками TTL, разрывов графа, скорости сходимости). Референс-сценарий для рассуждения: ~100 нод, ~10 шардов, у узла ~5 соседей — не требует полносетевого симулятора, но review связывает код/тест с этим замыслом или фиксирует GAP."
+  ],
+  "acceptance": [
+    "`cargo test -p pwmd --lib` PASS (и `cargo fmt --check -p pwmd` по конвейеру).",
+    "Есть механизм trusted relay federation rows + тест многоходовой конвергенции (см. scope).",
+    "`docs/reviews/sprint-15-s3-14-review.md` содержит явную секцию **Distributed federation view**: подтверждение или обоснованный GAP относительно epidemic/mesh обогащения (включая TTL и trust).",
+    "pwm-coding → pwm-testing → pwm-review синхронно по оркестратору."
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Green --lib + trusted federation row gossip for indirect mesh enrichment.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/Cargo.toml",
+        "crates/pwmd/src/federation.rs",
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/lib.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/slice20_e2e_tests.rs",
+        "issues-report.md",
+        "docs/reviews/sprint-15-s3-14-coding.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T16:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Verify full lib suite; federation gossip convergence scenario.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-14-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T16:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Gate lib green; confirm distributed/epidemic federation semantics vs 100/10/5 scenario.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-14-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T17:00:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-14-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-14-testing.md",
+    "review": "docs/reviews/sprint-15-s3-14-review.md"
+  },
+  "commits": [],
+  "notes": "Предшественник: S3.13 (`tasks/20260430-s15-slice3-13-federation-table-contract-implementation.json`). Долг `--lib`: см. `docs/reviews/sprint-15-s3-13-testing.md`. Без gossip релея таблица не выполняет роль «торрента» по шардам — только прямые наблюдения пира."
+}

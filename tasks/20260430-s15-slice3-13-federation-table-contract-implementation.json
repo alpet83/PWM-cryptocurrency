@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-13-federation-table-contract-implementation",
+  "title": "S15-S3.13: implement federation table contract",
+  "status": "completed",
+  "brief": "Реализовать рабочую node-level federation dictionary по контракту `docs/reviews/sprint-15-s3-11-federation-and-reconnect-review.md`: shard_id -> height, last_seen, TTL 60s, merge из trusted peer signals, sweep eviction, `GET /v1/federation/shards` с view_health.",
+  "scope": [
+    "Структуры FederationShardRow + runtime хранилище в Inner (или отдельном модуле)",
+    "Обновление из trusted-only источников: hello / heartbeat / peer status где уже есть height и domain/shard id",
+    "Merge правила и TTL 60s с периодическим sweep (~1s)",
+    "`GET /v1/federation/shards` JSON по контракту review",
+    "Bump pwmd package version при изменении публичного API",
+    "Тесты merge/TTL/view_health + artifact docs/reviews/sprint-15-s3-13-coding.md"
+  ],
+  "acceptance": [
+    "`GET /v1/federation/shards` возвращает rows + view_health + счётчики по контракту",
+    "TTL eviction удаляет просроченные строки",
+    "Merge правила из review соблюдены для height/last_seen",
+    "Только trusted peer path обновляет federation (untrusted inbound игнорировать)",
+    "pwm-testing затем pwm-review по конвейеру"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement federation table + GET /v1/federation/shards per S3.11 contract.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/federation.rs",
+        "crates/pwmd/src/handshake.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/lib.rs",
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/api.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/relay.rs",
+        "crates/pwmd/Cargo.toml",
+        "docs/reviews/sprint-15-s3-13-coding.md",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T00:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Test federation API, TTL, merge, live node scripts optional.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-13-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review federation contract fit and trust boundary.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-13-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T14:00:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-13-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-13-testing.md",
+    "review": "docs/reviews/sprint-15-s3-13-review.md"
+  },
+  "commits": [],
+  "notes": "Contract reference: docs/reviews/sprint-15-s3-11-federation-and-reconnect-review.md § B. pwm-testing PARTIAL: federation OK; cargo test -p pwmd --lib still 16 failures (readiness/lifecycle/E2E per testing doc) — follow-up outside S3.13 scope per review."
+}

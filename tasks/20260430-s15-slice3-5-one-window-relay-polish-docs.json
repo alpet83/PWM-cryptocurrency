@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-5-one-window-relay-polish-docs",
+  "title": "S15-S3.5: one-window relay polish and docs",
+  "status": "completed",
+  "brief": "Закрыть остаточные gaps после S15-S3.4: CLI/TUI one-window UX, source-only import/preflight поведение, trusted peer/manual fallback документация и операторский runbook.",
+  "scope": [
+    "Проверить и закрыть CLI source-only import/preflight gap, если он ещё актуален",
+    "Актуализировать документы по one-window relay и trusted peer context",
+    "Синхронизировать TUI/CLI подсказки с новым relay-поведением",
+    "Не менять snapshot/DB scope S15-S4"
+  ],
+  "acceptance": [
+    "Пользовательский flow описан как: client -> native node -> trusted peer relay",
+    "Manual fallback явно описывает requirement trusted peer context",
+    "CLI/TUI не требуют от пользователя target RPC для happy path",
+    "Regression tests/docs evidence приложены"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-5-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-5-testing.md",
+    "review": "docs/reviews/sprint-15-s3-5-review.md"
+  }
+}

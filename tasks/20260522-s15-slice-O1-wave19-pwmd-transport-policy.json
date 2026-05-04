@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "20260522-s15-slice-O1-wave19-pwmd-transport-policy",
+  "title": "S15-O.1 wave19: pwmd transport policy helpers (§2.2 continuation)",
+  "status": "done",
+  "brief": "Вынести policy/candidate/backoff/helpers из transport.rs в transport/policy.rs. pwm-coding отказался — реализацию выполнил оркестратор в текущей сессии.",
+  "acceptance": ["cargo fmt", "cargo test -p pwmd", "cargo check --workspace"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "extract transport/policy.rs + transport_tick forwarders",
+      "result": "BLOCKED",
+      "notes": "Subagent declined request (tool/session policy)."
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "manual policy module extraction",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/policy.rs",
+        "crates/pwmd/src/transport.rs"
+      ],
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["509e759"],
+  "parent_chain": ["tasks/20260521-s15-slice-O1-wave18-pwmd-transport-health.json"],
+  "artifacts": { "audit": "docs/CODEBASE_REFACTORING.md" },
+  "notes": "Итоговая проверка рефакторинга слайса — эксплуатационное тестирование (решение пользователя)."
+}

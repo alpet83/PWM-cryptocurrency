@@ -8,6 +8,10 @@ license.workspace = true
 name = "pwm-tui"
 path = "src/main.rs"
 
+[lib]
+name = "pwm_tui"
+path = "src/lib.rs"
+
 [dependencies]
 ratatui.workspace = true
 crossterm.workspace = true
@@ -20,6 +24,6 @@ clap.workspace = true
 serde.workspace = true
 serde_yaml = "0.9"
 base64 = "0.22"
+slip10_ed25519 = "0.1.3"
 
 [dev-dependencies]
-slip10_ed25519 = "0.1.3"

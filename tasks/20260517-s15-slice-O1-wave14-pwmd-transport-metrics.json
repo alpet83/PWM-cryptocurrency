@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "20260517-s15-slice-O1-wave14-pwmd-transport-metrics",
+  "title": "S15-O.1 wave14: pwmd transport metrics extraction (§2.2 row #2)",
+  "status": "done",
+  "brief": "Механически вынести metrics-кластер из transport.rs в transport/metrics.rs: HandshakeMetrics, TransportCounters, TransportSnapshot, TransportPeerState/TransportState (+ Default), ChurnSnapshot, SoakConfidenceSnapshot, bounded_add_u64 и связанные bucket/counter helpers без изменения поведения. Граница с tick/handshake logic — минимальный churn.",
+  "acceptance": [
+    "cargo fmt",
+    "cargo test -p pwmd",
+    "cargo check --workspace"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "transport metrics module extraction + reexports",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/transport/metrics.rs"
+      ],
+      "agent_id": "11441a7d-a045-4eda-921f-bd295fe7bb3d",
+      "tokens": { "source": "estimate", "total": 14000, "confidence": "low" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt --check, cargo test -p pwmd, cargo check --workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "notes": "Оркестратор: 197 тестов pwmd; workspace check OK.",
+      "tokens": { "source": "estimate", "total": 1500, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "metrics extraction boundaries + pub hygiene",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-O1-wave14-review.md"],
+      "agent_id": "b6a521e1-c1ee-4ede-b478-881b9a878f3b",
+      "tokens": { "source": "estimate", "total": 7800, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["26db44b", "e40130b", "e1bc30d", "c013314"],
+  "parent_chain": ["tasks/20260502-s15-slice-O1-wave13-pwmd-transport-peer-types.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave14-review.md"
+  },
+  "notes": "Конвейер синхронный: pwm-coding → pwm-testing (оркестратор) → pwm-review.\nmcp_index.json + cq_help для MCP.\nCQDS rebuild_index bg: duplicate enqueue (coding)."
+}

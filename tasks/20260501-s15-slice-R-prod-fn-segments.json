@@ -1,0 +1,34 @@
+{
+  "id": "20260501-s15-slice-R-prod-fn-segments",
+  "title": "Sprint15 slice R: fn names ≤5 snake_case segments (pub + internal prod)",
+  "status": "done_workspace_tests_pass",
+  "branch_hint": "main",
+  "artifacts": {
+    "plan": "docs/reviews/sprint-15-slice-R-plan.md",
+    "checklist": "docs/reviews/sprint-15-slice-R-checklist.md",
+    "review": "docs/reviews/sprint-15-slice-R-review.md"
+  },
+  "scope": {
+    "r1_pwm_core_pub": [
+      "parse_account_id_for_user_input → parse_acct_id_for_user"
+    ],
+    "r2_pwmd_pub": [
+      "app_from_dev_net_in_shard → app_from_dev_net_shard",
+      "app_from_genesis_with_data_in_shard → app_from_genesis_data_shard",
+      "app_from_genesis_in_shard_with_identity → app_from_genesis_shard_identity"
+    ],
+    "r3_internal": [
+      "parse_derivation_index_from_m0_path → parse_der_idx_m0_path (pwm-core wallet_read + pwm-cli wallet/store)",
+      "enqueue_seed_by_last_peer_class → enqueue_seed_peer_cls (pwmd transport_tick)",
+      "post_import_tx_via_source_relay → post_imp_tx_src_relay (pwm-tui roaming)",
+      "looks_like_cross_domain_transfer_reject → is_xdom_xfer_reject_body (pwm-tui tx_submit)"
+    ]
+  },
+  "acceptance": [
+    "cargo fmt --all",
+    "cargo test --workspace",
+    "grep audit (6+ snake_case segments on fn names): zero hits under crates/**/*.rs",
+    "docs/reviews/sprint-15-slice-R-review.md FINAL PASS"
+  ],
+  "notes": "Separate from slice N (test fn names). Historical task/docs may still mention old identifiers."
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "20260507-s15-slice-O1-wave5-tui-loop",
+  "title": "S15-O.1 wave5: pwm-tui tui_loop — вынести run()",
+  "status": "done",
+  "brief": "Модуль tui_loop.rs с pub(crate) fn run; main — Args/default wallet + вызов run. Helpers preflight/f6/centered_rect — pub(crate) в main для sibling-модуля.",
+  "acceptance": [
+    "tui_loop.rs + тонкий main",
+    "pwm-testing PASS",
+    "pwm-review зафиксирован"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Вынести run в tui_loop.rs; fmt/check pwm-tui",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-tui/src/tui_loop.rs", "crates/pwm-tui/src/main.rs"],
+      "tokens": { "source": "estimate", "input": null, "output": null, "total": 15000, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt --check, test pwm-tui, check workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": null, "output": null, "total": 500, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Эквивалентность выноса run",
+      "result": "PARTIAL",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": null, "output": null, "total": 5540, "confidence": "medium" },
+      "done_at": "2026-05-01",
+      "notes": "Длинное имя preflight_*; use crate::* в tui_loop; EOL nits"
+    }
+  ],
+  "commits": ["e29e2d9", "19e3234", "5d32f34"],
+  "artifacts": {
+    "checklist": "docs/reviews/sprint-15-slice-O-checklist.md"
+  },
+  "notes": "Follow-up: короткое имя preflight (отдельный микро-коммит) или согласовать отступление в AGENT_PROMPT_coding."
+}

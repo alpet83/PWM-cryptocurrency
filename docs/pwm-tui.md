@@ -75,10 +75,14 @@
   - текущий `PWM_RPC`;
   - маркер `PWM_TUI_DEBUG=1` в debug-режиме;
   - текст последней ошибки опроса (если есть).
-- Модалки (`F5`, `F6`) сейчас stub-only:
-  - центрированный popup `Action`;
-  - текст TODO;
-  - закрытие `Enter`/`Esc`.
+- Модалки:
+  - `F5` — статус-only подсказка для burn через CLI (`tx-burn-mark`);
+  - `F6` — форма `send` (`from/to/amount/fee/confirm`) с локальной валидацией:
+    - `from` берётся из текущей выделенной строки `Owner`; wallet v3 не требует `active_account_id_hex`, и это legacy-поле не является runtime-источником sender в TUI;
+    - перед submit TUI проверяет, что выбранный Owner можно подписать текущим материалом кошелька; locked encrypted wallet, отсутствующий master seed для non-root/multi-account derivation или аккаунт вне wallet блокируют отправку с явным статусом; verified legacy/root-key fallback может сработать только для совместимых root/default случаев;
+    - same-domain: submit в `POST /v1/tx`;
+    - cross-domain: submit в `POST /v1/roaming-intents` на текущий native/source RPC + lifecycle статус (`queued/exported/relayed/imported/expired/failed`); после `relayed` — автоматическая отправка **`POST /v1/tx` (Import)** с source RPC (подпись ключом получателя `to` из wallet); для nonce/баланса на стороне получателя при необходимости используется **target** RPC: **`PWM_TUI_TARGET_RPC`**, иначе эвристика порта от `PWM_RPC`; **шаг 5** — отображение проверки изменения баланса на target (ожидаемый кредит = `amount`, без fee); target peer для relay/handoff по-прежнему достигается `pwmd` через configured trusted seed;
+  - закрытие информационных модалок: `Enter`/`Esc`.
 
 ## Модель ввода
 
@@ -86,7 +90,7 @@
 - `Tab` — переключение фокуса между `Owner` и `Receivers`;
 - `Up`/`Down` — перемещение выделения в активной панели;
 - `F5` — открыть TODO-модалку "burn/send";
-- `F6` — открыть TODO-модалку "send";
+- `F6` — открыть send-форму;
 - `F10` или `q` — выход из приложения.
 
 Когда открыта модалка:
@@ -113,8 +117,9 @@
   - первый аккаунт из `/v1/accounts` считается owner;
   - остальные считаются receivers;
   - это временно до появления явной модели "мой кошелек/контакты".
-- Модалки `F5/F6` не формируют и не отправляют tx; это MVP-заглушки.
-- Семантика modal actions (поля формы, валидации, отправка, подтверждения) пока TODO.
+- `F5` остаётся status-only.
+- `F6` выполняет one-window cross-domain send через roaming-intent API на native/source node и завершает поток подписанным Import (см. §Footer/F6 выше).
+- Relay/handoff на transport-уровне делает source `pwmd` через trusted configured seed; **HTTP target** для чтения счёта получателя и шага 5 задаётся **`PWM_TUI_TARGET_RPC`** при несовпадении портов с эвристикой. Ручной fallback остаётся CLI-only (`tx-handoff-register` + `tx-import`) и требует trusted peer context на target.
 - Источник truth данных для списков — только RPC ноды; локального профиля адресов в TUI пока нет.
 
 ## Быстрая карта расширения TUI

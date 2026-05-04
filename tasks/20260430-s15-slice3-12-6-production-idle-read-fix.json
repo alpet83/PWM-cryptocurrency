@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-6-production-idle-read-fix",
+  "title": "S15-S3.12.6: fix production peer idle-read handling",
+  "status": "in_progress",
+  "brief": "Узко исправить production stateful peer loops, где idle/no-data/read timeout может превращаться в `wire_read_failed` или `heartbeat_read_failed`. Не менять wire format и не делать широкий rewrite transport.",
+  "scope": [
+    "Править только production read-error handling вокруг `process_inbound_socket` и `run_seed_session`, плюс минимальные helpers/tests",
+    "Трактовать `wire_read_len_timeout`, `wire_read_payload_timeout`, elapsed timeout и при необходимости `WouldBlock` как idle/no-data, а не EOF/disconnect/protocol_error",
+    "Оставить закрытие сессии на настоящих ошибках: EOF/reset/write failure/decode failure/invalid frame/unexpected handshake frame",
+    "Улучшить close diagnostics так, чтобы при реальном close был виден точный low-level read/write error",
+    "Сохранить trust boundary, genesis guard, AccountViews freshness semantics и не начинать S3.13 federation table"
+  ],
+  "acceptance": [
+    "S3.12.5 peer-only harness остаётся PASS",
+    "Production two-node/stateful transport focused test держит несколько heartbeat intervals без `wire_read_failed` и `heartbeat_read_failed`",
+    "Live CY/DO smoke на двух реальных `pwmd` нодах PASS: нет steady reconnect/hello churn, session stable",
+    "Foreign account lookup проверяется через trusted peer path, если live session stable",
+    "Есть coding/testing/review artifacts и token usage в каждой delegation записи"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement narrow production idle-read handling fix in process_inbound_socket/run_seed_session.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "docs/reviews/sprint-15-s3-12-6-coding.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 42000,
+        "output": 6000,
+        "total": 48000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:36:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Run focused transport tests and live CY/DO smoke after S3.12.6 fix.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-6-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:44:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review S3.12.6 fix for correctness, safety, diagnostics, and test evidence.",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    }
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-12-6-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-6-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-6-review.md"
+  },
+  "commits": [],
+  "notes": "Started from S3.12.5 review: empty/read-timeout false network error hypothesis is likely; fix production loops without wire-format rewrite. Coding PASS recorded. Testing PARTIAL: focused checks pass, but live two-node smoke fails with recurring wire_decode_failed: u128 is not supported, causing reconnect churn."
+}

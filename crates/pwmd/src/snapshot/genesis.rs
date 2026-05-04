@@ -1,0 +1,281 @@
+//! Genesis JSON ingestion (`schema_version` 4) into snapshot genesis rows.
+
+use super::types::SnapshotGenesisRow;
+use ed25519_dalek::SigningKey;
+use pwm_core::genesis::{FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg};
+use pwm_core::hd::account_id_from_parts;
+use pwm_core::{open_wallet_secret_ciphertext, WALLET_KDF};
+use serde::Deserialize;
+use serde_json::Value;
+
+#[derive(Deserialize)]
+struct GenesisFileV4 {
+    schema_version: u32,
+    gen_cfg: GenesisCfgV4,
+    validator_keys: Vec<GenesisValidatorKeyV3>,
+}
+
+#[derive(Deserialize)]
+struct GenesisCfgV4 {
+    funding: GenesisFundingV4,
+    validators: GenesisValsV4,
+    #[serde(default)]
+    reward_policy: GenesisRewardV4,
+    block_reward: String,
+    marks_coeff: String,
+}
+
+#[derive(Deserialize)]
+struct GenesisFundingV4 {
+    accounts: Vec<GenesisRowV3>,
+}
+
+#[derive(Deserialize)]
+struct GenesisValsV4 {
+    set: Vec<GenesisValRowV4>,
+}
+
+#[derive(Deserialize)]
+struct GenesisValRowV4 {
+    acct_hex: String,
+    pubkey_hex: String,
+    der_idx: u32,
+}
+
+#[derive(Clone, Default, Deserialize)]
+struct GenesisRewardV4 {
+    #[serde(default)]
+    mode: GenesisRewardModeV4,
+}
+
+#[derive(Clone, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum GenesisRewardModeV4 {
+    #[default]
+    ToProducerAccount,
+}
+
+#[derive(Deserialize)]
+struct GenesisRowV3 {
+    acct_hex: String,
+    pubkey_hex: String,
+    der_idx: u32,
+    bal: String,
+}
+
+#[derive(Clone, Deserialize)]
+struct GenesisValidatorKeyV3 {
+    derivation_path: String,
+    enc_seed: GenesisEncSeedV3,
+}
+
+#[derive(Clone, Deserialize)]
+struct GenesisEncSeedV3 {
+    kdf: GenesisKdfV3,
+    aead: GenesisAeadV3,
+}
+
+#[derive(Clone, Deserialize)]
+struct GenesisKdfV3 {
+    name: String,
+    iters: u32,
+    salt_b64: String,
+}
+
+#[derive(Clone, Deserialize)]
+struct GenesisAeadV3 {
+    name: String,
+    nonce_b64: String,
+    ciphertext_b64: String,
+}
+fn hex32_from_hex(s: &str) -> Result<[u8; 32], String> {
+    let v = hex::decode(s.trim()).map_err(|e| format!("hex: {e}"))?;
+    if v.len() != 32 {
+        return Err("need 32-byte hex".into());
+    }
+    let mut a = [0u8; 32];
+    a.copy_from_slice(&v);
+    Ok(a)
+}
+
+fn parse_u128_json(v: &str, field: &str) -> Result<u128, String> {
+    v.trim()
+        .parse::<u128>()
+        .map_err(|e| format!("{field}: invalid u128 string: {e}"))
+}
+
+const GENESIS_SCHEMA_VERSION: u32 = 4;
+const VALIDATOR_DERIVATION_PATH: &str = "m/1000000'/1'";
+const VALIDATOR_DERIVATION_PATH_IDX: [u32; 2] = [1_000_000, 1];
+const GENESIS_AEAD_NAME: &str = "chacha20poly1305";
+const GENESIS_KDF_ITERS_MAX: u32 = 10_000_000;
+
+fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), String> {
+    let b: GenesisFileV4 = serde_json::from_value(raw)
+        .map_err(|e| format!("parse genesis v4 JSON: invalid v4 payload: {e}"))?;
+    if b.schema_version != GENESIS_SCHEMA_VERSION {
+        return Err(format!(
+            "parse genesis JSON: unsupported schema_version {}; supported: 4",
+            b.schema_version
+        ));
+    }
+    let mut rows = Vec::with_capacity(b.gen_cfg.funding.accounts.len());
+    for (i, row) in b.gen_cfg.funding.accounts.into_iter().enumerate() {
+        let acct = hex32_from_hex(&row.acct_hex)
+            .map_err(|e| format!("gen_cfg.funding.accounts[{i}].acct_hex: {e}"))?;
+        let pubkey = hex32_from_hex(&row.pubkey_hex)
+            .map_err(|e| format!("gen_cfg.funding.accounts[{i}].pubkey_hex: {e}"))?;
+        let bal = parse_u128_json(&row.bal, &format!("gen_cfg.funding.accounts[{i}].bal"))?;
+        rows.push(GRow {
+            acct,
+            pubkey,
+            der_idx: row.der_idx,
+            bal,
+        });
+    }
+    let mut set = Vec::with_capacity(b.gen_cfg.validators.set.len());
+    for (i, row) in b.gen_cfg.validators.set.into_iter().enumerate() {
+        let acct = hex32_from_hex(&row.acct_hex)
+            .map_err(|e| format!("gen_cfg.validators.set[{i}].acct_hex: {e}"))?;
+        let pubkey = hex32_from_hex(&row.pubkey_hex)
+            .map_err(|e| format!("gen_cfg.validators.set[{i}].pubkey_hex: {e}"))?;
+        set.push(VRow {
+            acct,
+            pubkey,
+            der_idx: row.der_idx,
+        });
+    }
+    let block_reward = parse_u128_json(&b.gen_cfg.block_reward, "gen_cfg.block_reward")?;
+    let marks_coeff = parse_u128_json(&b.gen_cfg.marks_coeff, "gen_cfg.marks_coeff")?;
+    let rew = match b.gen_cfg.reward_policy.mode {
+        GenesisRewardModeV4::ToProducerAccount => RewPol::ToProducerAccount,
+    };
+    Ok((
+        GenCfg {
+            funding: FundingCfg {
+                accounts: rows.clone(),
+            },
+            vals: ValCfg { set },
+            rew,
+            accounts: rows,
+            block_reward,
+            marks_coeff,
+        },
+        b.validator_keys,
+    ))
+}
+
+/// Load `gen_cfg` + encrypted validator keys (schema_version=4 only).
+pub fn load_genesis_bundle(
+    path: &std::path::Path,
+    genesis_passphrase: Option<&str>,
+) -> Result<(GenCfg, Vec<SigningKey>), String> {
+    let txt = std::fs::read_to_string(path).map_err(|e| format!("read genesis: {e}"))?;
+    let raw: Value = serde_json::from_str(&txt)
+        .map_err(|e| format!("parse genesis JSON: invalid JSON payload: {e}"))?;
+    let obj = raw
+        .as_object()
+        .ok_or_else(|| "parse genesis JSON: root must be an object".to_string())?;
+    let ver = obj
+        .get("schema_version")
+        .ok_or_else(|| "parse genesis JSON: missing schema_version (required: 4)".to_string())?;
+    let Some(v) = ver.as_u64() else {
+        return Err("parse genesis JSON: schema_version must be an unsigned integer".to_string());
+    };
+    if v != GENESIS_SCHEMA_VERSION as u64 {
+        return Err(format!(
+            "parse genesis JSON: unsupported schema_version {v}; supported: 4"
+        ));
+    }
+    let (cfg, validator_keys) = parse_genesis_v4(raw)?;
+    if cfg.vals.set.is_empty() {
+        return Err("gen_cfg.validators.set must not be empty".into());
+    }
+    if validator_keys.len() != cfg.vals.set.len() {
+        return Err("validator_keys length must match gen_cfg.validators.set".into());
+    }
+    let passphrase = genesis_passphrase.ok_or_else(|| {
+        "genesis passphrase is required for schema_version=4 (use --genesis-passphrase or PWM_GENESIS_PASSPHRASE)"
+            .to_string()
+    })?;
+    if passphrase.trim().is_empty() {
+        return Err("genesis passphrase must not be empty".to_string());
+    }
+    let mut sks = Vec::new();
+    for (i, key_row) in validator_keys.iter().enumerate() {
+        if key_row.derivation_path != VALIDATOR_DERIVATION_PATH {
+            return Err(format!(
+                "validator_keys[{i}].derivation_path must be {VALIDATOR_DERIVATION_PATH}"
+            ));
+        }
+        if key_row.enc_seed.kdf.name != WALLET_KDF {
+            return Err(format!(
+                "validator_keys[{i}].enc_seed.kdf.name: unsupported kdf '{}'",
+                key_row.enc_seed.kdf.name
+            ));
+        }
+        if key_row.enc_seed.kdf.iters > GENESIS_KDF_ITERS_MAX {
+            return Err(format!(
+                "validator_keys[{i}].enc_seed.kdf.iters exceeds safety cap ({GENESIS_KDF_ITERS_MAX})"
+            ));
+        }
+        if key_row.enc_seed.aead.name != GENESIS_AEAD_NAME {
+            return Err(format!(
+                "validator_keys[{i}].enc_seed.aead.name: unsupported aead '{}'",
+                key_row.enc_seed.aead.name
+            ));
+        }
+        let seed_vec = open_wallet_secret_ciphertext(
+            &key_row.enc_seed.aead.ciphertext_b64,
+            &key_row.enc_seed.kdf.salt_b64,
+            &key_row.enc_seed.aead.nonce_b64,
+            &key_row.enc_seed.kdf.name,
+            key_row.enc_seed.kdf.iters,
+            passphrase,
+        )
+        .map_err(|e| format!("validator_keys[{i}].enc_seed: {e}"))?;
+        if seed_vec.len() != 32 {
+            return Err(format!(
+                "validator_keys[{i}].enc_seed: seed must be 32 bytes"
+            ));
+        }
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&seed_vec);
+        let row = &cfg.vals.set[i];
+        if row.der_idx != VALIDATOR_DERIVATION_PATH_IDX[1] {
+            return Err(format!(
+                "gen_cfg.validators.set[{i}].der_idx must be {} for derivation path {VALIDATOR_DERIVATION_PATH}",
+                VALIDATOR_DERIVATION_PATH_IDX[1]
+            ));
+        }
+        let sk_bytes =
+            slip10_ed25519::derive_ed25519_private_key(&seed, &VALIDATOR_DERIVATION_PATH_IDX);
+        let sk = SigningKey::from_bytes(&sk_bytes);
+        let pk = sk.verifying_key().to_bytes();
+        if pk != row.pubkey {
+            return Err(format!(
+                "validator key {i}: derived pubkey does not match gen_cfg.validators.set[{i}].pubkey"
+            ));
+        }
+        let aid = account_id_from_parts(&pk, row.der_idx);
+        if aid != row.acct {
+            return Err(format!(
+                "validator key {i}: derived account id does not match gen_cfg.validators.set[{i}].acct"
+            ));
+        }
+        sks.push(sk);
+    }
+    Ok((cfg, sks))
+}
+
+pub(crate) fn snapshot_genesis_accounts(cfg: &GenCfg) -> Vec<SnapshotGenesisRow> {
+    cfg.funding
+        .accounts
+        .iter()
+        .map(|r| SnapshotGenesisRow {
+            acct: r.acct,
+            pubkey: r.pubkey,
+            der_idx: r.der_idx,
+        })
+        .collect()
+}

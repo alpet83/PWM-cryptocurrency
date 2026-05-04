@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "20260502-s15-hotfix-do-chain-reset-after-xshard",
+  "title": "S15 hotfix: DO node chain resets / snapshot unloadable after cross-shard tx",
+  "status": "done_conveyor",
+  "priority": "before_slice_4_snapshot_abstraction",
+  "artifacts": {
+    "plan": "docs/reviews/sprint-15-hotfix-do-after-xshard-plan.md",
+    "review": "docs/reviews/sprint-15-hotfix-do-after-xshard-review.md"
+  },
+  "symptom": "После межшардового перевода зона DO в TUI перестаёт корректно показывать цепочку; перезапуск pwmd DO даёт genesis height (snapshot не подхватывается или UI не тот RPC).",
+  "hypotheses": [
+    "validate_snapshot fails post-import → lifecycle leaves genesis inner",
+    "Neutral identity two nodes same state_root → shared pwm-data.json overwrite",
+    "TUI targets wrong RPC for DO tab",
+    "JSON/snapshot serde edge case after IMPORT/export_registry"
+  ],
+  "tasks_pwm_coding": [
+    "Воспроизвести: лог DO при старте после бага (ошибка load_snapshot).",
+    "Локализовать root cause в коде (pwmd lifecycle/snapshot/pwm-core replay).",
+    "Исправление + регрессионный тест (желательно round-trip snapshot после IMPORT в блоке).",
+    "cargo fmt; cargo test --workspace."
+  ],
+  "tasks_pwm_testing": [
+    "Подтвердить сценарий CY→DO руками или через e2e тест при наличии.",
+    "Негатив: два Neutral pwmd одного state_root — ожидаем разные файлы после фикса путей (если применимо)."
+  ],
+  "tasks_pwm_review": [
+    "Проверить отсутствие регресса replay determinism и документировать breaking изменения путей snapshot (если будут)."
+  ],
+  "checkpoint_followup": "После merge — использовать как базовый кейс для Slice 6b (checkpoint rollback)."
+}

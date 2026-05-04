@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "20260521-s15-slice-O1-wave18-pwmd-transport-health",
+  "title": "S15-O.1 wave18: pwmd transport health aggregation (§2.2 row #6 partial)",
+  "status": "done",
+  "brief": "Вынести агрегацию native/relay health из transport.rs в transport/health.rs: refresh_native_degraded_state, refresh_native_health, count_native_live_peers, trusted_relay_count и узкие приватные helper'ы только для них. Без изменения поведения. Ревью волны опционально; итог слайса — эксплуатационное тестирование (решение пользователя).",
+  "acceptance": ["cargo fmt", "cargo test -p pwmd", "cargo check --workspace"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "extract transport health module with preserved crate::transport paths",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/transport/health.rs",
+        "tasks/20260521-s15-slice-O1-wave18-pwmd-transport-health.json"
+      ],
+      "notes": "Mechanical extraction of native/relay health functions into transport/health.rs; preserved crate::transport imports.",
+      "tokens": { "source": "estimate", "total": 14000, "confidence": "low" },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["c3ab48b", "11a3b5d", "94bb7e5"],
+  "parent_chain": ["tasks/20260520-s15-slice-O1-wave17-pwmd-transport-peer-session.json"],
+  "artifacts": { "audit": "docs/CODEBASE_REFACTORING.md" },
+  "notes": "Серия волн до блокера; без обязательного pwm-review на каждую волну."
+}

@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "id": "20260528-s15-slice-O1-wave31-pwmd-transport-tests-split",
+  "title": "S15-O.1 wave31: split pwmd transport tests.rs into tests/ submodule tree",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C transport §2.2 continuation"],
+  "brief": "**Оркестратор:** pwm-coding → pwm-testing → pwm-review.\n\n**Цель:** механически заменить монолитный `crates/pwmd/src/transport/tests.rs` (~676 LOC) на каталог **`transport/tests/`** с `mod.rs` и **2–4** подфайлами по смыслу (напр. общий harness/helpers, интеграционные tokio-тесты, unit-тесты wire/decode). Внешний контракт для `transport.rs`: по-прежнему `#[cfg(test)] mod tests;` без изменения имён или набора тестов.\n\n**Ограничения:** только **#[cfg(test)]** код под `transport/tests/`; без правок прод-кода кроме минимального wiring в `transport.rs` если нужно; без смены семантики ассертов/хелперов.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwmd`, `cargo check --workspace`.\n\n**pwm-review:** по `docs/AGENT_PROMPT_review.md` — сохранить **`docs/reviews/...-wave31-...-review.md`**, обновить делегацию и при необходимости **`git commit`** только артефакты ревью + тикет.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "split transport/tests.rs into tests/*.rs modules; behavior-preserving",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/tests/mod.rs",
+        "crates/pwmd/src/transport/tests/harness.rs",
+        "crates/pwmd/src/transport/tests/production.rs",
+        "crates/pwmd/src/transport/tests/wire_decode.rs",
+        "crates/pwmd/src/transport/tests/peer_harness.rs",
+        "crates/pwmd/src/transport/tests.rs (removed)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 9000,
+        "total": 21000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T12:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwmd + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwmd",
+        "cargo check --workspace",
+        "Host Windows: chained via cmd /c \"cd /d P:\\\\opt\\\\docker\\\\PWM-cryptocurrency && cargo fmt --all -- --check && cargo test -p pwmd && cargo check --workspace\" → exit 0",
+        "pwmd: 194 lib + 3 bin tests passed"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4500,
+        "output": 1200,
+        "total": 5700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T14:30:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit tests split; commit review md + ticket rows per AGENT_PROMPT_review.md",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-wave31-transport-tests-split-review.md (approve with nits; файл записан оркестратором — субагент снова в Ask mode, коммит артефакта выполняет оркестратор)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 4200,
+        "total": 18200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T16:00:00Z"
+    }
+  ],
+  "commits": [
+    "14ab897206fbfd6c1aae3fc9665d3961001938b9",
+    "fccf93e67d30935cf52190eccc86bc371389e584",
+    "38ff111ccd4a1b699accc1c805a94572f73318d6"
+  ],
+  "parent_chain": ["tasks/20260527-s15-slice-O1-wave30-peer-session-seed-split.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.2",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave31-transport-tests-split-review.md"
+  },
+  "notes": "pwm-review: вердикт approve with nits; PARTIAL — Cursor Ask mode не дал записать файлы/`git commit`. Промпт `AGENT_PROMPT_review.md` обновлён: разрешены коммиты артефактов; для реальных коммитов субагент нужен в режиме Agent."
+}

@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "20260613-s15-slice-O1-pwmd-snapshot-split-s26",
+  "title": "S15-O.1 pwmd wave19: snapshot.rs split per §2.6 (CODEBASE_REFACTORING)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-O-checklist.md §C §2.4–2.6 — pwmd snapshot.rs §2.6",
+    "docs/CODEBASE_REFACTORING.md §2.6"
+  ],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review** → закрытие оркестратором.\n\n**Цель:** декомпозиция **`crates/pwmd/src/snapshot.rs`** (~1.6k строк) по **`docs/CODEBASE_REFACTORING.md` §2.6** в каталог **`snapshot/`**:\n- wire-типы / версии → **`snapshot/types.rs`** (или **`snapshot_types.rs`** внутри каталога);\n- load/save/validate snapshot → **`snapshot/io.rs`** или **`snapshot/store.rs`** (избегать путаницы с другими **`_io`** при желании);\n- genesis bundle / **`GenesisFileV4`** / расшифровка ключей → **`snapshot/genesis.rs`** (или **`genesis_loader.rs`**).\n\n**Контракт публичной поверхности `crate::snapshot::`:**\n- **`lib.rs`:** **`pub use snapshot::load_genesis_bundle;`** — сохранить.\n- **`bootstrap.rs`, `lifecycle.rs`, `relay.rs`, `api/common.rs`** — текущие **`use crate::snapshot::{…}`** должны собираться через фасад **`snapshot/mod.rs`** (**`pub use`**).\n- **`tests/prelude.rs`:** **`load_snapshot`, `save_snapshot`, `snapshot_genesis_accounts`, `SnapshotData`, `SnapshotRoamingWire`, `SNAPSHOT_VERSION`** — те же пути **`crate::snapshot::…`**.\n\n**Инварианты:** семантика снимков, genesis и roaming-wire без намеренных изменений.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwmd`, `cargo check --workspace`.\n\n**Ревью:** `docs/reviews/sprint-15-slice-O1-pwmd-snapshot-split-s26-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "split pwmd snapshot.rs into snapshot/ submodules per §2.6; facade",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/mod.rs",
+        "crates/pwmd/src/snapshot/types.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/genesis.rs",
+        "crates/pwmd/src/snapshot.rs (removed; replaced by directory module)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 18500,
+        "output": 9500,
+        "total": 28000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwmd + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo check --workspace",
+        "cargo test -p pwmd (194 lib + 3 integration)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate §2.6 snapshot split — export parity",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-pwmd-snapshot-split-s26-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": [
+    "a0662c608d8c7e69c8891783b40dfb59ddc8b83e",
+    "0de6ac4fd2d8fa0835d2a69a9251f2aaa51c037f"
+  ],
+  "parent_chain": [
+    "tasks/20260612-s15-slice-O1-pwmd-api-split-s25.json"
+  ],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.6",
+    "review_md": "docs/reviews/sprint-15-slice-O1-pwmd-snapshot-split-s26-review.md"
+  },
+  "notes": ""
+}

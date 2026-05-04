@@ -32,6 +32,8 @@ $env:PWM_RPC="http://127.0.0.1:3030"
 cargo run -p pwm-cli --bin pwm -- --help
 ```
 
+Опционально для CLI можно задать RPC timeout через `PWM_CLI_RPC_TIMEOUT_MS` (default `10000` ms, max `120000` ms; некорректные значения игнорируются).
+
 Если используется `cmd.exe`, аналог переменной:
 
 ```cmd
@@ -46,6 +48,8 @@ PowerShell (с той же RPC):
 $env:PWM_RPC="http://127.0.0.1:3030"
 cargo run -p pwm-tui --bin pwm-tui
 ```
+
+Для TUI timeout настраивается отдельной переменной `PWM_TUI_RPC_TIMEOUT_MS` (другой env, чем у CLI; default `3000` ms, max `120000` ms).
 
 Ожидание: TUI открывается, видны таблицы/статус, выход по `q` или `F10`.
 
@@ -133,11 +137,19 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/head"
 - команды `tx-init` и `tx-send` завершаются без фатальной ошибки;
 - нода доступна и продолжает отвечать;
 - в логе ноды есть следы обработки отправленных транзакций.
+- при проблеме nonce fetch (HTTP не-2xx/битый JSON/нет `nonce`) команда падает явной ошибкой вместо «тихого» `nonce=0`.
 
 Дополнительные policy-проверки для получателя:
 - позитив: `--to` в strict pretty и canonical bech32DX обе формы принимаются;
 - негатив: unknown/reserve/witness recipient отклоняются с явной ошибкой.
 - `--master` + `--domain` использовать только как dev override (не основной путь smoke).
+
+Negative expectation (cross-domain):
+- попытка cross-domain `tx-send` не заменяет roaming-flow и должна уходить в reject/операторский маршрут `tx-export -> tx-import`.
+- после roaming intent create проверяйте `GET /v1/roaming-intents/:id`: поля `relay_mode=manual_handoff_required` и `relay_hint` обязаны явно сообщать, что auto-relay пока не реализован.
+- для быстрой диагностики runtime-приема используйте `GET /v1/flow/recent` и убедитесь, что есть свежие `accepted:*`/`sealed:*` записи по вашему действию.
+
+Архитектурное напоминание (Sprint 15, closeout S3.12): упрощённый путь **«одного окна»** (частые опросы RPC / наблюдение чужого шарда через trusted peer там, где это включено) годится для **MVP/devnet** и ручных прогонов. Для массового продакшена этот паттерн **не масштабируется** и может **перегружать сеть**; целевое развитие — отдельные read-сервисы (explorer) и подписка клиента на обновления по адресам (см. `docs/reviews/sprint-15-s3-12-9-closeout.md`).
 
 ### E. Проверка TUI и обновления данных
 
@@ -175,3 +187,12 @@ Log excerpt: "..."
 - время запуска;
 - где выполнялось (PowerShell/cmd);
 - что помогло/не помогло при повторе.
+
+Отдельно для persistence ошибок:
+- если `POST /v1/tx` или `POST /v1/roaming-intents` вернули `500` с текстом про snapshot save, фиксируйте это как явный persistence-fail (это ожидаемое strict поведение, не silent успех);
+- приложите `GET /v1/status` (поля `phase`, `snapshot_error`, `snapshot_file`) и 1-3 строки из лога `pwmd snapshot file path=...`.
+
+## См. также
+
+- [tester-guide-cli-tui-scenarios.md](./tester-guide-cli-tui-scenarios.md) — два шарда (`pwmd` A/B), переключение `PWM_RPC`, сценарии CLI/TUI и burn path.
+- [rfc/9-crossdomain-roaming.md](./rfc/9-crossdomain-roaming.md) — текущий контракт roaming MVP (Sprint 13).

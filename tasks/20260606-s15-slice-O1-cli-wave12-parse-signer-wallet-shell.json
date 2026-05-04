@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "20260606-s15-slice-O1-cli-wave12-parse-signer-wallet-shell",
+  "title": "S15-O.1 pwm-cli wave12: cli_parse + signer + wallet_shell (thin main.rs §2.3)",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C pwm-cli §2.3"],
+  "brief": "**Оркестратор:** конвейер `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → фиксация ревью/тикета оркестратором.\n\n**Цель:** разгрузить **`crates/pwm-cli/src/main.rs`**, вынеся оставшиеся «общие» хелперы (не подкомандные match-ветви) в три модуля:\n1. **`cli_parse.rs`** — **`hex32`**, **`parse_domain`**, **`master_seed`**, парсинг адресов/URI/amount, **`resolve_tx_send_amount`**;\n2. **`signer.rs`** — **`TxSignerSource`**, **`derive_sender`**, **`load_sender_from_wallet`**, **`load_tx_signer_source`**;\n3. **`wallet_shell.rs`** — **`wallet_show_lines`**, защита wallet, доменные/derivation/bruteforce-профильные хелперы для **`cmd_wallet`**.\n\n**Инварианты:** **`Cli`/`Cmd`/`WalletCmd`/`WalletAccountCmd`** и **`exit_user_error`** в **`main.rs`**; поведение CLI без изменений.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**pwm-review:** `docs/reviews/sprint-15-slice-O1-cli-wave12-parse-signer-wallet-shell-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "add cli_parse, signer, wallet_shell; thin main.rs",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cli_parse.rs",
+        "crates/pwm-cli/src/signer.rs",
+        "crates/pwm-cli/src/wallet_shell.rs",
+        "crates/pwm-cli/src/main.rs",
+        "crates/pwm-cli/src/cmd_addr.rs",
+        "crates/pwm-cli/src/cmd_book.rs",
+        "crates/pwm-cli/src/cmd_genesis.rs",
+        "crates/pwm-cli/src/cmd_roaming.rs",
+        "crates/pwm-cli/src/cmd_tx.rs",
+        "crates/pwm-cli/src/cmd_wallet.rs",
+        "crates/pwm-cli/src/tests/mod.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T01:30:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check (внутри pwm-coding)",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-cli (141)",
+        "cargo check --workspace"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T01:35:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate wave12 modular split",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-wave12-parse-signer-wallet-shell-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T01:45:00Z"
+    }
+  ],
+  "commits": [
+    "8fd29adf1001deff7b764cbbc4e9d1621287498c",
+    "e74aac96afa527ba67e792fd9eb5e03a7d38fed6"
+  ],
+  "parent_chain": ["tasks/20260605-s15-slice-O1-cli-wave11-main-rpc-to-rpc_helpers.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3 — хвост main.rs после wave11",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-wave12-parse-signer-wallet-shell-review.md"
+  },
+  "notes": "Оркестратор: держать в контексте docs/AGENT_PROMPT_orchestrator.md. Второй SHA в commits[] — документирование закрытия волны."
+}

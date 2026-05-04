@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260525-s15-slice-O1-wave22-25-pwmd-transport-spawn-tests-bridges",
+  "title": "S15-O.1 waves22–25: pwmd transport spawn, dial export, tests split, bridges",
+  "status": "done",
+  "brief": "Wave22: transport/spawn.rs (spawn_* loops). Wave23: dial::attempt_seed_connect → pub(crate), pub(crate) use из transport.rs вместо обёртки. Wave24: transport/tests.rs + transport/trust_peer_test.rs под cfg(test). Wave25: transport/bridges.rs для classify_peer_for_hs / transport_outbound_slot → transport_tick без изменений вызовов.",
+  "acceptance": ["cargo fmt", "cargo test -p pwmd", "cargo check --workspace"],
+  "delegations": [
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "batch waves 22-25 transport decomposition",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/transport/spawn.rs",
+        "crates/pwmd/src/transport/trust_peer_test.rs",
+        "crates/pwmd/src/transport/tests.rs",
+        "crates/pwmd/src/transport/bridges.rs",
+        "crates/pwmd/src/transport/dial.rs"
+      ],
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["df79a13"],
+  "parent_chain": ["tasks/20260524-s15-slice-O1-wave21-pwmd-transport-handshake-incoming.json"],
+  "artifacts": { "audit": "docs/CODEBASE_REFACTORING.md" },
+  "notes": "transport.rs сведён к корню модулей и реэкспортам; приёмка слайса — эксплуатационное тестирование."
+}

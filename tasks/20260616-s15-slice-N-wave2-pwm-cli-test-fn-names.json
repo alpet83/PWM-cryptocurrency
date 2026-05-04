@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "id": "20260616-s15-slice-N-wave2-pwm-cli-test-fn-names",
+  "title": "S15-N wave2: pwm-cli test fn short names + docstrings",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-N-plan.md — wave N.2",
+    "docs/reviews/sprint-15-slice-N-checklist.md"
+  ],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review**.\n\n**Цель:** тестовый код **`pwm-cli`**:\n- **`crates/pwm-cli/src/tests/mod.rs`** (основной объём),\n- **`crates/pwm-cli/tests/*.rs`** (интеграционные, напр. `cli_smoke.rs`).\n\nПереименовать **`#[test]` fn** и **test-only** хелперы: **≤ 5 сегментов** `snake_case`; сценарий в **`///`** или **`//`** над функцией.\n\n**Вне скоупа этой волны:** inline **`#[cfg(test)] mod tests`** в других файлах crate (**`wallet/`**, **`bruteforce.rs`**) — отдельный тикет при необходимости.\n\n**Инварианты:** семантика тестов без изменений.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**Ревью:** `docs/reviews/sprint-15-slice-N-wave2-pwm-cli-test-fn-names-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "rename pwm-cli src/tests/mod.rs + tests/*.rs fn ≤5 segments + ///",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/tests/mod.rs — 81 #[test] переименованы; cli_smoke без изменений"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 11000,
+        "total": 39000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-cli (141 + 3 integration)",
+        "cargo check --workspace"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate N.2 pwm-cli rename-only + naming budget",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-N-wave2-pwm-cli-test-fn-names-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    }
+  ],
+  "commits": [
+    "2de256cf8d44646f179b52c0c6d49608140af11d",
+    "5f11691fc078ece98a1fda18a10e2a9e89164fc3"
+  ],
+  "parent_chain": [
+    "tasks/20260615-s15-slice-N-wave1-pwmd-test-fn-names.json"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-15-slice-N-wave2-pwm-cli-test-fn-names-review.md"
+  },
+  "notes": "Wave N.2 pwm-cli закрыта. Inline unit tests в других файлах crate — отдельная микроволна **N.3** или позже."
+}

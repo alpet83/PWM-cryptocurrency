@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-15-2-block-load-checkpoint-lazy-concept",
+  "title": "S15-S3.15.2: concept — checkpoint + lazy block load (review)",
+  "status": "completed",
+  "brief": "Архитектурный набросок (без обязательной реализации в этом слайсе): как ускорить старт ноды при большом числе блоков в JSON-снапшоте — чекпоинты состояния, отделение полных блоков от заголовков, lazy-load по диапазонам, совместимость с текущим `SnapshotData` и S15-S4 snapshot abstraction.",
+  "scope": [
+    "Только **pwm-review**: документ-концепт в `docs/reviews/sprint-15-s3-15-2-review.md`.",
+    "Учесть текущую модель: `SnapshotData.blocks: Vec<Block>` + `state` в `crates/pwmd/src/snapshot.rs`.",
+    "Связать с будущим S15-S4 (абстракция бэкенда снапшота), не дублировать полный дизайн S4.",
+    "Риски: консистентность replay, импорт/экспорт, автоснапшот."
+  ],
+  "acceptance": [
+    "Файл `docs/reviews/sprint-15-s3-15-2-review.md` с разделами: цели, варианты (checkpoint-only / headers+body store / lazy segments), границы MVP, open questions.",
+    "Тикет и спринт-индекс обновлены."
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Draft checkpoint + lazy-load concept for block snapshot startup.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-15-2-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T22:00:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "review": "docs/reviews/sprint-15-s3-15-2-review.md"
+  },
+  "commits": [],
+  "notes": "Предшественник: замечание в sprint-15-s3-15-1-review.md про линейный старт при тысячах блоков."
+}

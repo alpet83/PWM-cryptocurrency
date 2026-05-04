@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-16-xshard-balance-and-log-throttle",
+  "title": "S15-S3.16: cross-shard balance consistency + node log throttle",
+  "status": "completed",
+  "brief": "Симптом: TUI все шаги OK, списание 0.01 на source, целевой баланс не растёт (или кажется неизменным). Консоль pwmd: flood `sealed height` и `peer account views merged`.",
+  "findings": {
+    "pwm_testing": [
+      "Логика `relay_import`: POST импорта на target успешен, но на source не вызывался `mark_imported_by_export_id` — семантика опроса roaming и снапшота на source расходилась с фактом доставки импорта.",
+      "Проверка баланса: запрос `GET /v1/accounts` или конкретного счёта на **target RPC** после успешного потока; для foreign счётчиков смотреть `local_state_balance` / поля home lookup."
+    ],
+    "pwm_review": [
+      "Исправление source roaming после relay — необходимый инвариант для одного окна TUI.",
+      "Логи: sealed каждые 10 блоков; account views merged только при изменении счётчика changed.",
+      "Если баланс на target всё ещё не сходится — отдельно проверить сумму/комиссию в теле Import и инициализацию получателя на целевом шарде."
+    ],
+    "pwm_coding": [
+      "`relay.rs`: после успешного relay_import — mark_imported на source + flow + save_snapshot + InitState.",
+      "`lifecycle.rs`: sealed height лог только при h==1 или h%10==0.",
+      "`transport.rs`: HandshakeState.last_account_views_merge_logged — дедуп логов merge."
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Trace xshard balance + roaming status consistency",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-s3-16-testing.md"],
+      "tokens": { "source": "estimate", "total": 6000, "confidence": "low" },
+      "done_at": "2026-05-02T00:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Approve relay mirror + log throttle risks",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-s3-16-review.md"],
+      "tokens": { "source": "estimate", "total": 5500, "confidence": "low" },
+      "done_at": "2026-05-02T00:30:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "relay_import source mark; seal/account-views log throttle",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/relay.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/snapshot.rs",
+        "crates/pwmd/Cargo.toml"
+      ],
+      "tokens": { "source": "estimate", "total": 16000, "confidence": "low" },
+      "done_at": "2026-05-02T01:00:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "testing": "docs/reviews/sprint-15-s3-16-testing.md",
+    "review": "docs/reviews/sprint-15-s3-16-review.md",
+    "coding": "issues-report.md"
+  },
+  "notes": "DB/checkpoint оптимизация переносится на S4+ по плану пользователя."
+}

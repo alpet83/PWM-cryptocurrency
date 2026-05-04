@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "20260502-s15-slice-O1-wave13-pwmd-transport-peer-types",
+  "title": "S15-O.1 wave13: pwmd transport peer_types extraction",
+  "status": "done",
+  "brief": "Механически вынести peer-types кластер из crates/pwmd/src/transport.rs в отдельный модуль peer_types без изменения поведения.",
+  "acceptance": [
+    "peer-types кластер вынесен в crates/pwmd/src/transport/peer_types.rs, transport.rs подключает модуль с минимальным churn",
+    "cargo fmt",
+    "cargo test -p pwmd (или cargo test --workspace при необходимости)"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "S15-O.1 wave13 peer_types extraction",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/transport/peer_types.rs"
+      ],
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt --check, cargo test -p pwmd, cargo check --workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "notes": "Оркестратор: 197 тестов pwmd (194 lib + 3 bin); workspace check OK.",
+      "tokens": { "source": "estimate", "total": 1500, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Wave13 mechanical extraction + re-export hygiene",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-O1-wave13-review.md"],
+      "agent_id": "480dd66c-2cd5-4dc1-9320-ad37b20102f1",
+      "tokens": { "source": "estimate", "total": 8500, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["da29dc5", "fa4712e", "d516878"],
+  "parent_chain": ["tasks/20260514-s15-slice-O1-wave12-test-support-narrow-pub.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave13-review.md"
+  },
+  "notes": "Wave13 — row #1 из §2.2 transport decomposition.\nКонвейер закрыт синхронно: pwm-testing + pwm-review после pwm-coding.\n\ndelegations YAML:\n  - agent: pwm-coding\n    result: PASS\n  - agent: pwm-testing\n    result: PASS\n  - agent: pwm-review\n    result: PASS"
+}

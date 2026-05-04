@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "20260503-s15-slice-4-snapshot-store-abstraction",
+  "title": "Sprint15 Slice 4: snapshot persistence abstraction (JsonFile + Db placeholder)",
+  "status": "done_conveyor",
+  "artifacts": {
+    "plan": "docs/reviews/sprint-15-slice-4-plan.md",
+    "review": "docs/reviews/sprint-15-slice-4-review.md"
+  },
+  "scope_in": [
+    "Trait or enum SnapshotStore / SnapshotBackend with load(save) mirroring load_snapshot/save_snapshot semantics",
+    "JsonFile impl wrapping current crates/pwmd/src/snapshot/io.rs behavior unchanged",
+    "Wire PwmdConfig + lifecycle/bootstrap/relay/api/common to use abstraction; default remains JSON path",
+    "Optional Db variant: stub returning Err(\"not implemented\") OR omit enum variant until Slice 5 — choose minimal diff"
+  ],
+  "scope_out": [
+    "ClickHouse / SQL wiring",
+    "Relaxed validate_snapshot or wire format change"
+  ],
+  "acceptance": [
+    "cargo fmt --all",
+    "cargo test --workspace",
+    "pwm-testing delegated after coding",
+    "pwm-review delegated after testing"
+  ],
+  "depends_on": [
+    "20260502-s15-hotfix-do-chain-reset-after-xshard (snapshot replay handoff fix)"
+  ],
+  "notes": "Architecture anchor: docs/plans/sprint-15-architecture-genesis-consistency-and-db-snapshots.md §3."
+}

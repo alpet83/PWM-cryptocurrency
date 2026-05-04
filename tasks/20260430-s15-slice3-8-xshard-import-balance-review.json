@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-8-xshard-import-balance-review",
+  "title": "S15-S3.8: Cross-shard import/balance discrepancy review",
+  "status": "completed",
+  "brief": "Разобрать, почему при успешных стадиях relay/import баланс target DO может оставаться 0.",
+  "inputs": {
+    "source_node_logs": "terminals/1.txt",
+    "target_node_logs": "terminals/2.txt"
+  },
+  "deliverables": {
+    "review": "docs/reviews/sprint-15-s3-8-review.md"
+  }
+}

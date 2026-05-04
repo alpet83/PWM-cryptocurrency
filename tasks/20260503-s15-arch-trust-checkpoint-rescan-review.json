@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "id": "20260503-s15-arch-trust-checkpoint-rescan-review",
+  "title": "S15: архитектурное ревью — доверие чекпоинтам по умолчанию, полный рескан опционально",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "После межшардовой транзакции целевая нода снова перечитывает все epoch-файлы — против ожидания оптимизации. Текущий старт: полная сборка цепочки из эпох + replay, затем хвост в RAM. Запрошен комплексный пересмотр назначения epoch/checkpoint vs реального поведения и коррекция в сторону модели как у зрелых узлов: по умолчанию доверие сохранённому состоянию/чекпоинту, полная верификация цепочки — по флагу или офлайн. Контекст: высокая частота блоков (много блоков в минуту), но даже Bitcoin не читает сотни ГБ при каждом старте.",
+  "acceptance": [
+    "Один отчёт docs/reviews/*.md с разделами по AGENT_PROMPT_review.md (scope, requirements fit к целевому направлению, риски, тестируемость, вердикт)",
+    "Явное сопоставление: зачем эпохи и SNAP_CHK сейчас vs что реально происходит при load_snapshot / после xshard",
+    "Опции эволюции: trust checkpoint state + manifest tip_hash; incremental replay только при --verify-chain или degraded; компромиссы безопасности PoA vs Bitcoin",
+    "Participation / token estimate и git-handoff блок для оркестратора",
+    "Без правок production Rust; правки tasks/*.json и коммит отчёта по правилам pwm-review"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Архитектурное ревью trust-checkpoint-default vs full epoch rescan; отчёт в docs/reviews/",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-arch-trust-checkpoint-rescan-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T18:00:00Z"
+    }
+  ],
+  "commits": ["63a4200"],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-15-arch-trust-checkpoint-rescan-review.md",
+    "related_tasks": [
+      "tasks/20260503-s15-pwmd-startup-snapshot-telemetry.json",
+      "tasks/20260430-s15-slice3-15-2-block-load-checkpoint-lazy-concept.json"
+    ]
+  },
+  "notes": "Оркестратор: после pwm-review при необходимости pwm-coding RFC/implementation ticket отдельно."
+}

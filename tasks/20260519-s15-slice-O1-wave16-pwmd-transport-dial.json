@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "20260519-s15-slice-O1-wave16-pwmd-transport-dial",
+  "title": "S15-O.1 wave16: pwmd transport dial extraction (§2.2 row #4)",
+  "status": "done",
+  "brief": "Вынести HTTP seed dial кластер из transport.rs в transport/dial.rs: retryable_connect_outcome, build_local_node_hello, local_hello_signing_key, SeedStatus/PeerHelloAck, seed_base, attempt_seed_connect. Сохранить публичный API crate::transport::build_local_node_hello и доступ transport_tick к attempt_seed_connect без изменения поведения.",
+  "acceptance": ["cargo fmt", "cargo test -p pwmd", "cargo check --workspace"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "extract dial module with API-preserving reexports",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/transport/dial.rs"
+      ],
+      "agent_id": "93c3da28-f81f-4820-a3a8-698c699c1f57",
+      "tokens": { "source": "estimate", "total": 18000, "confidence": "low" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt, cargo test -p pwmd, cargo check --workspace (+ rerun after visibility fix)",
+      "result": "PASS",
+      "artifacts": [],
+      "notes": "Оркестратор: 197 тестов; повтор после 7c29822.",
+      "tokens": { "source": "estimate", "total": 1500, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "dial API paths + visibility hygiene",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-O1-wave16-review.md"],
+      "agent_id": "b907d9cf-83a9-408a-a19a-a68c188d918d",
+      "notes": "PARTIAL на 54c8618 (pub(crate) attempt_seed_connect); закрыто оркестратором коммитом 7c29822.",
+      "tokens": { "source": "estimate", "total": 7600, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["54c8618", "7c29822", "831049d"],
+  "parent_chain": ["tasks/20260518-s15-slice-O1-wave15-pwmd-transport-tick.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave16-review.md"
+  },
+  "notes": "Оркестратор: синхронный конвейер + узкий fix видимости после pwm-review.\nCQDS rebuild_index: pwm-coding отметил skip сессии MCP."
+}

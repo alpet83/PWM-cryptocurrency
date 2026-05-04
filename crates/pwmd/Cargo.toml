@@ -1,6 +1,6 @@
 [package]
 name = "pwmd"
-version = "0.1.1"
+version = "0.1.48"
 edition.workspace = true
 license.workspace = true
 
@@ -11,6 +11,19 @@ path = "src/lib.rs"
 name = "pwmd"
 path = "src/main.rs"
 
+[[bin]]
+name = "pwmd-ch-snap-import"
+path = "src/bin/ch_snap_import.rs"
+required-features = ["clickhouse-snapshot"]
+
+[[bin]]
+name = "pwmd-snap-repair"
+path = "src/bin/pwmd_snap_repair.rs"
+
+[features]
+default = []
+clickhouse-snapshot = []
+
 [dependencies]
 pwm-core = { path = "../pwm-core" }
 axum.workspace = true
@@ -20,10 +33,19 @@ serde_json.workspace = true
 hex.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+reqwest = { workspace = true }
 tower-http = { version = "0.5", features = ["cors"] }
 clap.workspace = true
 slip10_ed25519 = "0.1.3"
 ed25519-dalek.workspace = true
+rpassword = "7"
+url = "2"
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 tower = { version = "0.5", features = ["util"] }
+reqwest = { workspace = true }
+
+[[bench]]
+name = "snapshot_load"
+harness = false

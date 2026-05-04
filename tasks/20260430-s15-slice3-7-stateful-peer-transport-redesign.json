@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-7-stateful-peer-transport-redesign",
+  "title": "S15-S3.7: Stateful peer transport redesign",
+  "status": "completed",
+  "brief": "Перейти от HTTP-seed polling к отдельному peer listener и stateful TCP peer-соединениям с постоянным асинхронным каналом.",
+  "scope": [
+    "Разделить RPC и peer сокеты (отдельный listener)",
+    "Добавить peer port config: explicit flag/env + default rpc_port+100",
+    "Заложить stateful TCP peer loop с JSON message framing",
+    "Снизить log noise от периодических web-like reconnect",
+    "Сохранить/адаптировать trusted peer semantics без ослабления безопасности"
+  ],
+  "acceptance": [
+    "RPC порт не используется как peer handshake port",
+    "Пиры держат постоянное соединение, а не дергают HTTP каждые несколько секунд",
+    "Статус/логи явно показывают peer session state",
+    "Документация запуска двух нод обновлена"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-7-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-7-testing.md",
+    "review": "docs/reviews/sprint-15-s3-7-review.md"
+  }
+}

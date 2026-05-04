@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-5-peer-only-micronode-harness",
+  "title": "S15-S3.12.5: peer-only micro-node harness for stateful transport",
+  "status": "in_progress",
+  "brief": "Изолировать stateful peer protocol от ledger/API/TUI: написать микро-ноды/тестовый harness, где два потока/узла в одном приложении соединяются, обслуживают сокеты и поддерживают peer protocol. Главная гипотеза: чтение пустого/не готового socket buffer или read timeout может ошибочно трактоваться как обрыв соединения.",
+  "scope": [
+    "Собрать peer-only harness без ledger/API/TUI шума, используя текущие wire frame/read/write/session primitives там, где возможно",
+    "Смоделировать два reciprocal узла с inbound/outbound ролями, hello, heartbeat, HeartbeatAck, AccountViews/CrossShardFacts-like data frames",
+    "Логировать per-connection id, роль inbound/outbound, local/remote addr, frame sent/read и точный read/write error",
+    "Проверить гипотезу: empty buffer/read-not-ready/timeout не должен считаться EOF/disconnect/protocol_error",
+    "Не начинать federation table S3.13 и не делать широкий rewrite transport"
+  ],
+  "acceptance": [
+    "Harness воспроизводит live failure или доказывает стабильность peer-only protocol минимум 5 heartbeat intervals",
+    "Есть deterministic assertions: zero unexpected wire_read_failed, zero heartbeat_read_failed, no reconnect churn under idle socket",
+    "Если failure воспроизведён, report содержит точный low-level error и sequence frame events перед close",
+    "Если failure не воспроизведён, report явно сужает область причины до full-app integration вокруг transport",
+    "Есть coding/testing/review artifacts и token usage в каждой delegation записи"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement S15-S3.12.5 peer-only micro-node harness to isolate socket empty-buffer/read-timeout vs disconnect handling.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "docs/reviews/sprint-15-s3-12-5-coding.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 52000,
+        "output": 4200,
+        "total": 56200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:05:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Run S3.12.5 harness and focused transport checks; validate failure reproduction or stable idle behavior.",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review S3.12.5 harness quality, diagnostic value, and next root-cause/fix recommendation.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-5-review.md",
+        "tasks/20260430-s15-slice3-12-5-peer-only-micronode-harness.json",
+        "docs/reviews/sprint-15-s3-12-5-coding.md",
+        "docs/reviews/sprint-15-s3-12-4-review.md",
+        "docs/reviews/sprint-15-s3-12-4-testing.md",
+        "tmp/s15-s3-12-4-testing/alt-node1.out.log",
+        "tmp/s15-s3-12-4-testing/alt-node2.out.log",
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/lib.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 42000,
+        "output": 3600,
+        "total": 45600,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:18:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-12-5-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-5-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-5-review.md"
+  },
+  "commits": [],
+  "notes": "Started from S3.12.4 request-changes review and user hypothesis that an empty socket buffer/read-not-ready may be misread as connection break. Coding PASS: peer-only harness stays stable across idle timeout and 5 heartbeat intervals. Review result: hypothesis likely; production loops can still turn idle/read timeout into wire_read_failed or heartbeat_read_failed. Next: S3.12.6 narrow fix."
+}

@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "20260614-s15-module-banners-test-names-style",
+  "title": "S15: English //! module banners + follow-up review of test naming (≤5 words)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** (при необходимости) → **pwm-review**.\n\n**Часть 1 — pwm-coding (этот тикет):** по **`docs/AGENT_PROMPT_coding.md`** §**Micro-modular layout** и **`//!` module banner**: добавить **минимальные англ. шапки `//!`** (1 строка, максимум 2 при острой необходимости) в **`*.rs`** без содержательного `//!`, по приоритету:\n1. `crates/pwmd/src/api/`, `snapshot/`, затем остальной `pwmd/src` (включая `transport/` поддеревья),\n2. `crates/pwm-cli/src/` (в т.ч. `wallet/`),\n3. `crates/pwm-tui/src/`,\n4. `crates/pwm-core/src/`.\nПропускать файлы, где уже есть осмысленный модульный док-комментарий сверху; vendored/generated не трогать.\nСемантику не менять; только комментарии + при необходимости импорт-порядок после **`cargo fmt`**.\n**Приёмка coding:** `cargo fmt --all -- --check`, `cargo check --workspace`.\n\n**Часть 2 — pwm-review (после merge коммита coding):** по **`docs/AGENT_PROMPT_review.md`** §Style — аудит **тестового кода**: `#[test]`, `#[cfg(test)]`, `crates/*/tests/**`, `**/src/tests/**` на соответствие **≤ 5 слов** (`snake_case` сегментов), как prod + **`AGENT_PROMPT_testing.md`** §Naming; отчёт **`docs/reviews/sprint-15-module-banners-test-names-review.md`**; вердикт PASS/PARTIAL + список нарушителей или подтверждение чистоты по выборке/полному скану.\n\n**Родительский контекст:** закрепление стиля декомпозиции slice **O / O.1** (промпты обновлены оркестратором в том же батче).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "//! banners EN across crates per AGENT_PROMPT_coding §Micro-modular",
+      "result": "PASS",
+      "artifacts": [
+        "57 *.rs: crates/pwmd/src (api/handlers_tx banner expanded; bootstrap–wire_serde; snapshot/*; tests/*; transport/** incl. peer_session seed paths); crates/pwm-cli/src (+wallet/, tests/mod.rs); crates/pwm-tui/src (+main.rs); crates/pwm-core/src root modules",
+        "Commit 7caef1a — comments-only + rustfmt; cargo fmt --check + cargo check --workspace OK; task JSON handoff committed as child of 7caef1a",
+        "CQDS cq_files_ctl rebuild_index project_id=5 background=true (enqueue duplicate acceptable)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 38000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T17:05:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "optional fmt/workspace tests if orchestrator asks",
+      "result": "PASS",
+      "artifacts": [
+        "Приёмка: частично через последующие прогоны оркестратора (`cargo check`, `cargo test -p pwmd` при slice N); полный workspace на Windows блокируется локом pwm-tui.exe — см. заметки pwm-review.",
+        "Владелец подтвердил сохранность основной функциональности после баннеров."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "test fn/helpers ≤5 words + banners spot-check vs ticket",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-module-banners-test-names-review.md",
+        "Follow-up: микро-слайс S15-N (волна N.1 pwmd test names закрыта отдельным тикетом)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 11500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    }
+  ],
+  "commits": [
+    "7caef1ad48483f72cbafb62acbbe97c7caccfd7c",
+    "a9917dc14a2477b50139d9f4b7d654feb5c86a9d",
+    "3b35554d186ba9bbb88f6a77d326ee1e7510161d"
+  ],
+  "parent_chain": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-15-module-banners-test-names-review.md"
+  },
+  "notes": "Часть 2 по именам тестов закрыта вердиктом PARTIAL с выносом исправлений в S15-N волнами. Необязательный §6.2 slice O пользователь оставил открытым."
+}

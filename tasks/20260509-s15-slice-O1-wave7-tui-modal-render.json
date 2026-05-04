@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260509-s15-slice-O1-wave7-tui-modal-render",
+  "title": "S15-O.1 wave7: tui_loop modal / overlay render helpers",
+  "status": "done",
+  "brief": "Вынесены render_info_modal, render_history_overlay, render_send_modal из term.draw; только рендер, без keyboard refactor.",
+  "acceptance": ["≥2 modal helpers", "pwm-testing PASS"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Modal overlay helpers in tui_loop.rs",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-tui/src/tui_loop.rs"],
+      "tokens": { "source": "estimate", "total": 8200, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt --check, test pwm-tui 88, workspace check",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 400, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Parity wave7 modal extraction",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 3650, "confidence": "medium" },
+      "done_at": "2026-05-01"
+    }
+  ],
+  "commits": ["3f8af6f", "95d1fda"],
+  "notes": "След.: unlock/encrypt/book_prompt render helpers или §6.2 тесты."
+}

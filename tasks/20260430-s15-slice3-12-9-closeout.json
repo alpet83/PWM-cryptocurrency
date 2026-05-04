@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-9-closeout",
+  "title": "S15-S3.12.9: closeout S3.12 + one-window scalability caveat",
+  "status": "done",
+  "brief": "Закрыть трек S3.12 документально: итог слайсов, явное предупреждение что режим «одного окна» (trusted peer + RPC опрос) временный для MVP и не масштабируется; для зрелых релизов — centralized explorer / подписка клиента по адресам. Federation HTTP остаётся в S3.13.",
+  "scope": [
+    "Добавить closeout артефакт sprint-15-s3-12-9-closeout.md",
+    "Синхронизировать RFC 9, GEO-SHARDING, sprint-15-checklist, tester-guide-devnet-smoke",
+    "Обновить sprint tracker и родительский тикет S3.12"
+  ],
+  "acceptance": [
+    "Документы содержат явную формулировку временности и риска перегрузки сети для one-window path",
+    "Указано целевое направление post-MVP (explorer + подписка)",
+    "Тикеты/tracker отражают завершение трека S3.12"
+  ],
+  "delegations": [],
+  "artifacts": {
+    "closeout_md": "docs/reviews/sprint-15-s3-12-9-closeout.md"
+  },
+  "commits": [],
+  "notes": "Orchestrator-only documentation slice; no coding delegation."
+}

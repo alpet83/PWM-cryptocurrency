@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "20260518-s15-slice-O1-wave15-pwmd-transport-tick",
+  "title": "S15-O.1 wave15: pwmd transport_tick extraction (§2.2 row #3)",
+  "status": "done",
+  "brief": "Вынести кластер tick/scheduling из transport.rs в transport/transport_tick.rs: run_transport_tick(_with), refresh_real_tick_state, seed rotation/collect_due_seed_attempts, reconnect/runaway/soak helpers, apply_seed_attempt_result, apply_transport_peer_result, deterministic_seed_jitter_ms и узкие зависимости (compute/backoff/retry_delay, enqueue_seed_by_last_peer_class если только для tick). Опционально run_real_transport_tick остаётся в transport.rs и делегирует в модуль или переносится целиком с вызовом super::attempt_seed_connect — без изменения поведения.",
+  "acceptance": ["cargo fmt", "cargo test -p pwmd", "cargo check --workspace"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "transport_tick module extraction + API-preserving reexports",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/transport/transport_tick.rs"
+      ],
+      "agent_id": "421b0ae0-50c2-47be-8889-acfd25ad8b98",
+      "notes": "run_real_transport_tick в модуле; attempt_seed_connect остаётся в transport.rs.",
+      "tokens": { "source": "estimate", "total": 16000, "confidence": "low" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt --check, cargo test -p pwmd, cargo check --workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "notes": "Оркестратор: 197 тестов pwmd; workspace OK.",
+      "tokens": { "source": "estimate", "total": 1500, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "tick extraction boundaries + API preservation",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-O1-wave15-review.md"],
+      "agent_id": "4e1fbdc0-dc77-4201-8fa9-4b71ca7a37df",
+      "tokens": { "source": "estimate", "total": 26900, "confidence": "low" },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["1b62851", "e04984f"],
+  "parent_chain": ["tasks/20260517-s15-slice-O1-wave14-pwmd-transport-metrics.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave15-review.md"
+  },
+  "notes": "Синхронный конвейер: pwm-coding → pwm-testing (оркестратор) → pwm-review.\nCQDS rebuild_index bg: duplicate enqueue."
+}

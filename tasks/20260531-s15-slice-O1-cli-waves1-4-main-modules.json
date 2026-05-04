@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "id": "20260531-s15-slice-O1-cli-waves1-4-main-modules",
+  "title": "S15-O.1 pwm-cli waves1–4: split main.rs into cli_config, rpc_helpers, cmd_key, cmd_genesis (§2.3 start)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-O-checklist.md §C декомпозиция pwm-cli main §2.3"
+  ],
+  "brief": "**Оркестратор:** составной заход **pwm-coding** (3–4 механических вынесения за одну итерацию).\n\n**Цель по `docs/CODEBASE_REFACTORING.md` §2.3:** из **`crates/pwm-cli/src/main.rs`** вынести в отдельные модули минимум:\n1. **`cli_config.rs`** — таймаут RPC, **`http_client_for_rpc`**, **`resolve_wallet_out_path`**, константы (**`DEFAULT_WALLET_OUT_REL`**, **`RPC_CLIENT_FALLBACK_WARNED`**), всё что относится к конфигу клиента до больших блоков `Cli` / `Cmd`;\n2. **`rpc_helpers.rs`** — **`truncate_rpc_body_hint`**, **`map_reqwest_err`**, **`resolve_genesis_passphrase`**, парсеры JSON nonce/init/meta, **`AccountLookupMeta`**, **`nonce_404_account_hint`**;\n3. **`cmd_key.rs`** — обработка подкоманд key-gen (**`KeyGen`**);\n4. **`cmd_genesis.rs`** — genesis-build / genesis-export handlers в первой порции.\n\n**Инварианты:** поведение CLI не менять; **`#[cfg(test)] mod tests`** резолвится в **`src/tests/mod.rs`** (без **`#[path]`**); публичный binary API без расширения.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**pwm-review:** `docs/reviews/sprint-15-slice-O1-cli-waves1-4-main-modules-review.md` + финальный блок PowerShell с комментарием `# git-handoff` по `AGENT_PROMPT_review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "extract cli_config + rpc_helpers + cmd_key + cmd_genesis from pwm-cli main.rs",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cli_config.rs",
+        "crates/pwm-cli/src/rpc_helpers.rs",
+        "crates/pwm-cli/src/cmd_key.rs",
+        "crates/pwm-cli/src/cmd_genesis.rs",
+        "crates/pwm-cli/src/main.rs",
+        "crates/pwm-cli/src/tests/mod.rs",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T12:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + cargo check workspace",
+      "result": "PASS",
+      "artifacts": [
+        "delegated to pwm-coding run; orchestrator spot-check: cargo fmt --check and cargo test -p pwm-cli align with PASS"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 1500,
+        "output": 400,
+        "total": 1900,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T20:10:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit module split + git-handoff",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-waves1-4-main-modules-review.md (оркестратор по сводке pwm-coding / локальной проверке)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": "2026-05-02T20:15:00Z"
+    }
+  ],
+  "commits": [
+    "67a6945d1d0283dcbf995409373347e12328026f",
+    "a462ab226559a3ff981c234db243793c0ce14c19",
+    "67a7f449b8ad4f39c2765c36d211b5a9f3cde52e",
+    "7bcf2afccdb0d6261139608dfcc90fd930c6c349"
+  ],
+  "parent_chain": ["tasks/20260530-s15-slice-O1-waves33-36-pwmd-lib-inline-tests-split.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-waves1-4-main-modules-review.md"
+  },
+  "notes": "pwm-review: PARTIAL — оркестратор записал краткий review по сводке pwm-coding без отдельного прогона pwm-review в Agent mode. После pwm-coding исправлен компил тестов: `67a7f449b8ad4f39c2765c36d211b5a9f3cde52e` (WalletAccountEntry в tests/mod). Размещение тестов: `src/tests/mod.rs` (без #[path])."
+}

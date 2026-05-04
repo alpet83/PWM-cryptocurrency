@@ -1,3 +1,5 @@
+//! Thin crypto primitives: BLAKE3 hashing and Ed25519 sign/verify helpers.
+
 use blake3::Hasher;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 

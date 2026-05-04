@@ -1,0 +1,17 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice12-docs-sync",
+  "title": "Sprint 14 Slice 12: docs sync and consistency",
+  "status": "in_progress",
+  "mvp_checklist": ["Sprint 14 / Slice 12"],
+  "brief": "Полный review docs на консистентность с v4/genesis/cli изменениями + исправление нестыковок.",
+  "delegations": [
+    {"agent": "pwm-review", "prompt_summary": "Find doc inconsistencies against current implementation.", "done_at": null},
+    {"agent": "pwm-coding", "prompt_summary": "Apply minimal docs fixes and sync wording/examples.", "done_at": null},
+    {"agent": "pwm-testing", "prompt_summary": "Verify docs consistency claims and examples.", "done_at": null},
+    {"agent": "pwm-review", "prompt_summary": "Final independent docs review.", "done_at": null}
+  ],
+  "commits": [],
+  "artifacts": {"review_md": null, "coding_md": null, "testing_md": null, "final_review_md": null},
+  "notes": "User flagged possible port mismatch 3040 vs 3030 in GENESIS_BLOCK.md"
+}

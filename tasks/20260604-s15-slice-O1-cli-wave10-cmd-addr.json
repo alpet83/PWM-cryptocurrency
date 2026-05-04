@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "id": "20260604-s15-slice-O1-cli-wave10-cmd-addr",
+  "title": "S15-O.1 pwm-cli wave10: cmd_addr (§2.3 row 4)",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C pwm-cli §2.3"],
+  "brief": "**Цель (`CODEBASE_REFACTORING.md` §2.3 ряд 4):** модуль **`cmd_addr.rs`** для **`addr-derive`** и **`addr-bruteforce`**.\n\n**Состав:** публичные для тестов хелперы **`bruteforce_resume_index`**, **`fmt_addr_bruteforce_results`**, **`persist_wallet_account_output`**, **`is_rpc_unavailable_error`**; **`run_addr_derive`** / **`run_addr_bruteforce`**; авто **`tx-init`** после bruteforce остаётся в модуле.\n\n**Инварианты:** без изменения CLI-поведения.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**pwm-review:** `docs/reviews/sprint-15-slice-O1-cli-wave10-cmd-addr-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "cmd_addr: AddrDer + AddrBruteforce + helpers; fix crate imports",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cmd_addr.rs",
+        "crates/pwm-cli/src/main.rs",
+        "crates/pwm-cli/src/tests/mod.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 45000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T22:30:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-cli (141)",
+        "cargo check --workspace",
+        "verification run by orchestrator on Windows/PowerShell"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 1500,
+        "output": 400,
+        "total": 1900,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T22:40:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit cmd_addr extraction + pub(crate) reexports",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-wave10-cmd-addr-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T22:45:00Z"
+    }
+  ],
+  "commits": [
+    "759284e9d2d592e80337e7b3c0cb082d0ffa5960",
+    "9bda0a501d082a01a36017cd4b4664ae926bad16"
+  ],
+  "parent_chain": ["tasks/20260603-s15-slice-O1-cli-wave9-cmd-offchain.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3 row 4",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-wave10-cmd-addr-review.md"
+  },
+  "notes": "SHA: рефакторинг (`759284e`) и документирование закрытия (`9bda0a5`)."
+}

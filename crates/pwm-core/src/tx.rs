@@ -1,5 +1,8 @@
+//! Signed transaction bodies, validation, and hashing helpers shared by crates.
+
 use crate::crypto::{blake3_32, sign, verify};
 use crate::hd::{account_id_from_parts, domain_of_account_id};
+use crate::state::ExportProvenance;
 use crate::types::AccountId;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
@@ -26,6 +29,32 @@ pub enum TxBody {
         mark_amount: u128,
         beneficiary: Option<AccountId>,
     },
+    Export {
+        to: AccountId,
+        target_domain: u16,
+        amount: u128,
+        fee: u128,
+    },
+    Import {
+        to: AccountId,
+        amount: u128,
+        export_id: [u8; 32],
+    },
+}
+
+impl TxBody {
+    /// Canonical fee view used by policy checks and state invariants.
+    /// Burn-mark flow is fixed to zero fee in Sprint 8 baseline.
+    pub fn fee_amount(&self) -> u128 {
+        match self {
+            TxBody::Transfer { fee, .. } | TxBody::Export { fee, .. } => *fee,
+            TxBody::Init { .. }
+            | TxBody::Stake { .. }
+            | TxBody::Unstake { .. }
+            | TxBody::BurnMark { .. }
+            | TxBody::Import { .. } => 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,12 +64,17 @@ pub struct SignedTx {
     pub derivation_index: u32,
     pub nonce: u64,
     pub body: TxBody,
+    /// Optional embedded provenance for target-side IMPORT replay determinism.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_provenance: Option<ExportProvenance>,
     /// Ed25519 sig, 64 bytes.
     #[serde(with = "crate::ser_bin::sig64")]
     pub signature: [u8; 64],
 }
 
 impl SignedTx {
+    pub const EXPORT_OUTPUT_INDEX: u32 = 0;
+
     pub fn computed_account_id(&self) -> AccountId {
         account_id_from_parts(&self.signer_pk, self.derivation_index)
     }
@@ -86,6 +120,37 @@ impl SignedTx {
                     None => v.push(0),
                 }
             }
+            TxBody::Export {
+                to,
+                target_domain,
+                amount,
+                fee,
+            } => {
+                v.push(6);
+                v.extend_from_slice(to);
+                v.extend_from_slice(&target_domain.to_le_bytes());
+                v.extend_from_slice(&amount.to_le_bytes());
+                v.extend_from_slice(&fee.to_le_bytes());
+            }
+            TxBody::Import {
+                to,
+                amount,
+                export_id,
+            } => {
+                v.push(7);
+                v.extend_from_slice(to);
+                v.extend_from_slice(&amount.to_le_bytes());
+                v.extend_from_slice(export_id);
+                match &self.import_provenance {
+                    Some(p) => {
+                        v.push(1);
+                        v.extend_from_slice(&p.to);
+                        v.extend_from_slice(&p.target_domain.to_le_bytes());
+                        v.extend_from_slice(&p.amount.to_le_bytes());
+                    }
+                    None => v.push(0),
+                }
+            }
         }
         v
     }
@@ -97,6 +162,20 @@ impl SignedTx {
     pub fn verify_sig(&self) -> bool {
         let msg = self.signing_message();
         verify(&self.signer_pk, &msg, &self.signature)
+    }
+
+    /// Deterministic identifier for source-side export commit:
+    /// hash(source_domain || tx_hash || output_index || nonce).
+    pub fn export_id(&self) -> Option<[u8; 32]> {
+        let TxBody::Export { .. } = &self.body else {
+            return None;
+        };
+        let mut v = Vec::new();
+        v.extend_from_slice(&self.domain_code.to_le_bytes());
+        v.extend_from_slice(&self.tx_hash());
+        v.extend_from_slice(&Self::EXPORT_OUTPUT_INDEX.to_le_bytes());
+        v.extend_from_slice(&self.nonce.to_le_bytes());
+        Some(blake3_32(&v))
     }
 
     pub fn sign_body(
@@ -113,11 +192,22 @@ impl SignedTx {
             derivation_index,
             nonce,
             body,
+            import_provenance: None,
             signature: [0u8; 64],
         };
         let msg = tx.signing_message();
         tx.signature = sign(signing_key, &msg);
         tx
+    }
+
+    pub fn set_import_provenance_signed(
+        &mut self,
+        signing_key: &SigningKey,
+        provenance: Option<ExportProvenance>,
+    ) {
+        self.import_provenance = provenance;
+        let msg = self.signing_message();
+        self.signature = sign(signing_key, &msg);
     }
 }
 
@@ -130,7 +220,63 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
     if domain_of_account_id(&aid) != tx.domain_code {
         return Err(TxError::DomainMismatch);
     }
+    if let TxBody::Transfer { to, .. } = &tx.body {
+        if *to == aid {
+            return Err(TxError::InvalidTransfer);
+        }
+    }
     Ok(())
+}
+
+/// Source-only burn context: beneficiary must stay in sender's domain-hi boundary.
+pub fn burn_context_is_source_domain(tx: &SignedTx) -> bool {
+    match &tx.body {
+        TxBody::BurnMark {
+            beneficiary: Some(to),
+            ..
+        } => domain_of_account_id(to).to_be_bytes()[0] == tx.domain_code.to_be_bytes()[0],
+        _ => true,
+    }
+}
+
+pub fn same_hi_domain(from: &AccountId, to: &AccountId) -> bool {
+    domain_of_account_id(from).to_be_bytes()[0] == domain_of_account_id(to).to_be_bytes()[0]
+}
+
+/// Source-side export context checks: explicit cross-domain route and recipient domain coherence.
+pub fn export_context_is_valid(tx: &SignedTx) -> bool {
+    match &tx.body {
+        TxBody::Export {
+            to,
+            target_domain,
+            amount,
+            ..
+        } => {
+            if *amount == 0 {
+                return false;
+            }
+            let src_hi = tx.domain_code.to_be_bytes()[0];
+            let dst_hi = target_domain.to_be_bytes()[0];
+            if src_hi == dst_hi {
+                return false;
+            }
+            domain_of_account_id(to).to_be_bytes()[0] == dst_hi
+        }
+        _ => true,
+    }
+}
+
+/// Target-side import context checks.
+pub fn import_context_is_valid(tx: &SignedTx) -> bool {
+    match &tx.body {
+        TxBody::Import { to, amount, .. } => {
+            if *amount == 0 {
+                return false;
+            }
+            domain_of_account_id(to).to_be_bytes()[0] == tx.domain_code.to_be_bytes()[0]
+        }
+        _ => true,
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -143,6 +289,10 @@ pub enum TxError {
     NoAccount,
     #[error("account not initialized")]
     NotInitialized,
+    #[error("recipient account not found")]
+    RecipientMissing,
+    #[error("recipient account not initialized")]
+    RecipientNotInitialized,
     #[error("bad nonce")]
     BadNonce,
     #[error("insufficient balance")]
@@ -153,11 +303,21 @@ pub enum TxError {
     AlreadyInit,
     #[error("invalid transfer")]
     InvalidTransfer,
+    #[error("invalid export")]
+    InvalidExport,
+    #[error("invalid import")]
+    InvalidImport,
+    #[error("duplicate import")]
+    DuplicateImport,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_tx_shape, SignedTx, TxBody, TxError};
+    use super::{
+        burn_context_is_source_domain, export_context_is_valid, import_context_is_valid,
+        same_hi_domain, validate_tx_shape, SignedTx, TxBody, TxError,
+    };
+    use crate::hd::domain_of_account_id;
     use ed25519_dalek::SigningKey;
     use slip10_ed25519::derive_ed25519_private_key;
 
@@ -166,19 +326,212 @@ mod tests {
         (SigningKey::from_bytes(&sk_bytes), 0)
     }
 
+    /// Regulatory domain `0x2C00` rejects init at wrong lo byte (formerly `validate_tx_shape_accepts_regulatory_init_lo_zero`).
     #[test]
-    fn validate_tx_shape_accepts_regulatory_init_lo_zero() {
+    fn reg_init_lo0_bad_shape() {
         let (sk, idx) = signer(&[31u8; 32]);
         let tx = SignedTx::sign_body(&sk, 0x2C00, idx, 0, TxBody::Init { index: 0, flags: 0 });
         let err = validate_tx_shape(&tx).expect_err("domain mismatch is expected in this fixture");
         assert!(matches!(err, TxError::DomainMismatch));
     }
 
+    /// Regulatory `0x2C01` rejects init when signer lo mismatches (formerly `validate_tx_shape_accepts_regulatory_init_lo_non_zero`).
     #[test]
-    fn validate_tx_shape_accepts_regulatory_init_lo_non_zero() {
+    fn reg_init_lo1_bad_shape() {
         let (sk, idx) = signer(&[32u8; 32]);
         let tx = SignedTx::sign_body(&sk, 0x2C01, idx, 0, TxBody::Init { index: 0, flags: 0 });
         let err = validate_tx_shape(&tx).expect_err("domain mismatch is expected in this fixture");
         assert!(matches!(err, TxError::DomainMismatch));
+    }
+
+    /// `BurnMark` fee amount is zero (formerly `fee_amount_is_zero_for_burn_mark`).
+    #[test]
+    fn fee_zero_for_burn_mark() {
+        let body = TxBody::BurnMark {
+            mark_amount: 1,
+            beneficiary: None,
+        };
+        assert_eq!(body.fee_amount(), 0);
+    }
+
+    /// Self-transfer shape check fails early (formerly `validate_tx_shape_rejects_self_transfer`).
+    #[test]
+    fn shape_reject_xfer_self() {
+        let (sk, idx) = signer(&[55u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            0,
+            TxBody::Transfer {
+                to: aid,
+                amount: 1,
+                fee: 1,
+            },
+        );
+        let err = validate_tx_shape(&tx).expect_err("self-transfer must be rejected");
+        assert!(matches!(err, TxError::InvalidTransfer));
+    }
+
+    /// Burn beneficiary on source hi-byte passes context check (formerly `burn_context_allows_source_domain_beneficiary`).
+    #[test]
+    fn ben_same_shard_ok() {
+        let (sk, idx) = signer(&[41u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let sender_hi = domain_of_account_id(&probe.computed_account_id()).to_be_bytes()[0];
+        let domain = ((sender_hi as u16) << 8) | 0x01;
+        let mut beneficiary = [0u8; 32];
+        beneficiary[0] = sender_hi;
+        let tx = SignedTx::sign_body(
+            &sk,
+            domain,
+            idx,
+            1,
+            TxBody::BurnMark {
+                mark_amount: 1,
+                beneficiary: Some(beneficiary),
+            },
+        );
+        assert!(burn_context_is_source_domain(&tx));
+    }
+
+    /// Cross-hi beneficiary fails burn context (formerly `burn_context_rejects_cross_domain_beneficiary`).
+    #[test]
+    fn burn_ctx_reject_cross_hi() {
+        let (sk, idx) = signer(&[42u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let sender_hi = domain_of_account_id(&probe.computed_account_id()).to_be_bytes()[0];
+        let domain = ((sender_hi as u16) << 8) | 0x01;
+        let mut beneficiary = [0u8; 32];
+        beneficiary[0] = sender_hi.wrapping_add(1);
+        let tx = SignedTx::sign_body(
+            &sk,
+            domain,
+            idx,
+            1,
+            TxBody::BurnMark {
+                mark_amount: 1,
+                beneficiary: Some(beneficiary),
+            },
+        );
+        assert!(!burn_context_is_source_domain(&tx));
+    }
+
+    /// `export_id` stable for identical export fields (formerly `export_id_is_stable_for_identical_tx_fields`).
+    #[test]
+    fn export_id_stable_same_fields() {
+        let (sk, idx) = signer(&[55u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let sender_hi = domain_of_account_id(&probe.computed_account_id()).to_be_bytes()[0];
+        let source_domain = ((sender_hi as u16) << 8) | 0x01;
+        let target_hi = sender_hi.wrapping_add(1);
+        let target_domain = ((target_hi as u16) << 8) | 0x02;
+        let mut to = [0u8; 32];
+        to[0] = target_hi;
+
+        let tx1 = SignedTx::sign_body(
+            &sk,
+            source_domain,
+            idx,
+            9,
+            TxBody::Export {
+                to,
+                target_domain,
+                amount: 77,
+                fee: 3,
+            },
+        );
+        let tx2 = SignedTx::sign_body(
+            &sk,
+            source_domain,
+            idx,
+            9,
+            TxBody::Export {
+                to,
+                target_domain,
+                amount: 77,
+                fee: 3,
+            },
+        );
+        assert_eq!(tx1.export_id(), tx2.export_id());
+    }
+
+    /// Export must leave shard and `to` must match target domain (formerly `export_context_rejects_same_shard_or_wrong_target_domain`).
+    #[test]
+    fn export_ctx_shard_target_chk() {
+        let (sk, idx) = signer(&[56u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let sender_hi = domain_of_account_id(&probe.computed_account_id()).to_be_bytes()[0];
+        let source_domain = ((sender_hi as u16) << 8) | 0x01;
+        let mut to = [0u8; 32];
+        to[0] = sender_hi;
+
+        let same_shard = SignedTx::sign_body(
+            &sk,
+            source_domain,
+            idx,
+            1,
+            TxBody::Export {
+                to,
+                target_domain: source_domain,
+                amount: 10,
+                fee: 1,
+            },
+        );
+        assert!(!export_context_is_valid(&same_shard));
+
+        let bad_target = SignedTx::sign_body(
+            &sk,
+            source_domain,
+            idx,
+            1,
+            TxBody::Export {
+                to,
+                target_domain: source_domain.wrapping_add(1),
+                amount: 10,
+                fee: 1,
+            },
+        );
+        assert!(!export_context_is_valid(&bad_target));
+    }
+
+    /// Import must target another hi-domain than signer (formerly `import_context_rejects_wrong_target_domain`).
+    #[test]
+    fn import_ctx_must_cross_shard() {
+        let (sk, idx) = signer(&[57u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let signer_hi = domain_of_account_id(&probe.computed_account_id()).to_be_bytes()[0];
+        let signer_domain = ((signer_hi as u16) << 8) | 0x01;
+        let mut to = [0u8; 32];
+        to[0] = signer_hi.wrapping_add(1);
+        let tx = SignedTx::sign_body(
+            &sk,
+            signer_domain,
+            idx,
+            1,
+            TxBody::Import {
+                to,
+                amount: 10,
+                export_id: [9u8; 32],
+            },
+        );
+        assert!(!import_context_is_valid(&tx));
+    }
+
+    /// `same_hi_domain` ignores low domain byte (formerly `same_hi_domain_checks_only_hi_byte`).
+    #[test]
+    fn hi_byte_dom_match_only() {
+        let mut a = [0u8; 32];
+        let mut b = [0u8; 32];
+        a[0] = 0x2C;
+        a[1] = 0x01;
+        b[0] = 0x2C;
+        b[1] = 0xFF;
+        assert!(same_hi_domain(&a, &b));
+        b[0] = 0x32;
+        assert!(!same_hi_domain(&a, &b));
     }
 }

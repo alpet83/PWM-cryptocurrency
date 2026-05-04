@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-16-cycle2-xshard-credit-tui-step5",
+  "title": "S15-S3.16 cycle2: credit = debit on cross-shard + TUI step 5 balance check",
+  "status": "completed",
+  "brief": "После cycle1 снова: списание на source есть, зачисления на target нет (чистые блокчейны, ноды перезапущены). Стабилизировать завершение межшардовой транзакции. TUI: добавить шаг 5 — проверка изменения баланса получателя (target RPC / корректное поле). Приёмка: по итогам pwm-testing на активных нодах сумма списания = сумма зачисления (с учётом явно задокументированных комиссий, если они не нулевые).",
+  "search_hint_for_agents": "Встроенный grep IDE может зависать — использовать терминальный **rg** в `P:/opt/docker/PWM-cryptocurrency` или MCP **user-cqds_mcp_mini** (`cq_files_ctl` + `start_grep` / `cq_fetch_result`) по проекту в Colloquium; не полагаться на один только Cursor workspace search.",
+  "acceptance": [
+    "Импорт на target реально меняет баланс получателя на ожидаемую величину (сверка с суммой списания и политикой fee).",
+    "pwm-tui: после шагов 1–4 выводится шаг 5 с результатом проверки баланса (OK/FAIL + детали).",
+    "`cargo test -p pwmd --lib` зелёный; при изменениях TUI — `cargo check -p pwm-tui`.",
+    "Артефакты: `docs/reviews/sprint-15-s3-16-cycle2-review.md` (вкл. индекс файлов по межшарду), `docs/reviews/sprint-15-s3-16-cycle2-testing.md`, при необходимости coding note."
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Index: cross-shard tx files + search keys; gate design",
+      "result": "partial: субагент не записал файл; оркестратор создал docs/reviews/sprint-15-s3-16-cycle2-review.md",
+      "artifacts": ["docs/reviews/sprint-15-s3-16-cycle2-review.md"],
+      "tokens": { "source": null, "total": null, "confidence": null },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix credit path + TUI step 5 balance verify",
+      "result": "PASS: TUI auto-Import after relayed + step5; pwmd S3.16 relay/logs (01b57dc, c907201, …)",
+      "artifacts": [
+        "crates/pwm-tui/src/main.rs",
+        "issues-report.md",
+        "docs/reviews/sprint-15-s3-16-cycle2-review.md"
+      ],
+      "tokens": { "source": "estimate", "total": null, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Live two-node: debit=credit acceptance",
+      "result": "Round4 2026-05-01: FAIL — HEAD 0800b14; cargo test -p pwmd --lib PASS 194; cargo check pwm-tui PASS; restart ~16:51 CY/DO snapshot load OK (DO no state_root mismatch); genesis_state0_digest matches on both; cross_shard_summary still export 10000 imported 0 pending 1; new cross-shard/TUI step5 not run (subagent); CY snapshot WARN references handoff_register; old CY relay: handoff lines in terminal buffer; import_provenance not in captured logs",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-16-cycle2-testing.md"
+      ],
+      "tokens": { "source": "estimate", "total": null, "confidence": "low" },
+      "done_at": "2026-05-01"
+    }
+  ],
+  "artifacts": {
+    "review": "docs/reviews/sprint-15-s3-16-cycle2-review.md",
+    "testing": "docs/reviews/sprint-15-s3-16-cycle2-testing.md"
+  },
+  "commits": ["0800b14", "054683d", "01b57dc", "c907201", "f03518b"],
+  "notes": "Closeout 2026-05-01: live приёмка оператором (TUI step 5, кредит на target). S3.17: ROAMING_COMPLETION.md + актуализация docs. Исторически: relay-journal review, DO snapshot root-cause, pwmd observability 0800b14."
+}

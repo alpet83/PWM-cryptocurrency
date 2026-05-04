@@ -1,0 +1,20 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice8-style-refactor",
+  "title": "Sprint 14 Slice 8: production naming style refactor",
+  "status": "in_progress",
+  "mvp_checklist": ["Sprint 14 / Slice 8"],
+  "brief": "Привести имена production-symbols к <=4 словам + закрепить контроль в агентных промптах.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Refactor long production identifiers (<=4 words) with docs/tests updates.", "done_at": null},
+    {"agent": "pwm-testing", "prompt_summary": "Validate refactor and regressions.", "done_at": null},
+    {"agent": "pwm-review", "prompt_summary": "Independent style/behavior review with <=4 words gate.", "done_at": null}
+  ],
+  "commits": [],
+  "artifacts": {
+    "coding_md": null,
+    "testing_md": null,
+    "review_md": null
+  },
+  "notes": "Style gate: native non-test identifiers <=4 words."
+}

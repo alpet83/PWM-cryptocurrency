@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260505-s15-slice-O1-wave3-roaming-sendform-history",
+  "title": "S15-O.1 wave3: pwm-tui roaming + send_form + history (+ error_format if still in main)",
+  "status": "done",
+  "brief": "По CODEBASE_REFACTORING.md §2.1 после wave2 (996af47): вынести по очереди roaming (submit_roaming_intent, xflow_*), send_form (SendForm), history (op history), при необходимости error_format из main; отдельные коммиты на шаг, стоп при циклическом импорте или блокере.",
+  "acceptance": [
+    "Минимум один новый .rs + зелёные тесты pwm-tui",
+    "cargo check --workspace",
+    "Чеклист C и тикет обновлены",
+    "CQDS: start_grep / rebuild_index по политике слайса"
+  ],
+  "parent_chain": [
+    "tasks/20260503-s15-slice-O1-modular-decomposition-wave1.json",
+    "tasks/20260504-s15-slice-O1-wave2-tui-modules.json"
+  ],
+  "artifacts": {
+    "checklist": "docs/reviews/sprint-15-slice-O-checklist.md",
+    "audit": "docs/CODEBASE_REFACTORING.md"
+  },
+  "delegations": [],
+  "commits": ["7ea8932"],
+  "notes": "Поиск: cq_project_ctl select_project project_id 5 → cq_files_ctl start_grep → cq_project_ctl fetch_result; fallback: rg P:/opt/docker/PWM-cryptocurrency. Контейнеры CQDS должны быть запущены."
+}

@@ -1,0 +1,4 @@
+# Shared workspace artifacts (one debug/ tree for pwm-cli + pwmd and other members).
+# Resolved relative to the workspace root (directory containing the root Cargo.toml).
+[build]
+target-dir = "../rust-target-shared"

@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "id": "20260617-s15-slice-N-wave3-pwm-tui-tests-fn-names",
+  "title": "S15-N wave3: pwm-tui integration tests short fn names + docstrings",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-N-plan.md — wave N.3",
+    "docs/reviews/sprint-15-slice-N-checklist.md"
+  ],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review** (**Task:** **`run_in_background: false`** для линейного конвейера).\n\n**Цель:** **`crates/pwm-tui/tests/**/*.rs`** (`send_form.rs`, `wallet_roaming.rs`, `common/mod.rs` и др.). Переименовать **`#[test]` / `#[tokio::test]`** fn и **test-only** хелперы: **≤ 5** сегментов `snake_case`; сценарий в **`///`** (English).\n\n**Вне скоупа:** prod **`src/**`**, crate `lib` unit tests (если появятся) — отдельная волна.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-tui`, `cargo check --workspace`.\n\n**Ревью:** `docs/reviews/sprint-15-slice-N-wave3-pwm-tui-tests-fn-names-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "rename pwm-tui tests/*.rs fn ≤5 segments + ///",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-tui/tests/send_form.rs",
+        "crates/pwm-tui/tests/wallet_roaming.rs",
+        "crates/pwm-tui/tests/common/mod.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-tui + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-tui",
+        "cargo check --workspace"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1600,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate N.3 pwm-tui tests naming budget",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-N-wave3-pwm-tui-tests-fn-names-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03"
+    }
+  ],
+  "commits": [
+    "cff2fabeb095a47b8647d7d9ad7e2f9af8cafd0e",
+    "3343f110fae3a7d314734bd00efdddd6e04089f9",
+    "64e8c49e4679539936e21edd6a37565021851f64"
+  ],
+  "parent_chain": [
+    "tasks/20260616-s15-slice-N-wave2-pwm-cli-test-fn-names.json"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-15-slice-N-wave3-pwm-tui-tests-fn-names-review.md"
+  },
+  "notes": "Интеграционные тесты pwm-tui закрыты. Nit оркестратора: один оставшийся 6-сегментный fn переименован. Inline prod-тесты и pwm-cli wallet/bruteforce — волна N.4+."
+}

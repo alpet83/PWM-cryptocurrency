@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "20260503-s15-pwmd-startup-snapshot-telemetry",
+  "title": "S15: телеметрия стадий первичной загрузки снэпшота (epochs / хвост / готовность)",
+  "status": "implementation_done",
+  "mvp_checklist": [],
+  "brief": "Пользователь бенчил микросекунды Criterion — нужно измеримое время «выхода на готовность» ноды: стадии загрузки pwm-data + epoch JSONL + replay + absorb_blocks_tail; логи по каждому файлу эпохи и общая дюрация «epoch assembly» (фактическая цена чтения цепочки с диска; истинного lazy-load пока нет — зафиксировать в комментарии). Частично пересекается с tasks/20260430-s15-slice3-15-2-block-load-checkpoint-lazy-concept.json — сверять формулировки.",
+  "acceptance": [
+    "target логов единый для фильтра (напр. pwmd::startup::snapshot или расширить pwmd::snapshot)",
+    "info: сводка после успешной загрузки — mode inline|epochs|clickhouse, tip_h/canonical_h, total_ms и разбивка (summary_read_ms, epochs_ms, validate_ms, into_runtime_ms, absorb_tail_ms или эквивалент)",
+    "debug: по каждому epoch-файлу из manifest — путь, дюрация чтения/парса, число строк",
+    "clickhouse: замер ch_load + признак ветки (blocks vs legacy) где возможно",
+    "Ошибки ready_degraded: стадия и elapsed до сбоя",
+    "cargo fmt + cargo check -p pwmd; issues-report.md при сюрпризах для оператора",
+    "Participation block для оркестратора (tokens estimate)",
+    "После существенных правок: CQDS rebuild_index background project_id=5"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Логи и Instant-тайминги загрузки снэпшота + epoch files + CH path; telemetry.rs, load_timed, ch_load, lifecycle",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/telemetry.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "crates/pwmd/src/snapshot/ch_http.rs",
+        "crates/pwmd/src/snapshot/store.rs",
+        "crates/pwmd/src/lifecycle.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 35000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T12:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null,
+    "ticket_path": "tasks/20260503-s15-pwmd-startup-snapshot-telemetry.json"
+  },
+  "notes": "pwm-coding PASS (2026-05-03): target pwmd::startup::snapshot, telemetry.rs, тайминги io/incremental/ch_load/lifecycle. Следующий шаг конвейера по желанию: pwm-testing (preflight §AGENT_PROMPT_testing), pwm-review."
+}

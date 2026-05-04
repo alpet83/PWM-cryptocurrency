@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-7-wire-u128-decode-fix",
+  "title": "S15-S3.12.7: fix peer wire u128 decode failure",
+  "status": "done",
+  "brief": "Разобрать recurring `wire_decode_failed: u128 is not supported` в live peer sessions CY/DO и внедрить узкий совместимый фикс, чтобы seed sessions не падали на wire decode.",
+  "scope": [
+    "Сравнить peer wire serialization/deserialization path между micro-node harness и real node loops",
+    "Точно локализовать контекст `u128 is not supported` (какое поле/тип/frame вызывает decode failure)",
+    "Внедрить минимальный backward-safe фикс wire decoding/encoding без широкого redesign",
+    "Добавить focused regression tests на проблемный frame/field",
+    "Проверить, что fix не ломает trust boundary и не трогает S3.13 federation work"
+  ],
+  "acceptance": [
+    "Больше нет recurring `wire_decode_failed: u128 is not supported` в live two-node smoke",
+    "Seed sessions остаются stable без reconnect churn на decode path",
+    "Focused tests покрывают u128 decode path и проходят",
+    "Foreign lookup через trusted peer path доступен (`home_lookup_status=ok`) при стабильной сессии",
+    "Есть coding/testing/review artifacts и token usage в каждой delegation записи"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Locate exact u128 decode failure context in peer wire path and define narrow fix scope.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-7-rootcause-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14500,
+        "output": 3200,
+        "total": 17700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:50:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement narrow wire decode/encode fix for u128 unsupported failure with focused regression tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/wire_serde.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/ledger.rs",
+        "crates/pwmd/src/transport.rs",
+        "docs/reviews/sprint-15-s3-12-7-coding.md",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9500,
+        "output": 1400,
+        "total": 10900,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:57:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Run focused gates and mandatory live CY/DO smoke after u128 wire fix.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-7-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 10400,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:58:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final review of S3.12.7 fix correctness and evidence.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-7-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 26000,
+        "output": 3200,
+        "total": 29200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T22:57:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "review_rootcause": "docs/reviews/sprint-15-s3-12-7-rootcause-review.md",
+    "coding": "docs/reviews/sprint-15-s3-12-7-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-7-testing.md",
+    "review_final": "docs/reviews/sprint-15-s3-12-7-review.md"
+  },
+  "commits": [],
+  "notes": "Started after S3.12.6 testing found repeated wire_decode_failed: u128 is not supported in live two-node smoke. Root-cause review indicates likely principal blocker in PeerWireMsg decode for u128 fields in non-empty AccountViews/CrossShardFacts. Coding PASS: decode-first compat fix applied with focused regression coverage. Testing PASS: focused gates green, live two-node smoke stable, trusted foreign lookup home_lookup_status=ok. Final review: approve with nits."
+}

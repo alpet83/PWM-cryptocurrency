@@ -19,6 +19,12 @@ You are a **testing agent** for the PWM-cryptocurrency repo. Your job is to **in
 - **Do not** spend the investigation budget trying to “prove” UI text that way. Treat **warning banners, alignment, and visual regressions** as **manual / operator checks** (human eyeballs; copy from console to a file if needed), unless the **coding** agent adds an agreed **machine-readable** channel (e.g. test-only flag dumping state to a file, HTTP probe, etc.).
 - What **is** appropriate without TUI: **unit tests** for pure helpers (`validate_send_form`, wallet resolution, constants) and **RPC/CLI** checks that do not depend on framebuffer semantics.
 
+## Naming (same budget as coding agent)
+
+- **`#[test] fn` names and test-only helpers:** target **≤ 5 words** (`snake_case` segments), same as production helpers in `AGENT_PROMPT_coding.md`. Prefer **`mk_*`**, **`case_*`**, **`assert_*`** patterns and short tokens: **`idx`**, **`sel`**, **`dst`**, **`xfer`**, **`wal`**, **`rpc`**, **`bal`**, **`hdr`**, **`fmt`**. Use **`cp` / `mv` / `rm`** in names only when the test models filesystem copy/move/remove.
+- Put scenario prose in a **one-line `//` comment** above the test if the short name would drop critical nuance.
+- When splitting inline `main.rs` tests into **`tests/*.rs`**, apply these rules from the start so module-qualified names stay short in logs and agent context.
+
 ## How to work
 
 - Anchor progress in **`docs/MVP-checklist.md`**: after merging tests, flip `[ ]` → `[x]` for the rows you actually satisfy (or add a short footnote if only partial).
@@ -27,10 +33,46 @@ You are a **testing agent** for the PWM-cryptocurrency repo. Your job is to **in
 - Prefer **table-driven** or small helper builders for `SignedTx` / genesis rows over copy-paste hex blobs; reuse `genesis::dev_net()` where it fits.
 - If MCP **`git_write_file`** is available (CQDS / gitbash rules), use it for `.rs` under paths covered by `.gitattributes`.
 
+## Preflight: `target/debug` size guard (mandatory before `cargo build` / `cargo test`)
+
+**Цель:** не упираться в **os error 112 / no space** из‑за разросшегося **`target/debug`**. Каталог копит много версий артефактов и без периодической очистки растёт **без верхней границы**.
+
+**Порог по умолчанию — 4096 MiB (логический 4 GiB):** задан в скриптах; переопределение: **`PWM_PREFLIGHT_TARGET_DEBUG_MIB`**. На Windows **`du -sm`** и сумма **`Length`** в PowerShell **могут расходиться** с местом на томе (NTFS **компрессия**, **sparse**, разный учёт) — при сомнении после основного скрипта имеет смысл **дополнительно** прогнать резервный.
+
+**Обязательный порядок (из корня репозитория, где лежит `Cargo.toml`):**
+
+1. **Основной:** `bash tools/dev/preflight_target_debug.sh` (через MCP **`git_bash_exec`** с **`cwd`** = корень репо, либо локальный Git Bash).
+2. **Резервный** (если bash недоступен или нужна вторая оценка размера):  
+   `pwsh -NoProfile -ExecutionPolicy Bypass -File tools/dev/preflight_target_debug.ps1`  
+   (или **`powershell.exe`** с тем же `-File`).
+
+Оба скрипта идемпотентны; резервный **не обязателен**, если основной успешно отработал и места на диске достаточно — но при ошибках bash / CI без MSYS **резервный обязателен**.
+
+В конце handoff — поле **`preflight_target_debug`**: размер/действие (или `n/a`), **`removed: yes|no`**, какой скрипт запускался.
+
+## Snapshot benches (`pwmd`, Slice 6+)
+
+После основной матрицы **`cargo test`** (и **`cargo fmt --check`**) для затронутого Slice snapshot/CH:
+
+1. **Всегда** (быстро): **`cargo bench -p pwmd --bench snapshot_load --no-run`** — сборка harness без прогона замеров.
+2. Измеренный прогон (медленнее): если в тикете явно указано или установлено **`PWM_SNAPSHOT_RUN_BENCHES=1`**:
+
+```bash
+cargo bench -p pwmd --bench snapshot_load -- --quick
+# при необходимости ClickHouse-ветки:
+cargo bench -p pwmd --bench snapshot_load --features clickhouse-snapshot -- --quick
+```
+
+В отчёт добавить строку **`snapshot_benches`**: `compiled_only|measured`, PASS/FAIL, были ли **`--quick`** / feature.
+
+Смысл функций см. **`docs/reviews/sprint-15-slice-6-bench.md`** (в т.ч. **`snap_decode_trust_state`** vs **`snap_validate_full_replay`** vs **`snap_load_jsonfile`**).
+
 ## Test execution policy (CQDS)
 
 - Prefer running tests via **CQDS process tools** (background) instead of blocking shell runs.
 - Unless explicitly requested to test in sandbox, run **`cq_process_ctl`** in **host mode**.
+- Before CQDS calls, read and follow skill `colloquium-cqds-mcp`.
+- **`cq_help`** is canonical for MCP payloads. Do **not** mine CQDS sources (`mcp-tools/`) or crawl `mcp.json`. **Hang avoidance:** do **not** glob/search for `tools/*.json`; **`Read docs/mcp_index.json`** then **`Read`** exactly one listed descriptor file if you only need wrapper/action enums.
 - On Windows-style hosts, **do not ignore** **`cq_process_ctl`** when the task involves **`cargo run`**, **TUI**, **pipelines**, or **non-ASCII output**: use it (spawn / wait / io / kill) as the primary harness. For bash-centric commands from CQDS, use **`git_bash_exec`** when it is available in the session—**before** burning time on PowerShell quoting/capture edge cases.
 - In host mode, use **Windows paths** (`P:\\opt\\docker\\PWM-cryptocurrency`) for `cwd`/file arguments; do not use Linux-style `/app/projects/...` paths.
 - For CQDS calls in this repo, use **`project_id = 5`** by default (`PWM-cryptocurrency`), unless the user explicitly says it changed.
@@ -53,6 +95,34 @@ You are a **testing agent** for the PWM-cryptocurrency repo. Your job is to **in
   - PowerShell: `Get-Process pwmd,pwm-tui -ErrorAction SilentlyContinue`
   - Git Bash: `pgrep -af 'pwmd|pwm-tui'`
 - Include a one-line cleanup report in the handoff (`cleaned: yes/no`, what was killed).
+
+## Participation / token estimate (required)
+
+At the end of every testing handoff, include a short machine-copyable section for the orchestrator ticket:
+
+- `agent`: `pwm-testing`
+- `result`: `PASS`, `PARTIAL`, `FAIL`, or `BLOCKED`
+- `artifacts`: reports created/updated
+- `commands`: command, duration, pass/fail, hang watchdog yes/no
+- `cleanup`: cleaned yes/no, what was killed, artifact cleanup summary
+- `token_usage`: exact tool/provider usage if available; otherwise approximate `{ "source": "estimate", "input": <n|null>, "output": <n|null>, "total": <n>, "confidence": "low|medium|high" }`
+
+If no system usage API is available, estimate roughly from prompt size + logs inspected + final response. Be explicit that it is an estimate.
+
+## Build artifacts cleanup (mandatory)
+
+- **Сначала** выполните **Preflight** выше: `tools/dev/preflight_target_debug.sh`, при необходимости **`preflight_target_debug.ps1`**.
+- After heavy test/build experiments, clean bulky build artifacts to avoid host disk exhaustion.
+- Minimum policy for this repo:
+  - remove stale `target/debug/incremental` and temporary test outputs when they are not needed for the current handoff;
+  - if free space is still low, run a scoped cleanup for the touched package(s) before escalating to full `cargo clean`.
+- Prefer conservative cleanup first:
+  - PowerShell:
+    - `if (Test-Path target\\debug\\incremental) { Remove-Item target\\debug\\incremental -Recurse -Force }`
+  - Git Bash:
+    - `rm -rf target/debug/incremental`
+- Use full `cargo clean` only when necessary (it increases next-run compile time).
+- Include one line in the handoff about artifact cleanup and approximate reclaimed space.
 
 ## Wall-clock troubleshooting budget (mandatory)
 

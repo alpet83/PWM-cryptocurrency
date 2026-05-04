@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "20260603-s15-slice-O1-cli-wave9-cmd-offchain",
+  "title": "S15-O.1 pwm-cli wave9: cmd_offchain (§2.3 row 9)",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C pwm-cli §2.3"],
+  "brief": "**Цель (`CODEBASE_REFACTORING.md` §2.3 ряд 9):** модуль **`cmd_offchain.rs`** для локальных off-chain команд без RPC.\n\n**Фактический охват:** команда **`off-demo`** (`Cmd::OffDemo`) перенесена из **`main.rs`** в **`pub(crate) fn run_off_demo()`**. Запись **`offchain-sign`** в таблице аудита — задел на будущее (в дереве только demo).\n\n**Инварианты:** без изменения CLI-поведения и JSON вывода.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**pwm-review:** `docs/reviews/sprint-15-slice-O1-cli-wave9-cmd-offchain-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "add cmd_offchain; dispatch OffDemo",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cmd_offchain.rs",
+        "crates/pwm-cli/src/main.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T21:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-cli (141)",
+        "cargo check --workspace",
+        "verification run by orchestrator on Windows/PowerShell"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 1200,
+        "output": 300,
+        "total": 1500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T21:05:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit wave9 split + doc table note",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-wave9-cmd-offchain-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T21:10:00Z"
+    }
+  ],
+  "commits": [
+    "af7cf483ee8f3406df59d0df5e2f7336969fed62",
+    "dedf967668a714c78176313928d1b430628a2a2c"
+  ],
+  "parent_chain": ["tasks/20260601-s15-slice-O1-cli-waves5-8-main-modules.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3 row 9",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-wave9-cmd-offchain-review.md"
+  },
+  "notes": "SHA: рефакторинг (`af7cf48`) и документирование закрытия (`dedf967`)."
+}

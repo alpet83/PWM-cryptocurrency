@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-peer-session-stability-and-live-foreign-balance",
+  "title": "S15-S3.12: fix peer session churn and restore live foreign balance visibility",
+  "status": "done",
+  "brief": "Убрать reconnect/hello churn, восстановить протокольную связь между CY/DO и добиться доступности foreign balance через CY для адресов DO; TUI и CLI должны одинаково отображать unavailable/known.",
+  "scope": [
+    "Исправить причины частых reconnect в stateful peer transport",
+    "Восстановить устойчивый trusted peer канал CY<->DO",
+    "Синхронизировать семантику TUI и pwm-cli для foreign account unknown/known",
+    "Подтвердить live сценарий через node-1.ps1/node-2.ps1"
+  ],
+  "acceptance": [
+    "В логах нет постоянного hello churn каждые ~2с",
+    "Через CY виден foreign account из DO как known (в т.ч. нулевой баланс допустим)",
+    "При потере peer path TUI и CLI показывают unavailable/unknown согласованно",
+    "pwm-testing проводит live запуск через ps1 scripts и фиксирует PASS"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-12-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-review.md",
+    "closeout": "docs/reviews/sprint-15-s3-12-9-closeout.md"
+  }
+}

@@ -1,0 +1,14 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice13-e2e-cy-do-investigation",
+  "title": "Sprint 14 Slice 13: E2E CY->DO transfer investigation",
+  "status": "in_progress",
+  "mvp_checklist": ["Sprint 14 / Slice 13"],
+  "brief": "Проверить полный цикл CY->DO перевода на поднятых нодах и фактические state transitions.",
+  "delegations": [
+    {"agent": "pwm-testing", "prompt_summary": "Run full e2e investigation from genesis to transfer and balance checks.", "done_at": null}
+  ],
+  "commits": [],
+  "artifacts": {"testing_md": null},
+  "notes": "User reports transfer/history/state persistence anomalies."
+}

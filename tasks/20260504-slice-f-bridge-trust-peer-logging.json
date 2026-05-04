@@ -1,0 +1,32 @@
+{
+  "id": "20260504-slice-f-bridge-trust-peer-logging",
+  "title": "Slice F: bridge trust runtime + pwmd-peer log file + reconnect log noise",
+  "status": "planned",
+  "spec_refs": [
+    "docs/WHITE_SPEC_v0.md §7.5",
+    "docs/rfc/9-crossdomain-roaming.md Appendix A.6",
+    "docs/GEO-SHARDING-EXPLANATION.md §8",
+    "docs/reviews/slice-f-bridge-trust-peer-logging-20260504.md"
+  ],
+  "conveyor": "pwm-coding → pwm-testing → pwm-review",
+  "parts": {
+    "A_bridge_trust": {
+      "summary": "Bridge commitment, peer compare, refusal state, one-window gates, /v1/status fields"
+    },
+    "B_peer_log_file": {
+      "summary": "tracing target pwmd::peer, separate rotating file prefix pwmd-peer, exclude from console/main file"
+    },
+    "C_reconnect_noise": {
+      "summary": "backoff/jitter audit, rate-limit reconnect logs, aggregate session close, sample healthy_session_skip"
+    }
+  },
+  "recommended_order": ["B", "C", "A"],
+  "commits_hint": [
+    "feat(pwmd): isolate peer transport logs to pwmd-peer-*.log, exclude from console",
+    "feat(pwmd): reduce reconnect session log noise",
+    "feat(pwmd): bridge federation trust refusal + one-window closure"
+  ],
+  "artifacts": {
+    "slicing_doc": "docs/reviews/slice-f-bridge-trust-peer-logging-20260504.md"
+  }
+}

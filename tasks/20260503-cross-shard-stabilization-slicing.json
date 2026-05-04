@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "id": "20260503-cross-shard-stabilization-slicing",
+  "title": "Cross-shard MVP stabilization slicing",
+  "status": "done",
+  "mvp_checklist": [
+    "cross-shard export/import replay determinism",
+    "automatic reimport/backfill after target cleanup",
+    "snapshot/reload crash-fast and repair path"
+  ],
+  "brief": "Нарезать архитектурный сдвиг по cross-shard MVP на реализуемые слайсы: replay-deterministic target provenance/import, automatic reimport/backfill, RFC/doc updates, tests/checklists. На этом шаге не реализовывать Rust product diff, а подготовить артефакты для конвейера pwm-coding -> pwm-testing -> pwm-review.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сформировать слайсы реализации cross-shard stabilization: deterministic provenance/import, automatic reimport/backfill, repair/crash-fast, RFC/doc/checklist artifacts.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/cross-shard-stabilization-slicing-20260503.md",
+        "docs/MVP-checklist.md",
+        "docs/rfc/9-crossdomain-roaming.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 17000,
+        "output": 2500,
+        "total": 19500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T21:35:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice A: добавить узкую диагностику first_bad_height/tx_kind/class в validate_snapshot (pwmd) и малый тест.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/tests/snapshot_roaming.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 16000,
+        "output": 2200,
+        "total": 18200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T21:45:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice A: focused replay diagnostic test, full cargo test -p pwmd, and cargo check -p pwmd.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 14500,
+        "output": 1200,
+        "total": 15700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T21:50:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice A: review replay mismatch diagnostics for semantic safety, usefulness, and test coverage.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 2800,
+        "total": 14800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T21:55:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice B: move target import provenance into sealed Import path; stop handoff_register from mutating replay-critical exported_registry.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/tx.rs",
+        "crates/pwm-core/src/state.rs",
+        "crates/pwmd/src/tx_policy.rs",
+        "crates/pwmd/src/api/handlers_tx.rs",
+        "crates/pwmd/src/api/handlers_roaming.rs",
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/src/ledger.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/types.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/tests/http_export.rs",
+        "crates/pwmd/src/tests/snapshot_roaming.rs",
+        "crates/pwmd/src/tests/helpers.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 38000,
+        "output": 4450,
+        "total": 42450,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T22:10:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice B: focused import/provenance tests, http_export regression, full cargo test -p pwmd, and cargo check -p pwmd after unknown-import and atomicity fixes.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 24000,
+        "output": 1950,
+        "total": 25950,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T22:20:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice B: review embedded provenance, handoff side-state removal, unknown-import rejection, and apply_tx atomicity.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 16500,
+        "output": 3750,
+        "total": 20250,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T22:25:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice C: add cross-shard facts discovery and automatic backfill with trust gate, idempotent local import, and review-blocker fixes.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/api/handlers_backfill.rs",
+        "crates/pwmd/src/api/mod.rs",
+        "crates/pwmd/src/api/router.rs",
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/src/ledger.rs",
+        "crates/pwmd/src/relay.rs",
+        "crates/pwmd/src/tests/http_export.rs",
+        "docs/reviews/cross-shard-stabilization-slicing-20260503.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 40500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T22:50:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice C: targeted backfill tests, http_export, slice20 dual flow, full cargo test -p pwmd, and cargo check.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 68000,
+        "output": 6100,
+        "total": 74100,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T23:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice C: review trust gate, idempotency, facts ordering/limits, and docs sync after blocker fixes.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 8000,
+        "output": 3000,
+        "total": 11000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T23:05:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice D: add offline JsonFile snapshot repair helper + pwmd-snap-repair bin with backup-first rewrite and focused tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/repair.rs",
+        "crates/pwmd/src/snapshot/mod.rs",
+        "crates/pwmd/src/lib.rs",
+        "crates/pwmd/src/bin/pwmd_snap_repair.rs",
+        "crates/pwmd/Cargo.toml",
+        "docs/reviews/cross-shard-stabilization-slicing-20260503.md",
+        "docs/MVP-checklist.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 36000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T22:20:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice D: build pwmd-snap-repair, repair tests, snapshot tests, full cargo test -p pwmd, and cargo check.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 52000,
+        "output": 7500,
+        "total": 59500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T23:25:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice D: review offline repair rewrite safety, manifest/summary consistency, CLI contract, aux-state policy, and tests.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 4000,
+        "output": 2200,
+        "total": 6200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T23:30:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice E: finalize RFC/docs/checklist alignment for A-D architecture shift (docs/tasks only, no Rust changes).",
+      "result": "PASS",
+      "artifacts": [
+        "docs/rfc/9-crossdomain-roaming.md",
+        "docs/WHITE_SPEC_v0.md",
+        "docs/MVP-checklist.md",
+        "docs/reviews/cross-shard-stabilization-slicing-20260503.md",
+        "docs/reviews/shard-coexistence-persist-reload-current-review-20260503.md",
+        "tasks/20260503-cross-shard-stabilization-slicing.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 31000,
+        "output": 4000,
+        "total": 35000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T22:55:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice E: docs/tasks-only sanity, task JSON parse, no Rust diff, scoped diff check.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 20700,
+        "output": 1650,
+        "total": 22350,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T23:45:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice E: review RFC/WHITE_SPEC/checklist/review-doc/task consistency after historical pre-A-D framing fix.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 15500,
+        "output": 4400,
+        "total": 19900,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T23:50:00+03:00"
+    }
+  ],
+  "commits": [
+    "61fa3d4",
+    "1270b06",
+    "d56a699",
+    "669a41a",
+    "353d814"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/shard-coexistence-persist-reload-current-review-20260503.md",
+    "plan": "C:/Users/Alexander/.cursor/plans/stable_cross-shard_mvp_315d3382.plan.md",
+    "slicing_md": "docs/reviews/cross-shard-stabilization-slicing-20260503.md"
+  },
+  "notes": "Owner decision: cross-shard remains in MVP. Manual re-submit is not an acceptable recovery contract; prefer automatic reimport/backfill. Future settlement/import-export chain should be documented as next-stage option."
+}

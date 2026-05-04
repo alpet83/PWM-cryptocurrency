@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "id": "20260530-s15-slice-O1-waves33-36-pwmd-lib-inline-tests-split",
+  "title": "S15-O.1 waves33–36 (compound): extract pwmd lib.rs inline #[cfg(test)] mod tests into src/tests/",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-O-checklist.md §C §6.2 inline tests — pwmd",
+    "docs/CODEBASE_REFACTORING.md — pwmd lib.rs inline tests row"
+  ],
+  "brief": "**Оркестратор:** один составной заход **pwm-coding** ≈ четыре логических волны в одном контексте (см. `AGENT_PROMPT_orchestrator.md` Compound batches).\n\n**Цель:** убрать монолитный inline-блок **`#[cfg(test)] mod tests { … }`** из **`crates/pwmd/src/lib.rs`** (~6k строк тестового тела): заменить на **`#[cfg(test)] mod tests;`** и дерево **`crates/pwmd/src/tests/`** с **`mod.rs` + не менее 4 смысловых подфайлов** (напр. **`helpers`**, кластеры по HTTP/API, snapshot/roaming/ledger, transport/peers — выбор по содержимому, имена короткие и честные).\n\n**Инварианты:** каждый **`#[test]` / `#[tokio::test]`** сохраняется (перенос без изменения семантики); модуль **`slice20_e2e_tests`** в **`lib.rs`** **не трогать**; прод-часть **`lib.rs`** (imports, **`pub use`**, **`current_time_ms`**, **`cors_for_listen`**) без функциональных изменений.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwmd`, `cargo check --workspace`. Допускается несколько коммитов от pwm-coding — все SHA в **`commits[]`**.\n\n**pwm-review:** отчёт **`docs/reviews/sprint-15-slice-O1-waves33-36-pwmd-lib-inline-tests-split-review.md`** + финальный блок **`powershell`** с **`# git-handoff`** по **`AGENT_PROMPT_review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "compound: lib.rs inline tests -> src/tests/ tree; behavior-preserving",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lib.rs",
+        "crates/pwmd/src/tests/mod.rs",
+        "crates/pwmd/src/tests/prelude.rs",
+        "crates/pwmd/src/tests/helpers.rs",
+        "crates/pwmd/src/tests/http_status.rs",
+        "crates/pwmd/src/tests/transport_peer.rs",
+        "crates/pwmd/src/tests/http_export.rs",
+        "crates/pwmd/src/tests/snapshot_roaming.rs",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 48000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T18:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwmd + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwmd (194 lib + 3 bin)",
+        "cargo check --workspace",
+        "verification run by orchestrator after pwm-coding"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 2000,
+        "output": 500,
+        "total": 2500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T18:30:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit compound split; review md + powershell git-handoff",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-waves33-36-pwmd-lib-inline-tests-split-review.md (approve with nits; оркестратор; git-handoff из ответа pwm-review)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T19:00:00Z"
+    }
+  ],
+  "commits": [
+    "6b5eaec639097e0f1d17237eabcd3ef98b8972a6",
+    "db2c5d2efd7a2df5ae196fcdc34aeddfb30aa0ac",
+    "3ec0b089ea2564b796dac798c6a1e7fd3e751e61"
+  ],
+  "parent_chain": ["tasks/20260529-s15-slice-O1-wave32-peer-session-seed-session-split.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §6.2 / pwmd lib.rs table row",
+    "review_md": "docs/reviews/sprint-15-slice-O1-waves33-36-pwmd-lib-inline-tests-split-review.md"
+  },
+  "notes": "pwm-review approve with nits; PARTIAL — Ask mode. Оркестратор выполнил git-handoff из ответа pwm-review."
+}

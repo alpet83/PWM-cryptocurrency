@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "20260601-s15-slice-O1-cli-waves5-8-main-modules",
+  "title": "S15-O.1 pwm-cli waves5–8: cmd_tx, cmd_roaming, cmd_wallet, cmd_book (§2.3)",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C pwm-cli §2.3"],
+  "brief": "**Оркестратор:** составной **pwm-coding** — четыре модуля за один проход.\n\n**Цель (`CODEBASE_REFACTORING.md` §2.3):** из **`crates/pwm-cli/src/main.rs`** вынести обработчики в:\n1. **`cmd_tx.rs`** — команды **`tx-*`** (init/transfer/stake/unstake/burn-mark и смежные ветви в том же контуре);\n2. **`cmd_roaming.rs`** — межшардовые **`tx-export`**, **`tx-import`**, **`tx-handoff-register`** и связанный код;\n3. **`cmd_wallet.rs`** — **`wallet-*`** CRUD/show/recover/backup и т.п. из текущего `match`;\n4. **`cmd_book.rs`** — **`address-book-*`**.\n\nКаждый модуль — **`pub(crate)`** функции **`run_*`** или эквивалент; **`main.rs`** остаётся диспетчеризацией **`Cli`** / **`Cmd`**.\n\n**Инварианты:** без смены CLI-поведения; **`src/tests/mod.rs`** не ломать (импорты скорректировать при необходимости).\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**pwm-review:** `docs/reviews/sprint-15-slice-O1-cli-waves5-8-main-modules-review.md` + блок **`powershell`** с **`# git-handoff`**.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "extract cmd_tx, cmd_roaming, cmd_wallet, cmd_book from pwm-cli main.rs",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cmd_tx.rs",
+        "crates/pwm-cli/src/cmd_roaming.rs",
+        "crates/pwm-cli/src/cmd_wallet.rs",
+        "crates/pwm-cli/src/cmd_book.rs",
+        "crates/pwm-cli/src/main.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 52000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T13:22:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-cli (141)",
+        "cargo check --workspace",
+        "verification run by orchestrator on Windows/PowerShell after pwm-coding"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 1500,
+        "output": 400,
+        "total": 1900,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T20:05:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit waves5-8 split + checklist/plan sync",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-waves5-8-main-modules-review.md (approve with nits; оркестратор)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T20:10:00Z"
+    }
+  ],
+  "commits": [
+    "91e97964c8deb5a07282169b2f8c098164b45b60",
+    "f517e4b045d91c03607c4a97f8ecb78129659ce3",
+    "0dda232d646d88fe11358d33cb2dea778e7d4d5d"
+  ],
+  "parent_chain": ["tasks/20260531-s15-slice-O1-cli-waves1-4-main-modules.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3 rows 5–8",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-waves5-8-main-modules-review.md"
+  },
+  "notes": "Размещение юнит-тестов без #[path]: см. issues-report (MCP text_editor → src/tests/mod.rs; 80aaf86/d9e5b2b). Третий SHA — документирование закрытия тикета (checklist/plan/issues/review)."
+}

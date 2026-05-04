@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-4-peer-protocol-churn-rootcause-fix",
+  "title": "S15-S3.12.4: fix peer protocol churn root cause",
+  "status": "in_progress",
+  "brief": "Исправить реальную причину peer-session churn, выявленную S3.12.3 diagnostics: `protocol_error` / `heartbeat_read_failed` после открытия trusted session. Слайс должен идти через delegation conveyor, а не через прямую реализацию оркестратором.",
+  "scope": [
+    "Разобрать свежие diagnostic logs S3.12.3 и код transport только в зоне peer wire/read/heartbeat/session loop",
+    "Исправить протокольный цикл так, чтобы persistent session не закрывалась из-за штатных HeartbeatAck/AccountViews/CrossShardFacts сообщений",
+    "Сохранить trust boundary, genesis guard и foreign account unknown/unavailable semantics",
+    "Не начинать S3.13 federation table в этом слайсе"
+  ],
+  "acceptance": [
+    "Нет steady reconnect/hello churn каждые ~2с в live CY<->DO сценарии",
+    "Сессия остаётся long-lived; heartbeat/data-plane exchange не порождает protocol_error/heartbeat_read_failed",
+    "Foreign account lookup через trusted peer path возвращает known/ok при свежем AccountViews stream и unavailable/stale при потере пути",
+    "Есть coding/testing/review artifacts",
+    "Каждая delegation запись содержит token usage: точный usage, если доступен, иначе approximate estimate"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix S15-S3.12.4 peer protocol churn root cause using S3.12.3 diagnostics; avoid broad redesign.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/lib.rs",
+        "docs/reviews/sprint-15-s3-12-4-coding.md",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 62000,
+        "output": 9000,
+        "total": 71000,
+        "confidence": "low"
+      },
+      "done_at": "2026-04-30T19:58:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate focused unit/integration and live CY<->DO churn/foreign lookup behavior.",
+      "result": "FAIL",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-4-testing.md",
+        "tmp/s15-s3-12-4-testing/node1.out.log",
+        "tmp/s15-s3-12-4-testing/node2.out.log",
+        "tmp/s15-s3-12-4-testing/alt-node1.out.log",
+        "tmp/s15-s3-12-4-testing/alt-node2.out.log"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 22000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T21:42:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review S3.12.4 diff for transport correctness, trust boundary, logs, style, and tests.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-4-review.md",
+        "tasks/20260430-s15-slice3-12-4-peer-protocol-churn-rootcause-fix.json",
+        "docs/reviews/sprint-15-s3-12-4-coding.md",
+        "docs/reviews/sprint-15-s3-12-4-testing.md",
+        "tmp/s15-s3-12-4-testing/alt-node1.out.log",
+        "tmp/s15-s3-12-4-testing/alt-node2.out.log"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 52000,
+        "output": 6200,
+        "total": 58200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T21:53:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-12-4-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-4-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-4-review.md"
+  },
+  "commits": [],
+  "notes": "Started after orchestrator prompt refresh for subagent token telemetry. Coding PASS recorded from pwm-coding handoff. Testing FAIL: focused checks pass, but live CY/DO smoke still repeats protocol_error detail=heartbeat_read_failed after successful handshake/session open. Review verdict: request changes; likely reciprocal-session/inbound-close gap, next slice should isolate via peer-only micro-node harness."
+}

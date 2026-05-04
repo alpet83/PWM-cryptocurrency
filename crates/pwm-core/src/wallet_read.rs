@@ -15,8 +15,20 @@ use crate::types::{
 use ed25519_dalek::SigningKey;
 use slip10_ed25519::derive_ed25519_private_key;
 
+fn default_wallet_schema_version() -> u32 {
+    2
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WalletReadOwnedAccount {
+    pub id_hex: String,
+    pub id_human: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WalletReadHeader {
+    #[serde(default = "default_wallet_schema_version")]
+    pub schema_version: u32,
     pub mode: String,
     pub derivation_index: u32,
     #[serde(default)]
@@ -25,6 +37,8 @@ pub struct WalletReadHeader {
     #[serde(default)]
     pub account_id_hex: Option<String>,
     pub account_id_human: String,
+    #[serde(default)]
+    pub owned_accounts: Vec<WalletReadOwnedAccount>,
     #[serde(default)]
     pub address_book: Vec<AddressBookEntry>,
     #[serde(default)]
@@ -43,6 +57,44 @@ pub struct WalletReadHeader {
     pub kdf_iters: Option<u32>,
     #[serde(skip)]
     pub ignored_legacy_pretty_entries: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct WalletReadV3Account {
+    derivation_path: String,
+    derivation_index: u32,
+    domain_u16: u16,
+    flags_mask_u32: u32,
+    expected_flags_u32: u32,
+    flags_derived_u32: u32,
+    id_hex: String,
+    id_pretty: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct WalletReadV3Header {
+    mode: String,
+    #[serde(default)]
+    schema_version: Option<u32>,
+    #[serde(default)]
+    active_account_id_hex: Option<String>,
+    accounts: Vec<WalletReadV3Account>,
+    #[serde(default)]
+    address_book: Vec<AddressBookEntry>,
+    #[serde(default)]
+    signing_key_hex: Option<String>,
+    #[serde(default)]
+    master_seed_hex: Option<String>,
+    #[serde(default)]
+    encrypted_payload_b64: Option<String>,
+    #[serde(default)]
+    kdf_salt_b64: Option<String>,
+    #[serde(default)]
+    aead_nonce_b64: Option<String>,
+    #[serde(default)]
+    kdf: Option<String>,
+    #[serde(default)]
+    kdf_iters: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -226,7 +278,12 @@ pub fn load_wallet_read_header(
     auto_upgrade_on_load: bool,
 ) -> Result<WalletReadLoad, String> {
     let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let parsed: WalletReadHeader = serde_yaml::from_str(&raw).map_err(|e| e.to_string())?;
+    let schema_version = detect_schema_version(&raw)?;
+    let parsed: WalletReadHeader = if schema_version == 3 {
+        parse_wallet_read_v3_header(&raw)?
+    } else {
+        serde_yaml::from_str(&raw).map_err(|e| e.to_string())?
+    };
     let (normalized, changed) = normalize_wallet_header(parsed)?;
     if auto_upgrade_on_load && changed {
         rewrite_wallet_header_fields(&raw, path, &normalized)?;
@@ -235,6 +292,83 @@ pub fn load_wallet_read_header(
         ignored_legacy_pretty_entries: normalized.ignored_legacy_pretty_entries,
         header: normalized,
         upgraded_on_load: changed,
+    })
+}
+
+fn detect_schema_version(raw: &str) -> Result<u32, String> {
+    #[derive(Deserialize)]
+    struct VersionOnly {
+        schema_version: Option<u32>,
+    }
+    let parsed: VersionOnly = serde_yaml::from_str(raw).map_err(|e| e.to_string())?;
+    Ok(parsed.schema_version.unwrap_or(2))
+}
+
+fn parse_der_idx_m0_path(path: &str) -> Result<u32, String> {
+    let trimmed = path.trim();
+    const PREFIX: &str = "m/0/";
+    if !trimmed.starts_with(PREFIX) {
+        return Err(format!(
+            "wallet schema v3 derivation_path must start with '{PREFIX}', got '{trimmed}'"
+        ));
+    }
+    trimmed[PREFIX.len()..].parse::<u32>().map_err(|_| {
+        format!("wallet schema v3 derivation_path must end with u32 index, got '{trimmed}'")
+    })
+}
+
+fn validate_v3_derivation_paths(parsed: &WalletReadV3Header) -> Result<(), String> {
+    for account in &parsed.accounts {
+        let path_idx = parse_der_idx_m0_path(&account.derivation_path)?;
+        if path_idx != account.derivation_index {
+            return Err(format!(
+                "wallet schema v3 derivation_path {:?} does not match derivation_index {}",
+                account.derivation_path, account.derivation_index
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn default_v3_account(accounts: &[WalletReadV3Account]) -> Option<&WalletReadV3Account> {
+    accounts
+        .iter()
+        .min_by_key(|a| (a.derivation_index, a.id_hex.to_ascii_lowercase()))
+}
+
+fn parse_wallet_read_v3_header(raw: &str) -> Result<WalletReadHeader, String> {
+    let parsed: WalletReadV3Header = serde_yaml::from_str(raw).map_err(|e| e.to_string())?;
+    validate_v3_derivation_paths(&parsed)?;
+    if parsed.accounts.is_empty() {
+        return Err("wallet schema v3 requires non-empty accounts".to_string());
+    }
+    let default_account =
+        default_v3_account(&parsed.accounts).expect("validated non-empty accounts");
+    Ok(WalletReadHeader {
+        schema_version: 3,
+        mode: parsed.mode,
+        derivation_index: default_account.derivation_index,
+        derivation_path: Some(default_account.derivation_path.clone()),
+        domain_u16: default_account.domain_u16,
+        account_id_hex: Some(default_account.id_hex.clone()),
+        account_id_human: default_account.id_pretty.clone(),
+        owned_accounts: parsed
+            .accounts
+            .iter()
+            .map(|a| WalletReadOwnedAccount {
+                id_hex: a.id_hex.clone(),
+                id_human: a.id_pretty.clone(),
+            })
+            .collect(),
+        address_book: parsed.address_book,
+        signing_key_hex: parsed.signing_key_hex,
+        master_seed_hex: parsed.master_seed_hex,
+        encrypted_payload_b64: parsed.encrypted_payload_b64,
+        kdf_salt_b64: parsed.kdf_salt_b64,
+        aead_nonce_b64: parsed.aead_nonce_b64,
+        kdf: parsed.kdf,
+        kdf_iters: parsed.kdf_iters,
+        ignored_legacy_pretty_entries: 0,
     })
 }
 
@@ -267,20 +401,23 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use slip10_ed25519::derive_ed25519_private_key;
 
+    /// Migrates CY legacy pretty to CY/LO form (formerly `normalize_wallet_header_upgrades_legacy_pretty`).
     #[test]
-    fn normalize_wallet_header_upgrades_legacy_pretty() {
+    fn norm_hdr_legacy_cy_lo() {
         let mut id = [0u8; 32];
         id[0] = 0x2C;
         id[1] = 0x00;
         let expected = account_id_to_human(&id);
         let legacy = expected.replacen("CY/00", "CY", 1);
         let wallet = WalletReadHeader {
+            schema_version: 2,
             mode: "plaintext_dev".into(),
             derivation_index: 7,
             derivation_path: Some("m/0/7".into()),
             domain_u16: 0x2C00,
             account_id_hex: Some(hex::encode(id)),
             account_id_human: legacy,
+            owned_accounts: Vec::new(),
             address_book: Vec::new(),
             signing_key_hex: None,
             master_seed_hex: None,
@@ -296,8 +433,9 @@ mod tests {
         assert_eq!(normalized.account_id_human, expected);
     }
 
+    /// Loader rewrites human/AB lines when upgrading (formerly `load_wallet_read_header_rewrites_normalized_fields`).
     #[test]
-    fn load_wallet_read_header_rewrites_normalized_fields() {
+    fn hdr_rewrite_yaml_disk() {
         let path = std::env::temp_dir().join(format!(
             "pwm_core_wallet_read_upgrade_{}.yaml",
             rand::random::<u128>()
@@ -327,9 +465,11 @@ address_book:
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Ambiguous CY legacy without hex/seed source fails normalization (formerly `normalize_wallet_header_rejects_ambiguous_legacy_without_reliable_source`).
     #[test]
-    fn normalize_wallet_header_rejects_ambiguous_legacy_without_reliable_source() {
+    fn norm_hdr_ambig_legacy_fail() {
         let wallet = WalletReadHeader {
+            schema_version: 2,
             mode: "plaintext_dev".into(),
             derivation_index: 7,
             derivation_path: Some("m/0/7".into()),
@@ -337,6 +477,7 @@ address_book:
             account_id_hex: None,
             account_id_human:
                 "pwm1-CY-f00000000-t0000000000000000000000000000000000000000000000000000".into(),
+            owned_accounts: Vec::new(),
             address_book: Vec::new(),
             signing_key_hex: None,
             master_seed_hex: None,
@@ -351,17 +492,20 @@ address_book:
         assert!(err.contains("cannot recover low-byte"));
     }
 
+    /// Already strict pretty + encrypted payloads stay untouched (formerly `normalize_wallet_header_no_change_for_strict_pretty`).
     #[test]
-    fn normalize_wallet_header_no_change_for_strict_pretty() {
+    fn norm_hdr_strict_no_op() {
         let id = [9u8; 32];
         let human = account_id_to_human(&id);
         let wallet = WalletReadHeader {
+            schema_version: 2,
             mode: "encrypted".into(),
             derivation_index: 3,
             derivation_path: Some("m/0/3".into()),
             domain_u16: 0x0909,
             account_id_hex: None,
             account_id_human: human.clone(),
+            owned_accounts: Vec::new(),
             address_book: vec![AddressBookEntry::AddressOnly(account_id_to_bech32dx(&id))],
             signing_key_hex: None,
             master_seed_hex: None,
@@ -377,8 +521,9 @@ address_book:
         assert!(normalized.encrypted_payload_b64.is_some());
     }
 
+    /// Prefer `m/0/i` derived id over bogus cached ids (formerly `normalize_wallet_header_prefers_seed_path_over_cached_account_ids`).
     #[test]
-    fn normalize_wallet_header_prefers_seed_path_over_cached_account_ids() {
+    fn hdr_norm_seed_truth() {
         let seed = [7u8; 32];
         let idx = 11u32;
         let sk_bytes = derive_ed25519_private_key(&seed, &[0, idx]);
@@ -386,12 +531,14 @@ address_book:
         let pk = sk.verifying_key().to_bytes();
         let true_id = account_id_from_parts(&pk, idx);
         let wallet = WalletReadHeader {
+            schema_version: 2,
             mode: "plaintext_dev".into(),
             derivation_index: idx,
             derivation_path: Some(format!("m/0/{idx}")),
             domain_u16: u16::from_be_bytes([true_id[0], true_id[1]]),
             account_id_hex: Some("11".repeat(32)),
             account_id_human: account_id_to_human(&[2u8; 32]),
+            owned_accounts: Vec::new(),
             address_book: Vec::new(),
             signing_key_hex: Some(hex::encode(sk.to_bytes())),
             master_seed_hex: Some(hex::encode(seed)),
@@ -406,8 +553,9 @@ address_book:
         assert_eq!(normalized.account_id_human, account_id_to_human(&true_id));
     }
 
+    /// Drops duplicate legacy-pretty duplicates in AB (formerly `normalize_wallet_header_ignores_pretty_entries_in_address_book`).
     #[test]
-    fn normalize_wallet_header_ignores_pretty_entries_in_address_book() {
+    fn hdr_ab_dedupe_legacy() {
         let id = [
             0x2c, 0x7e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 1,
@@ -415,12 +563,14 @@ address_book:
         let canonical = account_id_to_bech32dx(&id);
         let pretty = account_id_to_human(&id);
         let wallet = WalletReadHeader {
+            schema_version: 2,
             mode: "plaintext_dev".into(),
             derivation_index: 1,
             derivation_path: Some("m/0/1".into()),
             domain_u16: 0x2C7E,
             account_id_hex: Some(hex::encode(id)),
             account_id_human: account_id_to_human(&id),
+            owned_accounts: Vec::new(),
             address_book: vec![
                 AddressBookEntry::AddressOnly(canonical.clone()),
                 AddressBookEntry::AddressOnly(pretty),
@@ -439,5 +589,52 @@ address_book:
         assert_eq!(normalized.address_book.len(), 1);
         assert_eq!(normalized.address_book[0].address_str(), canonical);
         assert_eq!(normalized.ignored_legacy_pretty_entries, 1);
+    }
+
+    /// Minimal schema v3 file without legacy active markers (formerly `load_wallet_read_header_supports_schema_v3_without_active_account`).
+    #[test]
+    fn v3_hdr_rows_ok() {
+        let path = std::env::temp_dir().join(format!(
+            "pwm_core_wallet_read_v3_{}.yaml",
+            rand::random::<u128>()
+        ));
+        let raw = r#"schema_version: 3
+mode: plaintext_dev
+accounts:
+  - derivation_path: "m/0/0"
+    derivation_index: 0
+    domain_u16: 11390
+    flags_mask_u32: 1023
+    expected_flags_u32: 1
+    flags_derived_u32: 1
+    id_hex: "2c7e0000000000000000000000000000000000000000000000000000000000aa"
+    id_pretty: "pwm1-CY/7E-f00000000-t00000000000000000000000000000000000000000000000000aa"
+  - derivation_path: "m/0/1"
+    derivation_index: 1
+    domain_u16: 11390
+    flags_mask_u32: 1023
+    expected_flags_u32: 1
+    flags_derived_u32: 1
+    id_hex: "2c7e000000000000000000000000000000000000000000000000000000000000"
+    id_pretty: "pwm1-CY/7E-f00000000-t0000000000000000000000000000000000000000000000000000"
+"#;
+        std::fs::write(&path, raw).unwrap();
+        let loaded = load_wallet_read_header(&path, false).expect("load");
+        assert_eq!(loaded.header.schema_version, 3);
+        assert_eq!(loaded.header.derivation_index, 0);
+        assert_eq!(
+            loaded.header.account_id_hex.as_deref(),
+            Some("2c7e0000000000000000000000000000000000000000000000000000000000aa")
+        );
+        assert_eq!(loaded.header.owned_accounts.len(), 2);
+        assert_eq!(
+            loaded.header.owned_accounts[0].id_hex,
+            "2c7e0000000000000000000000000000000000000000000000000000000000aa"
+        );
+        assert_eq!(
+            loaded.header.owned_accounts[1].id_hex,
+            "2c7e000000000000000000000000000000000000000000000000000000000000"
+        );
+        let _ = std::fs::remove_file(&path);
     }
 }

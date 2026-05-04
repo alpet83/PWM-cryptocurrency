@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "20260424-sprint4-orchestrated",
+  "title": "Sprint 4: shard runtime identity и сеть межшардовых связей",
+  "status": "partial",
+  "mvp_checklist": [
+    "docs/AGENT_PROMPT_orchestrator.md",
+    "docs/AGENT_PROMPTS.md",
+    "docs/MVP-checklist.md",
+    "docs/WHITE_SPEC_v0.md",
+    "docs/rfc/6-policy-engine.md"
+  ],
+  "brief": "Формализовать детальный spec-пакет для shard runtime identity: параметризация запуска по domain cluster, самоидентификация узла в общей сети, и приоритет связей с родными shard-кластерами относительно внешних.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить подробную спецификацию shard runtime identity/endpoints/peer-priority и kickoff-артефакты Sprint 4.",
+      "done_at": "2026-04-24T10:51:56.7623401+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить тестопригодность новой спецификации и формализовать validation matrix.",
+      "done_at": "2026-04-24T10:57:50.9261955+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимый coherence-review новой спецификации и sprint-4 артефактов.",
+      "done_at": "2026-04-24T11:05:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "checklist_md": "docs/reviews/sprint-4-checklist.md",
+    "status_note_md": "docs/reviews/sprint-4-status-note.md",
+    "review_md": "docs/reviews/sprint-4-review-report.md"
+  },
+  "notes": "Инициировано по запросу пользователя: детально формализовать будущую модель shard-параметризации и сетевой самоидентификации, включая приоритизацию связей с родными shard-кластерами. Mini-report (pwm-coding): создан RFC `docs/rfc/8-shard-runtime-identity-and-peering.md` с glossary, launch parameterization (network_id/domain_hi+cluster_id/node_id/capabilities), signed node hello/self-ID, peer classes native/foreign, native-first priority policy (queue/reconnect/backoff/gossip/failover), anti-spoof checks, observability baseline, migration path от `--shard A|B`, acceptance criteria; добавлены cross-links в `docs/WHITE_SPEC_v0.md` и `docs/rfc/6-policy-engine.md`; созданы kickoff-артефакты `docs/reviews/sprint-4-checklist.md` и `docs/reviews/sprint-4-status-note.md` со strict gate order coding->testing->review->orchestrator decision. Mini-report (pwm-testing): подготовлен spec-gate отчёт `docs/reviews/sprint-4-test-report.md` с 1:1 validation matrix по AC-1..AC-9 RFC-8, обязательными negative scenarios (spoofed identity, replay nonce, network/genesis mismatch, forged native claim, priority regression under native deficit), observability assertions (метрики/логи как pass/fail сигналы), hard-fail запретом на range heuristics (`0x80 split`), и вердиктом readiness `partial` до появления runtime evidence. Mini-report (pwm-review): выявленные рассинхроны артефактов устранены, опубликован `docs/reviews/sprint-4-review-report.md`, зафиксирована коррекция пересекавшихся domain-range в `docs/WHITE_SPEC_v0.md`; review verdict `pass`, общий orchestrator статус оставлен `partial` до runtime-реализации."
+}

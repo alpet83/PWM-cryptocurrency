@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260513-s15-slice-O1-wave11-tests-extract",
+  "title": "S15-O.1 wave11: pwm-tui tests/*.rs (§6.2) + lib target",
+  "status": "done",
+  "brief": "lib.rs + thin main; tests/send_form.rs, tests/wallet_roaming.rs, tests/common; TextInput::set_text pub for tests. pwm-review PARTIAL: сузить pub API / test_support в следующей волне.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "lib target, move tests to tests/",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-tui/src/lib.rs", "crates/pwm-tui/tests/", "Cargo.toml", "src/main.rs", "many pub visibility"],
+      "tokens": { "source": "estimate", "total": 29000, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt, 88 integration tests, workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 2000, "confidence": "medium" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Pub surface / safety review",
+      "result": "PARTIAL",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 22800, "confidence": "medium" },
+      "done_at": "2026-05-01",
+      "notes": "Сузить pwm_tui:: pub; test_support module; длинные pub имена"
+    }
+  ],
+  "commits": ["3ef54ff", "e6380a4"],
+  "notes": "Follow-up wave: pub(crate) + pub(test) gating or explicit test_support."
+}

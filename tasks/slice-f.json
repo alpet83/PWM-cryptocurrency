@@ -1,0 +1,19 @@
+{
+  "id": "slice-f",
+  "title": "Bridge trust + pwmd-peer logging + reconnect noise",
+  "source": "docs/reviews/slice-f-bridge-trust-peer-logging-20260504.md",
+  "order": ["B", "C", "A"],
+  "status": "closed_docs_sync_2026_05_04",
+  "owner": "orchestrator",
+  "blockers": [],
+  "pipeline": {
+    "pwm-testing": "pass",
+    "pwm-review": "approve_with_nits",
+    "mvp_closeout_docs": "RFC A.6 + GEO + WHITE_SPEC + checklist + e2e cross_shard_two_pwmd"
+  },
+  "follow_up": [
+    "Replica-only wire mismatch harness (two nodes same domain_hi different snapshots) — optional hardening",
+    "optional: CQDS rebuild_index для Colloquium-проектов"
+  ],
+  "last_update": "2026-05-04"
+}

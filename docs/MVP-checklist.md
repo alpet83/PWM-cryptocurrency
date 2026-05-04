@@ -17,6 +17,15 @@
 | [x] | `docs/adr/0001-consensus-and-node-stack.md` — выбор своего узла (PoA dev), не CometBFT в v0 |
 | [x] | Привести `WHITE_SPEC` и код к одному виду: human-адрес `PWMv0-…` в CLI/TUI; подпись/хэш tx — §3 WHITE_SPEC согласовано с `signing_message()` (см. [reviews/pwm-mvp-20260418.md](reviews/pwm-mvp-20260418.md) §2) |
 | [x] | Термин **matrixchain**: [MATRIXCHAIN_SPEC_v0.md](MATRIXCHAIN_SPEC_v0.md) (сравнение с whitepaper + ось v0) |
+| [x] | `docs/rfc/9-crossdomain-roaming.md` — as-implemented контракт Sprint 13 для cross-domain roaming MVP (baseline vs out-of-scope) |
+| [x] | Операторские docs по Sprint 13 roaming: [ROAMING-SAMPLE.md](ROAMING-SAMPLE.md) + [GEO-SHARDING-EXPLANATION.md](GEO-SHARDING-EXPLANATION.md) |
+| [x] | S15 closeout отладки межшарда: [ROAMING_COMPLETION.md](ROAMING_COMPLETION.md) + [sprint-15-s3-17-closeout.md](reviews/sprint-15-s3-17-closeout.md) (2026-05-01) |
+| [x] | Stabilization slicing (2026-05-03): [cross-shard-stabilization-slicing-20260503.md](reviews/cross-shard-stabilization-slicing-20260503.md) — Slice A..E с test gates/risks/acceptance для `pwm-coding -> pwm-testing -> pwm-review` |
+| [x] | RFC delta для межшардовой стабилизации MVP: deterministic target provenance, automatic reimport/backfill, offline repair + crash-fast, future settlement-chain note; **доп. направление (только RFC, без кода):** source-side lock / conditional finalize — [rfc/9-crossdomain-roaming.md](rfc/9-crossdomain-roaming.md) Appendix A.5 |
+| [ ] | Протокольная блокировка UTXO/стоимости на `EXPORT` до финализации `IMPORT` — ждёт отдельной спеки (см. RFC 0009 §A.5); в MVP не реализовывать до согласования proof/finality, таймаута и fork-правил |
+| [x] | Формализация **отказа в федеративном доверии** при расхождении **мостового** (level-2) учёта и **закрытие one-window** для клиентов: `WHITE_SPEC_v0.md` §7.5, `rfc/9-crossdomain-roaming.md` Appendix A.6, `GEO-SHARDING-EXPLANATION.md` §8 |
+| [x] | Реализация в `pwmd`: bridge commitment, обнаружение расхождения, readiness + отключение one-window/foreign observability при bridge trust refusal (2026-05-04; same/cross-shard hello — см. RFC A.6, `POST /v1/bridge-federation/reset`) |
+| [x] | **Slice F** (2026-05-04): адаптация §7.5/A.6 в рантайм + лог `pwmd-peer-*.log` без консоли + снижение шума reconnect — [slice-f-bridge-trust-peer-logging-20260504.md](reviews/slice-f-bridge-trust-peer-logging-20260504.md), `tasks/slice-f.json` |
 
 ---
 
@@ -48,7 +57,7 @@
 | [x] | `state::digest` — корень состояния (bincode+blake3) |
 | [x] | `block`: `BlockHdr`, `Block`, `txs_root`, `hdr_hash` |
 | [x] | `mempool`: `Mpool` FIFO, cap |
-| [x] | `genesis`: `GenCfg`, `GRow`, `dev_net()` (валидатор: seed **`[99;32]`**, `m/0'/0'`, баланс 1e6) |
+| [x] | `genesis`: `GenCfg`, `GRow`, `dev_net()` (исторический legacy-вектор: seed **`[99;32]`**, `m/0'/0'`; активный genesis flow для `pwmd --genesis-file` — schema v4 через `pwm genesis-build`) |
 | [x] | `chain`: `Chain::boot`, `seal`, `prev_gen`, PoA ротация по индексу |
 | [x] | `offchain`: `merkle_root`, `sign_batch`, `batch_preimage` |
 | [x] | Юнит-тесты: `hd::tests`, `chain::tests::seal_empty_block` |
@@ -69,7 +78,10 @@
 | [x] | `POST /v1/tx`: ранняя `validate_tx_shape` до пула; `DefaultBodyLimit` **256 KiB** на роутере (в т.ч. localhost) |
 | [x] | CORS: permissive только на **loopback** bind; иначе обязателен **`PWM_CORS_ORIGINS`** (список через запятую) |
 | [x] | Persist цепи на диск: JSON-снапшот `--data-file` (по умолчанию `pwm-data.json`) с `blocks` + `state`, загрузка при старте с проверкой совместимости genesis |
-| [x] | Флаги CLI: **`--listen`** (по умолчанию `127.0.0.1:3030`), **`--genesis-file`** (JSON: `gen_cfg` + `validator_seeds_hex`, см. `pwmd::load_genesis_bundle`) |
+| [x] | Флаги CLI: **`--listen`** (по умолчанию `127.0.0.1:3030`), **`--genesis-file`** (schema v4 JSON: `gen_cfg.funding.accounts` + `gen_cfg.validators.set` + `validator_keys[*].enc_seed`; plaintext `validator_seeds_hex` не поддерживается) |
+| [x] | Cross-shard stabilization MVP: `handoff_register` не мутирует replay-critical `State.exported_registry` вне блока; provenance входит в deterministic block path (`Import`/эквивалент) |
+| [x] | Automatic reimport/backfill после cleanup/rollback target: trusted peer (`network_id`/`genesis_hash`), idempotent inclusion, replay validate после восстановления |
+| [x] | Offline repair path: rollback до последней воспроизводимой высоты + безопасная перезапись epoch/manifest/summary + validate-after-write |
 
 ---
 
@@ -95,7 +107,7 @@
 | [x] | Опционально **Debug**: `PWM_TUI_DEBUG=1` — нижняя панель с JSON (`GET /v1/account/...`) |
 | [x] | Опрос `PWM_RPC`, ~1s; `q` / **F10** — выход; стрелки — выбор строки |
 | [x] | Панели «владелец / получатели», Tab-фокус, **F5/F6** модалки — по TUI_SPEC §2 (F6: рабочая send-форма с полями, валидацией, submit/status; F5 остаётся в рамках текущего MVP-сценария) |
-| [x] | Нижняя строка с подсказками F1–F10 (как mc): добавлены подсказки `F5/F6` как `todo`; действия будут в задаче панелей |
+| [x] | Нижняя строка с подсказками F1–F10 (как mc): отражают текущие действия F5/F6 согласно [TUI_SPEC_v0.md](TUI_SPEC_v0.md) §2 |
 
 ---
 
@@ -106,7 +118,7 @@
 | [x] | `cargo test --workspace` зелёный (актуальная проверка после Sprint 1C обновлений) |
 | [x] | TUI send-flow по F6 реализован: from/to/amount/fee/confirm, локальные валидации, submit в `POST /v1/tx`, отображение статуса/ошибки |
 | [x] | CLI smoke `wallet + send` проходит, включая pretty recipient |
-| [ ] | Ручной операторский TUI smoke (happy-path + 2–3 негативных кейса) — ожидает выполнения и фиксации артефактов |
+| [x] | Ручной операторский TUI smoke (2026-05-04): happy-path; негативы — пересылка при заблокированном кошельке, на неинициализированный адрес, TUI при остановленном `pwmd`; расширенные негативы и RPC-параллели — [tester-guide-cli-tui-scenarios.md](tester-guide-cli-tui-scenarios.md) §«Негативные сценарии» |
 
 ---
 
@@ -114,6 +126,8 @@
 
 - Политики «глупых контрактов», арбитры, шардинг консенсуса, PQC, IPv4-клайминг, полная инфляция.
 - Подробная **документация кодовой базы** по каждому компоненту — отдельные TODO в трекере, после стабилизации API.
+- Масштабируемое межшардовое **read-наблюдение** без перегрузки сети (global explorer, подписки клиента по адресам) — не цель текущего MVP-паттерна «одного окна»; см. [reviews/sprint-15-s3-12-9-closeout.md](reviews/sprint-15-s3-12-9-closeout.md).
+- **S15 слайс O** (оптимизация / decomposition): [CODEBASE_REFACTORING.md](CODEBASE_REFACTORING.md), [reviews/sprint-15-slice-O-checklist.md](reviews/sprint-15-slice-O-checklist.md) — post-MVP backlog, не блокирует объявление текущего MVP baseline.
 
 ---
 
@@ -129,9 +143,9 @@
 
 ## 8b. Отложено: эксплуатационная документация (end-user / tester)
 
-- [x] Tester guide: установка/запуск devnet и базовые smoke-сценарии (без деталей внутренней реализации) — [tester-guide-devnet-smoke.md](tester-guide-devnet-smoke.md).
-- [x] Tester guide: сценарии CLI/TUI проверки и ожидаемые результаты — [tester-guide-cli-tui-scenarios.md](tester-guide-cli-tui-scenarios.md).
-- [x] Tester guide: типовые ошибки окружения и быстрые шаги восстановления — [tester-guide-env-errors-recovery.md](tester-guide-env-errors-recovery.md).
+- [x] Tester guide: установка/запуск devnet и базовые smoke-сценарии (без деталей внутренней реализации) — [tester-guide-devnet-smoke.md](./tester-guide-devnet-smoke.md).
+- [x] Tester guide: сценарии CLI/TUI проверки и ожидаемые результаты — [tester-guide-cli-tui-scenarios.md](./tester-guide-cli-tui-scenarios.md).
+- [x] Tester guide: типовые ошибки окружения и быстрые шаги восстановления — [tester-guide-env-errors-recovery.md](./tester-guide-env-errors-recovery.md).
 
 ---
 
@@ -148,6 +162,7 @@
 ## 10. Отчёты ревью (бэклог) [x]
 
 - [x] [reviews/pwm-mvp-20260418.md](reviews/pwm-mvp-20260418.md) — статический обзор + `cargo test`; пункты **Request changes** перенесены в §3–§6 выше (мемпул/seal — высокий приоритет).
+- [x] Multi-sprint closeout — граница **CQDS/MCP vs продуктовая нода**: [reviews/mvp-closeout-operator-notes.md](reviews/mvp-closeout-operator-notes.md).
 
 ---
 

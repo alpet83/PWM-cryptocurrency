@@ -1,0 +1,24 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice9-genesis-cli-generator",
+  "title": "Sprint 14 Slice 9: genesis workflow and CLI generator",
+  "status": "completed",
+  "mvp_checklist": ["Sprint 14 / Slice 9"],
+  "brief": "Rename resume helper; migrate genesis docs/format away from addr-derive; add native pwm-cli genesis generator from wallet.",
+  "delegations": [
+    {"agent": "pwm-review", "prompt_summary": "Scope and contract review for genesis format + CLI generator.", "done_at": "2026-04-28T18:03:00+03:00"},
+    {"agent": "pwm-coding", "prompt_summary": "Implement rename + CLI genesis generator + docs + remove ps1 flow.", "done_at": "2026-04-28T18:10:00+03:00"},
+    {"agent": "pwm-testing", "prompt_summary": "Validate new generator and regressions.", "done_at": "2026-04-28T18:14:00+03:00"},
+    {"agent": "pwm-review", "prompt_summary": "Final independent review and verdict.", "done_at": "2026-04-28T18:17:00+03:00"}
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-14-slice9-genesis-review.md",
+    "coding_md": "docs/reviews/sprint-14-slice9-coding.md",
+    "testing_md": "docs/reviews/sprint-14-slice9-testing.md",
+    "final_review_md": "docs/reviews/sprint-14-slice9-remediation-review.md",
+    "remediation_coding_md": "docs/reviews/sprint-14-slice9-remediation-coding.md",
+    "remediation_testing_md": "docs/reviews/sprint-14-slice9-remediation-testing.md"
+  },
+  "notes": "User requested replacing addr-derive in GENESIS_BLOCK.md and replacing genesis ps1 helper with native pwm-cli generator."
+}

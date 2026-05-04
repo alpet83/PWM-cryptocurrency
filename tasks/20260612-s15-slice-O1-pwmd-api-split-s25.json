@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "id": "20260612-s15-slice-O1-pwmd-api-split-s25",
+  "title": "S15-O.1 pwmd wave18: api.rs split per §2.5 (CODEBASE_REFACTORING)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-O-checklist.md §C §2.4–2.6 — pwmd api.rs §2.5",
+    "docs/CODEBASE_REFACTORING.md §2.5"
+  ],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review** → закрытие оркестратором.\n\n**Цель:** декомпозиция **`crates/pwmd/src/api.rs`** (~2k строк) по **`docs/CODEBASE_REFACTORING.md` §2.5** в каталог **`api/`** с подмодулями (ориентир: `handlers_status`, `handlers_tx`, `handlers_account`, `handlers_peer`, `handlers_roaming`, `handlers_federation`, `router`, `types` — имена можно слегка сократить, но смысл групп сохранить).\n\n**Контракт:**\n- **`lib.rs`** остаётся **`mod api;`** и **`pub use api::{ router, AcctListOut, AcctOut, HeadOut, PeerHelloOut, PeerStatsOut, StatusOut, V1_TX_BODY_LIMIT };`** без смены списка (добавлять/убирать элементы только при необходимости и с правкой **`lib.rs`**).\n- **`relay.rs`:** `use crate::api::ExportHandoffOut;` — сохранить путь **`crate::api::ExportHandoffOut`** через фасад **`api/mod.rs`**.\n\n**Инварианты:** HTTP маршруты, JSON-типы ответов и поведение хендлеров не меняются намеренно; только перенос кода между файлами.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwmd`, `cargo check --workspace`.\n\n**Ревью:** `docs/reviews/sprint-15-slice-O1-pwmd-api-split-s25-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "split pwmd api.rs into api/ submodules per §2.5; facade for lib+relay",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/api/mod.rs",
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/src/api/router.rs",
+        "crates/pwmd/src/api/common.rs",
+        "crates/pwmd/src/api/handlers_status.rs",
+        "crates/pwmd/src/api/handlers_account.rs",
+        "crates/pwmd/src/api/handlers_tx.rs",
+        "crates/pwmd/src/api/handlers_roaming.rs",
+        "crates/pwmd/src/api/handlers_peer.rs",
+        "crates/pwmd/src/api/handlers_federation.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 45000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwmd + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo check --workspace",
+        "cargo test -p pwmd (194 lib + 3 integration)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate §2.5 api split — routes and pub use parity",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-pwmd-api-split-s25-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-03T06:00:00Z"
+    }
+  ],
+  "commits": [
+    "54cc0bb24a473d9150af32b2091c58bdd963cab5",
+    "e7b492c36d712b6e82a40bd774d433a8b9040a74",
+    "0006b6f431ba38f196bb6d42318859f8148c86a5"
+  ],
+  "parent_chain": [
+    "tasks/20260611-s15-slice-O1-cli-wave17-wallet-split-s24.json"
+  ],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.5",
+    "review_md": "docs/reviews/sprint-15-slice-O1-pwmd-api-split-s25-review.md"
+  },
+  "notes": ""
+}

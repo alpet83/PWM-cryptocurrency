@@ -1,0 +1,14 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260429-s14-slice19-snapshot-persistence-investigation",
+  "title": "Sprint 14 Slice 19: snapshot persistence investigation",
+  "status": "in_progress",
+  "mvp_checklist": ["Sprint 14 / Slice 19"],
+  "brief": "Разобраться, почему нода не сохраняет pwm-data.json после генезиса/100+ блоков.",
+  "delegations": [
+    {"agent": "pwm-testing", "prompt_summary": "Reproduce and diagnose autosnapshot write path.", "done_at": null}
+  ],
+  "commits": [],
+  "artifacts": {"testing_md": null},
+  "notes": "User reports no pwm-data.json even after many sealed blocks."
+}

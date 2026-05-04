@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "id": "20260504-s15-snapshot-trust-default-api-save-split",
+  "title": "S15: snapshot trust-default + API save split",
+  "status": "done",
+  "mvp_checklist": [],
+  "depends_on": [
+    "tasks/20260503-s15-arch-trust-checkpoint-rescan-review.json",
+    "docs/reviews/sprint-15-arch-trust-checkpoint-rescan-review.md"
+  ],
+  "brief": "Закрыть implementation/product часть выводов архревью: JsonFile startup по умолчанию доверяет checkpoint/summary + manifest/tip_hash и читает только tail; полный genesis→tip replay включается явным `--snapshot-verify-chain` или truthy `PWM_SNAPSHOT_VERIFY_CHAIN`. Если summary checkpoint отстаёт от manifest canonical height, loader принудительно падает обратно на full verify. P0 API-save уже разведён от монолитного encode: горячий JsonFile save синхронизирует epochs и summary без полного `load_blocks_from_epochs` на каждом запросе. ClickHouse в этом срезе остаётся full-replay loader; `SnapshotLoadOpts` для CH не ослабляет проверку и это зафиксировано в коде.",
+  "acceptance": [
+    "JsonFile startup trust-default реализован: `SnapshotLoadOpts { verify_chain: false }` грузит tail из epochs и валидирует summary/manifest/tip_hash без полного replay",
+    "Полный replay доступен через `--snapshot-verify-chain` и `PWM_SNAPSHOT_VERIFY_CHAIN`; lag summary-vs-manifest принудительно включает full verify",
+    "P0 API-save после runtime изменений не собирает монолитный snapshot через полный проход epochs",
+    "ClickHouse load semantics документированы: текущий CH path всегда full replay, verify-request логируется как уже покрытый",
+    "`issues-report.md` фиксирует trust-default/load flags/fallback ловушку для операторов",
+    "`cargo check -p pwmd` и `cargo test -p pwmd` проходят"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "P0: json_file_runtime_persist + store.save; epoch.rs //! про EPOCH_SPAN 1000 vs SNAP_CHK 100; тест runtime_persist_after_disk_lag_loads; RFC/startup trust-default не делались",
+      "result": "PARTIAL",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/store.rs",
+        "crates/pwmd/src/snapshot/epoch.rs",
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "crates/pwmd/Cargo.toml"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-04T12:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt -p pwmd; cargo test -p pwmd; cargo test -p pwmd --features clickhouse-snapshot (preflight ops skipped — оркестратор)",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-04T12:00:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Мини-отчёт P0: docs/reviews/sprint-15-runtime-persist-P0-review.md",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-runtime-persist-P0-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 2800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-04T12:00:00Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Close remaining implementation/product items: issues log, CH load opts note/debug, pwmd patch bump, task closeout, cargo check/test -p pwmd",
+      "result": null,
+      "artifacts": [
+        "issues-report.md",
+        "crates/pwmd/src/snapshot/store.rs",
+        "crates/pwmd/Cargo.toml",
+        "tasks/20260504-s15-snapshot-trust-default-api-save-split.json"
+      ],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Ask-mode doc audit handoff for trust-default architecture shift; could not persist files, requested coding write pass",
+      "result": "PARTIAL",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-04T16:00:00Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Materialized doc audit, snapshot trust-boundary RFC, operator storage guide, and minimal high-impact doc refreshes",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-doc-audit-trust-default-arch-shift.md",
+        "docs/reviews/sprint-15-snapshot-trust-boundary-review.md",
+        "docs/guide-node-storage-and-snapshot.md",
+        "README.md",
+        "docs/pwmd.md",
+        "docs/reviews/sprint-15-arch-trust-checkpoint-rescan-review.md",
+        "docs/reviews/sprint-15-slice-6-bench.md",
+        "docs/runbook-store-snapshots.md",
+        "tasks/20260504-s15-snapshot-trust-default-api-save-split.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 10500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-04T16:30:00Z"
+    }
+  ],
+  "commits": ["2212fbd", "16ccbb4"],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-15-doc-audit-trust-default-arch-shift.md",
+    "rfc_md": "docs/reviews/sprint-15-snapshot-trust-boundary-review.md",
+    "runtime_persist_review_md": "docs/reviews/sprint-15-runtime-persist-P0-review.md",
+    "operator_guide_md": "docs/guide-node-storage-and-snapshot.md"
+  },
+  "notes": "Implementation/product closeout completed in working tree after commits 2212fbd/16ccbb4: JsonFile trust-default load and verify flags were already present; this update records operator caveats, CH full-replay semantics, and pwmd version bump. Orchestrator should fill the final delegation telemetry and append the eventual commit hash."
+}

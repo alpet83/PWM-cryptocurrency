@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "purpose": "Stable pointers to Cursor-cached MCP tool descriptors for server user-cqds_mcp_mini. Use this to avoid IDE/workspace globs or semantic search over tools/*.json (known hang). Payload contracts remain authoritative via MCP cq_help.",
+  "cq_help_note": "Before calling any cq_* tool, prefer cq_help (tool_ref, batch requests[]) for args shapes and core routes.",
+  "servers": {
+    "user-cqds_mcp_mini": {
+      "descriptor_roots": [
+        {
+          "label": "cursor_projects_windows_default",
+          "path": "C:\\Users\\Alexander\\.cursor\\projects\\p-opt-docker-cqds\\mcps\\user-cqds_mcp_mini\\tools"
+        }
+      ],
+      "tool_descriptors": [
+        { "tool": "cq_chat_ctl", "file": "cq_chat_ctl.json" },
+        { "tool": "cq_docker_ctl", "file": "cq_docker_ctl.json" },
+        { "tool": "cq_exec_ctl", "file": "cq_exec_ctl.json" },
+        { "tool": "cq_files_ctl", "file": "cq_files_ctl.json", "notes": "actions: edit_file, get_code_index, get_index, grep_entity, grep_logs, index_job_status, list_files, patch_file, read_file, rebuild_index, replace, start_grep, undo_file; batch via requests[]" },
+        { "tool": "cq_help", "file": "cq_help.json" },
+        { "tool": "cq_process_ctl", "file": "cq_process_ctl.json" },
+        { "tool": "cq_project_ctl", "file": "cq_project_ctl.json" }
+      ]
+    }
+  },
+  "usage_for_agents": [
+    "Read this file once when you need static MCP wrapper schema (tool name, action enum, batch keys).",
+    "Then Read exactly ONE descriptor path: descriptor_roots[0].path + '\\' + tool_descriptors[].file — no Glob/ListDir/SemanticSearch for tools/*.json.",
+    "Do not treat descriptor JSON as runtime truth if cq_help disagrees; escalate discrepancies."
+  ]
+}

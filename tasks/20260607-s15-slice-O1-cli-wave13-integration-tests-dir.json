@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "id": "20260607-s15-slice-O1-cli-wave13-integration-tests-dir",
+  "title": "S15-O.1 pwm-cli wave13: crates/pwm-cli/tests/ (binary subprocess smoke)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-O-checklist.md §C pwm-cli §2.3 / §6.2 ряд 11 — интеграционные тесты отдельным тикетом"
+  ],
+  "brief": "**Оркестратор:** конвейер `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review** → закрытие тикета/документов оркестратором.\n\n**Цель:** завести **`crates/pwm-cli/tests/`** для тестов уровня «чёрный ящик»: запуск собранного бинарника **`pwm`** через `std::process::Command` и при необходимости `CARGO_BIN_EXE_pwm` (стабильный паттерн Cargo).\n\n**Границы:** тесты в **`src/tests/mod.rs`**, которые требуют `pub(crate)` API / приватных модулей (`Cli`, `Cmd`, хелперы crate), **не** переносить без отдельного решения (например lib+bin или расширение публичной поверхности). Wave13 — минимальный каркас + 1–3 осмысленных subprocess-сценария (например `--help`, **`key-gen`** без сети, или другая быстрая детерминированная подкоманда).\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**pwm-review:** `docs/reviews/sprint-15-slice-O1-cli-wave13-integration-tests-dir-review.md` (после код-коммита).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "add crates/pwm-cli/tests subprocess smoke; keep src/tests internal",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-cli/tests/cli_smoke.rs"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T12:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check (можно внутри pwm-coding)",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check (exit 0)",
+        "cargo test -p pwm-cli (141 unit + 3 integration)",
+        "cargo check --workspace (exit 0)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 600,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T12:05:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate wave13 integration test layout + no prod behavior change",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-wave13-integration-tests-dir-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T14:00:00Z"
+    }
+  ],
+  "commits": [
+    "47bff575fcce811f84e504acf59b327cba08d58f",
+    "72c769a433db85e16091f25ed760e0270a18affe",
+    "1fe010e6d43a28770dbd55d3f7ddacf738d45267",
+    "e61538e4c81b265a8e59f0dc8d38f308412ff474"
+  ],
+  "parent_chain": [
+    "tasks/20260606-s15-slice-O1-cli-wave12-parse-signer-wallet-shell.json"
+  ],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3 / §6.2 — ряд 11",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-wave13-integration-tests-dir-review.md"
+  },
+  "notes": "pwm-review PARTIAL из‑за substring-assert в help (nit). Дальше §2.3: опционально `exit_user_error` → модуль."
+}

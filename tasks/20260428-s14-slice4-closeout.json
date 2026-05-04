@@ -1,0 +1,16 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice4-closeout",
+  "title": "Sprint 14 Slice 4: stabilization and closeout",
+  "status": "done",
+  "mvp_checklist": ["Sprint 14 / Slice 4 closeout"],
+  "brief": "Закрыть Sprint 14: targeted negative on active_account mismatch path, синхронизировать evidence/checklist/status.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Добавить targeted negative test(ы) и синхронизировать closeout docs.", "done_at": "2026-04-28T06:27:00Z"},
+    {"agent": "pwm-testing", "prompt_summary": "Независимый тест-прогон и evidence по closeout.", "done_at": "2026-04-28T06:31:00Z"},
+    {"agent": "pwm-review", "prompt_summary": "Финальный независимый review Sprint 14 closeout.", "done_at": "2026-04-28T06:35:00Z"}
+  ],
+  "commits": [],
+  "artifacts": {"review_md": "docs/reviews/sprint-14-slice4-review.md"},
+  "notes": "Оркестратор: конвейер выполнен. Mini-report pwm-coding: добавлен targeted negative test v3 active mismatch, без прод-правок. Mini-report pwm-testing: pwm-tui suite green (70/70), negative case confirmed. Mini-report pwm-review: approve with minor; checklist synchronized. Final snapshot: docs/reviews/sprint-14-closeout.md."
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "20260504-s15-slice-O1-wave2-tui-modules",
+  "title": "S15-O.1 wave2: pwm-tui modals + wallet + rpc/signing/tx extract",
+  "status": "done",
+  "brief": "Продолжение декомпозиции pwm-tui/src/main.rs (CODEBASE_REFACTORING §2.1): волна 2 — modals.rs, wallet.rs, rpc_account.rs / signing.rs / tx_submit.rs (или близкий набор по таблице), отдельные коммиты, стоп при блокере.",
+  "acceptance": [
+    "Новые файлы в crates/pwm-tui/src/ с объявлением mod в lib/main по принятой структуре crate",
+    "cargo test -p pwm-tui PASS; cargo check --workspace",
+    "Обновлены sprint-15-slice-O-checklist.md (прогресс C), issues-report при смысле",
+    "При доступном CQDS: rebuild_index background project_id 5 после крупного диффа"
+  ],
+  "parent_ticket": "tasks/20260503-s15-slice-O1-modular-decomposition-wave1.json",
+  "artifacts": {
+    "checklist": "docs/reviews/sprint-15-slice-O-checklist.md",
+    "audit": "docs/CODEBASE_REFACTORING.md",
+    "gate_review": "docs/reviews/sprint-15-slice-O1-review.md"
+  },
+  "delegations": [],
+  "commits": ["996af47"],
+  "notes": "Волна 1: 8e0ba54, 995194b, c6d5b09. Волна 2: 996af47 — modals, wallet, rpc_account, signing, tx_submit; один атомарный коммит (иначе ломается зелёная сборка без дубля кода в main). CQDS rebuild_index background project_id 5 (enqueue duplicate норма). Для требования «отдельный коммит на шаг» — следующая волна может резать по файлам с промежуточными ветками."
+}

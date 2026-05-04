@@ -13,6 +13,7 @@ dirs = [
   "target",
   "target_verify",
   "tmp",
+  ".tmp-test",
 ]
 file_patterns = [
   "*.pyc",
@@ -41,6 +42,7 @@ exclude_globs = [
   "target/**",
   "target_verify/**",
   "tmp/**",
+  ".tmp-test/**",
   "commit_prepare_report.json",
   "**/commit_prepare_report.json",
   ".cursor/**",

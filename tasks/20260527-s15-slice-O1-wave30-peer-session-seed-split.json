@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "20260527-s15-slice-O1-wave30-peer-session-seed-split",
+  "title": "S15-O.1 wave30: split pwmd transport peer_session seed.rs into submodules",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C transport §2.2 continuation"],
+  "brief": "**Оркестратор:** pwm-coding → pwm-testing → pwm-review.\n\n**Цель:** механически разрезать `crates/pwmd/src/transport/peer_session/seed.rs` (~640 LOC) на 2–4 логических подфайла внутри `peer_session/` (напр. каталог `seed/` или `seed_*.rs`), без изменения семантики протокола, таймаутов и текстов логов.\n\n**Ограничения:** только этот модуль и его wiring из `peer_session/mod.rs`; без drive-by правок; внешний контракт для `transport.rs` не менять (`run_seed_session` и использование из spawn/tick как сейчас).\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwmd`, `cargo check --workspace`. Итоговая приёмка слайса O — эксплуатационное тестирование (владелец).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "split peer_session/seed.rs into submodules; behavior-preserving",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/seed/mod.rs",
+        "crates/pwmd/src/transport/peer_session/seed/connect.rs",
+        "crates/pwmd/src/transport/peer_session/seed/handshake.rs",
+        "crates/pwmd/src/transport/peer_session/seed/session.rs",
+        "crates/pwmd/src/transport/peer_session/seed.rs (removed; replaced by seed/)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 9000,
+        "total": 23000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwmd + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "`cargo fmt --all -- --check` — PASS (exit 0, no diff).",
+        "`cargo test -p pwmd` — PASS (197 tests: lib 194 + bin 3, ~13.2 s; hang watchdog not used).",
+        "`cargo check --workspace` — PASS (incremental rebuild, exit 0).",
+        "`tasks/20260527-s15-slice-O1-wave30-peer-session-seed-split.json` — pwm-testing delegation filled."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4500,
+        "output": 2200,
+        "total": 6700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T14:57:30Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "audit seed split boundaries; no semantic drift",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-wave30-peer-session-seed-split-review.md (verdict APPROVE; файл записан оркестратором — субагент в Ask mode)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 4500,
+        "total": 16500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T15:30:00Z"
+    }
+  ],
+  "commits": [
+    "0b1df13443b738a71c7308c77c77b5dd874e8e98",
+    "fc47e2346047080c750404e9a05eaf0b81bb3d1e",
+    "45e2adac17fbf91024aec9992900fe98ce695c52"
+  ],
+  "parent_chain": ["tasks/20260526-s15-slice-O1-wave26-29-pwmd-transport-peer-session-split.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.2",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave30-peer-session-seed-split-review.md"
+  },
+  "notes": "pwm-review: вердикт APPROVE по диффу, доставка PARTIAL — Ask mode без записи файлов; оркестратор сохранил review_md и поля тикета."
+}

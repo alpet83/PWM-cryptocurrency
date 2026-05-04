@@ -1,0 +1,16 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice5-remediation-upgrade-wallet",
+  "title": "Sprint 14 Slice 5 remediation: --upgrade-wallet opt-in",
+  "status": "done",
+  "mvp_checklist": ["Sprint 14 / Slice 5 remediation"],
+  "brief": "Убрать side-effect записи на read-path и ввести явный --upgrade-wallet для миграции v2->v3 в CLI/TUI.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Реализовать флаг --upgrade-wallet для pwm-cli/pwm-tui и безопасный контракт миграции.", "done_at": "2026-04-28T09:41:00Z"},
+    {"agent": "pwm-testing", "prompt_summary": "Проверить opt-in миграцию и read-only поведение без флага.", "done_at": "2026-04-28T09:47:00Z"},
+    {"agent": "pwm-review", "prompt_summary": "Независимый review remediation и снятия блокера.", "done_at": "2026-04-28T09:51:00Z"}
+  ],
+  "commits": [],
+  "artifacts": {"review_md": "docs/reviews/sprint-14-slice5-remediation-review.md"},
+  "notes": "Конвейер remediation выполнен. Итог: approve with minor, исходный block закрыт. Mini-report coding: read-path снова без записи, миграция только по --upgrade-wallet (cli+tui), safe persist. Mini-report testing: targeted + full regression green. Mini-report review: minor operational UX note по глобальному флагу."
+}

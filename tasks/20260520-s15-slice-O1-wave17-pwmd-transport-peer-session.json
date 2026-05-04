@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "20260520-s15-slice-O1-wave17-pwmd-transport-peer-session",
+  "title": "S15-O.1 wave17: pwmd transport peer_session wire/TCP (§2.2 row #5)",
+  "status": "done",
+  "brief": "Вынести wire/peer-session кластер из transport.rs в transport/peer_session.rs: PeerWireMsg, framed read/write/decode, heartbeat/cross-shard wire helpers, sticky session helpers, process_inbound_socket, run_seed_session. spawn_*_loop остаются в transport.rs как тонкие обёртки. Сохранить поведение и не расширять публичный API (см. wave16 visibility).",
+  "acceptance": ["cargo fmt", "cargo test -p pwmd", "cargo check --workspace"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "extract peer_session module with visibility-safe transport wrappers",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport.rs",
+        "crates/pwmd/src/transport/peer_session.rs"
+      ],
+      "agent_id": "e20dc613-17be-4fa5-8082-1d02fc1ed510",
+      "notes": "Mechanical extraction PeerWireMsg..run_seed_session; spawn_* wrappers kept in transport.rs.",
+      "tokens": { "source": "estimate", "total": 22000, "confidence": "low" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt --check, cargo test -p pwmd, cargo check --workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "notes": "Оркестратор: 197 тестов pwmd.",
+      "tokens": { "source": "estimate", "total": 1500, "confidence": "medium" },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "peer_session extraction + visibility + spawn entrypoints",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-O1-wave17-review.md"],
+      "agent_id": "721a6f5f-2966-4818-a038-bacf2a101c80",
+      "tokens": { "source": "estimate", "total": 14000, "confidence": "low" },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": ["03b44e5", "686026e", "fb6eada"],
+  "parent_chain": ["tasks/20260519-s15-slice-O1-wave16-pwmd-transport-dial.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave17-review.md"
+  },
+  "notes": "Синхронный конвейер: pwm-coding → pwm-testing (оркестратор) → pwm-review."
+}

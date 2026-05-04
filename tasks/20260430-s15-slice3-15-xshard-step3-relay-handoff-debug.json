@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-15-xshard-step3-relay-handoff-debug",
+  "title": "S15-S3.15: debug cross-shard step 3 (handoff / relay / provenance)",
+  "status": "completed",
+  "brief": "Пользовательский сценарий: межшардовый перевод, списание OK, на шаге 3 TUI «handoff/provenance register: INFO — relay не подтверждён». Найти корневую причину (pwmd relay path, target export-provenance, seed selection, lifecycle) и усилить наблюдаемость; при необходимости исправить логику или UX диагностики. Ноды после правок проверять скриптами `*.ps1` из корня репозитория.",
+  "symptoms": [
+    "pwm-tui `xflow_terminal_report`: step 3 OK только если `seen_relayed` (GET /v1/roaming-intents/:id → status==relayed); иначе сообщение про ручную проверку.",
+    "Relay в pwmd: `relay_handoff` → `select_target` + POST peer hello + POST target `/v1/export-provenance`; ошибки идут в `mark_relay_error` (last_error), статус намерения часто остаётся `exported`.",
+    "Гипотезы для проверки: (a) seed не матчит target domain / genesis; (b) export-provenance отклонён на target; (c) гонка статусов imported на source vs target; (d) insufficient polling в TUI при медленном relay."
+  ],
+  "scope": [
+    "Структурированное логирование (tracing) в `crates/pwmd/src/relay.rs` и смежных вызовах create/finalize roaming intent: причина выбора seed, HTTP коды, фрагменты ответов (без секретов), correlation по intent_id/export_id.",
+    "Проверить корректность переходов `RoamingIntent` и полей ответа GET `/v1/roaming-intents/:id` (status, last_error) при сбое relay.",
+    "pwm-tui: если есть `last_error` при status exported — показывать явную ошибку relay на шаге 3, а не только «проверьте вручную»; при необходимости увеличить опрос/ожидание.",
+    "Регрессия: `cargo test -p pwmd --lib`, точечно pwm-tui тесты если есть.",
+    "Артефакты: `docs/reviews/sprint-15-s3-15-coding.md`, testing, review."
+  ],
+  "acceptance": [
+    "Документированная причина срыва шага 3 для типового двухнодового сценария или исправление + зелёные тесты.",
+    "Улучшенные логи и/или сообщения оператора достаточны для следующего инцидента без угадывания.",
+    "pwm-testing + pwm-review по конвейеру."
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Investigate relay/handoff failure; add logging and fixes.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/relay.rs",
+        "crates/pwm-tui/src/main.rs",
+        "issues-report.md",
+        "docs/reviews/sprint-15-s3-15-coding.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 18000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T18:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Regression + optional ps1 smoke instructions.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-15-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T18:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Confirm relay diagnostics and safety of log payloads.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-15-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-01T19:00:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-15-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-15-testing.md",
+    "review": "docs/reviews/sprint-15-s3-15-review.md"
+  },
+  "commits": [],
+  "notes": "Кодовые якоря: `crates/pwm-tui/src/main.rs` ~1723 `seen_relayed`; `crates/pwmd/src/relay.rs` `relay_handoff`; `crates/pwmd/src/api.rs` create roaming + `mark_relay_ok`/`mark_relay_err`. Корневая причина шага 3 INFO: при сбое relay статус остаётся `exported`, `last_error` заполняется — раньше TUI терял ошибку и не показывал relay-текст. После ревью: `RelayErr.message` для пользователя/TUI без полного HTTP body — только `http_body_log_snippet`."
+}

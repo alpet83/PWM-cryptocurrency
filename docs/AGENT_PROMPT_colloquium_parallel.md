@@ -26,7 +26,7 @@ When orchestrating:
 ## Relation to repo prompts
 
 - **Coding agent** (`docs/AGENT_PROMPT_coding.md`) — may call `cq_project_ctl` when MCP is available.
-- **Review agent** (`docs/AGENT_PROMPT_review.md`) — stays review-only; can still read CQDS-produced notes if pasted into the review request.
+- **Review agent** (`docs/AGENT_PROMPT_review.md`) — независимый аудит без правок **продуктового** кода; может коммитить отчёт в `docs/reviews/` и поля тикета. Может читать заметки CQDS, если их вложили в запрос на ревью.
 
 ---
 

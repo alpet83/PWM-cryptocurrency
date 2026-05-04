@@ -8,8 +8,14 @@
 pwm-data.json
 
 # Local scratch / verification artifacts (not part of the repo contract)
+/state/
 /tmp/
 /target_verify/
+/target-live/
+/logs/
 /pwm-data-verify.json
 /typescript
+/crates/pwmd/logs
 /commit_prepare_report.json
+/.tmp-test/
+/*.code-workspace

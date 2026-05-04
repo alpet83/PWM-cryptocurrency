@@ -7,6 +7,9 @@
 - [tester-guide-cli-tui-scenarios.md](tester-guide-cli-tui-scenarios.md)
 - [TUI_SPEC_v0.md](TUI_SPEC_v0.md)
 - [pwm-cli.md](pwm-cli.md)
+- [rfc/10-wallet-file-format-v3.md](rfc/10-wallet-file-format-v3.md) (draft: multi-address `schema_version: 3`)
+
+После внедрения v3: режимы `encrypted` / `plaintext_dev` сохраняют смысл на **уровне файла**; секреты owned-аккаунтов для варианта payload **A** (RFC 10) выводятся из master seed при unlock, а не дублируются per-account в YAML.
 
 ---
 

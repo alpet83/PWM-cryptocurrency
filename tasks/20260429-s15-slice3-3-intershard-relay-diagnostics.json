@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "20260429-s15-slice3-3-intershard-relay-diagnostics",
+  "title": "S15-S3.3: диагностика межшардовой связи и relay path",
+  "status": "completed",
+  "brief": "Проверить на живых нодах почему flow остается в exported, отделить проблему relay/handoff от UX, и дать операторские рекомендации по наблюдаемости связи между нодами.",
+  "inputs": {
+    "source_rpc": "http://127.0.0.1:3030",
+    "target_rpc": "http://127.0.0.1:3031",
+    "wallet": "tmp/genesis.yaml",
+    "wallet_password": "1234"
+  },
+  "deliverables": {
+    "testing": "docs/reviews/sprint-15-s3-3-testing.md",
+    "review": "docs/reviews/sprint-15-s3-3-review.md"
+  }
+}

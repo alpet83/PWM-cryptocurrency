@@ -1,0 +1,294 @@
+{
+  "schema_version": 1,
+  "id": "20260424-sprint5-orchestrated",
+  "title": "Sprint 5: runtime implementation RFC-8 (cluster-bound identity)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/rfc/8-shard-runtime-identity-and-peering.md",
+    "docs/WHITE_SPEC_v0.md",
+    "docs/rfc/6-policy-engine.md",
+    "docs/AGENT_PROMPT_orchestrator.md"
+  ],
+  "brief": "РќР°С‡Р°С‚СЊ runtime-СЂРµР°Р»РёР·Р°С†РёСЋ RFC-8: explicit cluster-bound launch identity РґР»СЏ pwmd, СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ СЃ alias --shard A|B РЅР° РїРµСЂРµС…РѕРґРЅС‹Р№ РїРµСЂРёРѕРґ, Рё С‚РµСЃС‚РёСЂСѓРµРјС‹Рµ РёРЅРІР°СЂРёР°РЅС‚С‹ Р±РµР· range heuristics.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "РЎРґРµР»Р°С‚СЊ implementation slice #1: cluster-bound config/CLI flags + alias compatibility + docs update + tests.",
+      "done_at": "2026-04-24T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "РџСЂРѕРІРµСЂРёС‚СЊ implementation slice #1: unit/integration tests, regressions, deterministic contracts.",
+      "done_at": "2026-04-24T11:17:01+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "РќРµР·Р°РІРёСЃРёРјС‹Р№ review implementation slice #1 РїСЂРѕС‚РёРІ RFC-8 Рё baseline invariants.",
+      "done_at": "2026-04-24T11:25:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "РЎРґРµР»Р°С‚СЊ implementation slice #2: NodeHello envelope + anti-spoof/replay validation utilities + docs/checklist updates.",
+      "done_at": "2026-04-24T12:40:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "РќРµР·Р°РІРёСЃРёРјРѕ РїСЂРѕРІРµСЂРёС‚СЊ implementation slice #2: handshake contracts, regressions, test report Рё task sync.",
+      "done_at": "2026-04-24T11:26:48.9497853+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "РќРµР·Р°РІРёСЃРёРјС‹Р№ review implementation slice #2: NodeHello groundwork, anti-spoof/replay utilities, no protocol drift.",
+      "done_at": "2026-04-24T11:35:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "РЎРґРµР»Р°С‚СЊ implementation slice #3: wire-level handshake path + peer classification registry + dev observability counters/logs + docs/checklist updates.",
+      "done_at": "2026-04-24T11:46:40.4986085+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "РџСЂРѕРІРµСЂРёС‚СЊ implementation slice #3: wire-level handshake contracts, peer registry/counters semantics, tx-path regressions, test report Рё task sync.",
+      "done_at": "2026-04-24T11:50:23.7479567+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "РќРµР·Р°РІРёСЃРёРјС‹Р№ review implementation slice #3: wire-level handshake dev-path, peer classification registry/counters, invariants check.",
+      "done_at": "2026-04-24T11:55:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "РЎРґРµР»Р°С‚СЊ implementation slice #4: native-first policy plumbing (config/state/evaluators) + dev observability readback + tests + docs sync.",
+      "done_at": "2026-04-24T15:35:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "РќРµР·Р°РІРёСЃРёРјР°СЏ РїСЂРѕРІРµСЂРєР° implementation slice #4: native-first policy contracts, /v1/dev/peers policy snapshot semantics, range-free invariants, test report + task sync.",
+      "done_at": "2026-04-24T13:31:43.4219199+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать implementation slice #5: transport-level dial/reconnect wiring (minimal async loop + policy scheduler/backoff + dev transport snapshot + tests + docs sync).",
+      "done_at": "2026-04-24T16:20:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Независимая верификация implementation slice #5: transport-level dial/reconnect wiring, contracts, tx-regression, test report и task sync.",
+      "done_at": "2026-04-24T14:28:17.6918674+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review implementation slice #5: transport wiring over native-first policy, invariant checks, no protocol drift.",
+      "done_at": "2026-04-24T13:40:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать implementation slice #6: minimal real socket transport wiring (seed connect + handshake-on-connect + validate_node_hello integration + config/CLI + tests + docs/task sync).",
+      "done_at": "2026-04-24T18:10:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Провести testing gate implementation slice #6: full cargo test -p pwmd, handshake-on-connect scenarios, tx/dev endpoint regressions, report/status/task sync.",
+      "done_at": "2026-04-24T14:47:25.7581986+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review gate implementation slice #6: real socket transport path, invariants check, artifact coherence.",
+      "done_at": "2026-04-24T15:05:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать implementation slice #7: hardened transport behavior (multi-peer churn fairness/rotation + reconnect reliability guard rails + additive /v1/dev/peers observability + tests + docs/task sync).",
+      "done_at": "2026-04-24T19:20:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Провести testing gate для Sprint 5 slice #7: full cargo test -p pwmd, churn/rotation/reconnect guard rails scenarios, tx/dev regression pass, report/status/task sync.",
+      "done_at": "2026-04-24T15:02:32.3243155+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review gate for Sprint 5 slice #7: multi-peer churn/reconnect hardening, invariants check, artifact coherence.",
+      "done_at": "2026-04-24T15:20:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сделать implementation slice #8: controlled long-run soak hooks (bounded rollups/periodic health aggregation/runaway reconnect safety stop) + additive /v1/dev/peers soak confidence + tests + docs/task sync.",
+      "done_at": "2026-04-24T20:40:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Провести testing gate для Sprint 5 slice #8 (soak profile hooks + closeout readiness): full cargo test -p pwmd, long-run/aggregation/runaway/additive dev peers scenarios, regression pass, report/status/task sync.",
+      "done_at": "2026-04-24T15:12:32+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review gate for Sprint 5 slice #8: soak profile hooks, invariants check, closeout readiness and artifact coherence.",
+      "done_at": "2026-04-24T15:35:00+03:00"
+    },
+    {
+      "agent": "pwm-optimus",
+      "prompt_summary": "Post-sprint optimization audit on accepted Sprint 5 codebase, with non-blocking backlog recommendations.",
+      "done_at": "2026-04-24T15:50:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "checklist_md": "docs/reviews/sprint-5-checklist.md",
+    "status_note_md": "docs/reviews/sprint-5-status-note.md",
+    "review_md": "docs/reviews/sprint-5-review-report.md",
+    "optimus_report_md": "docs/reviews/sprint-5-optimus-report.md"
+  },
+  "mini_report_slice4_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T13:31:43.4219199+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd: 44 passed, 0 failed",
+      "policy contracts validated: native-first ordering, class-specific backoff envelopes, native_degraded_state toggle behavior",
+      "/v1/dev/peers policy snapshot fields and counters semantics confirmed",
+      "range-based behavior not detected; equality-based classification invariant preserved"
+    ]
+  },
+  "mini_report_slice5_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T16:20:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В pwmd добавлен минимальный async transport loop (background task) без socket stack: policy->scheduler->state transitions wired.",
+      "Scheduler выбирает peer candidates из registry в deterministic native-first порядке и применяет class-specific backoff envelopes.",
+      "Добавлен in-memory reconnect state (attempts/next_due_ms), dial counters by class/result, class last-attempt timestamps/results, underflow/degraded transitions.",
+      "GET /v1/dev/peers расширен transport snapshot-ом (dev-only gating сохранен).",
+      "Добавлены тесты slice #5 и пройдено cargo test -p pwmd: 48 passed, 0 failed."
+    ]
+  },
+  "notes": "РРЅРёС†РёРёСЂРѕРІР°РЅРѕ РїРѕСЃР»Рµ Sprint 4 partial-ready: РїРµСЂРµС…РѕРґРёРј Рє runtime-РёРјРїР»РµРјРµРЅС‚Р°С†РёРё RFC-8 РїРѕ СЃС‚СЂРѕРіРѕРјСѓ gate-РїРѕСЂСЏРґРєСѓ coding->testing->review->orchestrator.\n\n[pwm-coding mini-report]\n- Р РµР°Р»РёР·РѕРІР°РЅ launch identity slice #1 РІ crates/pwmd: explicit fields (network_id, cluster_domain_hi, cluster_id, node_id) + strict validation (all-or-none).\n- РЎРѕС…СЂР°РЅРµРЅ transition alias path С‡РµСЂРµР· --shard A|B СЃ С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Рј deterministic mapping: A->(devnet,0x10,compat-shard-a,compat-node-a), B->(devnet,0x20,compat-shard-b,compat-node-b).\n- Startup output СЂР°СЃС€РёСЂРµРЅ: РїРµС‡Р°С‚СЊ effective identity tuple + mode (explicit/alias).\n- Р”РѕР±Р°РІР»РµРЅС‹ С‚РµСЃС‚С‹ РЅР° parse/validation/alias compatibility; tx guards РЅРµ РјРµРЅСЏР»РёСЃСЊ РїРѕ Р»РѕРіРёРєРµ.\n\n[pwm-testing mini-report]\n- Р—Р°РїСѓС‰РµРЅ `cargo test -p pwmd`: PASS, 27 passed, 0 failed.\n- РџСЂРѕРІРµСЂРµРЅС‹ РєРѕРЅС‚СЂР°РєС‚С‹ slice #1: explicit all-or-none, reject partial config, deterministic alias A/B, РѕС‚СЃСѓС‚СЃС‚РІРёРµ range heuristics.\n- РћР±РЅРѕРІР»РµРЅ execution verdict РІ `docs/reviews/sprint-5-test-report.md`.\n- РЇРІРЅС‹С… СЂРµРіСЂРµСЃСЃРёР№/РґРµС„РµРєС‚РѕРІ РїРѕ С‚РµРєСѓС‰РµРјСѓ СЃРєРѕСѓРїСѓ РЅРµ РІС‹СЏРІР»РµРЅРѕ; residual risk: РЅРµС‚ РѕС‚РґРµР»СЊРЅРѕРіРѕ e2e Р·Р°РїСѓСЃРєР° РґР»СЏ stderr startup contract.\n\n[pwm-review mini-report]\n- РќРµР·Р°РІРёСЃРёРјС‹Р№ review РїРѕРґС‚РІРµСЂРґРёР» СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ slice #1 РёРЅРІР°СЂРёР°РЅС‚Р°Рј RFC-8: no protocol drift, no range-heuristics, alias-path РєР°Рє transition convenience.\n- РђСЂС‚РµС„Р°РєС‚РЅР°СЏ РЅРµСЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ (missing review report + wrong review_md pointer) СѓСЃС‚СЂР°РЅРµРЅР° РІ closeout sync.\n- Review verdict: PASS; orchestrator recommendation: ready_for_next_slice.\n\n[pwm-coding mini-report slice #2]\n- Р”РѕР±Р°РІР»РµРЅ РЅРѕРІС‹Р№ РјРѕРґСѓР»СЊ `crates/pwmd/src/handshake.rs` СЃ `NodeHello` envelope (network/genesis, cluster, node, capabilities, nonce, timestamp_ms, signature) Рё serde support.\n- Р РµР°Р»РёР·РѕРІР°РЅС‹ anti-spoof/replay validation utilities Р±РµР· p2p wire stack: mandatory fields, signature verification, network/genesis compatibility, timestamp skew window, in-memory replay nonce cache.\n- Р’РІРµРґРµРЅ reason-coded reject enum `HandshakeRejectReason` + СЃС‚Р°Р±РёР»СЊРЅС‹Рµ labels/constants Рё helper mapping `as_label()` РґР»СЏ Р±СѓРґСѓС‰РёС… РјРµС‚СЂРёРє/Р»РѕРіРѕРІ (`p2p_handshake_reject_total{reason}`).\n- Р”РѕР±Р°РІР»РµРЅ С‚РµСЃС‚РёСЂСѓРµРјС‹Р№ API `validate_node_hello(...)` РєР°Рє future handshake gate groundwork.\n- Р”РѕР±Р°РІР»РµРЅС‹ unit tests: sign/verify, serde roundtrip, negative cases (bad_signature, replay_nonce, timestamp_skew, network_mismatch, malformed); tx-path semantics РЅРµ РёР·РјРµРЅРµРЅС‹.\n\n[pwm-testing mini-report slice #2]\n- Р’С‹РїРѕР»РЅРµРЅР° РЅРµР·Р°РІРёСЃРёРјР°СЏ РїСЂРѕРІРµСЂРєР° handshake contracts: sign/verify envelope, reject reasons + labels, replay nonce window, timestamp skew boundaries, network/genesis mismatch behavior.\n- Р”Р»СЏ Р·Р°РєСЂС‹С‚РёСЏ boundary-РїРѕРєСЂС‹С‚РёСЏ РґРѕР±Р°РІР»РµРЅС‹ С‚РµСЃС‚С‹: `validate_node_hello_rejects_genesis_mismatch`, `validate_node_hello_accepts_skew_at_window_boundary`, `validate_node_hello_allows_reused_nonce_after_window_prune`.\n- Р—Р°РїСѓС‰РµРЅ `cargo test -p pwmd`: PASS, 37 passed, 0 failed.\n- Р РµРіСЂРµСЃСЃРёР№ РІ existing tx guard paths РЅРµ РІС‹СЏРІР»РµРЅРѕ; РѕС‚С‡С‘С‚ РѕС„РѕСЂРјР»РµРЅ РІ `docs/reviews/sprint-5-test-report.md`.\n\n[pwm-review mini-report slice #2]\n- Review-gate: PASS. РџРѕРґС‚РІРµСЂР¶РґРµРЅРѕ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ RFC-8 slice #2 (utility groundwork Р±РµР· p2p wire stack), СЃС‚Р°Р±РёР»СЊРЅС‹Рµ reason-coded reject labels Рё РѕС‚СЃСѓС‚СЃС‚РІРёРµ protocol drift/range heuristics.\n- Р—Р°С„РёРєСЃРёСЂРѕРІР°РЅС‹ non-blocking residual risks: wire-level РёРЅС‚РµРіСЂР°С†РёСЏ Рё operational profile replay-window РґР»СЏ СЃР»РµРґСѓСЋС‰РµРіРѕ slice.\n\n[pwm-coding mini-report slice #3]\n- Р”РѕР±Р°РІР»РµРЅ wire-level dev path РІ `crates/pwmd/src/lib.rs`: `POST /v1/peer/hello` (NodeHello probe) Рё `GET /v1/dev/peers` (readback counters/registry) Р±РµР· РёР·РјРµРЅРµРЅРёСЏ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёС… `/v1/status|head|accounts|account|tx` РєРѕРЅС‚СЂР°РєС‚РѕРІ.\n- `POST /v1/peer/hello` РёРЅС‚РµРіСЂРёСЂРѕРІР°РЅ СЃ utilities slice #2 (`validate_node_hello`): mandatory/signature/skew/replay checks + РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ reject РґР»СЏ `network_id`/`genesis_hash` mismatch.\n- Р РµР°Р»РёР·РѕРІР°РЅ lightweight in-memory peer registry: `node_id`, `domain_hi`, `class(native|foreign)`, `last_seen_ms`, `status`.\n- Peer classification СЃС‚СЂРѕРіРѕ РїРѕ RFC-8: С‚РѕР»СЊРєРѕ equality `peer.cluster.domain_hi == local.cluster_domain_hi`; range heuristics РЅРµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ.\n- Р”РѕР±Р°РІР»РµРЅС‹ reason-coded reject counters Рё class-aware accept/connected counters + structured accept/reject logs.\n- РћР±РЅРѕРІР»РµРЅС‹ `docs/pwmd.md`, `docs/reviews/sprint-5-checklist.md`, `docs/reviews/sprint-5-status-note.md`; РїРѕРІС‹С€РµРЅ `pwmd` build marker (`crates/pwmd/Cargo.toml`: `0.1.1 -> 0.1.2`) РёР·-Р·Р° СЂР°СЃС€РёСЂРµРЅРёСЏ РїСѓР±Р»РёС‡РЅРѕРіРѕ `/v1/*` API.\n\n[pwm-testing mini-report slice #3]\n- Р’С‹РїРѕР»РЅРµРЅР° РЅРµР·Р°РІРёСЃРёРјР°СЏ РїСЂРѕРІРµСЂРєР° `cargo test -p pwmd`: PASS (baseline 39 passed; РїРѕСЃР»Рµ РґРѕРї. РїРѕРєСЂС‹С‚РёСЏ 40 passed).\n- РџРѕРґС‚РІРµСЂР¶РґРµРЅС‹ wire-level РєРѕРЅС‚СЂР°РєС‚С‹ `POST /v1/peer/hello`: stable accept/reject format Рё reason labels (`bad_signature`, `replay_nonce`, `network_mismatch`, `genesis_mismatch`, `malformed`).\n- РџРѕРґС‚РІРµСЂР¶РґРµРЅС‹ semantics `GET /v1/dev/peers`: registry readback + counters (`accepted_total`, `rejected_total`, `class_accept_total`, `connected_by_class`, `reject_reason_total`).\n- Р”РѕР±Р°РІР»РµРЅ РёРЅС‚РµРіСЂР°С†РёРѕРЅРЅС‹Р№ С‚РµСЃС‚ `v1_peer_hello_classifies_foreign_and_exposes_reject_counters` РґР»СЏ СЏРІРЅРѕР№ РїСЂРѕРІРµСЂРєРё `foreign` classification Рё counters consistency.\n- Р РµРіСЂРµСЃСЃРёР№ РїРѕ tx-path РЅРµ РІС‹СЏРІР»РµРЅРѕ; РѕС‚С‡С‘С‚ РѕР±РЅРѕРІР»С‘РЅ РІ `docs/reviews/sprint-5-test-report.md`.\n\n[pwm-coding mini-report slice #4]\n- В crates/pwmd/src/lib.rs добавлен in-memory native-first policy state/config поверх существующего dev handshake registry: targets (\native_outbound_target, \foreign_outbound_target), \native_min_live, class weights и class-specific backoff envelopes.\n- Реализованы deterministic helpers без dial loop: prioritize_peer_candidates(...), select_backoff_for_class(...), \refresh_native_degraded_state(...).\n- POST /v1/peer/hello теперь обновляет policy counters/backoff-selection и поддерживает failover signal (\native_degraded_state) через live-native recalculation.\n- GET /v1/dev/peers расширен policy snapshot-ом (config, counters, \native_live, \native_degraded_state) и возвращает peers в native-first deterministic order.\n- Добавлены policy tests: native-first ordering, backoff envelopes by class, degraded-state on/off по \native_min_live, и no-range-heuristics invariant.\n- Обновлены docs/checklist/status-note для slice #4; bump pwmd build marker \u0000.1.2 -> 0.1.3 из-за расширения публичного /v1/dev/peers контракта.\n\n[pwm-testing mini-report slice #5]\n- Запущен cargo test -p pwmd: PASS, 48 passed, 0 failed.\n- Подтверждены transport contracts: native-first ordering, class-specific backoff, retry/backoff transitions over ticks.\n- Подтверждена семантика /v1/dev/peers transport snapshot и native_underflow/degraded transitions.\n- Регрессий по tx-path не выявлено (существующие /v1/tx guard tests зелёные).\n\n[pwm-review mini-report slice #5]\n- Review-gate: PASS. Подтверждено соответствие slice #5 scope: minimal transport loop wiring интегрирован с native-first policy и backoff/degraded semantics.\n- Invariants сохранены: no range heuristics, stable reason-coded contracts, no tx-path protocol drift.\n- Recommendation: ready_for_next_slice.",
+  "mini_report_slice5_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T14:28:17.6918674+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd: 48 passed, 0 failed",
+      "transport contracts validated: native-first candidate ordering, class-specific backoff selection, retry/backoff transitions over ticks",
+      "/v1/dev/peers transport snapshot semantics confirmed (ticks/counters/last-attempt/underflow/degraded transitions)",
+      "native_underflow/degraded transitions confirmed with thresholded persistent-underflow behavior",
+      "tx-path regression not detected across existing /v1/tx guard tests"
+    ]
+  },
+  "mini_report_slice6_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T18:10:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В pwmd добавлен controlled real socket transport path: outbound connect к seed peers без full mesh/discovery engine.",
+      "После connect реализован handshake-on-connect в минимальном frame (u32 len + json NodeHello): send local hello + receive peer hello.",
+      "Incoming peer hello на real path валидируется через существующий validate_node_hello, reason-coded accept/reject counters и логи обновляются тем же обработчиком, что и /v1/peer/hello.",
+      "Сохранен dev-safe fallback: если real transport выключен или seed list пустой, продолжает работать legacy stub transport loop.",
+      "PwmdConfig/CLI расширены minimal transport profile knobs: enable, peer seed list, connect/handshake timeout, retry base/max.",
+      "Добавлены тесты на real handshake success, bad signature reject и timeout/backoff retry path."
+    ]
+  },
+  "mini_report_slice7_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T19:20:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` усилен real transport tick для controlled multi-peer churn: deterministic seed rotation (round-robin cursor), class-aware native-first ordering и bounded tick attempt budget.",
+      "Реализованы explicit peer state transitions на transport path: `connected` -> `retrying` -> `disconnected` при intermittent failures, без изменения tx/protocol semantics.",
+      "Добавлены guard rails reconnect path: bounded retry cap per seed + cooldown reset + deterministic jitter scheduling для снижения storm-loop риска.",
+      "Расширен `/v1/dev/peers` additive observability: новые `transport` поля (`seed_rotation_cursor`, `tick_attempt_budget`, `last_tick_attempts`) и новый `churn` snapshot с rotation/reconnect stability counters.",
+      "Добавлены/обновлены тесты `cargo test -p pwmd` для fairness/rotation under repeated ticks, bounded reconnect stability и существующих transport regressions; итог: 53 passed, 0 failed."
+    ]
+  },
+  "mini_report_slice8_coding": {
+    "agent": "pwm-coding",
+    "done_at": "2026-04-24T20:40:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "В `crates/pwmd/src/lib.rs` добавлены controlled soak hooks для long-run transport behavior: bounded rollups/counters с runtime cap, optional periodic health aggregation по ticks и deterministic safety stop для runaway reconnect streak.",
+      "Real transport loop расширен guard-логикой: при достижении `reconnect_runaway_streak_limit` включается временный cooldown-stop dial attempts без выхода в full production p2p stack.",
+      "`GET /v1/dev/peers` расширен additive `soak` confidence snapshot-ом и новыми transport/churn полями (uptime-like counters, reconnect streak windows, churn stability markers, runaway guard status).",
+      "Добавлены тесты на эмуляцию long-run ticks (bounded behavior + periodic health aggregation) и safety stop/resume reconnect behavior; сохранены инварианты no-range/no-tx-drift/dev endpoint compatibility.",
+      "Обновлены docs-артефакты slice #8 (`docs/pwmd.md`, `docs/reviews/sprint-5-checklist.md`, `docs/reviews/sprint-5-status-note.md`) и выполнен bump `pwmd` marker 0.1.5 -> 0.1.6 из-за additive public API изменения `/v1/dev/peers`."
+    ]
+  },
+  "mini_report_slice8_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T15:12:32+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd: 55 passed, 0 failed",
+      "slice #8 scenarios validated: long-run tick behavior, periodic health aggregation, runaway reconnect safety stop + cooldown resume",
+      "/v1/dev/peers additive transport/churn/soak snapshot contract remains compatible (dev endpoint test green)",
+      "regressions not detected: tx-path invariants, no-range policy classification invariant, and existing dev endpoint contracts remain green",
+      "residual risk: long-run confidence still based on controlled harness, not a prolonged real-network soak"
+    ]
+  },
+  "mini_report_slice7_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T15:02:32.3243155+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd: 53 passed, 0 failed",
+      "slice #7 scenarios validated: deterministic fairness/rotation under repeated ticks, reconnect stability under intermittent failures, bounded retry/tick budget guard rails",
+      "/v1/dev/peers additive transport/churn snapshot contract remains compatible (dev endpoint test green)",
+      "regressions not detected: tx-path invariants and existing dev endpoint contracts remain green",
+      "residual risk: no dedicated long-run multi-peer soak on real network in this gate"
+    ]
+  },
+  "mini_report_slice6_testing": {
+    "agent": "pwm-testing",
+    "done_at": "2026-04-24T14:47:25.7581986+03:00",
+    "verdict": "pass",
+    "notes": [
+      "cargo test -p pwmd: 51 passed, 0 failed",
+      "slice #6 scenarios validated: real handshake-on-connect positive path, bad_signature reject, network_mismatch reject, connect-timeout retry/backoff behavior",
+      "regressions not detected: tx guards remain green; dev endpoints /v1/peer/hello and /v1/dev/peers remain functional",
+      "residual risk: real transport tests cover controlled seed-connect path; multi-peer churn and long-run reconnect soak are still out of current gate scope"
+    ]
+  },
+  "mini_report_slice6_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T15:05:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "independent review confirmed slice #6 scope: controlled real socket seed-connect + handshake-on-connect integrated with validate_node_hello",
+      "invariants preserved: no range heuristics, no tx-path protocol drift, dev endpoint compatibility retained",
+      "requested artifact sync for review report/status/task was completed by orchestrator; gate closed as PASS",
+      "residual non-blocking risk: multi-peer churn and long-run reconnect soak remain for next slice"
+    ]
+  },
+  "mini_report_slice7_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T15:20:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "independent review confirmed slice #7 scope: deterministic fairness/rotation, bounded retry guard rails, reconnect state transitions under churn",
+      "invariants preserved: no range heuristics, no tx-path protocol drift, dev endpoint compatibility retained with additive observability changes",
+      "artifact coherence gap (review report/status/task sync) was closed by orchestrator; review gate finalized as PASS",
+      "residual non-blocking risk remains: long-run multi-peer soak on real network for final confidence"
+    ]
+  },
+  "mini_report_slice8_review": {
+    "agent": "pwm-review",
+    "done_at": "2026-04-24T15:35:00+03:00",
+    "verdict": "pass",
+    "notes": [
+      "independent review confirmed slice #8 scope: bounded soak rollups, periodic health aggregation, runaway reconnect safety stop/cooldown semantics",
+      "invariants preserved: no range heuristics, no tx-path protocol drift, additive-only /v1/dev/peers contract changes",
+      "artifact coherence for review gate was synchronized by orchestrator; gate closed as PASS",
+      "final residual non-blocking risk: prolonged real-network soak remains recommended as post-closeout hardening"
+    ]
+  },
+  "mini_report_sprint5_optimus": {
+    "agent": "pwm-optimus",
+    "done_at": "2026-04-24T15:50:00+03:00",
+    "verdict": "needs_optimization_pass",
+    "notes": [
+      "post-sprint audit completed; functional Sprint 5 acceptance remains unchanged",
+      "top priorities: decompose oversized pwmd lib.rs module, unify duplicated transport metrics/state transitions, centralize native-live/degraded calculations",
+      "recommended quick wins and structural refactors documented in docs/reviews/sprint-5-optimus-report.md",
+      "dependency hygiene note captured (tower-http version duplication), plus hot-path lock/alloc optimization candidates"
+    ]
+  }
+}

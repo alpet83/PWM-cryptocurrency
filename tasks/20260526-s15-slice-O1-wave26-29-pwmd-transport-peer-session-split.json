@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "id": "20260526-s15-slice-O1-wave26-29-pwmd-transport-peer-session-split",
+  "title": "S15-O.1 waves26–29: split pwmd transport peer_session into submodules",
+  "status": "done",
+  "mvp_checklist": ["docs/reviews/sprint-15-slice-O-checklist.md §C transport §2.2 continuation"],
+  "brief": "**Оркестратор:** конвейер pwm-coding → pwm-testing → pwm-review.\n\n**Цель:** механически разрезать `crates/pwmd/src/transport/peer_session.rs` (~1100 LOC) на 2–4 подмодуля в `transport/` без смены поведения протокола/таймаутов/логов.\n\n**Направление (гибко, в рамках батча):**\n1. Вынести wire-уровень (`PeerWireMsg`, read/write/decode payload) в отдельный файл (напр. `peer_wire.rs`).\n2. Разнести крупные пути **inbound** vs **seed session** по модулям, оставив в `peer_session.rs` тонкий фасад и `use super::*` совместимость для `transport.rs`.\n\n**Ограничения:** только `pwmd` transport; без drive-by рефакторинга остального; публичный API crate не расширять без необходимости.\n\n**Приёмка слайса O** по решению владельца — эксплуатационное тестирование; между волнами достаточно `cargo fmt`, `cargo test -p pwmd`, `cargo check --workspace`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "split peer_session.rs into peer_wire + session path modules; behavior-preserving",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "crates/pwmd/src/transport/peer_session/wire.rs",
+        "crates/pwmd/src/transport/peer_session/inbound.rs",
+        "crates/pwmd/src/transport/peer_session/seed.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 7500,
+        "output": 5500,
+        "total": 13000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "run fmt + test -p pwmd + workspace check; report gaps",
+      "result": "PASS",
+      "artifacts": [
+        "verification: cargo fmt --all -- --check",
+        "verification: cargo test -p pwmd (197 tests)",
+        "verification: cargo check --workspace"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 8000,
+        "output": 2500,
+        "total": 10500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "independent audit: module boundaries, visibility, no semantic drift",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-wave26-29-peer-session-split-review.md (файл записан оркестратором; субагент был в Ask mode)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4000,
+        "output": 2000,
+        "total": 6000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02"
+    }
+  ],
+  "commits": [
+    "d0fd76727d3d122d20e4294468417e3fe441038d",
+    "5b443a3aaa0a8419c6168bb702cc4e1cd2a8833f",
+    "bbc77c717313ba9643bcd39c78088614fc570ef2"
+  ],
+  "parent_chain": ["tasks/20260525-s15-slice-O1-wave22-25-pwmd-transport-spawn-tests-bridges.json"],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.2",
+    "review_md": "docs/reviews/sprint-15-slice-O1-wave26-29-peer-session-split-review.md"
+  },
+  "notes": "Реализация в **локальной** копии репозитория в Cursor (Windows), путь workspace `PWM-cryptocurrency`. **pwm-review** в конвейере не записал файл (Ask/read-only режим субагента); оркестратор сохранил `artifacts.review_md` и закрыл тикет. Для следующих батчей: pwm-review в режиме с записью или полный Markdown в ответ для оркестратора."
+}

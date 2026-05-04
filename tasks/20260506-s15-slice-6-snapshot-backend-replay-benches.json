@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "20260506-s15-slice-6-snapshot-backend-replay-benches",
+  "title": "Sprint15 Slice 6: snapshot replay consistency across backends + load benchmarks",
+  "status": "done_conveyor",
+  "artifacts": {
+    "plan": "docs/reviews/sprint-15-slice-6-plan.md",
+    "bench_doc": "docs/reviews/sprint-15-slice-6-bench.md",
+    "testing": "docs/reviews/sprint-15-slice-6-testing.md",
+    "review": "docs/reviews/sprint-15-slice-6-review.md"
+  },
+  "depends_on": [
+    "20260504-s15-slice-5-clickhouse-snapshot-prototype"
+  ],
+  "acceptance": [
+    "Tests: identical canonical snapshot validates identically via JsonFile vs ClickHouse paths (feature-gated CH)",
+    "cargo test --workspace PASS without Docker; fmt clean",
+    "Criterion (or repo-standard) benches comparing snapshot load paths; documented runbook",
+    "issues-report touch if operator env/commands change",
+    "pwm-testing + pwm-review after coding"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "slice 6 replay tests + criterion benches + CH import tooling",
+      "result": "PASS",
+      "notes": "commits incl. c35652d baseline; orchestrator 99209f6 migration bridge",
+      "done_at": "2026-05-06T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "preflight du target/debug >4GiB via git_bash_exec; fmt; test workspace; pwmd CH tests; check ch_snap_import; bench --no-run",
+      "result": "PASS",
+      "preflight_target_debug_mib": "243",
+      "artifacts": [
+        "crates/pwmd/src/lib.rs",
+        "crates/pwmd/src/snapshot/mod.rs",
+        "crates/pwmd/src/snapshot/ch_http.rs",
+        "crates/pwmd/src/bin/ch_snap_import.rs",
+        "crates/pwmd/benches/snapshot_load.rs",
+        "docs/AGENT_PROMPT_testing.md",
+        "docs/reviews/sprint-15-slice-6-testing.md"
+      ],
+      "done_at": "2026-05-06T00:00:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "slice 6 scope: replay tests, benches, import bin, public ch_http exports, agent preflight docs",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-slice-6-review.md"],
+      "done_at": "2026-05-06T12:00:00Z"
+    }
+  ],
+  "notes": "Conveyor closed: pwm-review PASS with nit addressed (test rename snap_ch_wire_jsonfile_mock). Preflight: AGENT_PROMPT_testing §Preflight."
+}

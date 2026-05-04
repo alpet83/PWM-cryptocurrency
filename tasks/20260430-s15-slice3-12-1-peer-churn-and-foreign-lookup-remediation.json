@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-1-peer-churn-and-foreign-lookup-remediation",
+  "title": "S15-S3.12.1: peer churn and foreign lookup remediation",
+  "status": "in_progress",
+  "brief": "Устранить reconnect/hello churn и довести foreign lookup до authoritative результата при живом trusted CY<->DO канале.",
+  "scope": [
+    "Стабилизировать stateful peer sessions (уменьшить/убрать постоянный hello churn)",
+    "Исправить путь обновления foreign account views, чтобы not_found не срабатывал при доступной home shard",
+    "Сохранить явную unknown/unavailable семантику для CLI/TUI"
+  ],
+  "acceptance": [
+    "В live логах нет постоянного hello каждые ~2с",
+    "Через CY foreign DO account получает authoritative fields (ok) при живом trusted канале",
+    "При недоступности peer path остаётся explicit unavailable/unknown",
+    "Есть coding/testing/review artifacts с PASS по live прогону"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-12-1-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-12-1-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-1-review.md"
+  }
+}

@@ -1,0 +1,16 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice6-v3-default-and-bruteforce-resume",
+  "title": "Sprint 14 Slice 6: v3 default create + bruteforce resume",
+  "status": "blocked",
+  "mvp_checklist": ["Sprint 14 / Slice 6"],
+  "brief": "Сделать schema v3 дефолтной при создании wallet, синхронизировать stdout с v3 терминами и добавить addr-bruteforce resume от существующего wallet.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Реализация v3-by-default и bruteforce resume path.", "done_at": "2026-04-28T10:06:00Z"},
+    {"agent": "pwm-testing", "prompt_summary": "Независимые тесты новых write-path и bruteforce resume.", "done_at": "2026-04-28T10:12:00Z"},
+    {"agent": "pwm-review", "prompt_summary": "Независимый review корректности/совместимости/рисков.", "done_at": "2026-04-28T10:16:00Z"}
+  ],
+  "commits": [],
+  "artifacts": {"review_md": "docs/reviews/sprint-14-slice6-review.md"},
+  "notes": "Конвейер выполнен, итог review: BLOCK. Причина: create-path использует merge-save и может наследовать старые/чувствительные поля при существующем wallet_out. Требуется remediation: strict overwrite v3 для create-path + тесты."
+}

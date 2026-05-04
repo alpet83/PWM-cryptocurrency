@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "20260429-s14-slice23-recipient-init-gate",
+  "title": "Sprint 14 Slice 23: recipient init gate",
+  "status": "in_progress",
+  "brief": "Запретить пользовательские transfer/import зачисления на missing/init=false recipient; добавить CLI/TUI preflight и явную ошибку вместо stub-credit.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement recipient initialization gate in core/API/CLI/TUI/docs/tests.",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate same-shard and cross-shard recipient init gate plus no snapshot regressions.",
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review safety, UX, and compatibility of recipient init gate.",
+      "done_at": null
+    }
+  ],
+  "artifacts": {
+    "coding_md": null,
+    "testing_md": null,
+    "review_md": null
+  },
+  "notes": "User chose strict blocking over stub-credit: recipient must be initialized before funds can be sent/imported."
+}

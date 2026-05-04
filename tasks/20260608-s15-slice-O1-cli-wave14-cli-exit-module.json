@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "20260608-s15-slice-O1-cli-wave14-cli-exit-module",
+  "title": "S15-O.1 pwm-cli wave14: cli_exit module (exit_user_error thin main.rs §2.3)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-O-checklist.md §C pwm-cli §2.3 — error_format / микро-сплиты"
+  ],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review** → закрытие оркестратором.\n\n**Цель:** вынести **`exit_user_error`** из **`crates/pwm-cli/src/main.rs`** в **`cli_exit.rs`** (или **`user_exit.rs`** — короткое имя ≤5 слов по политике слайса). Поведение без изменений: **`eprintln!`** + **`process::exit(2)`**.\n\n**Интеграция:** предпочтительно **`mod cli_exit`** + **`pub(crate) use cli_exit::exit_user_error`** в **`main.rs`**, чтобы существующие **`use crate::exit_user_error`** / **`super::exit_user_error`** в **`cmd_*`** не ломать (минимальный дифф).\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**Ревью:** `docs/reviews/sprint-15-slice-O1-cli-wave14-cli-exit-module-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "extract exit_user_error to cli_exit.rs; re-export from main",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cli_exit.rs",
+        "crates/pwm-cli/src/main.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 11000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T18:30:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check (exit 0)",
+        "cargo test -p pwm-cli (141 unit + 3 integration)",
+        "cargo check --workspace (exit 0)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T18:35:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate wave14 — no behavior change",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-wave14-cli-exit-module-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-02T19:00:00Z"
+    }
+  ],
+  "commits": [
+    "eee144927c72891e4f2efac425b98ce4218e447f",
+    "2642bff86be7ea6e2476969effaa3e10cc1e5a49",
+    "a21782940eb4d0cf6f29850fc77b185252a673f1"
+  ],
+  "parent_chain": [
+    "tasks/20260607-s15-slice-O1-cli-wave13-integration-tests-dir.json"
+  ],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.3",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-wave14-cli-exit-module-review.md"
+  },
+  "notes": ""
+}

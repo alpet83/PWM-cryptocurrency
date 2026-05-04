@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "20260503-s15-slice-O1-modular-decomposition-wave1",
+  "title": "S15-O.1: modular decomposition wave 1 (checklist C — pwm-tui extract)",
+  "status": "done",
+  "brief": "Группа C из sprint-15-slice-O-checklist.md: первая волна выноса модулей из pwm-tui/src/main.rs по таблице §2.1 CODEBASE_REFACTORING.md (config, status, models, затем modals/wallet по готовности). Остановка при блокере; отдельные коммиты на логические шаги.",
+  "acceptance": [
+    "Минимум один новый модуль в pwm-tui вне main.rs с сохранением поведения",
+    "cargo test -p pwm-tui PASS; при затрагивании других crate — соответствующие тесты",
+    "Чеклист C: отметить прогресс или новый подпункт в notes",
+    "CQDS: при доступности — cq_files_ctl rebuild_index background project_id 5 после крупного диффа"
+  ],
+  "artifacts": {
+    "checklist": "docs/reviews/sprint-15-slice-O-checklist.md",
+    "audit": "docs/CODEBASE_REFACTORING.md"
+  },
+  "delegations": [
+    "pwm-testing: при следующей волне декомпозиции — smoke pwm-tui (модалки F3/F4/F6, cross-shard по времени)",
+    "pwm-review: границы pub(crate) и re-export в pwm-tui/src/main.rs при дальнейшем выносе модулей"
+  ],
+  "commits": [
+    "8e0ba54 refactor(pwm-tui): extract config module from main.rs",
+    "995194b refactor(pwm-tui): extract status module from main.rs",
+    "c6d5b09 refactor(pwm-tui): extract models module from main.rs"
+  ],
+  "notes": "Волна 1 закрыта: config/status/models. CQDS rebuild_index background project_id 5 — enqueue duplicate (job уже в maint_pool или принят). Следующая волна: modals.rs, wallet.rs, rpc/signing/tx по §2.1."
+}

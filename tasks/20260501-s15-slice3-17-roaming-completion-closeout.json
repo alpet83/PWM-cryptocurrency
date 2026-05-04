@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "20260501-s15-slice3-17-roaming-completion-closeout",
+  "title": "S15-S3.17: roaming completion closeout (docs + ROAMING_COMPLETION)",
+  "status": "completed",
+  "brief": "После успешной live-приёмки межшардового потока (TUI step 5, кредит на target): ROAMING_COMPLETION.md, актуализация docs по межшарду, closeout review, тикет S3.16 cycle2 completed, коммит+пуш.",
+  "acceptance": [
+    "docs/ROAMING_COMPLETION.md создан",
+    "docs/reviews/sprint-15-s3-17-closeout.md создан",
+    "ROAMING-SAMPLE, pwm-tui, pwmd, rfc/9, tester guide, MVP-checklist, sprint-15-checklist обновлены",
+    "git push выполнен"
+  ],
+  "delegations": [],
+  "artifacts": {
+    "completion": "docs/ROAMING_COMPLETION.md",
+    "closeout": "docs/reviews/sprint-15-s3-17-closeout.md"
+  },
+  "commits": ["5672fdd"],
+  "notes": "Завершение линии S3.16 cycle2 + документирование для операторов и агентов."
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "20260514-s15-slice-O1-wave12-test-support-narrow-pub",
+  "title": "S15-O.1 wave12: pwm_tui test_support + narrow pub surface",
+  "status": "done",
+  "brief": "После wave11 PARTIAL: crate root lib.rs — только Args, default_wallet_if_present, pub mod tui_loop и #[doc(hidden)] pub mod test_support. Интеграционные тесты через pwm_tui::test_support. TextInput::set_text — pub(crate) + text_input_set_text в test_support.",
+  "acceptance": [
+    "cargo test -p pwm-tui — 88 tests PASS",
+    "cargo check --workspace",
+    "pwm-review цель PASS или объяснённый PARTIAL"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "test_support module, pub(crate) reuse, integration tests wiring",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-tui/src/lib.rs",
+        "crates/pwm-tui/src/test_support.rs",
+        "crates/pwm-tui/src/modals.rs",
+        "crates/pwm-tui/tests/common/mod.rs",
+        "crates/pwm-tui/tests/send_form.rs"
+      ],
+      "agent_id": "e42acea9-8c0b-4fcc-93ef-ea788255764b",
+      "tokens": { "source": "estimate", "total": 12000, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo fmt, test -p pwm-tui (88), check --workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 2000, "confidence": "medium" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Root API vs test_support contract",
+      "result": "PASS",
+      "artifacts": [],
+      "agent_id": "ae69a5d7-9f9f-44c2-8aa9-1a0900262757",
+      "tokens": { "source": "estimate", "total": 8000, "confidence": "low" },
+      "done_at": "2026-05-01",
+      "notes": "Скрытый test_support всё ещё semver-публичен по техническим причинам — осознанный компромисс."
+    }
+  ],
+  "commits": ["2ec41a0", "eb20557"],
+  "parent_chain": ["tasks/20260513-s15-slice-O1-wave11-tests-extract.json"],
+  "artifacts": { "checklist": "docs/reviews/sprint-15-slice-O-checklist.md" },
+  "notes": "Бинарник main.rs использует только pwm_tui::Args, default_wallet_if_present, tui_loop::run."
+}

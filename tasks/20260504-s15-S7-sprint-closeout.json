@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "id": "20260504-s15-S7-sprint-closeout",
+  "title": "Sprint15 S7: sprint closeout and decision gate",
+  "status": "done",
+  "depends_on": [
+    "20260503-s15-slice-7-incremental-storage-architecture",
+    "20260506-s15-slice-6-snapshot-backend-replay-benches"
+  ],
+  "artifacts": {
+    "closeout": "docs/reviews/sprint-15-S7-closeout.md",
+    "closeout_review": "docs/reviews/sprint-15-S7-closeout-review.md",
+    "checklist": "docs/reviews/sprint-15-checklist.md",
+    "mvp_plan": "docs/plans/mvp_v1_testnet_multi-sprint.md"
+  },
+  "acceptance": [
+    "Consolidated closeout: completed scope, carry-over, rationale",
+    "Final verdict for coding/testing/review gates",
+    "Short backlog: explorer-readiness, validators_accept signing, optional Slice 6b, perf/CH ops",
+    "Explicit GO/NO-GO and demo-ready statement vs MVP plan",
+    "R1–R5 residual risk status documented",
+    "Links to reviews, runbook-store-snapshots, slice tickets"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Author docs/reviews/sprint-15-S7-closeout.md; optional mvp plan + checklist pointers; tasks JSON",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-S7-closeout.md",
+        "docs/plans/mvp_v1_testnet_multi-sprint.md",
+        "docs/reviews/sprint-15-checklist.md",
+        "tasks/20260504-s15-S7-sprint-closeout.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9500,
+        "output": 4200,
+        "total": 13700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-04T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Spot-check closeout claims vs slice-6/7 testing docs; no regression matrix (docs-only slice)",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-6-testing.md",
+        "tasks/20260503-s15-slice-7-incremental-storage-architecture.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 2000,
+        "output": 400,
+        "total": 2400,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-04T14:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Closeout vs sprint-15-checklist S15-S7 acceptance",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-15-S7-closeout-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": 3500,
+        "output": 600,
+        "total": 4100,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-04T14:15:00+03:00"
+    }
+  ],
+  "commits": [
+    "0584c84"
+  ],
+  "notes": "Orchestrator appends commits[] after merge.",
+  "token_usage": {
+    "source": "estimate",
+    "input": 15000,
+    "output": 5200,
+    "total": 20200,
+    "confidence": "medium",
+    "notes": "Roll-up for orchestrator handoff; per-agent breakdown in delegations[].tokens"
+  }
+}

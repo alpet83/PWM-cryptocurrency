@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "id": "20260430-s15-slice3-12-8-one-window-and-federation-live-validation",
+  "title": "S15-S3.12.8: deep live validation for one-window and federation visibility",
+  "status": "done",
+  "brief": "Провести углублённый delegated live test на основных нодах (`node-1.ps1`, `node-2.ps1`) после S3.12.7: подтвердить one-window foreign balance path и явно зафиксировать фактическое состояние таблицы федерации (есть/нет, источник данных, поведение API).",
+  "scope": [
+    "Запустить CY/DO ноды через root scripts и провести стабильный live smoke с foreign lookup через trusted path",
+    "Проверить one-window поведение получения foreign balance/init на нескольких точках наблюдения в течение живой сессии",
+    "Проверить наличие и поведение federation table на основных нодах: endpoint, поля, TTL/freshness/health, либо явный gap до S3.13",
+    "Собрать evidence (логи, API ответы, шаги воспроизведения) и классифицировать результаты как PASS/PARTIAL/FAIL",
+    "Не добавлять новые фичи в рамках слайса: это validation/evidence slice"
+  ],
+  "acceptance": [
+    "Есть детальный testing report по one-window foreign balance на реальных нодах",
+    "Есть явный вывод по federation table: реализована и соответствует ожиданиям или отсутствует/частично реализована с точным gap list",
+    "Все процессы после теста очищены, приложен cleanup report",
+    "Есть follow-up recommendation: нужно ли запускать coding/remediation slice сразу после S3.12.8",
+    "Делегации включают token usage telemetry"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Deep live test of one-window foreign balance and federation table behavior on node-1/node-2 scripts.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-8-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 22000,
+        "confidence": "low"
+      },
+      "done_at": "2026-04-30T23:11:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review S3.12.8 evidence quality and assess federation table readiness vs S3.13 contract.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-s3-12-8-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4500,
+        "output": 2800,
+        "total": 7300,
+        "confidence": "medium"
+      },
+      "done_at": "2026-04-30T23:11:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "testing": "docs/reviews/sprint-15-s3-12-8-testing.md",
+    "review": "docs/reviews/sprint-15-s3-12-8-review.md"
+  },
+  "commits": [],
+  "notes": "Started after S3.12.7 completion and push; focus is deep live validation on main node scripts. Testing PASS for one-window foreign balance stability; federation endpoint check documents explicit gap (404) pending S3.13 implementation. Final review: approve with nits and proceed to S3.13."
+}

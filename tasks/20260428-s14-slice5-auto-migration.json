@@ -1,0 +1,16 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice5-auto-migration",
+  "title": "Sprint 14 Slice 5: auto-migrate wallet v2 to v3 on load",
+  "status": "done",
+  "mvp_checklist": ["Sprint 14 / Slice 5 auto-migration"],
+  "brief": "Если загружен wallet schema v2, автоматически сохранять schema v3 (без потери критичных полей) и продолжать выполнение команды.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Реализовать v2->v3 auto-migration на load path + тесты.", "done_at": "2026-04-28T09:22:00Z"},
+    {"agent": "pwm-testing", "prompt_summary": "Проверить авто-миграцию и регрессию v2/v3.", "done_at": "2026-04-28T09:27:00Z"},
+    {"agent": "pwm-review", "prompt_summary": "Независимый review безопасности/совместимости авто-миграции.", "done_at": "2026-04-28T09:31:00Z"}
+  ],
+  "commits": [],
+  "artifacts": {"review_md": "docs/reviews/sprint-14-slice5-review.md"},
+  "notes": "Исходный block закрыт remediation-слайсом `20260428-s14-slice5-remediation-upgrade-wallet.json`: load-path снова read-only по умолчанию, запись миграции только по --upgrade-wallet, review verdict remediation: approve with minor."
+}

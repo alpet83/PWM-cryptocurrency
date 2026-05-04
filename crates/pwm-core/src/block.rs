@@ -9,10 +9,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BlockHdr {
     pub height: u64,
+    #[serde(with = "crate::ser_bin::hex32")]
     pub prev_hash: [u8; 32],
     pub ts: u64,
     pub prod_idx: u32,
+    #[serde(with = "crate::ser_bin::hex32")]
     pub tx_root: [u8; 32],
+    #[serde(with = "crate::ser_bin::hex32")]
     pub state_root: [u8; 32],
     #[serde(with = "crate::ser_bin::sig64")]
     pub sig: [u8; 64],
@@ -69,4 +72,60 @@ pub fn txs_root(txs: &[SignedTx]) -> [u8; 32] {
 /// Full header hash for `prev_hash` link.
 pub fn hdr_hash(h: &BlockHdr) -> [u8; 32] {
     *blake3::hash(&bincode::serialize(h).expect("hdr bincode")).as_bytes()
+}
+
+#[cfg(test)]
+mod hdr_hex_tests {
+    use super::{hdr_hash, BlockHdr};
+
+    fn sample_hdr() -> BlockHdr {
+        BlockHdr {
+            height: 42,
+            prev_hash: [7u8; 32],
+            ts: 99,
+            prod_idx: 0,
+            tx_root: [8u8; 32],
+            state_root: [9u8; 32],
+            sig: [0u8; 64],
+        }
+    }
+
+    #[test]
+    fn hdr_json_uses_hex_strings() {
+        let h = sample_hdr();
+        let j = serde_json::to_string(&h).expect("json");
+        assert!(
+            j.contains("\"prev_hash\":\"0707070707070707070707070707070707070707070707070707070707070707\""),
+            "{j}"
+        );
+    }
+
+    #[test]
+    fn hdr_json_roundtrip_and_legacy_byte_array() {
+        let h = sample_hdr();
+        let j = serde_json::to_string(&h).expect("json");
+        let back: BlockHdr = serde_json::from_str(&j).expect("de");
+        assert_eq!(back, h);
+
+        let b32 = |v: u8| (0..32).map(|_| v.to_string()).collect::<Vec<_>>().join(",");
+        let b64z = (0..64).map(|_| "0").collect::<Vec<_>>().join(",");
+        let legacy = format!(
+            r#"{{"height":42,"prev_hash":[{}],"ts":99,"prod_idx":0,"tx_root":[{}],"state_root":[{}],"sig":[{}]}}"#,
+            b32(7),
+            b32(8),
+            b32(9),
+            b64z
+        );
+        let leg_de: BlockHdr = serde_json::from_str(&legacy).expect("legacy");
+        assert_eq!(leg_de, h);
+    }
+
+    #[test]
+    fn hdr_bincode_hash_stable_across_codec() {
+        let h = sample_hdr();
+        let h1 = hdr_hash(&h);
+        let raw = bincode::serialize(&h).expect("bincode ser");
+        let h2: BlockHdr = bincode::deserialize(&raw).expect("bincode de");
+        assert_eq!(hdr_hash(&h2), h1);
+    }
 }

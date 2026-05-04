@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "20260511-s15-slice-O1-wave9-tui-panels-render",
+  "title": "S15-O.1 wave9: tui_loop owner/receivers panel render helpers",
+  "status": "done",
+  "brief": "render_owner_panel, render_recv_panel, render_detail_debug_strip; только рендер.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Panel render helpers in tui_loop",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-tui/src/tui_loop.rs"],
+      "tokens": { "source": "estimate", "total": 12000, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt check, 88 tests, workspace",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 300, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Targeted parity wave9",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 5200, "confidence": "medium" },
+      "done_at": "2026-05-01"
+    }
+  ],
+  "commits": ["de5c582"],
+  "notes": "След.: мелкие куски draw (warning strip) или §6.2."
+}

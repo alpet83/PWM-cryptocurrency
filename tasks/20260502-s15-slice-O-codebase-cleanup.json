@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260502-s15-slice-O-codebase-cleanup",
+  "title": "S15-O: codebase cleanup & fat-file optimization (CODEBASE_REFACTORING)",
+  "status": "completed",
+  "brief": "Внеочередной слайс оптимизации по аудиту docs/CODEBASE_REFACTORING.md: безопасные задачи из sprint-15-slice-O-checklist.md; крупные декомпозиции — только отдельными под-слайсами O.x.",
+  "acceptance": [
+    "Чеклист O: выполнены все пункты группы A или зафиксировано отложение с причиной",
+    "Минимум один пункт группы B закрыт либо явно перенесён в follow-up тикет",
+    "cargo test по затронутым crate зелёный; регрессии задокументированы",
+    "CODEBASE_REFACTORING.md при необходимости обновлён статусом выполненных фаз"
+  ],
+  "artifacts": {
+    "plan": "docs/reviews/sprint-15-slice-O-plan.md",
+    "checklist": "docs/reviews/sprint-15-slice-O-checklist.md",
+    "audit": "docs/CODEBASE_REFACTORING.md"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "slice": "S15-O-B",
+      "done_at": "2026-05-01",
+      "artifact": "docs/reviews/sprint-15-slice-O-testing.md",
+      "summary": "Round 2: cargo fmt + pwm-core/tui/cli/pwmd + workspace PASS; CQDS grep недоступен (fallback rg); baseline — нет коммита группы B в топе лога."
+    }
+  ],
+  "commits": ["5099486", "0ac777c", "b86cf16"],
+  "notes": "Группы A+B закрыты. CQDS ранее был недоступен (контейнеры не запущены) — восстановить сервис перед MCP; follow-up: O.1 tasks/20260503-s15-slice-O1-modular-decomposition-wave1.json для группы C."
+}

@@ -1,0 +1,23 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice16-cross-shard-ux-fix",
+  "title": "Sprint 14 Slice 16: cross-shard UX contract fix",
+  "status": "completed",
+  "mvp_checklist": ["Sprint 14 / Slice 16"],
+  "brief": "Сделать явный операторский finalize flow для cross-shard и улучшить trace/history видимость.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Implement cross-shard operator finalize + idempotency-visible flow.", "done_at": "2026-04-28T22:16:00+03:00"},
+    {"agent": "pwm-testing", "prompt_summary": "E2E validate CY->DO flow with restart and observability.", "done_at": "2026-04-28T22:24:00+03:00"},
+    {"agent": "pwm-review", "prompt_summary": "Independent review of flow contract and regressions.", "done_at": "2026-04-28T22:28:00+03:00"}
+  ],
+  "commits": [],
+  "artifacts": {
+    "coding_md": "docs/reviews/sprint-14-slice16-coding.md",
+    "testing_md": "docs/reviews/sprint-14-slice16-testing.md",
+    "review_md": "docs/reviews/sprint-14-slice16-review.md",
+    "remediation_coding_md": "docs/reviews/sprint-14-slice16-remediation-coding.md",
+    "remediation_testing_md": "docs/reviews/sprint-14-slice16-remediation-testing.md",
+    "remediation_review_md": "docs/reviews/sprint-14-slice16-remediation-review.md"
+  },
+  "notes": "User requested concrete fix-slice after slice15 findings."
+}

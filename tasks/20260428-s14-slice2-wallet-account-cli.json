@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "20260428-s14-slice2-wallet-account-cli",
+  "title": "Sprint 14 Slice 2: wallet account list/add/use",
+  "status": "done",
+  "mvp_checklist": [
+    "Sprint 14 / Slice 2 (docs/reviews/sprint-14-checklist.md)"
+  ],
+  "brief": "Реализовать CLI-операции для multi-address wallet v3: list/add/use, без поломки v2.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить wallet account list/add/use в pwm-cli и базовую запись active account для v3.",
+      "done_at": "2026-04-28T05:05:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Проверить CLI парсинг/интеграцию wallet account list/add/use и регрессию v2.",
+      "done_at": "2026-04-28T05:08:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Проверить UX сообщений, совместимость с v2 и контракт v3 active account.",
+      "done_at": "2026-04-28T05:11:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-14-slice2-review.md"
+  },
+  "notes": "Оркестратор: конвейер выполнен дважды (initial + remediation). Mini-report pwm-coding: реализованы wallet account list/add/use, затем remediation для encrypted add через --wallet-passphrase и merge-save с сохранением unknown keys/metadata. Mini-report pwm-testing: 101/101 pwm-cli tests green, added CLI passphrase parsing regression. Mini-report pwm-review: initial blocker closed; final verdict approve with minor (UX: empty passphrase message)."
+}

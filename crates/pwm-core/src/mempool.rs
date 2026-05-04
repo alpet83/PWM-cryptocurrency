@@ -88,13 +88,13 @@ mod tests {
         assert_eq!(tail, vec![t2]);
     }
 
-    /// Failed `Chain::seal` returns txs; `prepend_block` restores the pool (two `dev_net()` snapshots).
+    /// After failed seal mempool length preserved via prepend (formerly `seal_fail_then_prepend_keeps_len`).
     #[test]
-    fn seal_fail_then_prepend_keeps_len() {
+    fn mpool_undo_bad_seal() {
         let (g1, sks1) = dev_net();
         let mut p = Mpool::new(4096);
         let sk_v = &sks1[0];
-        let aid_v = g1.rows[0].acct;
+        let aid_v = g1.accounts[0].acct;
         let dom_v = domain_of_account_id(&aid_v);
         let bad = SignedTx::sign_body(sk_v, dom_v, 0, 99, TxBody::Stake { amount: 1 });
         p.push(bad.clone()).unwrap();

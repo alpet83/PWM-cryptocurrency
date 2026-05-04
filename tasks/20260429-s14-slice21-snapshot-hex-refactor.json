@@ -1,0 +1,14 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260429-s14-slice21-snapshot-hex-refactor",
+  "title": "Sprint 14 Slice 21: snapshot hex-string refactor",
+  "status": "in_progress",
+  "mvp_checklist": ["Sprint 14 / Slice 21"],
+  "brief": "Переход pwm-data.json от массивов байт к компактным hex-строкам (параллельный тикет).",
+  "delegations": [
+    {"agent": "pwm-review", "prompt_summary": "Design contract and migration strategy for hex-string snapshot storage.", "done_at": null}
+  ],
+  "commits": [],
+  "artifacts": {"review_md": null},
+  "notes": "Run in parallel while slice20 testing/fixes proceed."
+}

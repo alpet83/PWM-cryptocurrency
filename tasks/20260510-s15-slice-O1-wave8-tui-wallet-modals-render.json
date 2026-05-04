@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "20260510-s15-slice-O1-wave8-tui-wallet-modals-render",
+  "title": "S15-O.1 wave8: tui_loop unlock / encrypt / book_prompt render helpers",
+  "status": "done",
+  "brief": "render_book_modal, render_unlock_modal, render_encrypt_modal из term.draw; только рендер.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Three wallet modal render helpers",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-tui/src/tui_loop.rs"],
+      "tokens": { "source": "estimate", "total": 9800, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt check, 88 tests pwm-tui, workspace check",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 350, "confidence": "low" },
+      "done_at": "2026-05-01"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Extract-method parity wave8",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "total": 3600, "confidence": "medium" },
+      "done_at": "2026-05-01"
+    }
+  ],
+  "commits": ["25a8590"],
+  "notes": "Далее: таблицы owner/receivers в helpers или §6.2 тесты."
+}

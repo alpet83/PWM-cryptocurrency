@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260429-s15-slice3-4-peer-relay-one-window",
+  "title": "S15-S3.4: one-window peer relay for cross-shard transfers",
+  "status": "completed",
+  "brief": "Реализовать дизайн, при котором CLI/TUI работают только со своей родной нодой, а pwmd через transport peers доводит межшардовый flow до target shard без ручного поиска иностранной ноды.",
+  "scope": [
+    "Peer health/reconnect по --transport-peer-seed с WARN при отсутствии связи",
+    "Автоматический relay межшардовых операций по cluster/domain признаку",
+    "Заготовка genesis-fetch для subordinate shard, не создающих собственный genesis",
+    "Операторская диагностика stuck/absence relay states"
+  ],
+  "acceptance": [
+    "При заданном --transport-peer-seed нода контролирует peer health и переподключается примерно раз в минуту",
+    "Source node может довести exported intent до target peer без ручного tx-handoff-register/tx-import пользователем",
+    "Target shard видит и применяет относящийся к нему relay/import материал",
+    "При отсутствии peer/relay в логах и /v1/status есть понятная причина и next action"
+  ],
+  "out_of_scope": [
+    "Полноценный production consensus/finality протокол",
+    "DB snapshot backend S15-S4+",
+    "Замена wallet/genesis ролей"
+  ],
+  "artifacts": {
+    "coding": "docs/reviews/sprint-15-s3-4-coding.md",
+    "testing": "docs/reviews/sprint-15-s3-4-testing.md",
+    "review": "docs/reviews/sprint-15-s3-4-review.md"
+  }
+}

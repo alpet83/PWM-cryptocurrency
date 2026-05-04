@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "id": "20260611-s15-slice-O1-cli-wave17-wallet-split-s24",
+  "title": "S15-O.1 pwm-cli wave17: wallet.rs split per §2.4 (CODEBASE_REFACTORING)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/reviews/sprint-15-slice-O-checklist.md §C §2.4–2.6 — pwm-cli wallet.rs",
+    "docs/CODEBASE_REFACTORING.md §2.4"
+  ],
+  "brief": "**Оркестратор:** `docs/AGENT_PROMPT_orchestrator.md` — **pwm-coding** → **pwm-testing** → **pwm-review** → закрытие оркестратором.\n\n**Цель:** декомпозиция **`crates/pwm-cli/src/wallet.rs`** (~2.3k строк) по **`docs/CODEBASE_REFACTORING.md` §2.4** в несколько модулей под **`wallet/`** (каталог + **`mod.rs`**), сохранив для всего crate стабильный префикс **`crate::wallet::`** без массовых правок **`cmd_*` / `signer` / `wallet_shell` / `rpc_helpers` / тестов**.\n\n**Ориентир по модулям (из таблицы §2.4):** типы YAML/entries/protection/secrets → **`wallet/types.rs`** (или **`wallet_types.rs`** внутри каталога — на усмотрение, имена короткие); файловые операции (load/save/backup/recovery) → отдельный файл; шифрование/пасфраза локально → отдельный файл при наличии смыслового блока; CRUD аккаунтов; **`address_book`** хелперы.\n\n**Именование:** избегать путаницы с **`pwm_core::wallet_io`** — локальный модуль файлов можно назвать **`wallet/store.rs`**, **`wallet/fs.rs`** и т.п.\n\n**Инварианты:** семантика wallet v2→v3, шифрование, адресная книга и публичные **`pub`**/`pub(crate)` элементы, которые уже потребляются снаружи, не меняются намеренно.\n\n**Приёмка:** `cargo fmt --all -- --check`, `cargo test -p pwm-cli`, `cargo check --workspace`.\n\n**Ревью:** `docs/reviews/sprint-15-slice-O1-cli-wave17-wallet-split-s24-review.md`.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "split pwm-cli wallet.rs into wallet/ submodules per §2.4",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/wallet/mod.rs",
+        "crates/pwm-cli/src/wallet/types.rs",
+        "crates/pwm-cli/src/wallet/store.rs",
+        "crates/pwm-cli/src/wallet/crypto.rs",
+        "crates/pwm-cli/src/wallet/account.rs",
+        "crates/pwm-cli/src/wallet/address_book.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 95000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "fmt + test -p pwm-cli + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --all -- --check",
+        "cargo test -p pwm-cli (141+3 tests)",
+        "cargo check --workspace"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 900,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-02T00:00:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "gate wave17 wallet split — API parity",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-15-slice-O1-cli-wave17-wallet-split-s24-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-03T04:30:00Z"
+    }
+  ],
+  "commits": [
+    "5c5a994ce5350812b64d620ab545bce03384fbd0",
+    "3fb4d2713f18e99ed667c2df2ef0bacdd8dc5682",
+    "75e39b174860bfab46d3a52b55e325766205c3e6"
+  ],
+  "parent_chain": [
+    "tasks/20260610-s15-slice-O1-cli-wave16-cli-dispatch.json"
+  ],
+  "artifacts": {
+    "audit": "docs/CODEBASE_REFACTORING.md §2.4",
+    "review_md": "docs/reviews/sprint-15-slice-O1-cli-wave17-wallet-split-s24-review.md"
+  },
+  "notes": ""
+}

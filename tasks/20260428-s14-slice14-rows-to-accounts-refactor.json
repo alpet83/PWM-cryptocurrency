@@ -1,0 +1,16 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260428-s14-slice14-rows-to-accounts-refactor",
+  "title": "Sprint 14 Slice 14: rows-to-accounts refactor and TUI hint cleanup",
+  "status": "in_progress",
+  "mvp_checklist": ["Sprint 14 / Slice 14"],
+  "brief": "Переименовать rows в accounts по genesis-схеме и убрать подсказку F7 в TUI.",
+  "delegations": [
+    {"agent": "pwm-coding", "prompt_summary": "Implement rows->accounts refactor and remove F7 hint.", "done_at": null},
+    {"agent": "pwm-testing", "prompt_summary": "Validate refactor regressions.", "done_at": null},
+    {"agent": "pwm-review", "prompt_summary": "Independent final review.", "done_at": null}
+  ],
+  "commits": [],
+  "artifacts": {"coding_md": null, "testing_md": null, "review_md": null},
+  "notes": "Run in parallel with slice13 investigation."
+}

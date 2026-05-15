@@ -9,7 +9,8 @@ PWM — **нативная криптовалюта с моделью matrixchai
 **Что уже работает (контур MVP):**
 
 - **Два spec-level geo-шарда** — два процесса `pwmd` с разным `domain_hi` (например `0x10` / `0x20`), отдельный `--state-root` у каждого и **отработанный** happy path для связи по **реальному транспорту** с взаимными `--transport-peer-seed`.
-- **Внутришардовые** переводы и обычный жизненный цикл счёта (`INIT`, `TRANSFER`, задел под стейкинг, `BURN_MARK` где применимо) через RPC, CLI и TUI.
+- **Внутришардовые** переводы и обычный жизненный цикл счёта (`INIT`, `TRANSFER`, задел под стейкинг) через RPC, CLI и TUI.
+- **Единый баланс `marks` и `BURN_MARK`:** текущий MVP v2 использует `Account.marks` как единственный счётчик марок. Начисление марок на каждом `Chain::seal` удалено; usable marks приходят через genesis/claim-контур, а `BURN_MARK` списывает тот же счётчик. CLI `tx-burn-mark --amount N [--purpose P]` перед отправкой показывает текущие marks; в TUI есть колонка `Marks` и форма сжигания по F5 с заголовком `Current marks`; `--purpose` поддерживает плейсхолдеры `{utc_time}` / `{utc_timestamp}`.
 - **Межшардовое перемещение стоимости** по явной цепочке **EXPORT → relay/handoff → IMPORT**: source и target согласуются через доверие к настроенным seed; `tx-send` / TUI и `tx-export` / `tx-import` соответствуют [контракту Sprint 13 как реализовано](docs/rfc/9-crossdomain-roaming.md). Подробнее: [ROAMING-SAMPLE.md](docs/ROAMING-SAMPLE.md), [ROAMING_COMPLETION.md](docs/ROAMING_COMPLETION.md).
 - **Федеративный мост** (включая отказ в доверии и пути восстановления) — часть рантайм-контракта; см. [WHITE_SPEC_v0.md](docs/WHITE_SPEC_v0.md) §7.5 и операторские заметки в [docs/pwmd.md](docs/pwmd.md).
 - **Персистентность:** основной путь — **JsonFile** (сводный `pwm-data.json`, `epochs/`, манифест; trust-default vs аудит-реплей). Опционально **`pwmd` может писать снапшоты в ClickHouse** (feature `clickhouse-snapshot`); семантика загрузки отличается от JsonFile (см. раздел **Backend хранения** ниже и [guide-node-storage-and-snapshot.md](docs/guide-node-storage-and-snapshot.md)).
@@ -71,7 +72,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/dev/peers"
 Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 ```
 
-Ожидается `phase=ready`, видимость пира на обеих сторонах и пространства имён `domain-hi-0x10` / `domain-hi-0x20`. Для **`pwm`** / **`pwm-tui`** задавайте нужную ноду через `--rpc` или `PWM_RPC`; кросс-шард и завершение импорта — в [tester-guide-cli-tui-scenarios.md](docs/tester-guide-cli-tui-scenarios.md) (§5–9).
+Ожидается `phase=ready`, видимость пира на обеих сторонах и пространства имён `domain-hi-0x10` / `domain-hi-0x20`. Для **`pwm`** / **`pwm-tui`** задавайте нужную ноду через `--rpc` или `PWM_RPC`; кросс-шард и завершение импорта — в [tester-guide-cli-tui-scenarios.md](docs/tester-guide-cli-tui-scenarios.md) (§5–11).
 
 ## Сеть: охват и ограничения
 
@@ -93,6 +94,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 - Хранилище ноды и режимы снапшота: `docs/guide-node-storage-and-snapshot.md`
 - Runbook снапшотов ClickHouse: `docs/runbook-store-snapshots.md`
 - CLI/TUI: два шарда и кросс-шард: `docs/tester-guide-cli-tui-scenarios.md`
+- Дорожная карта V2 и план спринтов: `docs/plans/mvp_v2.md`
+- Ревью готовности публичных docs MVP v2: `docs/reviews/20260515-mvp-v2-public-docs-readiness.md`
 - Словарь доменных кластеров: `docs/DOMAINS.md`
 - Phase 1 checklist: `docs/PHASE1_CHECKLIST.md`
 - Phase 1 release summary: `docs/PHASE1_RELEASE_SUMMARY.md`

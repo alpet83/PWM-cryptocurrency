@@ -82,6 +82,17 @@ isProject: false
   - короткие промежуточные сводки, ссылки на отчёты, решения по блокерам;
   - чтобы финальная сводка спринта собиралась быстро и без потери деталей.
 
+## Спутниковый трек: single-sealer, lease, клоны валидатора (вне нумерации Sprint 1–15)
+
+Параллельная линия к [docs/MVP-checklist.md](../MVP-checklist.md) §4 (seal / same-shard guardrails). Не «анонимный спринт», а **отдельные тикеты** — ниже якоря, чтобы оркестратор не терял нить.
+
+| Якорь | Тикет | Суть |
+|--------|--------|------|
+| **S0–S3 (umbrella)** | [tasks/20260509-single-sealer-failover-profiles.json](../../tasks/20260509-single-sealer-failover-profiles.json) | Срезы design/S1 guards/S2 process-local lease/S3 optional cluster; дизайн: [docs/reviews/20260509-single-sealer-failover-design.md](../reviews/20260509-single-sealer-failover-design.md). Итог S2 в финальном review — **PARTIAL** намеренно: межпроцессный split-brain без внешнего координатора не закрыт (см. отчёт). |
+| **S2.1 external lease** | [tasks/20260509-s21-external-lease-backend.json](../../tasks/20260509-s21-external-lease-backend.json) | Файловый lease на shared volume; мини-follow-up тестов: [docs/reviews/20260509-s21-followup-mini-testing.md](../reviews/20260509-s21-followup-mini-testing.md) (`lease_two_proc`, fail-closed backend). |
+
+**Где продолжать:** регрессия HTTP-тестов после DevLane закрыта тикетом [tasks/20260509-pwmd-domain-hi-test-align.json](../../tasks/20260509-pwmd-domain-hi-test-align.json). Дальше по желанию — **независимый** прогон `pwm-testing`: полный `cargo test -p pwmd` и/или точечно `lease` / `lease_two_proc`, чтобы подтвердить S2.1 на текущем дереве (на Windows раньше мелькают отдельные `transport_peer` — изолировать при повторе).
+
 ## Контроль связности roadmap после Sprint 1
 - Сразу после завершения Sprint 1 запускать отдельный `pwm-review` на связность roadmap:
   - соответствие текущей реализации целям Sprint 2+,
@@ -91,12 +102,12 @@ isProject: false
 
 ## Базовые артефакты перед стартом Sprint 1
 - Зафиксировать спецификационную ось (уже синхронизирована):
-  - [docs/WHITE_SPEC_v0.md](p:/opt/docker/PWM-cryptocurrency/docs/WHITE_SPEC_v0.md)
-  - [docs/rfc/3-cross-domain-roaming.md](p:/opt/docker/PWM-cryptocurrency/docs/rfc/3-cross-domain-roaming.md)
-  - [docs/rfc/7-tx-and-state-model.md](p:/opt/docker/PWM-cryptocurrency/docs/rfc/7-tx-and-state-model.md)
-  - [docs/rfc/6-policy-engine.md](p:/opt/docker/PWM-cryptocurrency/docs/rfc/6-policy-engine.md)
-  - [docs/DEPEDENCY_GRAPH.md](p:/opt/docker/PWM-cryptocurrency/docs/DEPEDENCY_GRAPH.md)
-  - [docs/WHITEPAPER_COVERAGE_MATRIX.md](p:/opt/docker/PWM-cryptocurrency/docs/WHITEPAPER_COVERAGE_MATRIX.md)
+  - [docs/WHITE_SPEC_v0.md](../WHITE_SPEC_v0.md)
+  - [docs/rfc/3-cross-domain-roaming.md](../rfc/3-cross-domain-roaming.md)
+  - [docs/rfc/7-tx-and-state-model.md](../rfc/7-tx-and-state-model.md)
+  - [docs/rfc/6-policy-engine.md](../rfc/6-policy-engine.md)
+  - [docs/DEPEDENCY_GRAPH.md](../DEPEDENCY_GRAPH.md)
+  - [docs/WHITEPAPER_COVERAGE_MATRIX.md](../WHITEPAPER_COVERAGE_MATRIX.md)
 - Принцип: routing определяется протокольно по `domain_hi(sender/receiver)`, не route-флагами клиента.
 
 ## Sprint 1 (Week 1-2): Two-Shard Runtime Foundation
@@ -107,9 +118,9 @@ isProject: false
   - базовая маршрутизация локальных tx внутри shard,
   - единый demo-скрипт запуска 2 shard.
 - **Файлы/модули (ориентир):**
-  - [crates/pwmd/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/main.rs)
-  - [crates/pwmd/src/lib.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/lib.rs)
-  - [docs/tester-guide-devnet-smoke.md](p:/opt/docker/PWM-cryptocurrency/docs/tester-guide-devnet-smoke.md)
+  - [crates/pwmd/src/main.rs](../../crates/pwmd/src/main.rs)
+  - [crates/pwmd/src/lib.rs](../../crates/pwmd/src/lib.rs)
+  - [docs/tester-guide-devnet-smoke.md](../tester-guide-devnet-smoke.md)
 - **Demo-ready output:** оператор запускает Shard A/B и выполняет local tx на каждом отдельно.
 
 ## Sprint 2 (Week 3-4): Export Path (Source Shard)
@@ -120,9 +131,9 @@ isProject: false
   - deterministic export_id,
   - ошибки/диагностика для invalid export.
 - **Файлы/модули:**
-  - [crates/pwm-core/src/tx.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/tx.rs)
-  - [crates/pwm-core/src/state.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/state.rs)
-  - [crates/pwmd/src/lib.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/lib.rs)
+  - [crates/pwm-core/src/tx.rs](../../crates/pwm-core/src/tx.rs)
+  - [crates/pwm-core/src/state.rs](../../crates/pwm-core/src/state.rs)
+  - [crates/pwmd/src/lib.rs](../../crates/pwmd/src/lib.rs)
 - **Demo-ready output:** можно сформировать и зафиксировать экспорт на Shard A с валидным commitment.
 
 ## Sprint 3 (Week 5-6): Finality Proof Minimal Profile
@@ -132,9 +143,9 @@ isProject: false
   - связка export -> certificate,
   - негативные кейсы weak/invalid proof.
 - **Файлы/модули:**
-  - [crates/pwmd/src/lib.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/lib.rs)
-  - [crates/pwm-core/src/block.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/block.rs)
-  - [docs/rfc/4-validators-and-finality.md](p:/opt/docker/PWM-cryptocurrency/docs/rfc/4-validators-and-finality.md)
+  - [crates/pwmd/src/lib.rs](../../crates/pwmd/src/lib.rs)
+  - [crates/pwm-core/src/block.rs](../../crates/pwm-core/src/block.rs)
+  - [docs/rfc/4-validators-and-finality.md](../rfc/4-validators-and-finality.md)
 - **Demo-ready output:** на source shard экспорт сопровождается проверяемым certificate.
 
 ## Sprint 4 (Week 7-8): Import Path + Replay Guard
@@ -144,9 +155,9 @@ isProject: false
   - `ImportedSet` (или эквивалент) и reject duplicate import,
   - credit recipient в target shard.
 - **Файлы/модули:**
-  - [crates/pwm-core/src/state.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/state.rs)
-  - [crates/pwm-core/src/chain.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/chain.rs)
-  - [crates/pwmd/src/lib.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/lib.rs)
+  - [crates/pwm-core/src/state.rs](../../crates/pwm-core/src/state.rs)
+  - [crates/pwm-core/src/chain.rs](../../crates/pwm-core/src/chain.rs)
+  - [crates/pwmd/src/lib.rs](../../crates/pwmd/src/lib.rs)
 - **Demo-ready output:** полный happy-path transfer A -> B + демонстрация duplicate import rejection.
 
 ## Sprint 5 (Week 9-10): Policy Baseline + Routing by domain_hi
@@ -156,9 +167,9 @@ isProject: false
   - recipient policy reject (`reserve/witness/unknown`) в user flow,
   - единый error contract для policy failures.
 - **Файлы/модули:**
-  - [crates/pwm-core/src/types.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/types.rs)
-  - [crates/pwm-core/src/state.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/state.rs)
-  - [docs/rfc/6-policy-engine.md](p:/opt/docker/PWM-cryptocurrency/docs/rfc/6-policy-engine.md)
+  - [crates/pwm-core/src/types.rs](../../crates/pwm-core/src/types.rs)
+  - [crates/pwm-core/src/state.rs](../../crates/pwm-core/src/state.rs)
+  - [docs/rfc/6-policy-engine.md](../rfc/6-policy-engine.md)
 - **Demo-ready output:** демонстрация корректного авто-роутинга по доменам и policy reject кейсов.
 
 ## Sprint 6 (Week 11-12): `pwmd` Micro-Slice Optimization Conveyor (completed)
@@ -169,11 +180,11 @@ isProject: false
   - строгая evidence policy: `scoped_diff_stat` фиксирует только product/tooling paths (`crates/**`, `tools/**`), без self-referential artifact шума;
   - подготовка почвы для последующей декомпозиции `lib.rs`, но без переноса кода между модулями.
 - **Файлы/модули:**
-  - [crates/pwmd/src/lib.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/lib.rs)
-  - [tools/slice-artifacts.ps1](p:/opt/docker/PWM-cryptocurrency/tools/slice-artifacts.ps1)
-  - [tools/slice-commit.ps1](p:/opt/docker/PWM-cryptocurrency/tools/slice-commit.ps1)
-  - [docs/reviews/sprint-6-checklist.md](p:/opt/docker/PWM-cryptocurrency/docs/reviews/sprint-6-checklist.md)
-  - [tasks/20260424-sprint6-optimization.json](p:/opt/docker/PWM-cryptocurrency/tasks/20260424-sprint6-optimization.json)
+  - [crates/pwmd/src/lib.rs](../../crates/pwmd/src/lib.rs)
+  - [tools/slice-artifacts.ps1](../../tools/slice-artifacts.ps1)
+  - [tools/slice-commit.ps1](../../tools/slice-commit.ps1)
+  - [docs/reviews/sprint-6-checklist.md](../reviews/sprint-6-checklist.md)
+  - [tasks/20260424-sprint6-optimization.json](../../tasks/20260424-sprint6-optimization.json)
 - **Demo-ready output:** зелёный `pwmd` regression suite (`cargo test -p pwmd`) после каждого slice и зафиксированный набор micro-refactor commits с review/test evidence.
 
 ## Sprint 7 (Week 13-14): Decompose Heavy `pwmd` `lib.rs` into Submodules
@@ -184,9 +195,9 @@ isProject: false
   - контроль и коррекция внешних зависимостей от `lib.rs`: imports, visibility, test access, public re-exports только при необходимости;
   - поэтапные slices с одним module-boundary move за раз и обязательным regression/review gate.
 - **Файлы/модули:**
-  - [crates/pwmd/src/lib.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/lib.rs)
-  - [crates/pwmd/src/](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/)
-  - [docs/DEPEDENCY_GRAPH.md](p:/opt/docker/PWM-cryptocurrency/docs/DEPEDENCY_GRAPH.md)
+  - [crates/pwmd/src/lib.rs](../../crates/pwmd/src/lib.rs)
+  - [crates/pwmd/src/](../../crates/pwmd/src)
+  - [docs/DEPEDENCY_GRAPH.md](../DEPEDENCY_GRAPH.md)
 - **Demo-ready output:** `pwmd` собирается и проходит regression suite после декомпозиции; внешний API/CLI-facing поведение не изменено; есть карта новых модулей и зависимостей.
 
 ## Sprint 8 (Week 15-16): Burn-Quota Path (`marks_quota`) and Zero-Fee Baseline
@@ -197,9 +208,9 @@ isProject: false
   - baseline `fee=0` для mark-based flow,
   - cross-domain burn context source-only proof handling.
 - **Файлы/модули:**
-  - [crates/pwm-core/src/state.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/state.rs)
-  - [crates/pwm-core/src/tx.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/tx.rs)
-  - [docs/WHITE_SPEC_v0.md](p:/opt/docker/PWM-cryptocurrency/docs/WHITE_SPEC_v0.md)
+  - [crates/pwm-core/src/state.rs](../../crates/pwm-core/src/state.rs)
+  - [crates/pwm-core/src/tx.rs](../../crates/pwm-core/src/tx.rs)
+  - [docs/WHITE_SPEC_v0.md](../WHITE_SPEC_v0.md)
 - **Demo-ready output:** end-to-end burn demo (local + cross-domain context) по новой модели.
 
 ## Sprint 9 (Week 17-18): CLI/TUI Integration for Two-Shard Demo Ops
@@ -209,9 +220,9 @@ isProject: false
   - TUI отображение shard context и history cross-shard операций,
   - demo scripts and operator checklists.
 - **Файлы/модули:**
-  - [crates/pwm-cli/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-cli/src/main.rs)
-  - [crates/pwm-tui/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-tui/src/main.rs)
-  - [docs/tester-guide-cli-tui-scenarios.md](p:/opt/docker/PWM-cryptocurrency/docs/tester-guide-cli-tui-scenarios.md)
+  - [crates/pwm-cli/src/main.rs](../../crates/pwm-cli/src/main.rs)
+  - [crates/pwm-tui/src/main.rs](../../crates/pwm-tui/src/main.rs)
+  - [docs/tester-guide-cli-tui-scenarios.md](../tester-guide-cli-tui-scenarios.md)
 - **Demo-ready output:** один оператор проходит scripted demo v1 testnet через CLI/TUI.
 
 ## Sprint 10 (Week 19-20): Hardening and MVP v1 Testnet Cut
@@ -221,9 +232,9 @@ isProject: false
   - conformance checklist и release notes,
   - freeze API/errors for MVP baseline.
 - **Файлы/модули:**
-  - [docs/PHASE1_RELEASE_SUMMARY.md](p:/opt/docker/PWM-cryptocurrency/docs/PHASE1_RELEASE_SUMMARY.md)
-  - [docs/reviews/v1-testnet-decision-options-20260423.md](p:/opt/docker/PWM-cryptocurrency/docs/reviews/v1-testnet-decision-options-20260423.md)
-  - [docs/WHITEPAPER_COVERAGE_MATRIX.md](p:/opt/docker/PWM-cryptocurrency/docs/WHITEPAPER_COVERAGE_MATRIX.md)
+  - [docs/PHASE1_RELEASE_SUMMARY.md](../PHASE1_RELEASE_SUMMARY.md)
+  - [docs/reviews/v1-testnet-decision-options-20260423.md](../reviews/v1-testnet-decision-options-20260423.md)
+  - [docs/WHITEPAPER_COVERAGE_MATRIX.md](../WHITEPAPER_COVERAGE_MATRIX.md)
 - **Demo-ready output:** стабильный внутренний v1 testnet demo build + go/no-go документ.
 
 ## Sprint 11 (Week 21-22): DomainHi Migration + Relay-by-Default
@@ -236,10 +247,10 @@ isProject: false
   - обновление tx-policy guards: shard-enforced правила применяются только в соответствующем режиме;
   - синхронизация docs/operator guides и acceptance матрицы под новую модель.
 - **Файлы/модули:**
-  - [crates/pwmd/src/](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/)
-  - [crates/pwm-cli/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-cli/src/main.rs)
-  - [crates/pwm-tui/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-tui/src/main.rs)
-  - [docs/reviews/](p:/opt/docker/PWM-cryptocurrency/docs/reviews/)
+  - [crates/pwmd/src/](../../crates/pwmd/src)
+  - [crates/pwm-cli/src/main.rs](../../crates/pwm-cli/src/main.rs)
+  - [crates/pwm-tui/src/main.rs](../../crates/pwm-tui/src/main.rs)
+  - [docs/reviews/](../reviews)
 - **Demo-ready output:** `pwmd` стартует в relay-default; domain_hi-mode включает shard-enforced path; regression/conformance pack зелёный.
 
 ## Sprint 12 (Week 23-24): Final Optimization Sprint after `pwm-optimus` Review
@@ -252,9 +263,9 @@ isProject: false
   - фокус на hotspots, выявленных review: duplication, private helper boundaries, avoidable allocation/copy paths, test readability;
   - без новых feature semantics, без изменения API/errors/tx guards, без расширения роутов.
 - **Файлы/модули:**
-  - [crates/pwmd/src/](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/)
-  - [crates/pwm-core/src/](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/)
-  - [docs/reviews/](p:/opt/docker/PWM-cryptocurrency/docs/reviews/)
+  - [crates/pwmd/src/](../../crates/pwmd/src)
+  - [crates/pwm-core/src/](../../crates/pwm-core/src)
+  - [docs/reviews/](../reviews)
 - **Demo-ready output:** итоговый optimization report, зелёный regression/conformance pack, и зафиксированный handoff/backlog на пост-MVP hardening.
 
 ## Sprint 13 (Week 25-26): Inter-Shard MVP Cut (EXPORT/IMPORT)
@@ -281,21 +292,21 @@ isProject: false
   - replay-защита сохраняется после рестарта/загрузки snapshot;
   - CLI/TUI/pwmd имеют согласованные операторские сообщения и воспроизводимый demo runbook.
 - **Файлы/модули:**
-  - [crates/pwm-core/src/tx.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/tx.rs)
-  - [crates/pwm-core/src/state.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/state.rs)
-  - [crates/pwmd/src/](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/)
-  - [crates/pwm-cli/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-cli/src/main.rs)
-  - [crates/pwm-tui/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-tui/src/main.rs)
-  - [docs/reviews/](p:/opt/docker/PWM-cryptocurrency/docs/reviews/)
+  - [crates/pwm-core/src/tx.rs](../../crates/pwm-core/src/tx.rs)
+  - [crates/pwm-core/src/state.rs](../../crates/pwm-core/src/state.rs)
+  - [crates/pwmd/src/](../../crates/pwmd/src)
+  - [crates/pwm-cli/src/main.rs](../../crates/pwm-cli/src/main.rs)
+  - [crates/pwm-tui/src/main.rs](../../crates/pwm-tui/src/main.rs)
+  - [docs/reviews/](../reviews)
 - **Demo-ready output:** оператор воспроизводит полный базовый межшардовый сценарий `EXPORT -> IMPORT` с доказуемой idempotency и негативными проверками.
 
 ## Sprint 14 (Week 27-28): Multi-Address Wallet (`schema_version` 3)
 - **Цель:** эволюция файла кошелька до **multi-address** (несколько owned веток `m/0/N` в одном файле), без смешения с `address_book` (контакты / allow-list).
-- **Spec-first:** до кодинга — аудит полей и RFC; номер **RFC 10** ([docs/rfc/10-wallet-file-format-v3.md](p:/opt/docker/PWM-cryptocurrency/docs/rfc/10-wallet-file-format-v3.md)) — `8` занят shard-runtime RFC.
-- **Конвейер на код-слайсы:** каждый слайс с правками кода проходит `pwm-coding` → `pwm-testing` → `pwm-review` (см. [docs/reviews/sprint-14-checklist.md](p:/opt/docker/PWM-cryptocurrency/docs/reviews/sprint-14-checklist.md)).
+- **Spec-first:** до кодинга — аудит полей и RFC; номер **RFC 10** ([docs/rfc/10-wallet-file-format-v3.md](../rfc/10-wallet-file-format-v3.md)) — `8` занят shard-runtime RFC.
+- **Конвейер на код-слайсы:** каждый слайс с правками кода проходит `pwm-coding` → `pwm-testing` → `pwm-review` (см. [docs/reviews/sprint-14-checklist.md](../reviews/sprint-14-checklist.md)).
 - **Scope:**
-  - аудит полей v2/v3 и семантика `created_at_unix_sec` / per-account времени — [docs/reviews/sprint-14-wallet-schema-audit.md](p:/opt/docker/PWM-cryptocurrency/docs/reviews/sprint-14-wallet-schema-audit.md);
-  - нормативный YAML: **4 пробела на уровень вложенности**; owned в `accounts[]`; `id_pretty` вместо `account_id_human` на витрине v3 ([docs/CHANGELOG.md](p:/opt/docker/PWM-cryptocurrency/docs/CHANGELOG.md));
+  - аудит полей v2/v3 и семантика `created_at_unix_sec` / per-account времени — [docs/reviews/sprint-14-wallet-schema-audit.md](../reviews/sprint-14-wallet-schema-audit.md);
+  - нормативный YAML: **4 пробела на уровень вложенности**; owned в `accounts[]`; `id_pretty` вместо `account_id_human` на витрине v3 ([docs/CHANGELOG.md](../CHANGELOG.md));
   - encrypted payload MVP **A**: в блобе master seed, ключи per-account деривировать при unlock;
   - `pwm-cli`: `wallet account list|add|use` (имена финализировать в RFC);
   - `pwm-tui`: **левая панель** — все адреса из `accounts[]`, выделение active;
@@ -307,11 +318,11 @@ isProject: false
   - Slice 3: TUI левая панель + переключение active.
   - Slice 4: стабилизация, demo runbook, closeout review.
 - **Файлы/модули (ориентир):**
-  - [crates/pwm-cli/src/wallet.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-cli/src/wallet.rs)
-  - [crates/pwm-cli/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-cli/src/main.rs)
-  - [crates/pwm-core/src/wallet_read.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/wallet_read.rs)
-  - [crates/pwm-tui/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-tui/src/main.rs)
-  - [docs/rfc/10-wallet-file-format-v3.md](p:/opt/docker/PWM-cryptocurrency/docs/rfc/10-wallet-file-format-v3.md)
+  - [crates/pwm-cli/src/wallet.rs](../../crates/pwm-cli/src/wallet.rs)
+  - [crates/pwm-cli/src/main.rs](../../crates/pwm-cli/src/main.rs)
+  - [crates/pwm-core/src/wallet_read.rs](../../crates/pwm-core/src/wallet_read.rs)
+  - [crates/pwm-tui/src/main.rs](../../crates/pwm-tui/src/main.rs)
+  - [docs/rfc/10-wallet-file-format-v3.md](../rfc/10-wallet-file-format-v3.md)
 - **Demo-ready output:** один wallet v3 с двумя `accounts`, переключение `use`, успешный `tx-send` от каждого; TUI показывает оба адреса в левой панели.
 
 ## Sprint 15 (Week 29-30): Cross-Shard Consistency + State Storage Evolution
@@ -340,19 +351,19 @@ isProject: false
   - Slice 6: replay/consistency tests across backends.
   - Slice 6b (performance, желательно после Slice 4): ускорение загрузки блокчейна — **checkpoint-снимки** (материализованное состояние + якорь высоты/hash) и **lazy** подгрузка/материализация исторических блоков там, где полный replay не нужен сразу; сохранить детерминизм replay для validator-пути и совместимость с абстракцией snapshot/store из Slice 4.
   - Slice 7: closeout review, performance notes, explorer-readiness backlog.
-  - **S15-S7 closeout:** зафиксировано в [docs/reviews/sprint-15-S7-closeout.md](p:/opt/docker/PWM-cryptocurrency/docs/reviews/sprint-15-S7-closeout.md) (decision gate, риски R1–R5, carry-over).
+  - **S15-S7 closeout:** зафиксировано в [docs/reviews/sprint-15-S7-closeout.md](../reviews/sprint-15-S7-closeout.md) (decision gate, риски R1–R5, carry-over).
 - **Acceptance criteria:**
   - перенос монет между шардами воспроизводим в e2e без скрытых операторских ловушек;
   - балансовые статусы foreign-адресов не вводят в заблуждение;
   - подключаемые шарды валидируют genesis-consistency до приема пользовательских tx;
   - snapshot persistence работает через JSON baseline и optional DB backend без потери replay deterministic behavior.
 - **Файлы/модули (ориентир):**
-  - [crates/pwmd/src/](p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/)
-  - [crates/pwm-core/src/state.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src/state.rs)
-  - [crates/pwm-cli/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-cli/src/main.rs)
-  - [crates/pwm-tui/src/main.rs](p:/opt/docker/PWM-cryptocurrency/crates/pwm-tui/src/main.rs)
-  - [docs/reviews/sprint-14-slice31-genesis-balance-consistency-review.md](p:/opt/docker/PWM-cryptocurrency/docs/reviews/sprint-14-slice31-genesis-balance-consistency-review.md)
-  - [docs/plans/sprint-15-architecture-genesis-consistency-and-db-snapshots.md](p:/opt/docker/PWM-cryptocurrency/docs/plans/sprint-15-architecture-genesis-consistency-and-db-snapshots.md)
+  - [crates/pwmd/src/](../../crates/pwmd/src)
+  - [crates/pwm-core/src/state.rs](../../crates/pwm-core/src/state.rs)
+  - [crates/pwm-cli/src/main.rs](../../crates/pwm-cli/src/main.rs)
+  - [crates/pwm-tui/src/main.rs](../../crates/pwm-tui/src/main.rs)
+  - [docs/reviews/sprint-14-slice31-genesis-balance-consistency-review.md](../reviews/sprint-14-slice31-genesis-balance-consistency-review.md)
+  - [docs/plans/sprint-15-architecture-genesis-consistency-and-db-snapshots.md](sprint-15-architecture-genesis-consistency-and-db-snapshots.md)
 
 ## Межспринтовые гейты качества (каждый спринт)
 - **Spec Gate:** `pwm-review` подтверждает отсутствие новых противоречий между WHITE/RFC/Matrix.

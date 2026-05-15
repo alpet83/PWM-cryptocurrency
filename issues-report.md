@@ -13,6 +13,27 @@
 
 ## Entries
 
+- Дата: 2026-05-14
+- Контекст/файлы: `crates/pwmd/src/transport/peer_session/sync_live.rs` (`sync_prog_tick`, константы `SYNC_PROG_*`).
+- Симптом: строки «Sync progress 99%/100%» кажутся признаком застрявшей синхронизации во время живого следования за proposer при `lag=1`.
+- Причина: консольный прогресс триггерился на каждое изменение цели после «догнанного» состояния; это штатный live short-tail, не транспортный затык.
+- Фикс/обход: расширенный интервал `SYNC_PROG_LIVE_TAIL_MS` и путь `quiet_goal_bump` при `cup_active=false`, малом до-tip gap и `rem≤1`; дубликаты `SyncHeadersReq` для того же `from_h`, пока уже есть in-flight hdr, отсекаются в `ask_hdr`.
+- Что проверить потом: CY smoke `-SmokeSeconds 120` и счётчики `Sync progress`; при реальном глубоком хвосте (`lag≥32`/`rem>1`/CUP) прогресс остаётся частым через `SYNC_PROG_MIN_MS` и журнал catch-up.
+
+- Дата: 2026-05-09
+- Контекст/файлы: `cargo test -p pwmd`, `crates/pwmd/src/tests/transport_peer.rs` (`v1_hi_accepts_native_cls`, `v1_hi_mx_sig`).
+- Симптом: при полном прогоне библиотечных тестов pwmd на Windows два кейса transport_peer упали с `Bool(false)` вместо ожидаемого `true` в assertions около строк 25 и 83.
+- Причина: не разбиралось в этом слайсе; возможная независимая флейкулиость окружения/параллелизма/локальных сокетов, не связанная с lease follow-up.
+- Фикс/обход: для проверки S2.1 follow-up использовать таргетные фильтры `cargo test -p pwmd backend_err_closed --lib` и `cargo test -p pwmd --test lease_two_proc`; полный матричный прогон отдать pwm-testing.
+- Что проверить потом: воспроизвести падения под контролем и завести отдельный тикет или починить transport_peer если stable flake подтвердится.
+
+- Дата: 2026-05-08
+- Контекст/файлы: `crates/pwmd/src/transport/peer_session/seed/mod.rs`, `crates/pwmd/src/transport/peer_session/mod.rs`, divergence guard hotfix.
+- Симптом: простой `set_seed_due` сам по себе не гарантирует реальный reconnect cooldown в seed-loop, потому что цикл `run_seed_session` спит по `peer_retry_sleep_ms` и может переподключиться раньше.
+- Причина: `next_due_ms` использовался в transport tick path, но seed session loop не учитывал этот маркер перед новым connect.
+- Фикс/обход: seed-loop wait переведён на `max(peer_retry_sleep_ms, seed_state.next_due_ms-now)`, поэтому divergence cooldown marker реально ограничивает повторный dial.
+- Что проверить потом: pwm-testing e2e с принудительным divergence подтверждает, что reconnect не раньше ~60s и нет регрессий sticky-session.
+
 - Дата: 2026-04-26
 - Контекст/файлы: `crates/pwm-core/src/domain_index.rs`, `docs/DOMAINS.md`, диапазоны `domain_hi`
 - Симптом: в словаре доменов появился «резерв из 3 адресов» в начале диапазона стран.
@@ -376,3 +397,150 @@
 - Причина: JsonFile summary хранит `roaming` и `cross_shard` как side-state, а replay до `H` восстанавливает только детерминируемое `State`.
 - Фикс/обход: `pwmd-snap-repair` переносит `roaming`/`cross_shard` только если исходный summary уже на той же высоте `H`; иначе пишет безопасный default и фиксирует это флагом `kept_aux_summary=false`.
 - Что проверить потом: выделить детерминированный replay/compaction путь для `roaming`/`cross_shard` или явно задокументировать reset-поведение как операторский контракт.
+
+- Дата: 2026-05-05
+- Контекст/файлы: `crates/pwm-core/src/tx.rs`, `crates/pwm-core/src/state.rs`, IMPORT fee v2 (`MIN_IMPORT_FEE_UNITS`)
+- Симптом: старые IMPORT-сценарии и часть unit-тестов падали с `Insufficient`, хотя provenance и replay-guard были корректными.
+- Причина: в E-1 включён обязательный import fee floor `0.01 PWM`, а signer target-side import должен иметь минимальный ликвидный баланс для списания комиссии.
+- Фикс/обход: в тестовых/операторских сценариях перед первым IMPORT обеспечивать баланс signer >= `MIN_IMPORT_FEE_UNITS`; на reject путь комиссия не списывается.
+- Что проверить потом: pwm-testing e2e на live-нодах с явной проверкой `fee_pool` target-shard после успешного IMPORT и отсутствия списания при reject.
+
+- Дата: 2026-05-06
+- Контекст/файлы: `crates/pwmd/src/slice20_e2e_tests.rs` (`slice20_dual_flow_ok`), e2e roaming/import smoke.
+- Симптом: `tx-import` падал с `HTTP 500 ... insufficient balance` после успешного handoff/finalize; при попытке быстро добавить import signer в `wallet-cy` ломался ранний `tx-send` (sender `domain_hi=0x32` уходил на CY RPC).
+- Причина: после ввода `MIN_IMPORT_FEE_UNITS` target-side import signer должен иметь ликвидный баланс; при этом модификация рабочего sender-кошелька меняет активный signer для последующих CLI команд в тесте.
+- Фикс/обход: генерировать отдельный genesis-only wallet (копия sender wallet) и добавлять import signer туда перед `genesis-build`, не меняя wallets, которыми подписываются runtime tx-шаги.
+- Что проверить потом: pwm-testing прогон `slice20_dual_flow_ok` и соседнего cross-shard smoke на чистом target-dir, чтобы подтвердить отсутствие зависимостей от порядка account-list в wallet YAML.
+
+- Дата: 2026-05-06
+- Контекст/файлы: `crates/pwm-core/src/state.rs`, `crates/pwmd/src/snapshot/types.rs`, Sprint V2-2 Slice 1 (`marks_quota` removal)
+- Симптом: после удаления `State.marks_quota` старые snapshot-файлы могут содержать legacy `state.marks_quota` строки, что даёт риск тихого расхождения при миграции.
+- Причина: `marks_quota` исторически был зеркалом `account.marks`, но в legacy-данных поле могло остаться несинхронным из-за ручных/тестовых правок.
+- Фикс/обход: runtime state хранит только `Account.marks`; writer больше не сериализует `marks_quota`, loader принимает legacy поле только при строгом инварианте `quota == account.marks` и отклоняет mismatch/orphan с явной ошибкой.
+- Что проверить потом: после migration window убрать чтение legacy `state.marks_quota` совсем и оставить strict canonical state без этого ключа.
+
+- Дата: 2026-05-06
+- Контекст/файлы: `crates/pwm-core/src/genesis.rs`, `crates/pwmd/src/snapshot/genesis.rs`, `crates/pwm-cli/src/cmd_genesis.rs` (Sprint V2-3 Slice 0 schema prep)
+- Симптом: после добавления V2-3 полей в `GenCfg` узел должен загружать и старые genesis-файлы (v4), и новые (v5), иначе апгрейд ломает cold-start и replay.
+- Причина: расширение контракта `gen_cfg` требует migration window; часть инфраструктуры всё ещё может не сразу перейти на schema v5.
+- Фикс/обход: loader `pwmd` принимает `schema_version` 4/5 и для v4 подставляет legacy-safe defaults (`policy_ver=1`, `season_enabled=false`, базовые пороги/коэффициент); `pwm genesis-build` уже выпускает v5.
+- Что проверить потом: в Slice 1/2 добавить контрактные тесты v4/v5 roundtrip + явно решить дату выключения schema v4 fallback.
+
+- Дата: 2026-05-06
+- Контекст/файлы: `crates/pwmd/src/slice20_e2e_tests.rs` (`cross_shard_bridge_ok`, `slice20_dual_flow_ok`), прогон `cargo test -p pwmd` в naming wave M.
+- Симптом: оба e2e-теста стабильно падали по таймауту готовности (`timeout waiting for ready: http://127.0.0.1:<port>`), при этом остальная `pwmd` матрица проходила.
+- Причина: в текущем окружении readiness-поллинг локальных e2e-нод не успевает подняться в отведённое тестом окно; симптом не связан с переименованием функций.
+- Фикс/обход: для coding-слайсов с чисто нейминговыми правками фиксировать как known flaky env issue и передавать в `pwm-testing` на профильный rerun/диагностику e2e окружения.
+- Что проверить потом: выделить отдельный stability-run для `slice20_e2e_tests` (изолированные порты/таймауты/лог старта) и решить, нужен ли больший wait budget в CI.
+
+- Дата: 2026-05-06
+- Контекст/файлы: `crates/pwm-tui/src/tui_loop.rs`, `crates/pwm-tui/src/account_view.rs`, guard `last_claim_wall` в F5 claim modal.
+- Симптом: 1-hour claim guard сбрасывался почти каждую секунду после `PollDone`, поэтому `can_claim()` практически всегда видел `None` и пропускал повторный claim.
+- Причина: poll snapshot создаёт `AcctRow` с `last_claim_wall: None`, а UI применял snapshot через полную замену `ui.rows` без merge session-local полей.
+- Фикс/обход: при `PollDone` добавлен merge `snapshot.rows` с текущими `ui.rows` по `account id` (перенос `last_claim_wall`), плюс unit-тест на сохранение `last_claim_wall` через два poll цикла.
+- Что проверить потом: e2e в TUI на нестабильном RPC (`/v1/head` timeout/offline), чтобы подтвердить fallback `anchor_ref` из последнего `head_height` и человекочитаемый reject-hint при anchor mismatch.
+
+- Дата: 2026-05-06
+- Контекст/файлы: `crates/pwm-core/src/types.rs` (`Account.marks`), `crates/pwmd/src/snapshot/types.rs` (legacy snapshot decode)
+- Симптом: при смене `marks: u128 -> u32` старые snapshot JSON могут содержать очень большие значения `marks`, что иначе ломает десериализацию или silently обрезает данные.
+- Причина: historical formula использовала raw stake units и накапливала `marks` в `u128`; новая семантика считает marks в «whole PWM-hours».
+- Фикс/обход: выбран подход **A** (custom serde deserializer): `Account.marks` декодируется через compat-десериализатор, который принимает legacy `u128`/decimal string, а при `> u32::MAX` применяет миграцию `marks / PWM_RAW_SCALE` с clamp к `u32::MAX`; в pwmd snapshot decode применена та же нормализация для `state.accounts[*].account.marks` и legacy `marks_quota`.
+- Что проверить потом: после migration window убрать legacy-normalization ветки и оставить strict `u32` decode в snapshot wire.
+
+- Дата: 2026-05-07
+- Контекст/файлы: `crates/pwm-tui/src/tx_submit.rs`, `crates/pwm-tui/src/tui_loop.rs`, F5 auto-claim + нижний footer status.
+- Симптом: UI показывал `Claimed 0 marks (none matured)` сразу после любого HTTP-success claim и держал stale claim-note после burn, хотя claim мог быть только queued и применяться позже.
+- Причина: `submit_claim` возвращал `Ok(0)` как «псевдо-результат» без on-chain подтверждения, а footer note интерпретировал это как финальный факт; note не очищался в ветке `SubmitDone` для burn.
+- Фикс/обход: `submit_claim` переведён на `Result<(), String>`; в TUI добавлен `pending_claim_note` (baseline marks + deadline) с подтверждением по poll (`Claim confirmed (+N marks)`) или нейтральным fallback (`Claim accepted; no new marks yet`), стартовое сообщение после F5 — `Claim submitted; waiting for confirmation...`; после `SubmitDone` burn claim-note сбрасывается.
+- Что проверить потом: pwm-testing живой сценарий с mempool lag/late seal (claim подтверждается только через несколько poll), чтобы зафиксировать UX в docs/reviews.
+
+- Дата: 2026-05-08
+- Контекст/файлы: `crates/pwmd/src/transport/peer_session/sync_live.rs`, catch-up ветки `send_cup_req`/`on_nack`.
+- Симптом: после `SyncNack` или write-fail при отправке `SyncCatchupReq` флаг `cup_active` мог остаться `true`, из-за чего peer застревал в catch-up и не переходил к live headers.
+- Причина: catch-up состояние устанавливалось до фактической отправки запроса, но при ошибке записи не очищалось; `on_nack` не сбрасывал активный catch-up.
+- Фикс/обход: добавлен детерминированный reset catch-up state в обеих ветках (`req_write`, `nack`) с backoff/`cup_try`; при ошибке старта catch-up `on_tip` теперь мягко fallback-ится в live headers вместо залипания.
+- Что проверить потом: pwm-testing прогон с сетевыми fault-инъекциями (nack/write flap подряд) и подтверждение, что peer стабильно возвращается в live sync без deadlock.
+
+- Дата: 2026-05-08
+- Контекст/файлы: `crates/pwmd/src/wire_serde.rs`, `crates/pwmd/src/state.rs`, `crates/pwmd/src/ledger.rs`, peer wire payloads `AccountViews`/`CrossShardFacts`.
+- Симптом: live peer path может падать на `wire_decode_failed: u128 is not supported` при больших значениях `u128` в JSON wire.
+- Причина: JSON numeric transport для чисел выше `u64` неустойчив для `serde_json` decode между узлами.
+- Фикс/обход: канонический wire-формат для `u128` переведён на hex-строки `0x...`; decode оставлен совместимым с legacy decimal string / u64 numeric.
+- Что проверить потом: после migration window ужесточить wire-контракт только до hex string и убрать legacy decode-ветки.
+
+- Дата: 2026-05-08
+- Контекст/файлы: `crates/pwm-core/src/chain.rs`, `crates/pwmd/src/main.rs`, `crates/pwmd/src/lifecycle.rs`, Wave A harness.
+- Симптом: same-shard Wave A давал стабильный `tip_hash`/epoch hash mismatch даже после wire-fix.
+- Причина: `Chain::seal` использует `SystemTime::now()` для `BlockHdr.ts`; при локальном seal на двух нодах это даёт разные `ts`/`sig`/`hdr_hash`.
+- Фикс/обход: введён test/dev-only toggle `debug_deterministic_seal_time` (`--debug-deterministic-seal-time` или `PWM_DEBUG_DETERMINISTIC_SEAL_TIME`) c `ts = base + height`; по умолчанию режим OFF и прод-семантика не меняется.
+- Что проверить потом: если режим потребуется за пределами Wave A harness, закрепить RFC-политику для season/fee time semantics и отдельный proposer/replay контракт.
+
+- Дата: 2026-05-09
+- Контекст/файлы: `crates/pwmd/src/lease.rs`, `crates/pwmd/src/lifecycle.rs`, `crates/pwmd/src/transport/peer_session/wire.rs`
+- Симптом: для S2 нужен failover guard без полноценного внешнего coordinator/KV, но при этом нельзя допустить local active/active seal в одном runtime-пуле.
+- Причина: MVP-срез ограничен по времени/риску и не включает новый внешний lease backend.
+- Фикс/обход: внедрён lightweight in-memory lease/fencing coordinator (`owner_id`, `term`, `expires_at_ms`, `last_tip`, `fence`) с gate в seal-loop, timeout takeover и stale-tip check; heartbeat/status/hello расширены lease-сигналами для диагностики.
+- Что проверить потом: для multi-process/multi-host HA перенести lease source of truth во внешний shared backend (file lock/KV/coordinator) или зафиксировать wire-authoritative lease replication с чёткой RFC-гарантией single active owner.
+
+- Дата: 2026-05-09
+- Контекст/файлы: `crates/pwmd/src/lease_backend.rs`, file backend (`tmp + rename`) на Windows.
+- Симптом: на Windows `std::fs::rename` не заменяет существующий файл, поэтому прямая замена lease-файла через rename падает.
+- Причина: платформенная семантика `rename` отличается от POSIX atomic replace.
+- Фикс/обход: MVP-путь пишет `tmp`, делает `sync_all`, затем под lock удаляет target и выполняет `rename`; CAS-безопасность сохраняется за счёт lock-файла, но replace остаётся best-effort platform-specific.
+- Что проверить потом: перейти на platform-specific atomic replace (или общий crate с гарантированным replace), если понадобится строгая атомарность на Windows без remove-gap.
+
+- Дата: 2026-05-11
+- Контекст/файлы: `crates/pwmd/src/transport/peer_session/sync_live.rs` (`on_tip`), `crates/pwmd/src/transport/peer_session/mod.rs` (regression test).
+- Симптом: при двустороннем steady sync peer с более низкой высотой (`head_h < local_h`, например genesis follower против source `H=1`) мог ложно попадать в `sync_tip_divergence` disconnect.
+- Причина: `lag` считался через `saturating_sub`; в кейсе peer-behind получалось `0`, и код ошибочно заходил в ветку same-height tip/hash сравнения.
+- Фикс/обход: после обновления peer sync state в `on_tip` добавлен ранний выход `Ok(None)` для `head_h < local_h`; вычисление `lag` оставлено только для `head_h >= local_h`, что сохраняет прежнюю семантику equal/ahead веток.
+- Что проверить потом: в `pwm-testing` закрыть integration soak (steady bidirectional source/follower, TCP) и убедиться, что counter `sync_tip_divergence_disconnect_total` не растёт на peer-behind анонсах.
+
+- Дата: 2026-05-11
+- Контекст/файлы: `cy-cluster-proposer.ps1`, `cy-cluster-attester.ps1`, default lease dir `state/leases`.
+- Симптом: в локальном RFC16-лабе периодически появляется `seal_lease_cas_failed`, и proposer может не входить в стабильный seal-loop.
+- Причина: file lease backend использует общий относительный путь (`state/leases`) для процессов из одного рабочего каталога; после перезапусков/параллельных запусков остаётся конфликтующий CAS-контекст.
+- Фикс/обход: для 2-node lab (один active sealer + attester с `--debug-disable-seal-loop`) скрипты переключены на `--seal-lease-backend process-local`, чтобы убрать межпроцессный file-CAS шум.
+- Что проверить потом: для продовых HA/soak-сценариев вернуть shared lease backend с явным per-node `--seal-lease-dir` или внешним coordinator, не полагаясь на process-local.
+
+- Дата: 2026-05-13
+- Контекст/файлы: `crates/pwmd/src/transport/peer_session/sync_live.rs`, тесты autosnapshot (`batch_cross_ckpt_writes_snap`, `standby_batch_cross_10_writes`).
+- Симптом: проверка `canonical_h` могла читать не тот manifest и давать ложный `canonical_h=100` в standby-тесте, хотя ожидался `15`.
+- Причина: `manifest_file_path` строится относительно parent snapshot-файла (`.../epochs/pwm-epochs-manifest.json`), а несколько тестов использовали общий `std::env::temp_dir()` parent и пересекались по одному manifest.
+- Фикс/обход: каждый тест создаёт отдельный уникальный subdir в temp и пишет `pwm-data.json` внутри него; cleanup выполняется через `remove_dir_all`.
+- Что проверить потом: при добавлении новых snapshot-тестов всегда изолировать parent-dir, иначе возможно скрытое взаимное влияние по `epochs` manifest.
+
+- Дата: 2026-05-13
+- Контекст/файлы: `crates/pwm-core/src/tx.rs`, `crates/pwm-core/src/state.rs`, `crates/pwm-core/src/ser_json_u128.rs`, peer wire `serde_json`.
+- Симптом: peer catch-up/live decode обрывался с `wire_decode_failed: u128 is not supported` при JSON wire payload, содержащем `SignedTx`/`ExportProvenance` с большими суммами.
+- Причина: `serde_json` не поддерживает plain derive-десериализацию `u128` из numeric JSON wire; при этом SyncCatchupChunk несёт full `Block` с `Vec<SignedTx>`.
+- Фикс/обход: введён compat serde-модуль `ser_json_u128`: сериализация `u128` в decimal string, decode принимает decimal string и `u64`; поля `TxBody`/`SignedTx.import_fee`/`ExportProvenance.amount` переведены на этот контракт.
+- Что проверить потом: после миграционного окна закрепить один каноничный wire-формат (string-only) и удалить legacy `u64` decode-ветку.
+
+- Дата: 2026-05-13
+- Контекст/файлы: локальные проверки `cargo test -p pwmd` на Windows-хосте с активными `pwmd` процессами (`cy-cluster-proposer.ps1` / `cy-cluster-attester.ps1`).
+- Симптом: full test run для пакета `pwmd` падал на `failed to remove ... rust-target-shared/debug/pwmd.exe (os error 5)`; параллельно возникали `os error 112` при попытке использовать отдельный `CARGO_TARGET_DIR`.
+- Причина: исполняемый файл `pwmd.exe` в shared target заблокирован живыми процессами, а альтернативный target упирается в нехватку дискового места.
+- Фикс/обход: для валидации слайса запускать `cargo check -p pwmd --lib` и `cargo test -p pwmd --lib` с `CARGO_INCREMENTAL=0`; для полного `cargo test -p pwmd` сначала остановить активные `pwmd` процессы и освободить место.
+- Что проверить потом: повторить полный `cargo test -p pwmd` после остановки фоновых узлов и убедиться, что bin-таргет `pwmd` линковается без lock-конфликтов.
+
+- Дата: 2026-05-13
+- Контекст/файлы: `crates/pwmd/src/peer_list.rs`, `crates/pwmd/src/main.rs`, `docs/pwmd.md` (multishard peers.yaml v2).
+- Симптом: формально неоднозначно, как трактовать `shards: {}` и отсутствие matching shard при загрузке peers file.
+- Причина: legacy v1 и v2 должны сосуществовать без потери backward compatibility и без «тихого» старта с неверным shard при явном операторском файле.
+- Фикс/обход: в коде зафиксирована политика: `shards` пустой => legacy поведение (`peers` flat list); `shards` непустой и нет matching `domain_hi` => implicit default file даёт empty seeds + `tracing::warn`, explicit `--peers-list` даёт fail-fast с actionable ошибкой.
+- Что проверить потом: если продукту понадобится strict-mode и для implicit default, добавить отдельный CLI-флаг (например, `--peers-list-strict`) вместо изменения дефолтной семантики.
+
+- Дата: 2026-05-14
+- Контекст/файлы: `crates/pwm-cli/src/cli_cmd.rs`, `crates/pwm-cli/src/cli_dispatch.rs`, `crates/pwm-cli/src/cmd_addr.rs`
+- Симптом: оператор может ожидать, что `addr-derive`/`addr-bruteforce` автоматически возьмут seed из default wallet path даже без `--wallet-out`.
+- Причина: fallback на wallet seed намеренно включается только при **явно переданном** `--wallet-out`; при `wallet_out=None` (implicit default path) источник seed остаётся только `--master`/`PWM_MASTER_SEED`.
+- Фикс/обход: добавлена явная ошибка для stateless-режима без seed (`provide --master or PWM_MASTER_SEED`) и отдельная ошибка при explicit fallback с отсутствующим файлом `--wallet-out`.
+- Что проверить потом: в operator docs/cheatsheet явно подсветить правило «wallet fallback работает только с explicit `--wallet-out`».
+
+- Дата: 2026-05-22
+- Контекст/файлы: `crates/pwm-cli` `addr-derive` / `addr-bruteforce`, PowerShell `$env:MASTER_SEED` vs clap `PWM_MASTER_SEED`.
+- Симптом: команда с `--master $env:MASTER_SEED` при **пустой** переменной даёт в процессе фактически `--master` без значения → ошибка clap «value is required»; отдельно операторы могли задавать только `MASTER_SEED`, игнорируя `PWM_MASTER_SEED`.
+- Причина: пустая подстановка в PowerShell; clap ранее требовал значение после `--master`; fallback читал только env, вшитый в поле через `PWM_MASTER_SEED`.
+- Фикс/обход: для `--master` заданы `num_args=0..=1` + `default_missing_value=""`, пустая строка отбрасывается в `resolve_master_seed`; добавлено чтение **дополнительного** env **`MASTER_SEED`** (после trim) с тем же hex-форматом; обновлён текст ошибки stateless. Рабочие варианты: `$env:PWM_MASTER_SEED` или `$env:MASTER_SEED`, либо **`--master`** без аргумента при установленном env, либо только `--wallet-out` к существующему кошельку без `--master`.
+- Что проверить потом: краткая строка в runbook/cli help для операторов Windows.

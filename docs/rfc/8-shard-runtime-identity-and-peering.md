@@ -88,6 +88,8 @@ Each runtime shard instance MUST start with explicit identity configuration.
 - `tx_features` (list; e.g. `["local_transfer_v1", "export_import_v1"]`),
 - `services` (list; e.g. `["mempool", "gossip", "sync"]`).
 
+Normative linkage: when `services` includes `sync`, same-shard sync behavior for v1 is specified by `docs/rfc/15-same-shard-sync-v1.md` (RFC 0015).
+
 ### 4.2 Launch consistency rules
 
 1. Runtime MUST reject startup when required identity fields are missing.

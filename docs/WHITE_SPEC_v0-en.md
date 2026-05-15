@@ -83,6 +83,7 @@ Types:
 
 - Move value between `balance` and `staked` for active account.
 - In v0 there is no unlock period.
+- `staked` is non-transferable balance: direct `TRANSFER` of staked coins is disallowed; stake movement is only via `STAKE`/`UNSTAKE` (and future stake-governance extensions).
 
 ### 3.4 `BURN_MARK { mark_amount: u128, beneficiary: AccountId | NONE }`
 
@@ -167,6 +168,10 @@ This section defines the evolutionary transition from current devnet to a more m
 - Cross-domain `BURN_MARK` context does not require special handling in target shard:
   - burn proof is formed and verified only in source shard;
   - target shard is not required to mutate local marks state on foreign burn event.
+- For `IMPORT` in v2 extension, introduce a minimal fee `min_import_fee = 0.01 PWM`:
+  - check is enforced on target shard before apply;
+  - on successful apply, fee is credited to target-shard `fee_pool` (variant B);
+  - on rejected `IMPORT`, fee is not deducted.
 
 ### 7.4 Sprint 13 cross-domain roaming MVP cut (as implemented)
 
@@ -202,3 +207,47 @@ Decision forks (post-MVP options):
 - Regional consensus sharding.
 - PQC, separate whitepaper address format vs `PWMv0-`.
 - Production off-chain burning and X-PWM - see stub module and [OFFCHAIN_STUB.md](./OFFCHAIN_STUB.md).
+
+## 9. v2 extension: unified marks and auto-claim materialization
+
+This section records the v2 design as an extension over the current baseline without requiring an immediate full runtime rewrite.
+
+### 9.1 Unified marks balance
+
+- Target v2 product contract: a single user-visible marks balance `marks`.
+- Historical `marks_quota` is treated as a legacy transition layer and should be folded into unified `marks` during code migration.
+- In target v2 semantics, `BURN_MARK` deducts `marks` (not a separate burn-only quota).
+
+### 9.2 `BURN_MARK` extension with purpose
+
+- `BURN_MARK` is extended with a mandatory text field `purpose`.
+- Normative limit: `1..80` UTF-8 bytes after deterministic normalization (`trim` at boundaries, no Unicode composition transforms).
+- C0/C1 control characters are forbidden.
+- Recommended privacy pattern: salted hash of external identifier instead of raw PII.
+
+### 9.3 Maturity and explicit/auto claim
+
+- Marks materialization is supported via two paths:
+  - explicit `ClaimTx`,
+  - auto-claim as implicit state effect of a relevant stake-management transaction.
+- Maturity-relevant balance is `staked_pwm_units`.
+- Any non-zero change of the relevant balance resets maturity continuity.
+- Baseline maturity rule: `1 PWM = 1 hour` (equivalent to `3600` blocks when `BLOCK_TIME_SEC = 1`).
+- Materialized delta rounding uses `floor` (fractional remainder is not carried as separate state credit).
+- Materialization formula: `hours = floor(delta_seconds / 3600)`, `matured_raw = staked_pwm_coins * hours`, `matured_units = floor(matured_raw)`.
+- Auto-claim runs only when `matured_units > 0`; when delta is zero, the base transaction proceeds with no claim-side effect.
+- Coin emission and marks materialization in v2 are tied to the stake lifecycle (`STAKE`/`UNSTAKE`); passive liquid balance without stake does not produce maturity flow.
+
+### 9.4 Free-claim/day and chain-time
+
+- The "one free claim per day" limit applies to explicit `ClaimTx`.
+- `utc_day` is computed only from chain time: `floor(block_unix_time_utc / 86400)`.
+- Auto-claim is not a standalone claim transaction and does not consume a free slot.
+- Paid fallback for explicit claim is preserved.
+
+### 9.5 Normative links to v2 RFC pack
+
+- [rfc/11-burn-purpose-and-claim-tx.md](./rfc/11-burn-purpose-and-claim-tx.md)
+- [rfc/12-claim-maturity-and-state-model.md](./rfc/12-claim-maturity-and-state-model.md)
+- [rfc/13-claim-policy-matrix.md](./rfc/13-claim-policy-matrix.md)
+- [rfc/14-claim-burn-api-error-contract.md](./rfc/14-claim-burn-api-error-contract.md)

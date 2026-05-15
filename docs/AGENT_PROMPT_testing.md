@@ -19,9 +19,10 @@ You are a **testing agent** for the PWM-cryptocurrency repo. Your job is to **in
 - **Do not** spend the investigation budget trying to “prove” UI text that way. Treat **warning banners, alignment, and visual regressions** as **manual / operator checks** (human eyeballs; copy from console to a file if needed), unless the **coding** agent adds an agreed **machine-readable** channel (e.g. test-only flag dumping state to a file, HTTP probe, etc.).
 - What **is** appropriate without TUI: **unit tests** for pure helpers (`validate_send_form`, wallet resolution, constants) and **RPC/CLI** checks that do not depend on framebuffer semantics.
 
-## Naming (same budget as coding agent)
+## Naming (test-only budget; stricter production rules live in coding agent)
 
-- **`#[test] fn` names and test-only helpers:** target **≤ 5 words** (`snake_case` segments), same as production helpers in `AGENT_PROMPT_coding.md`. Prefer **`mk_*`**, **`case_*`**, **`assert_*`** patterns and short tokens: **`idx`**, **`sel`**, **`dst`**, **`xfer`**, **`wal`**, **`rpc`**, **`bal`**, **`hdr`**, **`fmt`**. Use **`cp` / `mv` / `rm`** in names only when the test models filesystem copy/move/remove.
+- **`#[test] fn` names and test-only helpers:** **hard cap ≤ 5 words** (`snake_case` segments). **Production** identifiers follow **`AGENT_PROMPT_coding.md`** §Style (**≤ 4** segments)—do not infer test budgets for prod code. Prefer **`mk_*`**, **`case_*`**, **`assert_*`** patterns and short tokens: **`idx`**, **`sel`**, **`dst`**, **`xfer`**, **`wal`**, **`rpc`**, **`bal`**, **`hdr`**, **`fmt`**. Use **`cp` / `mv` / `rm`** in names only when the test models filesystem copy/move/remove.
+- **Machine check:** before handoff, run **`python scripts/check_entity_name_segments.py`** on test trees you edited (`crates/*/tests`, `**/src/tests/**`, or listed files). Fix every JSON violation in those paths (rename test `fn` / helpers / fields / consts to ≤ 5 segments as reported; put story in **`//`**). Legacy shim: `check_rust_fn_name_segments.py` (deprecation warning).
 - Put scenario prose in a **one-line `//` comment** above the test if the short name would drop critical nuance.
 - When splitting inline `main.rs` tests into **`tests/*.rs`**, apply these rules from the start so module-qualified names stay short in logs and agent context.
 
@@ -49,6 +50,34 @@ You are a **testing agent** for the PWM-cryptocurrency repo. Your job is to **in
 Оба скрипта идемпотентны; резервный **не обязателен**, если основной успешно отработал и места на диске достаточно — но при ошибках bash / CI без MSYS **резервный обязателен**.
 
 В конце handoff — поле **`preflight_target_debug`**: размер/действие (или `n/a`), **`removed: yes|no`**, какой скрипт запускался.
+
+## Windows: изолированный `CARGO_TARGET_DIR` (обязательно для pwm-testing)
+
+**Проблема:** прогоны **`cargo test`**, **`cargo build`**, **`cargo bench`** оставляют большие деревья **`target/debug`** (и кэш **`incremental`**). Если артефакты лежат на **том же томе, что и клон** (например `P:`), диск проекта быстро забивается; удалять каталоги после каждого теста ненадёжно.
+
+**Правило:** на хостах **Windows** любые команды **`cargo`** из сессии **pwm-testing** (после §Preflight) выполнять с **`CARGO_TARGET_DIR`**, указывающим на **отдельный каталог вне тома рабочей копии**, чтобы бинарники тестов не копились рядом с репозиторием.
+
+- **База каталога:** переменная **`PWM_TEST_TARGET_ROOT`**. Если не задана — используйте **`F:\pwm-test`** (диск должен существовать; при отсутствии буквы **`F:`** согласуйте с владельцем и выставьте **`PWM_TEST_TARGET_ROOT`** на доступный путь).
+- **Значение для этого репозитория:** фиксированное поддерево **`PWM-cryptocurrency`** (единый инкрементальный кэш между прогонами):
+
+```powershell
+$root = if ($env:PWM_TEST_TARGET_ROOT) { $env:PWM_TEST_TARGET_ROOT } else { 'F:\pwm-test' }
+$env:CARGO_TARGET_DIR = Join-Path $root 'PWM-cryptocurrency'
+New-Item -ItemType Directory -Path $env:CARGO_TARGET_DIR -Force | Out-Null
+# далее: cargo test / cargo build / cargo bench
+```
+
+- **Git Bash (Windows):** задайте тот же путь, например  
+  `export CARGO_TARGET_DIR="/f/pwm-test/PWM-cryptocurrency"`  
+  (проверьте, как `F:` смонтирован в MSYS).
+
+- **Не использовать** для этой цели вложенные под **`P:\…\PWM-cryptocurrency\`**. каталоги вида **`.tmp-peers-*`**, **`.wave-build-target`** и т.п. — они остаются на томе проекта и дублируют проблему (исключение: явная пометка в тикете владельца).
+
+- **Linux / macOS:** правило не нормативно; при дефиците места на томе клона допустимо задать **`PWM_TEST_TARGET_ROOT`** (или сразу **`CARGO_TARGET_DIR`**) на путь вне репозитория.
+
+- **CQDS `cq_process_ctl` / spawn:** передавайте **`CARGO_TARGET_DIR`** (и при необходимости **`PWM_TEST_TARGET_ROOT`**) в окружении процесса, если контракт инструмента это позволяет.
+
+В конце handoff добавьте поле **`cargo_target_dir`:** фактический абсолютный путь и кратко, создавали ли каталог.
 
 ## Snapshot benches (`pwmd`, Slice 6+)
 
@@ -104,6 +133,7 @@ At the end of every testing handoff, include a short machine-copyable section fo
 - `result`: `PASS`, `PARTIAL`, `FAIL`, or `BLOCKED`
 - `artifacts`: reports created/updated
 - `commands`: command, duration, pass/fail, hang watchdog yes/no
+- `cargo_target_dir`: absolute path used for `CARGO_TARGET_DIR` on Windows (or `n/a`)
 - `cleanup`: cleaned yes/no, what was killed, artifact cleanup summary
 - `token_usage`: exact tool/provider usage if available; otherwise approximate `{ "source": "estimate", "input": <n|null>, "output": <n|null>, "total": <n>, "confidence": "low|medium|high" }`
 
@@ -116,13 +146,28 @@ If no system usage API is available, estimate roughly from prompt size + logs in
 - Minimum policy for this repo:
   - remove stale `target/debug/incremental` and temporary test outputs when they are not needed for the current handoff;
   - if free space is still low, run a scoped cleanup for the touched package(s) before escalating to full `cargo clean`.
+- **Общий `target-dir` (важно):** сборка может идти не в `./target`, а в общий каталог вроде **`P:/opt/docker/rust-target-shared`** (см. workspace `.cargo/config.toml`, переменную **`PWM_WORKSPACE_TARGET_ROOT`** в e2e и т.п.). Имеет смысл периодически проверять **`P:/opt/docker/rust-target-shared/debug/incremental`**, а не только `./target/debug/incremental`.
+- **pwm-testing на Windows:** первично ориентируйтесь на §**Windows: изолированный `CARGO_TARGET_DIR`** выше (`F:\pwm-test\PWM-cryptocurrency` или **`PWM_TEST_TARGET_ROOT`**), а не на очередной каталог под репозиторием.
+- **Порог уборки `incremental` — 2 GiB:** если каталог **`P:/opt/docker/rust-target-shared/debug/incremental`** существует и суммарный размер его содержимого **строго больше 2 GiB** (`2 * 1024³` байт), **удалите целиком** этот каталог (только инкрементальный кэш rustc; следующая сборка станет дольше, зато освободится место на томе). То же правило применимо к repo-local `target/debug/incremental`, если фактическая сборка идёт внутри репозитория.
+  - PowerShell (оценка размера + удаление при превышении):
+
+```powershell
+$inc = 'P:\opt\docker\rust-target-shared\debug\incremental'
+if (Test-Path $inc) {
+  $sum = (Get-ChildItem $inc -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+  if ($sum -gt 2GB) { Remove-Item $inc -Recurse -Force }
+}
+```
+
+  - Git Bash (грубая проверка через `du -sb`, затем `rm -rf` при необходимости): при отсутствии `du` используйте PowerShell-вариант выше.
+
 - Prefer conservative cleanup first:
   - PowerShell:
     - `if (Test-Path target\\debug\\incremental) { Remove-Item target\\debug\\incremental -Recurse -Force }`
   - Git Bash:
     - `rm -rf target/debug/incremental`
 - Use full `cargo clean` only when necessary (it increases next-run compile time).
-- Include one line in the handoff about artifact cleanup and approximate reclaimed space.
+- Include one line in the handoff about artifact cleanup and approximate reclaimed space (укажите, чистили ли **`rust-target-shared/debug/incremental`** и был ли размер **> 2 GiB**).
 
 ## Wall-clock troubleshooting budget (mandatory)
 

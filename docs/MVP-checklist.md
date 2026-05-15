@@ -1,10 +1,12 @@
 # MVP checklist (PWM)
 
-Подробный чеклист по плану MVP. Легенда: `[x]` сделано, `[ ]` не сделано, `[~]` частично / заглушка.
+Подробный чеклист по плану MVP. Легенда: `[x]` сделано, `[ ]` не сделано, `[~]` частично / заглушка. Отдельные строки `[ ]` со ссылкой на **§12** — намеренный defer/backlog, не «пропуск».
 
 Обновляйте этот файл **по мере реализации** (дата в скобках по желанию).
 
 Общий пользовательский итог нулевой фазы: [MVP_PHASE0_SUMMARY.md](MVP_PHASE0_SUMMARY.md).
+
+Экономический и консенсусный трек **MVP v2** ведётся отдельно в [plans/mvp_v2.md](plans/mvp_v2.md); этот файл остаётся базовым чеклистом v0/v1 testnet и cross-shard MVP.
 
 ---
 
@@ -22,7 +24,7 @@
 | [x] | S15 closeout отладки межшарда: [ROAMING_COMPLETION.md](ROAMING_COMPLETION.md) + [sprint-15-s3-17-closeout.md](reviews/sprint-15-s3-17-closeout.md) (2026-05-01) |
 | [x] | Stabilization slicing (2026-05-03): [cross-shard-stabilization-slicing-20260503.md](reviews/cross-shard-stabilization-slicing-20260503.md) — Slice A..E с test gates/risks/acceptance для `pwm-coding -> pwm-testing -> pwm-review` |
 | [x] | RFC delta для межшардовой стабилизации MVP: deterministic target provenance, automatic reimport/backfill, offline repair + crash-fast, future settlement-chain note; **доп. направление (только RFC, без кода):** source-side lock / conditional finalize — [rfc/9-crossdomain-roaming.md](rfc/9-crossdomain-roaming.md) Appendix A.5 |
-| [ ] | Протокольная блокировка UTXO/стоимости на `EXPORT` до финализации `IMPORT` — ждёт отдельной спеки (см. RFC 0009 §A.5); в MVP не реализовывать до согласования proof/finality, таймаута и fork-правил |
+| [ ] | Протокольная блокировка UTXO/стоимости на `EXPORT` до финализации `IMPORT` — отложено до отдельной спеки (см. RFC 0009 §A.5 и §12); в MVP не реализовывать до согласования proof/finality, таймаута и fork-правил |
 | [x] | Формализация **отказа в федеративном доверии** при расхождении **мостового** (level-2) учёта и **закрытие one-window** для клиентов: `WHITE_SPEC_v0.md` §7.5, `rfc/9-crossdomain-roaming.md` Appendix A.6, `GEO-SHARDING-EXPLANATION.md` §8 |
 | [x] | Реализация в `pwmd`: bridge commitment, обнаружение расхождения, readiness + отключение one-window/foreign observability при bridge trust refusal (2026-05-04; same/cross-shard hello — см. RFC A.6, `POST /v1/bridge-federation/reset`) |
 | [x] | **Slice F** (2026-05-04): адаптация §7.5/A.6 в рантайм + лог `pwmd-peer-*.log` без консоли + снижение шума reconnect — [slice-f-bridge-trust-peer-logging-20260504.md](reviews/slice-f-bridge-trust-peer-logging-20260504.md), `tasks/slice-f.json` |
@@ -40,7 +42,7 @@
 | [x] | `PWM-cryptocurrency` в `git.local/setup-repos.sh` |
 | [x] | MCP-корни для multi-root (`cqds-cursor.code-workspace`) |
 | [x] | Промпты для агентов: [AGENT_PROMPTS.md](AGENT_PROMPTS.md) |
-| [~] | `.gitattributes`: есть `* text=auto`; при необходимости явные паттерны (`*.rs`, `*.toml`, `docs/*.md`) — см. ревью §3 |
+| [x] | `.gitattributes`: есть `* text=auto`; добавлены явные LF-паттерны (`*.rs`, `*.toml`, `docs/**/*.md`) (2026-05-06) |
 | [x] | Низкий приоритет: единый язык комментариев в `pwm-core` (ревью §3 — смесь RU/EN) |
 
 ---
@@ -178,3 +180,11 @@
 | Ревью | Отчёт без правок кода | [AGENT_PROMPT_review.md](AGENT_PROMPT_review.md) → **`pwm-review`** |
 
 **Критерий «первая тестовая версия CLI» для внешней проверки:** `cargo test -p pwm-core` зелёный; сценарий §9 (локальный `pwmd` + `pwm key-gen` / `addr-derive` / `tx-init` / `tx-send`) воспроизводим; единый `PWM_RPC` / `--rpc` в CLI — §5 `[x]`; дальше по желанию: smoke `pwmd`, тест mempool+seal после фикса ноды.
+
+---
+
+## 12. Явные defer / backlog (не блокируют baseline)
+
+| Статус | Пункт |
+|--------|--------|
+| [x] | §1: «Протокольная блокировка UTXO/стоимости на `EXPORT` до финализации `IMPORT`» формально вынесена в defer/backlog и отложена до отдельной спеки (RFC 0009 §A.5); пункт в §1 сохранён как `[ ]` напоминание |

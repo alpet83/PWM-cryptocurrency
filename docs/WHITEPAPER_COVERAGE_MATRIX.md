@@ -30,7 +30,7 @@
 | Finality proof (minimal profile) | Yes | Yes | ? | Upgrade path to stricter models |
 | Static validator set (per shard) | Yes | ? | ? | Dynamic rotation is deferred |
 | Minimal recipient/domain policy | Yes | ? | ? | Reject invalid recipient classes |
-| Burn-only `marks_quota` path (no tradeable secondary balance) | Yes | Yes | ? | Supports `BURN_MARK` in testnet without full marks economy |
+| Unified `Account.marks` burn path (legacy `marks_quota` only for old snapshots) | Yes | Yes | ? | Current MVP v2 burns from the single `marks` counter; `marks_quota` is historical compatibility text, not an active public balance |
 | `fee=0` allowance for mark-based baseline operations | Yes | ? | ? | Zero-fee burn flow allowed in v1 baseline profile |
 | Cross-domain burn proof handled source-side only | Yes | ? | ? | Target shard does not mutate burn state for external burn events |
 | Advanced policy engine (membership/cosign matrix) | ? | Yes | Yes | Hooked, not mandatory in baseline |

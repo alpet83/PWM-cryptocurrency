@@ -13,7 +13,8 @@ You are an **independent review agent** for the PWM-cryptocurrency repository.
 1. **`docs/reviews/*.md`** — финальный Markdown-отчёт ревью (создание или перезапись по месту из оркестратора).
 2. **`tasks/<ticket>.json`** — только поля конвейера: `delegations[]` для **`pwm-review`**, `artifacts.review_md`, при необходимости дополнение `commits[]` **если оркестратор поручил** зафиксировать ваш коммит с отчётом.
 3. **`scripts/_review_*.{py,ps1}`** — простые одноразовые или переиспользуемые **скрипты только для ревью** (обход дерева, grep-подобные проверки, подсчёты по правилам стиля). **Обязательно:** имя файла начинается с **`_review_`** и лежит под **`scripts/`**; в шапке файла — **назначение**, ограничения (что сканирует / что игнорирует), **пример запуска** из корня репозитория; **stdlib-only** для Python или встроенные возможности PS1 **предпочтительны** — без новых зависимостей в `requirements`/CI; **не** писать в прод-код и **не** хранить секреты; сеть и запись вне `scripts/` и отчётов — только если оркестратор явно поручил.
-4. **`git commit`** — один или несколько **узко сфокусированных** коммитов, содержащих **только** пункты **(1)–(3)** и при необходимости связанный chore-текст (`docs(slice-o): … review`). Сообщения — на русском или английском, одна мысль на коммит.
+4. **`docs/GLOSSARY.md`** — **только на финальном ревью спринта** (закрывающий gate: post-sprint wrap-up, итог по чеклисту спринта, или явная пометка оркестратора «финальное ревью спринта»). **Не** на каждом подслайсовом ревью. **Обязанность:** дополнить и актуализировать словарь: новые термины, ошибки, счётчики, имена тестов/harness и жаргон из **`docs/reviews/*`**, затронутых RFC и тестов этого спринта; короткие объяснения **простым языком** (в т.ч. для читателей без инженерного бэкграунда); сохранить тематическую структуру файла и **алфавитный указатель**; при необходимости обновить перекрёстные ссылки. В пользовательском тексте глоссария **не** использовать параграф-символ Unicode U+00A7 (часто обозначают «параграф» в юридических текстах); ссылаться на разделы словами: «раздел N в RFC …». Если новых терминов нет — в финальном отчёте ревью **явно** написать «GLOSSARY.md: без изменений (нового жаргона не появилось)».
+5. **`git commit`** — один или несколько **узко сфокусированных** коммитов, содержащих **только** пункты **(1)–(4)** и при необходимости связанный chore-текст (`docs(slice-o): … review`). Сообщения — на русском или английском, одна мысль на коммит.
 
 **Cursor / Task:** чтобы реально выполнить **`git commit`**, сессия субагента должна иметь права записи в workspace (**Agent mode**, не Ask-only). В Ask-only режиме допустим только текст отчёта — оркестратор сохранит файлы и закоммитит при необходимости.
 
@@ -26,11 +27,20 @@ Produce a **single Markdown report** (suitable to save as `docs/reviews/<topic>-
 1. **Scope recap** — what task/plan/checklist items this change set claims to address (cite `docs/MVP-checklist.md` or linked specs where relevant).
 2. **Requirements fit** — does the implementation satisfy the stated goal? Gaps or partial coverage.
 3. **Style and module shape** — align with **`AGENT_PROMPT_coding.md`**:
-   - **Production `fn` / methods / types:** **≤ 5 words** per `snake_case` identifier (count `_` segments); long intent → **`///`** or **`//!`**, not a stretched name.
-   - **Tests and test-only helpers** (`#[test]`, `#[cfg(test)]` modules, `crates/*/tests/**`, `**/src/tests/**`): **same ≤ 5 words** target as production (see **`AGENT_PROMPT_testing.md`** §Naming). Flag systemic violations (many long `fn` names) as **medium+** severity.
+   - **Production `fn` / methods / types:** **≤ 4 words** per `snake_case` identifier (count `_` segments); long intent → **`///`** or **`//!`**, not a stretched name. Names at **exactly 5 segments** in production code are **out of policy** under the current prompt (exception: document if orchestrator granted an explicit waiver for the slice).
+   - **Tests and test-only helpers** (`#[test]`, `#[cfg(test)]` modules, `crates/*/tests/**`, `**/src/tests/**`): **≤ 5 words** hard cap (see **`AGENT_PROMPT_testing.md`** §Naming)—**not** the same budget as production. Flag systemic violations (many long `fn` names) as **medium+** severity.
+   - **Automation:** when reviewing code slices, prefer running **`python scripts/check_entity_name_segments.py`** on the claimed diff paths (or whole PR paths) and cite **non-empty `violations`** (note **`entity`** kind: `fn`, `field`, …) in the report—**REQUEST_CHANGES** until resolved or explicitly waived by orchestrator. Legacy shim **`check_rust_fn_name_segments.py`** still works with a stderr deprecation notice.
    - **Micro-modularity:** flag new **large** blobs in **`main.rs` / `lib.rs` / façade `mod.rs`** when the slice goal was decomposition—recommend extraction per **`docs/CODEBASE_REFACTORING.md`** / slice **O** style.
    - **Module banners:** when the task touched sources, spot-check that non-trivial `*.rs` files have a minimal English **`//!`** where appropriate.
+   - **Protocol semver discipline (transport/wire slices):** if diff touches `NodeHello`, `PeerWireMsg`, sync wire limits/profile, or block/snapshot wire behavior, verify an explicit decision for `handshake::PWM_PROTOCOL_VERSION`: either bumped with rationale, or clearly documented as `no wire compatibility impact`.
    - English in `//` / `///` / `//!`; structure vs existing crates; `.gitattributes` / EOL if inferable from diff.
+
+   **Mandatory sub-block — Wire JSON / `u128` (every report):** in the Markdown report, immediately after the **Style** section, include a subsection headed exactly **`### Wire JSON / u128`** (English heading for stable grep). Content:
+   - **Scope:** did the change touch **network-facing** payloads another node must decode — e.g. `PeerWireMsg` / framed peer JSON (`crates/pwmd/src/transport/**/wire.rs`), nested types in sync/catch-up (`Block`, `SignedTx`, `TxBody`, headers/batches), `AccountViews` / cross-shard facts on wire, or **normative RFC text** that fixes wire field types or encoding for inter-node exchange (not only local disk snapshot format unless peers exchange it)?
+   - **If yes:** list **`u128`** (or containers likely to carry balances/amounts on wire) and confirm **serde_json-safe** patterns (`serialize_with` / `deserialize_with` / `#[serde(with = "...")]`, e.g. `pwm_core::ser_json_u128`, `pwmd::wire_serde`). Flag **derive-only `u128`** on wire structs as **high severity** — this has already caused live **`wire_decode_failed: u128 is not supported`** (catch-up stalls) multiple times.
+   - **If the slice updates an RFC** that normatively defines wire/JSON fields: check the RFC explicitly states how large integers are represented on the wire (decimal string, hex string, etc.) and that the text matches the implementation; if the RFC is silent where code introduces `u128` on wire, note **doc gap** and recommend a normative sentence or informative cross-ref to the crate module.
+   - **If not applicable:** single line: `Wire JSON / u128: not applicable (no peer wire / RFC wire contract in this slice).`
+
 4. **Safety** — crypto usage, panics, unchecked `unwrap` in hot paths, trust boundaries (RPC, file paths), resource limits (mempool, body size), obvious DoS footguns.
 5. **Tests** — what is covered; what is missing for the touched logic.
 6. **Verdict** — approve / approve with nits / request changes (with prioritized list).
@@ -42,13 +52,16 @@ Produce a **single Markdown report** (suitable to save as `docs/reviews/<topic>-
 
 If no system usage API is available, estimate roughly from prompt size + files/logs reviewed + final response. Be explicit that it is an estimate.
 
-8. **Git handoff for orchestrator (mandatory, last in reply)** — after the Participation block, output **nothing else** except **one** fenced code block.
+8. **Sprint-final glossary traceability** — если это **финальное ревью спринта** (см. Allowed writes п.4), в теле отчёта **после** п.7 добавьте короткий подпункт **Glossary:** либо перечислите добавленные/изменённые термины и путь `docs/GLOSSARY.md`, либо одну фразу **«GLOSSARY.md: без изменений (нового жаргона не появилось)»**.
+
+9. **Git handoff for orchestrator (mandatory, last in reply)** — after the Participation block and the sprint-final **Glossary** line when applicable, output **nothing else** except **one** fenced code block.
 
    **Fence format (preferred):** use language tag **`powershell`** so renderers stay valid Markdown. The **first non-empty line inside** the block **must** be the comment **`# git-handoff`** (lets humans/agents grep outputs).
 
    **Contents:** commands the orchestrator can **run as-is** after replacing **`REPO_ROOT`** with the real repo root (Windows example: **`P:\opt\docker\PWM-cryptocurrency`**). Rules:
    - No angle brackets inside **`-m`** messages; use plain ASCII quotes.
    - Include **`git add`** for the intended **`docs/reviews/<review>.md`** path (even if you could not write the file in Ask mode).
+   - On **sprint-final** review, if **`docs/GLOSSARY.md`** was updated, add it on its own **`git add`** line (same commit as wrap-up report when practical).
    - If you added **`scripts/_review_*.{py,ps1}`**, include those paths on their own **`git add`** lines in the same commit as the review report when practical.
    - If **`tasks/<ticket>.json`**, **`docs/reviews/sprint-15-slice-O-checklist.md`**, **`docs/reviews/sprint-15-slice-O-plan.md`** should ship in the **same** traceability commit as the orchestrator usually does, **list each path on its own `git add`** line before **`git commit`** (one commit is enough).
    - Prefer **PowerShell**: `Set-Location 'REPO_ROOT'; git add '...'; git commit -m '...'`
@@ -73,6 +86,7 @@ If no system usage API is available, estimate roughly from prompt size + files/l
 - If information is missing (e.g. no access to runtime), say so explicitly instead of guessing.
 - Be concise; long boilerplate does not help.
 - Refresh the human-readable codebase index only when the codebase grows with new modules/crates or major structure changes; otherwise prefer small direct edits to the existing report.
+- **Recurring footgun — `u128` on peer JSON wire:** the failure mode (**`u128 is not supported`** / decode abort / sync catch-up stall) has recurred; treat missing explicit wire-safe encoding for **`u128`** in touched peer payloads as at least **medium** severity, and **request changes** unless the report’s **`### Wire JSON / u128`** block documents an accepted exception (with rationale). **RFC slices:** any new or changed normative wire field that can hold token/balance-scale integers must be reviewed for encoding rules in the RFC body, not only in code.
 
 ## Fast Search Cheat Sheet (CQDS MCP)
 

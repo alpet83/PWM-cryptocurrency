@@ -134,21 +134,26 @@ cargo run -p pwm-cli --bin pwm -- tx-init --help
 cargo run -p pwm-cli --bin pwm -- --rpc http://127.0.0.1:3031 tx-init ...
 ```
 
-## 6) Burn quota (`BURN_MARK`) через CLI
+## 6) Burn marks (`BURN_MARK`) через CLI (v2)
 
-Подкоманда **`tx-burn-mark`**: списание **marks quota** (не `balance_pwm`), комиссия **0** на стороне ядра (Sprint 8). Параметры включают `--mark-amount` и опционально `--beneficiary`.
+Подкоманда **`tx-burn-mark`**: списание с **единого баланса марок** (`marks`; поле `marks_quota` в RPC — наследие/зеркало). Комиссия **0** на стороне ядра. Параметры: **`--mark-amount`** (целые единицы марок), опционально **`--beneficiary`**, опционально **`--purpose`** — текст посвящения v2 (RFC 0011: после trim **1..80** байт UTF-8, без управляющих C0/C1). Если `--purpose` не задан, CLI встраивает встроенное значение по умолчанию и печатает предупреждение в stderr (для продакшн лучше задавать текст явно).
+
+Явный **claim** созревших марок (после стейка): **`tx-claim`** с **`--claim-mode free|paid`**, **`--claim-units`**, **`--anchor-ref`**, **`--fee`** (для `free` должен быть **0**, для `paid` — **> 0**). Семантика якоря и лимита free/day — в RFC 0012–0013.
 
 Перед отправкой убедитесь, что `PWM_RPC` указывает на ту ноду/домен, чей аккаунт и nonce вы используете в подписи.
 
-Типичный порядок (упрощённо, как в devnet-smoke): `key-gen` / кошелёк -> `tx-init` на выбранной ноде -> затем `tx-burn-mark` с тем же `--rpc`.
+Типичный порядок (упрощённо, как в devnet-smoke): `key-gen` / кошелёк -> `tx-init` на выбранной ноде -> затем `tx-burn-mark` / `tx-claim` с тем же `--rpc`.
 
-Точные флаги:
+Справка по флагам:
 
 ```powershell
 cargo run -p pwm-cli --bin pwm -- tx-burn-mark --help
+cargo run -p pwm-cli --bin pwm -- tx-claim --help
 ```
 
 ## 7) TUI
+
+Пошаговый чек-лист для ручной приёмки TUI: [checklists/tui-manual-checklist.md](./checklists/tui-manual-checklist.md).
 
 ```powershell
 $env:PWM_RPC="http://127.0.0.1:3030"
@@ -160,7 +165,7 @@ cargo run -p pwm-tui --bin pwm-tui
 
 Ожидание: TUI подключается к указанному RPC; выход — по подсказкам в интерфейсе (например `q` / `F10`).
 
-> Примечание: перед `F5` (burn->CLI) и `F6` (send) TUI делает preflight выбранного адреса. Если в detail видно `init=false`, TUI сначала пытается выполнить auto-init sender (`tx-init`) и при успехе сразу продолжает исходное действие (`F6` открывает send-форму, `F5` показывает burn->CLI handoff). Если кошелёк заблокирован/нет signing material, остаётся блокирующий hint с командой `pwm --rpc <url> tx-init ...`.
+> Примечание: перед **`F5` (burn)** и **`F6` (send)** TUI делает preflight выбранного адреса. Если в detail видно `init=false`, TUI сначала пытается выполнить auto-init sender (`tx-init`) и при успехе сразу продолжает исходное действие (`F6` открывает send-форму; **`F5` открывает модальную форму сжигания** с полями marks / beneficiary / purpose / confirm). Ошибки ноды в формате RFC 0014 при разборе JSON показываются компактной строкой (`code`, `response_class`, `phase`, …). Если кошелёк заблокирован/нет signing material, остаётся блокирующий hint с командой `pwm --rpc <url> tx-init ...`.
 
 ## 7a) Негативные сценарии: что уже покрыто вручную и что дублировать через RPC
 
@@ -239,3 +244,75 @@ Negative expectations:
 - `docs/reviews/sprint-9-checklist.md`
 - `tools/demo-two-shard.ps1`
 - `tools/demo-two-shard.sh`
+
+## 11) stake -> accrue -> burn (marks)
+
+**Goal:** verify that marks accrue after staking and can be burned via CLI and TUI.
+
+### Prerequisites
+
+- `pwmd` running locally (see §2 for startup command).
+- Wallet initialized with an account that has PWM balance.
+- `PWM_RPC` env var or `--rpc` pointing to the local node.
+
+### Step 1 — Check initial marks
+
+```powershell
+# CLI: print active account context (id/domain) from wallet
+cargo run -p pwm-cli --bin pwm -- wallet show --wallet wallet.yaml
+
+# REST: verify initial marks for the same account (replace <hex_id>)
+Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/account/<hex_id>" | Select-Object marks
+```
+
+Expected: `marks: 0` for a fresh account before stake accrual.
+
+### Step 2 — Stake
+
+```powershell
+cargo run -p pwm-cli --bin pwm -- tx-stake --wallet wallet.yaml --amount 1000 --rpc http://127.0.0.1:3030
+```
+
+Wait for at least one block to be sealed.
+
+### Step 3 — Check marks accrued
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/account/<hex_id>" | Select-Object marks
+```
+
+Expected: `marks` value > 0 after the block that seals the validator reward.
+
+### Step 4 — Burn marks (happy path)
+
+```powershell
+# Burn 1 mark unit; CLI prints current marks before submit
+cargo run -p pwm-cli --bin pwm -- tx-burn-mark --wallet wallet.yaml --mark-amount 1 --rpc http://127.0.0.1:3030
+```
+
+Expected output lines:
+- `pwm: current marks: N` (where N is pre-burn marks balance)
+- `pwm: burn submitted; marks before: N`
+
+Verify marks decreased:
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/account/<hex_id>" | Select-Object marks
+```
+
+### Step 5 — Negative: insufficient marks
+
+```powershell
+# Try to burn more marks than available
+cargo run -p pwm-cli --bin pwm -- tx-burn-mark --wallet wallet.yaml --mark-amount 999999999 --rpc http://127.0.0.1:3030
+```
+
+Expected: error response JSON with `"code": "E_BURN_OVER_BALANCE"` and message `"insufficient marks"` (HTTP 400).
+
+### TUI smoke
+
+1. Open TUI for the same RPC/wallet context:
+   `cargo run -p pwm-tui --bin pwm-tui -- --rpc http://127.0.0.1:3030 --wallet wallet.yaml`
+2. Select owned account in table — verify `Marks` column shows current value.
+3. Press `F5` — burn form opens; verify `Current marks: N` shown at top.
+4. Enter amount = 1, submit — verify `Marks` column updates after next poll.

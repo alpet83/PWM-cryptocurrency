@@ -52,6 +52,13 @@
 - `--transport-real` — включить real transport loop (по умолчанию выключен, используется legacy stub transport loop);
 - `--transport-peer-listen <ADDR>` (`PWM_PEER_LISTEN`) — выделенный TCP listener для peer-сессий; если не задан, используется fallback `rpc_port + 100`;
 - `--transport-peer-seed <ADDR[,ADDR...]>` — список peer seed socket-адресов (`host:peer_port`) для stateful TCP сессий;
+- `--peers-list <PATH>` — YAML bootstrap peers в двух форматах:
+  - legacy v1: `peers: ["host:port", ...]`;
+  - multishard v2: `shards: { "<domain_hi>": [{ id, peer, validator }, ...] }`, где ключ shard допускает `0xNN` (регистр не важен) или decimal `0..255`.
+  При чтении v2 выбирается только shard, соответствующий `identity.cluster_domain_hi` (`--domain-hi`, включая neutral `0x00`). Для неявного fallback-файла (`{state_root}/peers.yaml`) отсутствие matching shard даёт пустой file seed list и warn-лог; для явного `--peers-list` это startup error (fail-fast). Поле `validator` в этом срезе метаданные-only и не фильтрует TCP dial.
+  Сиды из файла объединяются с `--transport-peer-seed` (dedup), из списка удаляется адрес, совпадающий с эффективным **`--transport-peer-listen`**.
+  После **успешного** завершения `run_with` файл обновляется по активному пути (`--peers-list` или найденный default): для v1 пишется flat `peers`; для v2 обновляется только текущий shard, остальные shard-группы сохраняются без изменений. При обновлении текущего shard сохраняются `id`/`validator` у совпавших `peer`, новые сиды получают `id=bootstrap-<port>` и `validator=false`.
+  Только **`--transport-peer-seed`** без файла **не** создаёт `peers.yaml`. Само-исключение — по точному совпадению `SocketAddr` (разные формы записи одного интерфейса, например `0.0.0.0` vs `127.0.0.1`, не нормализуются).
 - `--transport-connect-timeout-ms <N>`;
 - `--transport-handshake-timeout-ms <N>`;
 - `--transport-retry-base-ms <N>`;
@@ -426,9 +433,9 @@ Roaming MVP status contract (Sprint 13) формализован отдельн�
     - `native_degraded_state`;
   - `transport` snapshot:
     - `ticks_total`,
-    - `counters.dial_attempt_by_class_result` (ключи формата `native:success`, `foreign:retryable_fail`),
+    - `counters.dial_attempt_class_result` (в JSON часто ключ верхнего уровня карты — `dial_attempt_by_class_result`; записи формата `native:success`, `foreign:retryable_fail`),
     - `counters.backoff_skip_total`,
-    - `last_attempt_ms_by_class`,
+    - `last_attempt_by_class` (JSON: `last_attempt_ms_by_class`),
     - `last_result_by_class`,
     - `native_underflow_ticks`,
     - `native_underflow_threshold_ticks`,

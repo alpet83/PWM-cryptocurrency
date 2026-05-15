@@ -9,7 +9,8 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 **What works today (MVP-shaped):**
 
 - **Two spec-level geo-shards** as two `pwmd` processes with different `domain_hi` (e.g. `0x10` / `0x20`), separate `--state-root`, and a **tested** happy path for peering over **real transport** with reciprocal `--transport-peer-seed` peers.
-- **Same-shard** transfers and usual account lifecycle (`INIT`, `TRANSFER`, staking hooks, `BURN_MARK` where applicable) via RPC and CLI/TUI.
+- **Same-shard** transfers and usual account lifecycle (`INIT`, `TRANSFER`, staking hooks) via RPC and CLI/TUI.
+- **Unified `marks` balance and `BURN_MARK`:** current MVP v2 uses `Account.marks` as the single marks counter. Per-block marks accrual in `Chain::seal` has been removed; genesis/claim paths populate usable marks, and `BURN_MARK` debits the same counter. CLI `tx-burn-mark --amount N [--purpose P]` prints current marks before submit; TUI shows a `Marks` column and F5 burn form with `Current marks` header; `--purpose` supports `{utc_time}` / `{utc_timestamp}` placeholders.
 - **Cross-shard value move** via the explicit **EXPORT → relay/handoff → IMPORT** flow: source and target shards cooperate through configured seed trust; CLI `tx-send` / TUI and `tx-export` / `tx-import` match the [Sprint 13 as-implemented contract](docs/rfc/9-crossdomain-roaming.md). See [ROAMING-SAMPLE.md](docs/ROAMING-SAMPLE.md) and [ROAMING_COMPLETION.md](docs/ROAMING_COMPLETION.md).
 - **Federated bridge trust** (including refusal and recovery paths) is part of the runtime contract; see [WHITE_SPEC_v0.md](docs/WHITE_SPEC_v0.md) §7.5 and operator notes in [pwmd.md](docs/pwmd.md).
 - **Persistence:** primary path is **JsonFile** (summary `pwm-data.json`, `epochs/` JSONL, manifest; trust-default load vs audit replay). Optionally **`pwmd` can persist snapshots to ClickHouse** (cargo feature `clickhouse-snapshot`): load semantics differ from JsonFile (CH uses full replay validation today). See **Snapshot storage backends** below and [guide-node-storage-and-snapshot.md](docs/guide-node-storage-and-snapshot.md).
@@ -71,7 +72,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/dev/peers"
 Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 ```
 
-Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0x10` / `domain-hi-0x20`. Point **`pwm`** / **`pwm-tui`** at the right node with `--rpc` or `PWM_RPC`; cross-shard sends and import completion are documented in [tester-guide-cli-tui-scenarios.md](docs/tester-guide-cli-tui-scenarios.md) (sections 5–9).
+Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0x10` / `domain-hi-0x20`. Point **`pwm`** / **`pwm-tui`** at the right node with `--rpc` or `PWM_RPC`; cross-shard sends and import completion are documented in [tester-guide-cli-tui-scenarios.md](docs/tester-guide-cli-tui-scenarios.md) (sections 5–11).
 
 ## Network scope and limits
 
@@ -93,6 +94,8 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 - Node storage and snapshot modes: `docs/guide-node-storage-and-snapshot.md`
 - ClickHouse snapshot runbook: `docs/runbook-store-snapshots.md`
 - CLI/TUI two-shard and cross-shard scenarios: `docs/tester-guide-cli-tui-scenarios.md`
+- V2 roadmap and sprint plan: `docs/plans/mvp_v2.md`
+- MVP v2 public-docs readiness review: `docs/reviews/20260515-mvp-v2-public-docs-readiness.md`
 - Domain clusters dictionary: `docs/DOMAINS.md`
 - Phase 1 checklist: `docs/PHASE1_CHECKLIST.md`
 - Phase 1 release summary: `docs/PHASE1_RELEASE_SUMMARY.md`

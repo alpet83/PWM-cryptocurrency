@@ -12,7 +12,7 @@
 **Что входит в крейт**
 - структуры `Account`, `SignedTx`, `BlockHdr`, `Block`, `Chain`, `Mpool`;
 - проверка формы транзакции (`validate_tx_shape`) и подписи;
-- применение tx к `State` и начисления на блоке (`accrue_marks`, `reward_producer`);
+- применение tx к `State`, claim/burn-операции по единому `Account.marks` и награда продюсеру блока (`reward_producer`);
 - фабрика genesis (`dev_net`, `GenCfg`) и HD-деривация (`m/0'/i`);
 - бинарные/JSON-friendly сериализационные хелперы для фиксированных массивов.
 
@@ -26,7 +26,7 @@
 
 - `block` — `BlockHdr`/`Block`, `sign_preimage`, подпись/верификация заголовка, `txs_root`, `hdr_hash`.
 - `chain` — `Chain::boot`, `Chain::seal`, связь блоков через `prev_hash`, ротация PoA-продюсера, тип ошибки `SealAbort`.
-- `state` — `State`, `apply_tx`, `digest`, начисление marks и награды продюсеру.
+- `state` — `State`, `apply_tx`, `digest`, claim/burn-логика по `Account.marks` и награда продюсеру.
 - `tx` — `TxBody`, `SignedTx`, `signing_message`, `tx_hash`, `verify_sig`, `validate_tx_shape`, `TxError`.
 - `genesis` — `GRow`, `GenCfg`, `state0`, `prod_acct`, dev-конфиг `dev_net()`.
 - `hd` — `account_id_from_parts`, `domain_of_account_id`, `brute_cluster_address`.
@@ -56,6 +56,7 @@
    - `Transfer`: проверка `initialized`, `amount + fee`, списание sender, пополнение `to`, `fee_pool += fee`;
    - `Stake`/`Unstake`: перенос между `balance_pwm` и `staked`, `nonce += 1`;
    - `BurnMark`: уменьшение `marks`, `nonce += 1`.
+   - В состоянии нет отдельного `marks_quota`: единственный консенсусный источник марок — `Account.marks`.
 7. На успехе изменённый `State` фиксируется; на ошибке возвращается `TxError`.
 
 ## 2) Запечатывание блока (`Chain::seal`)
@@ -67,9 +68,7 @@
    - `prod_idx` = `(height - 1) % validators`.
 3. Клонируется `State` и последовательно применяется каждый tx:
    - любая ошибка -> `Err((msg, txs))` (`SealAbort`), чтобы caller мог вернуть tx в пул (`prepend_block`).
-4. После успешного применения:
-   - `accrue_marks(marks_coeff)`;
-   - `reward_producer(block_reward)`.
+4. После успешного применения `reward_producer(block_reward)` начисляет награду продюсеру. Per-block `accrue_marks` в seal-пути удалён; марочный UX v2 опирается на genesis/claim-контур и единый `Account.marks`.
 5. Считаются `state_root` и `tx_root`, собирается `BlockHdr`.
 6. Заголовок подписывается валидатором `val_sks[prod_idx]`; подпись проверяется по pubkey из genesis-строки.
 7. На успехе: `self.st = st`, блок добавляется в `self.blocks`.
@@ -110,7 +109,7 @@
 
 - `TxBody`: добавление новых типов tx с веткой в `State::apply_tx`.
 - `validate_tx_shape`: усиление pre-check (например, лимиты полей/политики).
-- `GenCfg`: больше валидаторов, внешние genesis-конфиги, изменяемые `block_reward`/`marks_coeff`.
+- `GenCfg`: больше валидаторов, внешние genesis-конфиги, изменяемые `block_reward` и параметры genesis/claim-политики.
 - `Mpool`: приоритеты, дедупликация, TTL, anti-spam.
 - `Chain`: иная политика выбора продюсера, pre/post-block hooks, дополнительные проверки заголовка.
 - `offchain`: переход от stub к on-chain верификации batch/bridge.

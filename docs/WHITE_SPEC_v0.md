@@ -83,8 +83,9 @@
 
 - Перевод между `balance` и `staked` при активном счёте.
 - В v0 без периода разблокировки.
+- `staked` не является переводимым балансом: прямой `TRANSFER` застейканных монет не допускается; любые движения stake выполняются только через `STAKE`/`UNSTAKE` (и последующие stake-governance расширения).
 
-### 3.4 `BURN_MARK { mark_amount: u128, beneficiary: AccountId | NONE }`
+### 3.4 `BURN_MARK { mark_amount: u32, beneficiary: AccountId | NONE }`
 
 - Списывает марки с баланса отправителя; `mark_amount` уничтожается.
 - `beneficiary` в бинарном формате: либо 32 байта account, либо нулевой идентификатор для «безадресной аннигиляции» (резерв поля).
@@ -106,7 +107,7 @@
 struct Account {
   balance_pwm: u128,
   staked: u128,
-  marks: u128,
+  marks: u32,
   initialized: bool,
   index: u32,
   flags: u32,
@@ -155,6 +156,32 @@ Round-robin **PoA**: фиксированный список валидатор�
   - если равны -> локальный путь (`TRANSFER`);
   - если различаются -> обязателен путь `EXPORT/IMPORT`.
 
+#### 7.2.a Горизонтальные и вертикальные связи (нормативно)
+
+```mermaid
+flowchart TB
+  subgraph D1["Доменный кластер D1 (`domain_hi = X`)"]
+    A["Node A (validator/attester)"]
+    B["Node B (validator/attester)"]
+    C["Node C (follower/sync peer)"]
+    A ---|"горизонтально: same-shard peer wire"| B
+    B ---|"горизонтально: same-shard peer wire"| C
+  end
+
+  subgraph D2["Доменный кластер D2 (`domain_hi = Y`)"]
+    T["Target shard runtime"]
+  end
+
+  A -->|"вертикально: `EXPORT` -> proof -> `IMPORT`"| T
+  Bridge["Bridge/Trust layer (второй уровень)"] --- A
+  Bridge --- T
+```
+
+- **Горизонтальные связи** (`domain_hi` одинаковый): это внутридоменный peer/wire контур одного geo-shard (включая attestation/quorum-подгруппы и sync/follower peers; см. [RFC 16](rfc/16-validator-clone-attestation.md), [RFC 8](rfc/8-shard-runtime-identity-and-peering.md)).
+- **Вертикальные связи** (`domain_hi` различается): это только межшардовый путь `EXPORT`/`IMPORT` и связанный bridge/trust слой второго уровня; такие связи не трактуются как "same-shard P2P".
+- **Норма включения:** сетевые кластеры (операционные подгруппы узлов внутри одной шардовой идентичности, включая RFC16 cluster attest) могут входить в состав доменного кластера с фиксированным `domain_hi`.
+- **Норма невложенности и границы:** обратная вложенность не предусмотрена — доменный кластер не вложен в сетевой, а сетевой кластер не задаёт протокольную границу шарда; граница задаётся доменом/`domain_hi` и маршрутизацией этого white-spec.
+
 ### 7.3 Политики и финализация в v1
 
 - Для MVP v1 обязательны минимальные policy-checks recipient/domain класса (reject `reserve`/`witness`/unknown в regular flow).
@@ -167,6 +194,10 @@ Round-robin **PoA**: фиксированный список валидатор�
 - Междоменный контекст `BURN_MARK` не требует специальной обработки в target-shard:
   - доказательство burn формируется и верифицируется только в source-shard;
   - target-shard не обязан менять локальное состояние marks по чужому burn-событию.
+- Для `IMPORT` в v2-extension вводится минимальная комиссия `min_import_fee = 0.01 PWM`:
+  - проверка выполняется на target-shard до apply;
+  - при успешном apply комиссия зачисляется в `fee_pool` target-шарда (variant B);
+  - при reject `IMPORT` комиссия не списывается.
 
 ### 7.4 MVP-срез Sprint 13 по междоменному роумингу (как реализовано)
 
@@ -221,3 +252,48 @@ Round-robin **PoA**: фиксированный список валидатор�
 - Региональный консенсус-шардинг.
 - PQC, отдельный формат адреса whitepaper vs `PWMv0-`.
 - Оффчейн-сжигание продакшн и X-PWM — см. модуль заглушки и [OFFCHAIN_STUB.md](./OFFCHAIN_STUB.md).
+
+## 9. Расширение v2: единые марки и auto-claim materialization
+
+Этот раздел фиксирует v2-дизайн как расширение поверх текущего baseline без немедленного переписывания всего runtime.
+
+### 9.1 Единый марочный баланс
+
+- Целевой продуктовый контракт v2: один пользовательский баланс марок `marks`.
+- Исторический `marks_quota` трактуется как legacy-переходный слой и подлежит сворачиванию в единый `marks` в кодовой миграции.
+- `BURN_MARK` в целевой модели v2 списывает `marks` (не отдельную burn-only квоту).
+
+### 9.2 Расширение `BURN_MARK` полем purpose
+
+- `BURN_MARK` расширяется обязательным текстовым полем `purpose`.
+- Нормативный лимит: `1..80` UTF-8 байт после детерминированной нормализации (`trim` по краям, без Unicode composition transforms).
+- Control-символы C0/C1 запрещены.
+- Рекомендуемый privacy-паттерн: salted hash внешнего идентификатора вместо открытого PII.
+
+### 9.3 Maturity и explicit/auto claim
+
+- Материализация марок выполняется двумя путями:
+  - explicit через `ClaimTx`,
+  - auto-claim как неявный state-эффект релевантной stake-management транзакции.
+- Релевантный баланс для maturity: `staked_pwm_units`.
+- Любое ненулевое изменение релевантного баланса сбрасывает непрерывность maturity.
+- Базовая норма созревания: `1 PWM = 1 hour` (эквивалентно `3600` блокам при `BLOCK_TIME_SEC = 1`).
+- Округление materialized дельты: `floor` (дробный remainder не переносится как отдельный state-credit).
+- Формула materialization: `hours = floor(delta_seconds / 3600)`, `whole_pwm_staked = floor(staked_raw / 1_000_000)`, `matured_units = whole_pwm_staked * hours`.
+- Нормативный смысл: `1 whole PWM staked for 1 hour = 1 mark`.
+- Auto-claim выполняется только при `matured_units > 0`; при нулевой дельте релевантная транзакция продолжает выполняться без claim-эффекта.
+- Получение эмиссии монет и materialization марок в v2 привязано к stake-контуру (`STAKE`/`UNSTAKE` lifecycle); пассивный liquid-баланс без stake не формирует maturity-поток.
+
+### 9.4 Free-claim/day и chain-time
+
+- Ограничение «одна free claim-транзакция в сутки» применяется к explicit `ClaimTx`.
+- `utc_day` считается только от chain time: `floor(block_unix_time_utc / 86400)`.
+- Auto-claim не является отдельной claim-транзакцией и не потребляет free-slot.
+- Paid fallback для explicit claim сохраняется.
+
+### 9.5 Нормативные ссылки пакета RFC v2
+
+- [rfc/11-burn-purpose-and-claim-tx.md](./rfc/11-burn-purpose-and-claim-tx.md)
+- [rfc/12-claim-maturity-and-state-model.md](./rfc/12-claim-maturity-and-state-model.md)
+- [rfc/13-claim-policy-matrix.md](./rfc/13-claim-policy-matrix.md)
+- [rfc/14-claim-burn-api-error-contract.md](./rfc/14-claim-burn-api-error-contract.md)

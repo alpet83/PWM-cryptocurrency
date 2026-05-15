@@ -43,10 +43,11 @@ Skip this step for tiny one-line fixes that do not change structure or file set,
 
 ## Style and code quality
 
-- **Identifier length (production `fn` / methods / type aliases in touched code):** hard cap **≤ 5 words**, counting underscore-separated segments in `snake_case` (e.g. `xfer_dst_preflight` = 3). **Prefer shorter** when readable; **never** stretch names across the cap—move detail into **`///` docstrings** or module docs (English).
+- **Identifier length — production** (`fn` / methods / type aliases / struct & enum fields / const / static / `mod` / `macro_rules!` / snake_case `type` aliases in shipped / non-test code): **hard cap ≤ 4 words**, counting underscore-separated segments in `snake_case` or `SCREAMING_SNAKE` (e.g. `xfer_dst_preflight` = 3). **Choose names within this budget when you first introduce a symbol** (cheaper in tokens than rename passes). **Prefer shorter** when readable; **never** stretch names to the cap when detail belongs in **`///`** or module docs (English). PascalCase type/trait/enum variant names are **not** checked by the linter. *(Older sprint docs may still say «≤ 5» for prod—that policy is superseded here.)*
 - **Abbreviations (use when they stay obvious in context):** `idx`, `sel`, `dst`/`src`, `xfer`, `rpc`, `wal`, `hdr`, `fmt`, `bal`, `nonce`, `tls`, `dst_shard`; verbs/helpers `mk_*`, `parse_*`, `load_*`, `run_*`; filesystem idioms **`cp` / `mv` / `rm`** only in names that mirror real copy/move/remove behavior (not arbitrary shortenings).
-- **Identifiers (`#[cfg(test)]`, future `tests/*.rs`):** same **≤ 5 words** target for **`#[test] fn`** and shared test helpers (`mk_*`, `case_*`), so extracted suites stay compact in chat/index context. If a scenario needs a long story, keep a **short test fn name** + one-line `//` intent comment.
-- Before finalizing, self-audit touched symbols: **>5 words ⇒ rename or split**; document non-obvious short names with **`///`**.
+- **Identifiers — tests only** (`#[cfg(test)]`, `tests/*.rs`, inline test modules): **hard cap ≤ 5 words** for **`#[test] fn`** and shared test helpers (`mk_*`, `case_*`), so suites stay compact in logs and agent context. **Pick compliant names when creating the test**, not only after the linter. If a scenario needs a long story, keep a **short test fn name** + one-line `//` intent comment.
+- Before finalizing, self-audit touched symbols: **production > 4 segments ⇒ rename or split**; **test-only > 5 segments ⇒ rename or split**; document non-obvious short names with **`///`**.
+- **Machine check (mandatory for touched paths):** run the stdlib Python linter **`scripts/check_entity_name_segments.py`** from the repo root on every **`*.rs` file or tree you changed (example: `python scripts/check_entity_name_segments.py crates/foo/src` or list concrete files). It prints **JSON** with **`line`**, **`name`**, **`entity`** (`fn`, `field`, `const_or_static`, `mod`, …), **`segments`**, **`limit`**, **`kind`**. **Normalize every reported symbol** in your slice (rename + update struct initializers, callsites, and re-exports as needed) until the JSON **`violations`** array is **empty** for those paths—do not rely on manual counting alone. The legacy path **`scripts/check_rust_fn_name_segments.py`** still runs the same checker but prints a deprecation warning. If the ticket scopes only part of the repo, fix violations **only in touched files** unless the orchestrator asked for a workspace-wide rename pass.
 - **Comments in code**: **English only** (including `//` and `///`).
 - **User-facing docs** in this repo may stay Russian where already established (`docs/*.md`).
 - Match existing module layout (`pwm-core`, `pwmd`, `pwm-cli`, `pwm-tui`); avoid drive-by refactors outside the task.
@@ -95,6 +96,12 @@ If no system usage API is available, estimate roughly from prompt size + code/do
   - keep/update the marker in a dedicated `pwmd` build marker location (the project-standard file/key currently used for `pwmd` build identification in this repo/task context);
   - perform a monotonic bump (next value relative to current marker), avoid changing unrelated version fields;
   - when uncertain, prefer a minimal build-marker increment and note in summary that this was done pending a formal semver policy.
+
+## Protocol semver bump discipline (required)
+
+- Any wire-level change in `NodeHello`, `PeerWireMsg`, sync wire profile/limits, or block/snapshot exchange semantics must include an explicit protocol-semver decision.
+- If compatibility is impacted, bump `handshake::PWM_PROTOCOL_VERSION` in the same slice and mention the reason in the final summary.
+- If no bump is needed, state `no wire compatibility impact` in the handoff summary so `pwm-review` can verify intent.
 
 ## Repository anchors
 

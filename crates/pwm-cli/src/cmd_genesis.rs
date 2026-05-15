@@ -3,16 +3,18 @@
 use crate::rpc_helpers::resolve_genesis_passphrase;
 use crate::wallet::{load_wallet_yaml_upgrade, wallet_account_list, wallet_secrets};
 use ed25519_dalek::SigningKey;
-use pwm_core::genesis::{GRow, GenCfg};
+use pwm_core::genesis::{
+    GRow, GenCfg, DEF_MARKS_STAKE_MIN, DEF_PWM_STAKE_MIN, DEF_SEASON_COEFF_PPM, LEGACY_POLICY_VER,
+};
 use pwm_core::hd::account_id_from_parts;
-use pwm_core::{parse_acct_id_for_user, seal_wallet_secret_plaintext, WALLET_KDF};
+use pwm_core::{parse_acct_id_ui, seal_wallet_secret_plaintext, WALLET_KDF};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use super::exit_user_error;
 use crate::cli_parse::master_seed;
 
-const GENESIS_SCHEMA_VERSION: u32 = 4;
+pub(crate) const GENESIS_SCHEMA_VERSION: u32 = 5;
 pub(crate) const GENESIS_VALIDATOR_DER_PATH: &str = "m/1000000'/1'";
 const GENESIS_DER_PATH_IDX: [u32; 2] = [1_000_000, 1];
 const GENESIS_AEAD_NAME: &str = "chacha20poly1305";
@@ -54,6 +56,11 @@ pub(crate) struct GenesisV4CfgOut {
     pub(crate) reward_policy: GenesisRewOut,
     pub(crate) block_reward: String,
     pub(crate) marks_coeff: String,
+    pub(crate) policy_ver: u32,
+    pub(crate) pwm_stake_min: String,
+    pub(crate) marks_stake_min: String,
+    pub(crate) season_enabled: bool,
+    pub(crate) season_coeff_ppm: String,
 }
 
 #[derive(Serialize)]
@@ -94,8 +101,8 @@ fn pick_val_idx(
     val_id: Option<&str>,
 ) -> Result<usize, String> {
     if let Some(id) = val_id {
-        let want = parse_acct_id_for_user(id)
-            .map_err(|e| format!("validator account id parse failed: {e}"))?;
+        let want =
+            parse_acct_id_ui(id).map_err(|e| format!("validator account id parse failed: {e}"))?;
         let want_hex = hex::encode(want);
         return accounts
             .iter()
@@ -233,6 +240,11 @@ pub(crate) fn build_genesis_v4_wallet(
                 },
                 block_reward: block_reward.to_string(),
                 marks_coeff: marks_coeff.to_string(),
+                policy_ver: LEGACY_POLICY_VER,
+                pwm_stake_min: DEF_PWM_STAKE_MIN.to_string(),
+                marks_stake_min: DEF_MARKS_STAKE_MIN.to_string(),
+                season_enabled: false,
+                season_coeff_ppm: DEF_SEASON_COEFF_PPM.to_string(),
             },
             validator_keys,
         },
@@ -245,6 +257,11 @@ pub(crate) fn build_genesis_v4_wallet(
             accounts: funding_cfg_accounts,
             block_reward,
             marks_coeff,
+            policy_ver: LEGACY_POLICY_VER,
+            pwm_stake_min: DEF_PWM_STAKE_MIN,
+            marks_stake_min: DEF_MARKS_STAKE_MIN,
+            season_enabled: false,
+            season_coeff_ppm: DEF_SEASON_COEFF_PPM,
         },
     ))
 }

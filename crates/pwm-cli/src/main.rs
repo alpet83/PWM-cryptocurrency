@@ -15,6 +15,7 @@ mod cmd_offchain;
 mod cmd_roaming;
 mod cmd_tx;
 mod cmd_wallet;
+mod purpose_expand;
 mod rpc_helpers;
 mod signer;
 mod wallet;
@@ -31,9 +32,9 @@ pub(crate) use crate::rpc_helpers::tx_import_contract_note;
 pub(crate) use crate::wallet::{wallet_account_add, wallet_account_list};
 #[cfg(test)]
 pub(crate) use cmd_roaming::{
-    ensure_import_sender, get_roaming_intent_status, is_terminal_intent_status,
-    parse_export_id_hex_arg, post_export_handoff, post_import_retry_inner as post_import_retry,
-    post_roaming_intent, user_msg_roaming_intent_error,
+    ensure_import_sender, get_roaming_intent_status, is_terminal_intent_status, parse_export_hex,
+    post_export_handoff, post_import_retry_inner as post_import_retry, post_roaming_intent,
+    roaming_intent_err,
 };
 
 fn main() {

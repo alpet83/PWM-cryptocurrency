@@ -36,13 +36,18 @@ pub(crate) fn run(cli: Cli) {
             domain,
             max_try,
             wallet_out,
-        } => cmd_addr::run_addr_derive(
-            master,
-            domain,
-            max_try,
-            wallet_out,
-            wallet_passphrase.clone(),
-        ),
+        } => {
+            let wal_out_explicit = wallet_out.is_some();
+            cmd_addr::run_addr_derive(
+                master,
+                domain,
+                max_try,
+                wallet_out,
+                wal_out_explicit,
+                wallet_passphrase.clone(),
+                upgrade_wallet,
+            )
+        }
         Cmd::AddrBruteforce {
             master,
             domain,
@@ -51,18 +56,22 @@ pub(crate) fn run(cli: Cli) {
             max_try,
             wallet_out,
             overwrite_wallet,
-        } => cmd_addr::run_addr_bruteforce(
-            master,
-            domain,
-            flags_mask,
-            expected_flags,
-            max_try,
-            wallet_out,
-            overwrite_wallet,
-            wallet_passphrase.clone(),
-            upgrade_wallet,
-            &rpc_base,
-        ),
+        } => {
+            let wal_out_explicit = wallet_out.is_some();
+            cmd_addr::run_addr_bruteforce(
+                master,
+                domain,
+                flags_mask,
+                expected_flags,
+                max_try,
+                wallet_out,
+                wal_out_explicit,
+                overwrite_wallet,
+                wallet_passphrase.clone(),
+                upgrade_wallet,
+                &rpc_base,
+            )
+        }
         Cmd::Wallet { cmd } => match cmd {
             WalletCmd::BookAdd {
                 wallet,
@@ -143,6 +152,7 @@ pub(crate) fn run(cli: Cli) {
             domain,
             mark_amount,
             beneficiary,
+            purpose,
         } => cmd_tx::run_tx_burn_mark(
             &rpc_base,
             wallet,
@@ -152,7 +162,40 @@ pub(crate) fn run(cli: Cli) {
             upgrade_wallet,
             mark_amount,
             beneficiary,
+            purpose,
         ),
+        Cmd::TxClaim {
+            wallet,
+            master,
+            domain,
+            claim_mode,
+            claim_units,
+            all,
+            anchor_ref,
+            fee,
+        } => {
+            let mode = match cmd_tx::parse_claim_mode_cli(&claim_mode) {
+                Ok(m) => m,
+                Err(e) => crate::exit_user_error(&e),
+            };
+            let units = if all || claim_units == 0 {
+                pwm_core::tx::CLAIM_ALL
+            } else {
+                claim_units
+            };
+            cmd_tx::run_tx_claim(
+                &rpc_base,
+                wallet,
+                master,
+                domain,
+                wallet_passphrase.as_deref(),
+                upgrade_wallet,
+                mode,
+                units,
+                anchor_ref,
+                fee,
+            );
+        }
         Cmd::TxExport {
             wallet,
             master,

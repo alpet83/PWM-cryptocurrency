@@ -1,11 +1,34 @@
 //! Genesis rows + dev factory.
+//! Genesis marks are initialized from whole PWM balance at `state0()`.
 
 use crate::hd::account_id_from_parts;
 use crate::state::State;
 use crate::types::{Account, AccountId};
+use crate::PWM_RAW_SCALE;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use slip10_ed25519::derive_ed25519_private_key;
+
+pub const LEGACY_POLICY_VER: u32 = 1;
+pub const DEF_PWM_STAKE_MIN: u128 = 100_000;
+pub const DEF_MARKS_STAKE_MIN: u128 = PWM_RAW_SCALE;
+pub const DEF_SEASON_COEFF_PPM: u128 = 1_000_000;
+
+fn default_pol_ver() -> u32 {
+    LEGACY_POLICY_VER
+}
+
+fn default_pwm_stake_min() -> u128 {
+    DEF_PWM_STAKE_MIN
+}
+
+fn default_marks_stake_min() -> u128 {
+    DEF_MARKS_STAKE_MIN
+}
+
+fn default_season_coeff_ppm() -> u128 {
+    DEF_SEASON_COEFF_PPM
+}
 
 /// One funded validator row at height 0.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -26,6 +49,16 @@ pub struct GenCfg {
     pub accounts: Vec<GRow>,
     pub block_reward: u128,
     pub marks_coeff: u128,
+    #[serde(default = "default_pol_ver")]
+    pub policy_ver: u32,
+    #[serde(default = "default_pwm_stake_min")]
+    pub pwm_stake_min: u128,
+    #[serde(default = "default_marks_stake_min")]
+    pub marks_stake_min: u128,
+    #[serde(default)]
+    pub season_enabled: bool,
+    #[serde(default = "default_season_coeff_ppm")]
+    pub season_coeff_ppm: u128,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -57,8 +90,9 @@ impl GenCfg {
     pub fn state0(&self) -> State {
         let mut st = State::default();
         for r in &self.funding.accounts {
-            st.accounts
-                .insert(r.acct, Account::genesis_funded(r.pubkey, r.der_idx, r.bal));
+            let mut acc = Account::genesis_funded(r.pubkey, r.der_idx, r.bal);
+            acc.marks = (r.bal / crate::display::PWM_RAW_SCALE).min(u32::MAX as u128) as u32;
+            st.accounts.insert(r.acct, acc);
         }
         st
     }
@@ -75,6 +109,20 @@ impl GenCfg {
     pub fn prod_pk(&self, prod_idx: u32) -> [u8; 32] {
         let n = self.vals.set.len();
         self.vals.set[(prod_idx as usize) % n].pubkey
+    }
+
+    pub fn is_legacy_policy(&self) -> bool {
+        self.policy_ver == LEGACY_POLICY_VER
+    }
+
+    /// Seasonal multiplier in ppm (`1_000_000` == 1.0), derived from block context only.
+    pub fn season_ppm(&self, block_ts: u64) -> u128 {
+        let _ = block_ts;
+        if self.season_enabled {
+            self.season_coeff_ppm
+        } else {
+            DEF_SEASON_COEFF_PPM
+        }
     }
 }
 
@@ -106,6 +154,66 @@ pub fn dev_net() -> (GenCfg, Vec<SigningKey>) {
         accounts: vec![row],
         block_reward: 100u128,
         marks_coeff: 10_000u128,
+        policy_ver: LEGACY_POLICY_VER,
+        pwm_stake_min: DEF_PWM_STAKE_MIN,
+        marks_stake_min: DEF_MARKS_STAKE_MIN,
+        season_enabled: false,
+        season_coeff_ppm: DEF_SEASON_COEFF_PPM,
     };
     (g, vec![sk])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hd::account_id_from_parts;
+    use ed25519_dalek::SigningKey;
+    use slip10_ed25519::derive_ed25519_private_key;
+
+    fn mk_cfg_one_row(bal: u128) -> GenCfg {
+        let seed = [13u8; 32];
+        let sk_bytes = derive_ed25519_private_key(&seed, &[0, 0]);
+        let sk = SigningKey::from_bytes(&sk_bytes);
+        let pk = sk.verifying_key().to_bytes();
+        let aid = account_id_from_parts(&pk, 0u32);
+        let row = GRow {
+            acct: aid,
+            pubkey: pk,
+            der_idx: 0,
+            bal,
+        };
+        let mut cfg = dev_net().0;
+        cfg.funding.accounts = vec![row.clone()];
+        cfg.accounts = vec![row.clone()];
+        cfg.vals.set = vec![VRow {
+            acct: row.acct,
+            pubkey: row.pubkey,
+            der_idx: row.der_idx,
+        }];
+        cfg
+    }
+
+    #[test]
+    fn genesis_marks_from_bal() {
+        let cfg = mk_cfg_one_row(2_000_000);
+        let aid = cfg.accounts[0].acct;
+        let st = cfg.state0();
+        assert_eq!(st.accounts.get(&aid).expect("acct").marks, 2);
+    }
+
+    #[test]
+    fn genesis_marks_zero_bal() {
+        let cfg = mk_cfg_one_row(0);
+        let aid = cfg.accounts[0].acct;
+        let st = cfg.state0();
+        assert_eq!(st.accounts.get(&aid).expect("acct").marks, 0);
+    }
+
+    #[test]
+    fn genesis_marks_saturation() {
+        let cfg = mk_cfg_one_row(u128::MAX);
+        let aid = cfg.accounts[0].acct;
+        let st = cfg.state0();
+        assert_eq!(st.accounts.get(&aid).expect("acct").marks, u32::MAX);
+    }
 }

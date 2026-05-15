@@ -1,9 +1,8 @@
-//! Constructs `App` from genesis bundles, dev-net presets, and shard identity.
+//! Constructs `App` from genesis bundles, dev-net presets, and dev-lane identity.
 
-use crate::config::GenesisSource;
-use crate::identity::{
-    default_runtime_identity_for_shard, storage_namespace, RuntimeIdentity, ShardId,
-};
+use crate::config::{DebugDumpCfg, GenesisSource};
+use crate::handshake::{DeploymentProfile, SealRole};
+use crate::identity::{default_dev_lane_identity, storage_namespace, DevLane, RuntimeIdentity};
 use crate::ledger::CrossShardLedger;
 use crate::roaming::RoamingPool;
 use crate::snapshot::{load_genesis_bundle, SnapshotBackend, SnapshotLoadOpts};
@@ -20,24 +19,41 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 use tracing::info;
 
-pub fn app_from_dev_net() -> App {
-    let (cfg, sks) = dev_net();
-    app_from_chain_boot(cfg, sks, None, ShardId::A, None)
+fn mk_node_instance_id(identity: &RuntimeIdentity) -> String {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|v| v.as_millis() as u64)
+        .unwrap_or(0);
+    format!("{}-{}-{now_ms}", identity.node_id, std::process::id())
 }
 
-pub fn app_from_dev_net_shard(shard: ShardId) -> App {
+fn validator_hash_from_cfg(cfg: &GenCfg) -> String {
+    cfg.vals
+        .set
+        .first()
+        .map(|v| hex::encode(v.pubkey))
+        .unwrap_or_else(|| "unknown-validator".to_string())
+}
+
+pub fn app_from_dev_net() -> App {
     let (cfg, sks) = dev_net();
-    app_from_chain_boot(cfg, sks, None, shard, None)
+    app_from_chain_boot(cfg, sks, None, DevLane::Lane0, None)
+}
+
+/// Constructs an App from a devnet lane configuration.
+pub fn app_from_devnet(dev_lane: DevLane) -> App {
+    let (cfg, sks) = dev_net();
+    app_from_chain_boot(cfg, sks, None, dev_lane, None)
 }
 
 pub(crate) fn app_from_chain_boot(
     cfg: GenCfg,
     sks: Vec<SigningKey>,
     data_file: Option<PathBuf>,
-    shard: ShardId,
+    dev_lane: DevLane,
     runtime_identity: Option<RuntimeIdentity>,
 ) -> App {
-    let identity = runtime_identity.unwrap_or_else(|| default_runtime_identity_for_shard(shard));
+    let identity = runtime_identity.unwrap_or_else(|| default_dev_lane_identity(dev_lane));
     let state_namespace = storage_namespace(&identity);
     let local_domain_hi = identity.cluster_domain_hi;
     let network_id = identity.network_id.clone();
@@ -48,9 +64,12 @@ pub(crate) fn app_from_chain_boot(
     };
     let dev_profile = identity.network_id.starts_with("dev");
     let chain = Chain::boot(cfg, sks);
+    let validator_identity_hash = validator_hash_from_cfg(&chain.cfg);
+    let node_instance_id = mk_node_instance_id(&identity);
+    let lease_runtime = crate::lease::LeaseRuntime::new(node_instance_id.clone());
     let pool = Mpool::new(4096);
     let roaming_pool = RoamingPool::default();
-    let mut inner = Inner {
+    let inner = Inner {
         chain,
         pool,
         roaming_pool,
@@ -59,7 +78,6 @@ pub(crate) fn app_from_chain_boot(
         peer_account_views: std::collections::HashMap::new(),
         recent_flow: VecDeque::new(),
     };
-    inner.normalize_marks_quota();
     let autosnapshot_backend = data_file
         .as_ref()
         .map(|p| SnapshotBackend::JsonFile { path: p.clone() });
@@ -68,7 +86,7 @@ pub(crate) fn app_from_chain_boot(
         init: Arc::new(RwLock::new(InitState::ready(data_file.clone()))),
         data_file,
         autosnapshot_backend,
-        shard,
+        shard: dev_lane,
         handshake: Arc::new(RwLock::new(HandshakeState::new(
             validation_ctx,
             local_domain_hi,
@@ -77,6 +95,24 @@ pub(crate) fn app_from_chain_boot(
         snapshot_verify_chain: true,
         exit_on_fatal_snapshot: false,
         broke_trust_test: false,
+        debug_stop_height: None,
+        debug_align_mid: false,
+        debug_disable_seal_loop: false,
+        deployment_profile: DeploymentProfile::SingleSealer,
+        seal_role: SealRole::Active,
+        lease_cfg: crate::lease::LeaseCfg::default(),
+        lease_mode: crate::lease::LeaseBackendMode::ProcessLocal,
+        lease_path: None,
+        lease_last_err: Arc::new(Mutex::new(None)),
+        lease_backend: Arc::new(crate::lease_backend::ProcessLocalLeaseBackend),
+        lease_runtime: Arc::new(Mutex::new(lease_runtime)),
+        lease_stats: Arc::new(crate::lease::LeaseStats::default()),
+        cluster_cfg: crate::ClusterCfg::default(),
+        validator_identity_hash,
+        node_instance_id,
+        debug_dump: DebugDumpCfg::default(),
+        dump_count: Arc::new(AtomicU64::new(0)),
+        last_snapshot_height: Arc::new(AtomicU64::new(0)),
         identity,
         state_namespace,
         hello_nonce_ctr: Arc::new(AtomicU64::new(1)),
@@ -85,17 +121,20 @@ pub(crate) fn app_from_chain_boot(
     }
 }
 
-pub fn app_from_genesis(source: &GenesisSource) -> Result<App, String> {
-    app_from_genesis_in_shard(source, ShardId::A)
+/// Constructs an App from genesis using default lane 0.
+pub fn app_from_genesis_def(source: &GenesisSource) -> Result<App, String> {
+    app_from_genesis(source, DevLane::Lane0)
 }
 
-pub fn app_from_genesis_in_shard(source: &GenesisSource, shard: ShardId) -> Result<App, String> {
-    app_from_genesis_shard_identity(source, shard, None, None)
+/// Constructs an App by loading genesis for the given lane.
+pub fn app_from_genesis(source: &GenesisSource, dev_lane: DevLane) -> Result<App, String> {
+    app_from_genesis_id(source, dev_lane, None, None)
 }
 
-pub(crate) fn app_from_genesis_shard_identity(
+/// Constructs an App from genesis using the provided lane identity.
+pub(crate) fn app_from_genesis_id(
     source: &GenesisSource,
-    shard: ShardId,
+    dev_lane: DevLane,
     data_file: Option<PathBuf>,
     runtime_identity: Option<RuntimeIdentity>,
 ) -> Result<App, String> {
@@ -109,22 +148,24 @@ pub(crate) fn app_from_genesis_shard_identity(
         cfg,
         sks,
         data_file,
-        shard,
+        dev_lane,
         runtime_identity,
     ))
 }
 
-pub fn app_from_genesis_with_data(
+/// Constructs an App from genesis with explicit data path.
+pub fn app_from_genesis_data(
     source: &GenesisSource,
     data_file: Option<PathBuf>,
 ) -> Result<App, String> {
-    app_from_genesis_data_shard(source, data_file, ShardId::A)
+    app_from_genesis_shard(source, data_file, DevLane::Lane0)
 }
 
-pub fn app_from_genesis_data_shard(
+/// Constructs an App from genesis data bound to a specific lane.
+pub fn app_from_genesis_shard(
     source: &GenesisSource,
     data_file: Option<PathBuf>,
-    shard: ShardId,
+    dev_lane: DevLane,
 ) -> Result<App, String> {
     let (cfg, sks) = match source {
         GenesisSource::DevNet => dev_net(),
@@ -132,7 +173,7 @@ pub fn app_from_genesis_data_shard(
             load_genesis_bundle(path, Some(passphrase.as_str()))?
         }
     };
-    let identity = default_runtime_identity_for_shard(shard);
+    let identity = default_dev_lane_identity(dev_lane);
     let state_namespace = storage_namespace(&identity);
     let mut chain = Chain::boot(cfg, sks);
     if let Some(path) = data_file.as_deref() {
@@ -146,7 +187,7 @@ pub fn app_from_genesis_data_shard(
             chain.sync_canon_h();
             info!("loaded snapshot from {}", path.display());
             let pool = Mpool::new(4096);
-            let mut inner = Inner {
+            let inner = Inner {
                 chain,
                 pool,
                 roaming_pool,
@@ -155,7 +196,6 @@ pub fn app_from_genesis_data_shard(
                 peer_account_views: std::collections::HashMap::new(),
                 recent_flow: VecDeque::new(),
             };
-            inner.normalize_marks_quota();
             let validation_ctx = crate::handshake::HandshakeValidationCtx {
                 expected_network_id: identity.network_id.clone(),
                 expected_genesis_hash: Some(hex::encode(digest(&inner.chain.cfg.state0()))),
@@ -164,11 +204,13 @@ pub fn app_from_genesis_data_shard(
             let autosnapshot_backend = data_file
                 .as_ref()
                 .map(|p| SnapshotBackend::JsonFile { path: p.clone() });
+            let validator_identity_hash = validator_hash_from_cfg(&inner.chain.cfg);
+            let node_instance_id = mk_node_instance_id(&identity);
             return Ok(App {
                 inner: Arc::new(RwLock::new(inner)),
                 init: Arc::new(RwLock::new(InitState::ready(data_file.clone()))),
                 data_file,
-                shard,
+                shard: dev_lane,
                 handshake: Arc::new(RwLock::new(HandshakeState::new(
                     validation_ctx,
                     identity.cluster_domain_hi,
@@ -177,6 +219,26 @@ pub fn app_from_genesis_data_shard(
                 snapshot_verify_chain: true,
                 exit_on_fatal_snapshot: false,
                 broke_trust_test: false,
+                debug_stop_height: None,
+                debug_align_mid: false,
+                debug_disable_seal_loop: false,
+                deployment_profile: DeploymentProfile::SingleSealer,
+                seal_role: SealRole::Active,
+                lease_cfg: crate::lease::LeaseCfg::default(),
+                lease_mode: crate::lease::LeaseBackendMode::ProcessLocal,
+                lease_path: None,
+                lease_last_err: Arc::new(Mutex::new(None)),
+                lease_backend: Arc::new(crate::lease_backend::ProcessLocalLeaseBackend),
+                lease_runtime: Arc::new(Mutex::new(crate::lease::LeaseRuntime::new(
+                    node_instance_id.clone(),
+                ))),
+                lease_stats: Arc::new(crate::lease::LeaseStats::default()),
+                cluster_cfg: crate::ClusterCfg::default(),
+                validator_identity_hash,
+                node_instance_id,
+                debug_dump: DebugDumpCfg::default(),
+                dump_count: Arc::new(AtomicU64::new(0)),
+                last_snapshot_height: Arc::new(AtomicU64::new(0)),
                 identity,
                 state_namespace,
                 hello_nonce_ctr: Arc::new(AtomicU64::new(1)),
@@ -188,7 +250,7 @@ pub fn app_from_genesis_data_shard(
     }
     let pool = Mpool::new(4096);
     let roaming_pool = RoamingPool::default();
-    let mut inner = Inner {
+    let inner = Inner {
         chain,
         pool,
         roaming_pool,
@@ -197,7 +259,6 @@ pub fn app_from_genesis_data_shard(
         peer_account_views: std::collections::HashMap::new(),
         recent_flow: VecDeque::new(),
     };
-    inner.normalize_marks_quota();
     let validation_ctx = crate::handshake::HandshakeValidationCtx {
         expected_network_id: identity.network_id.clone(),
         expected_genesis_hash: Some(hex::encode(digest(&inner.chain.cfg.state0()))),
@@ -206,11 +267,13 @@ pub fn app_from_genesis_data_shard(
     let autosnapshot_backend = data_file
         .as_ref()
         .map(|p| SnapshotBackend::JsonFile { path: p.clone() });
+    let validator_identity_hash = validator_hash_from_cfg(&inner.chain.cfg);
+    let node_instance_id = mk_node_instance_id(&identity);
     Ok(App {
         inner: Arc::new(RwLock::new(inner)),
         init: Arc::new(RwLock::new(InitState::ready(data_file.clone()))),
         data_file,
-        shard,
+        shard: dev_lane,
         handshake: Arc::new(RwLock::new(HandshakeState::new(
             validation_ctx,
             identity.cluster_domain_hi,
@@ -219,6 +282,26 @@ pub fn app_from_genesis_data_shard(
         snapshot_verify_chain: true,
         exit_on_fatal_snapshot: false,
         broke_trust_test: false,
+        debug_stop_height: None,
+        debug_align_mid: false,
+        debug_disable_seal_loop: false,
+        deployment_profile: DeploymentProfile::SingleSealer,
+        seal_role: SealRole::Active,
+        lease_cfg: crate::lease::LeaseCfg::default(),
+        lease_mode: crate::lease::LeaseBackendMode::ProcessLocal,
+        lease_path: None,
+        lease_last_err: Arc::new(Mutex::new(None)),
+        lease_backend: Arc::new(crate::lease_backend::ProcessLocalLeaseBackend),
+        lease_runtime: Arc::new(Mutex::new(crate::lease::LeaseRuntime::new(
+            node_instance_id.clone(),
+        ))),
+        lease_stats: Arc::new(crate::lease::LeaseStats::default()),
+        cluster_cfg: crate::ClusterCfg::default(),
+        validator_identity_hash,
+        node_instance_id,
+        debug_dump: DebugDumpCfg::default(),
+        dump_count: Arc::new(AtomicU64::new(0)),
+        last_snapshot_height: Arc::new(AtomicU64::new(0)),
         identity,
         state_namespace,
         hello_nonce_ctr: Arc::new(AtomicU64::new(1)),

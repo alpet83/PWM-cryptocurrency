@@ -213,6 +213,7 @@ pub(super) async fn seed_finish_handshake(
             &seed.to_string(),
             true,
             expected_bridge_commitment.as_deref(),
+            app.identity.cluster_id.as_str(),
         ) {
             hs.transport.snapshot.session_retrying_total = hs
                 .transport
@@ -263,7 +264,7 @@ pub(super) async fn seed_finish_handshake(
             .saturating_add(1);
         clear_peer_error(&mut hs);
         mark_seed_peer_node(&mut hs, seed_key, &remote.node.node_id);
-        set_seed_peer_next_due(&mut hs, seed_key, now_ms.saturating_add(cfg.retry_base_ms));
+        set_seed_due(&mut hs, seed_key, now_ms.saturating_add(cfg.retry_base_ms));
         mark_trusted_peer_live(&mut hs, &remote.node.node_id, now_ms);
         info!(
             target: "pwmd::peer",

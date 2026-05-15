@@ -27,7 +27,8 @@ $sum = (Get-ChildItem -LiteralPath $rel -Recurse -File -ErrorAction SilentlyCont
 if ($null -eq $sum) { $sum = 0 }
 
 if ($sum -gt $thresholdBytes) {
-    Write-Host ("pwm-testing preflight: {0} {1} bytes > {2}MiB ({3} bytes) — Remove-Item -Recurse -Force" -f $rel, $sum, $mib, $thresholdBytes)
+    # ASCII hyphen only (Unicode em-dash breaks Windows PowerShell 5.1 parser on some hosts).
+    Write-Host ("pwm-testing preflight: {0} {1} bytes > {2}MiB ({3} bytes) - Remove-Item -Recurse -Force" -f $rel, $sum, $mib, $thresholdBytes)
     Remove-Item -LiteralPath $rel -Recurse -Force
 }
 else {

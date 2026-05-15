@@ -102,6 +102,7 @@ pub(crate) fn append_block_for_epoch(summary_path: &Path, blk: &Block) -> Result
 }
 
 /// Appends the current tip block from RAM (must match [`Inner::chain`](crate::state::Inner::chain) tip height).
+#[cfg(test)]
 pub(crate) fn append_tip_block(summary_path: &Path, inner: &Inner) -> Result<(), String> {
     let blk = inner
         .chain
@@ -117,7 +118,8 @@ pub(crate) fn append_tip_block(summary_path: &Path, inner: &Inner) -> Result<(),
 
 /// Brings epoch JSONL / manifest on disk up to [`Chain::tip_h`] using blocks still present in the tail deque.
 /// Used before monolithic snapshot encode when the seal loop has not yet flushed the latest block(s).
-pub(crate) fn sync_epoch_disk_to_tip(summary_path: &Path, inner: &Inner) -> Result<(), String> {
+/// Syncs epoch files on disk up to the current chain tip.
+pub(crate) fn sync_epoch_to_tip(summary_path: &Path, inner: &Inner) -> Result<(), String> {
     let tip = inner.chain.tip_h();
     if tip == 0 {
         return Ok(());
@@ -140,7 +142,7 @@ pub(crate) fn sync_epoch_disk_to_tip(summary_path: &Path, inner: &Inner) -> Resu
             disk_tip,
             want_h,
             tip,
-            "sync_epoch_disk_to_tip: appending missing block to epoch files"
+            "sync_epoch_to_tip: appending missing block to epoch files"
         );
         append_block_for_epoch(summary_path, blk)?;
     }
@@ -217,6 +219,134 @@ pub(crate) fn load_blocks_from_epochs(summary_path: &Path) -> Result<Vec<Block>,
     Ok(all)
 }
 
+/// Loads up to `limit` consecutive blocks starting from `from_h` using epoch metadata windows.
+pub(crate) fn load_cons_blocks_epochs(
+    summary_path: &Path,
+    from_h: u64,
+    limit: usize,
+) -> Result<Vec<Block>, String> {
+    if from_h == 0 || limit == 0 {
+        return Ok(vec![]);
+    }
+    let man = read_epoch_manifest(summary_path)?
+        .ok_or_else(|| "epoch consecutive load: missing manifest".to_string())?;
+    if man.schema_v != 1 {
+        return Err(format!(
+            "unsupported epoch manifest schema {}",
+            man.schema_v
+        ));
+    }
+    let base = summary_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("epochs");
+    let end_h = from_h.saturating_add(limit as u64).saturating_sub(1);
+    let mut out = Vec::with_capacity(limit);
+    let mut next_h = from_h;
+    for em in &man.epochs {
+        if next_h > end_h {
+            break;
+        }
+        if em.last_h < next_h {
+            continue;
+        }
+        if em.first_h > next_h {
+            return Err(format!(
+                "epoch consecutive load: missing height {} before epoch {}",
+                next_h, em.idx
+            ));
+        }
+        let read_from_h = next_h.max(em.first_h);
+        let read_to_h = end_h.min(em.last_h);
+        let line_start = usize::try_from(read_from_h.saturating_sub(em.first_h))
+            .map_err(|_| "epoch consecutive load: line_start overflow".to_string())?;
+        let line_count = usize::try_from(read_to_h.saturating_sub(read_from_h).saturating_add(1))
+            .map_err(|_| "epoch consecutive load: line_count overflow".to_string())?;
+        let p = base.join(&em.file_name);
+        let chunk = read_jsonl_range(&p, line_start, line_count)?;
+        if chunk.len() != line_count {
+            return Err(format!(
+                "epoch consecutive load: file {} returned {} lines, want {}",
+                em.file_name,
+                chunk.len(),
+                line_count
+            ));
+        }
+        for b in chunk {
+            if b.hdr.height != next_h {
+                return Err(format!(
+                    "epoch consecutive load: continuity break at {}, got {}",
+                    next_h, b.hdr.height
+                ));
+            }
+            out.push(b);
+            next_h = next_h.saturating_add(1);
+            if next_h > end_h {
+                break;
+            }
+        }
+    }
+    if out.is_empty() || out.first().map(|b| b.hdr.height) != Some(from_h) {
+        return Err(format!(
+            "epoch consecutive load: missing start height {}",
+            from_h
+        ));
+    }
+    Ok(out)
+}
+
+pub(crate) use load_cons_blocks_epochs as load_consecutive_blocks_from_epochs;
+
+/// Expensive compatibility path for legacy peers that request blocks by hashes only.
+pub(crate) fn load_hash_scan_blocks(
+    summary_path: &Path,
+    hashes: &[String],
+) -> Result<Vec<Option<Block>>, String> {
+    if hashes.is_empty() {
+        return Ok(vec![]);
+    }
+    let man = read_epoch_manifest(summary_path)?
+        .ok_or_else(|| "epoch hash scan: missing manifest".to_string())?;
+    if man.schema_v != 1 {
+        return Err(format!(
+            "unsupported epoch manifest schema {}",
+            man.schema_v
+        ));
+    }
+    let mut out = vec![None; hashes.len()];
+    let mut need = hashes.len();
+    let base = summary_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("epochs");
+    for em in &man.epochs {
+        if need == 0 {
+            break;
+        }
+        let p = base.join(&em.file_name);
+        let lines = read_jsonl_lines(&p)?;
+        for (line_i, line) in lines.iter().enumerate() {
+            let blk: Block = serde_json::from_str(line).map_err(|e| {
+                format!(
+                    "epoch {} line {}: decode block: {}",
+                    em.file_name, line_i, e
+                )
+            })?;
+            let got = hex::encode(hdr_hash(&blk.hdr));
+            for (ix, want) in hashes.iter().enumerate() {
+                if out[ix].is_none() && *want == got {
+                    out[ix] = Some(blk.clone());
+                    need = need.saturating_sub(1);
+                }
+            }
+            if need == 0 {
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn read_jsonl_lines(p: &Path) -> Result<Vec<String>, String> {
     if !p.exists() {
         return Ok(vec![]);
@@ -229,6 +359,34 @@ fn read_jsonl_lines(p: &Path) -> Result<Vec<String>, String> {
             continue;
         }
         out.push(line);
+    }
+    Ok(out)
+}
+
+fn read_jsonl_range(p: &Path, start: usize, count: usize) -> Result<Vec<Block>, String> {
+    if count == 0 {
+        return Ok(vec![]);
+    }
+    if !p.exists() {
+        return Ok(vec![]);
+    }
+    let f = fs::File::open(p).map_err(|e| format!("open {}: {e}", p.display()))?;
+    let mut out = Vec::with_capacity(count);
+    let end = start.saturating_add(count);
+    for (line_i, line) in std::io::BufReader::new(f).lines().enumerate() {
+        if line_i < start {
+            continue;
+        }
+        if line_i >= end {
+            break;
+        }
+        let line = line.map_err(|e| format!("read line {}: {e}", line_i))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let b: Block = serde_json::from_str(&line)
+            .map_err(|e| format!("decode line {} in {}: {}", line_i, p.display(), e))?;
+        out.push(b);
     }
     Ok(out)
 }
@@ -295,10 +453,8 @@ pub(crate) fn load_block_at_height(
 }
 
 /// Loads only heights `[tip - tail_cap + 1, tip]` from epoch JSONL (manifest-authoritative tip).
-pub(crate) fn load_tail_blocks_from_epochs(
-    summary_path: &Path,
-    tail_cap: usize,
-) -> Result<Vec<Block>, String> {
+/// Loads tail blocks from the epoch JSONL files.
+pub(crate) fn load_tail_blocks(summary_path: &Path, tail_cap: usize) -> Result<Vec<Block>, String> {
     let Some(man) = read_epoch_manifest(summary_path)? else {
         return Err("epoch tail load: missing manifest".into());
     };
@@ -394,7 +550,7 @@ mod tests {
     use super::*;
     use crate::bootstrap::app_from_dev_net;
     use crate::snapshot::epoch::SNAP_CHK_BLK_IV;
-    use crate::snapshot::io::save_checkpoint_summary;
+    use crate::snapshot::io::{json_file_seal_persist, save_checkpoint_summary};
     use crate::snapshot::{encode_inner_snap_json, load_snapshot};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -451,7 +607,7 @@ mod tests {
 
     /// Regression: API-only seal + `save_snapshot` must flush epoch tail (same invariant as background `json_file_seal_persist`).
     #[test]
-    fn monolithic_save_syncs_when_disk_behind_memory() {
+    fn mono_save_sync_disk_lag() {
         let sfx = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -479,7 +635,7 @@ mod tests {
 
     /// `json_file_runtime_persist` (API hot path) must not require monolithic encode / full epoch re-read.
     #[test]
-    fn runtime_persist_after_disk_lag_loads() {
+    fn runtime_persist_disk_lag() {
         let sfx = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -505,8 +661,36 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// `json_file_seal_persist` must converge epoch tail + summary whenever lifecycle calls it.
     #[test]
-    fn epoch_trust_load_respects_tail_cap() {
+    fn seal_persist_syncs_tail() {
+        let sfx = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pwm-seal-persist-{sfx}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let pb = dir.join("pwm-data.json");
+
+        let app = app_from_dev_net();
+        let (cfg, _) = pwm_core::dev_net();
+
+        {
+            let mut g = app.inner.try_write().expect("inner");
+            g.chain.seal(vec![]).expect("seal");
+            append_tip_block(&pb, &g).expect("append disk=1");
+            g.chain.seal(vec![]).expect("seal mem=2 disk still 1");
+            json_file_seal_persist(&pb, &g).expect("seal persist");
+        }
+
+        let got = load_snapshot(&pb, &cfg).expect("load").expect("snap");
+        assert_eq!(got.blocks.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn epoch_trust_respects_tail_cap() {
         use crate::snapshot::io::{load_snapshot_timed, SnapshotLoadOpts};
 
         let sfx = SystemTime::now()

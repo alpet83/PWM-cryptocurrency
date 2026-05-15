@@ -6,7 +6,7 @@ use tracing::{debug, info};
 
 const PEER_TARGET: &str = "pwmd::peer";
 const RECONNECT_LOG_ROLLUP_MS: u64 = 10_000;
-const HEALTHY_SKIP_LOG_ROLLUP_MS: u64 = 60_000;
+const HEALTHY_SKIP_ROLLUP_MS: u64 = 60_000;
 
 pub(crate) fn is_wire_timeout(err: &str) -> bool {
     let lower = err.to_ascii_lowercase();
@@ -83,7 +83,7 @@ pub(crate) fn record_reconnect(
     );
     let state = hs.reconnect_log.entry(seed.to_string()).or_default();
     let rollup_ms = if reason == PeerReconnectReason::HealthySessionSkip {
-        HEALTHY_SKIP_LOG_ROLLUP_MS
+        HEALTHY_SKIP_ROLLUP_MS
     } else {
         RECONNECT_LOG_ROLLUP_MS
     };
@@ -152,6 +152,7 @@ pub(crate) fn reconnect_from_close(reason: PeerCloseReason) -> PeerReconnectReas
         PeerCloseReason::WireTimeout => PeerReconnectReason::WireTimeout,
         PeerCloseReason::Eof => PeerReconnectReason::Eof,
         PeerCloseReason::ProtocolError => PeerReconnectReason::ProtocolError,
+        PeerCloseReason::SyncTipDivergence => PeerReconnectReason::SyncTipDivergence,
         PeerCloseReason::ExplicitShutdown => PeerReconnectReason::ExplicitShutdown,
     }
 }

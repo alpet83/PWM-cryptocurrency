@@ -9,10 +9,9 @@ pub use ::pwm_tui::test_support::{
     preflight_recipient_rpc, preflight_sel_init_auto, preflight_xfer_dst, receiver_table_len,
     selected_to_receiver, signing_material_for_sender, submit_roaming_intent, text_input_set_text,
     validate_encrypt_passphrase_inputs, validate_send_form, wallet_apply_auto_lock,
-    wallet_lock_now, wallet_try_unlock_with_passphrase, wallet_unlock_secs_clamped, AcctRow, Args,
-    BookPromptModal, BookRecipient, IdentitySource, JsonFetchFailure, OwnedWalletAccount,
-    RpcHealth, SendField, SendForm, WalletIdentity, FALLBACK_MODE_WARNING,
-    FALLBACK_WARN_CHUNK_ROWS,
+    wallet_lock_now, wallet_unlock, wallet_unlock_secs_clamped, AcctRow, Args, BookPromptModal,
+    BookRecipient, IdentitySource, JsonFetchFailure, OwnedWalletAccount, RpcHealth, SendField,
+    SendForm, WalletIdentity, FALLBACK_MODE_WARNING, FALLBACK_WARN_CHUNK_ROWS,
 };
 pub use clap::Parser;
 pub use pwm_core::{

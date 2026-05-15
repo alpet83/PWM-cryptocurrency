@@ -14,8 +14,8 @@ const GOSSIP_WIRE_MAX_ROWS: usize = 32;
 /// Soft payload budget for serialized gossip rows (approximate).
 const GOSSIP_WIRE_MAX_BYTES: usize = 4096;
 const GOSSIP_INBOUND_MAX_ROWS: usize = 64;
-const GOSSIP_MAX_SHARD_ID_LEN: usize = 128;
-const GOSSIP_MAX_NODE_ID_LEN: usize = 256;
+const GOSSIP_SHARD_ID_MAX: usize = 128;
+const GOSSIP_NODE_ID_MAX: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FedRowSource {
@@ -180,8 +180,8 @@ fn view_health_label(expected: Option<u32>, active: u32, stale: u32) -> &'static
 fn merge_gossip_rows(table: &mut FederationTable, rows: Vec<FedGossipWireRow>) {
     for r in rows.into_iter().take(GOSSIP_INBOUND_MAX_ROWS) {
         if r.shard_id.is_empty()
-            || r.shard_id.len() > GOSSIP_MAX_SHARD_ID_LEN
-            || r.source_node_id.len() > GOSSIP_MAX_NODE_ID_LEN
+            || r.shard_id.len() > GOSSIP_SHARD_ID_MAX
+            || r.source_node_id.len() > GOSSIP_NODE_ID_MAX
         {
             continue;
         }
@@ -343,6 +343,21 @@ mod tests {
                 protocol_version: "0.1.0".into(),
                 tx_features: vec!["t".into()],
                 services: vec!["s".into()],
+                sync_profile: None,
+                deployment_profile: crate::handshake::DeploymentProfile::SingleSealer,
+                seal_role: crate::handshake::SealRole::Active,
+                validator_identity_hash: Some("vh-federation".into()),
+                node_instance_id: Some("inst-federation".into()),
+                lease_owner_id: None,
+                lease_term: None,
+                lease_expires_at_ms: None,
+                lease_last_tip: None,
+                lease_fence: None,
+                cluster_attest_enabled: false,
+                cluster_role: crate::handshake::ClusterRole::None,
+                cluster_members: Vec::new(),
+                cluster_quorum_k: None,
+                cluster_quorum_n: None,
             },
             nonce: vec![1],
             timestamp_ms: 0,

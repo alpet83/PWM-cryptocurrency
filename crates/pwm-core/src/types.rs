@@ -1,7 +1,8 @@
 //! Human-facing account ID codecs (BECH32DX/legacy) and display helpers.
 
 use bech32::{self, FromBase32, ToBase32, Variant};
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::domain_index;
 
@@ -13,7 +14,7 @@ const BECH32DX_VERSION: u8 = 1;
 const BECH32DX_PAYLOAD_LEN: usize = 38;
 
 pub fn account_id_to_human(id: &AccountId) -> String {
-    render_account_id_for_user(id)
+    render_acct_id_ui(id)
 }
 
 pub fn parse_account_id(input: &str) -> Result<AccountId, String> {
@@ -54,10 +55,11 @@ pub fn parse_account_id(input: &str) -> Result<AccountId, String> {
 /// without explicit `/LO` suffix (for example `pwm1-CY-f...`).
 ///
 /// Previously: `parse_account_id_for_user_input`.
-pub fn parse_acct_id_for_user(input: &str) -> Result<AccountId, String> {
+/// Parses an account id from user-supplied input (pretty or canonical hex).
+pub fn parse_acct_id_ui(input: &str) -> Result<AccountId, String> {
     let s = input.trim();
     if let Some(domain_part) = pretty_domain_part(s) {
-        reject_ambiguous_legacy_pretty_domain(domain_part, true)?;
+        reject_ambig_dom(domain_part, true)?;
     }
     parse_account_id(s)
 }
@@ -66,10 +68,11 @@ pub fn parse_acct_id_for_user(input: &str) -> Result<AccountId, String> {
 ///
 /// Unlike [`parse_account_id`], this rejects ambiguous legacy pretty addresses where
 /// a regulatory label is used without an explicit `/LO` suffix (for example `pwm1-CY-f...`).
-pub fn parse_account_id_for_migration(input: &str) -> Result<AccountId, String> {
+/// Parses an account id in migration context (accepts legacy formats).
+pub fn parse_acct_id_mig(input: &str) -> Result<AccountId, String> {
     let s = input.trim();
     if let Some(domain_part) = pretty_domain_part(s) {
-        reject_ambiguous_legacy_pretty_domain(domain_part, false)?;
+        reject_ambig_dom(domain_part, false)?;
     }
     parse_account_id(s)
 }
@@ -80,10 +83,8 @@ fn pretty_domain_part(s: &str) -> Option<&str> {
     Some(domain_part)
 }
 
-fn reject_ambiguous_legacy_pretty_domain(
-    domain_part: &str,
-    runtime_user_input: bool,
-) -> Result<(), String> {
+/// Rejects account ids that are ambiguous under the legacy pretty-domain encoding.
+fn reject_ambig_dom(domain_part: &str, runtime_user_input: bool) -> Result<(), String> {
     if domain_part.contains('/') {
         return Ok(());
     }
@@ -107,7 +108,7 @@ fn reject_ambiguous_legacy_pretty_domain(
 }
 
 pub fn account_id_to_bech32dx(id: &AccountId) -> String {
-    encode_bech32dx(BECH32DX_VERSION, 0, domain_raw_from_account_id(id), id)
+    encode_bech32dx(BECH32DX_VERSION, 0, dom_raw_from_acct(id), id)
 }
 
 pub fn encode_bech32dx(version: u8, flags: u8, domain_raw: u32, id: &AccountId) -> String {
@@ -213,15 +214,17 @@ fn parse_pretty_domain(domain_part: &str) -> Result<u32, String> {
     u32::from_str_radix(hex, 16).map_err(|e| e.to_string())
 }
 
-fn domain_raw_from_account_id(id: &AccountId) -> u32 {
+/// Extracts the raw domain-hi byte from an account id.
+fn dom_raw_from_acct(id: &AccountId) -> u32 {
     ((id[0] as u32) << 8) | (id[1] as u32)
 }
 
 pub fn format_domain_pascal_hex(domain_raw: u32) -> String {
-    format_domain_pascal_hex_width(domain_raw, if domain_raw <= 0xFFFF { 4 } else { 5 })
+    fmt_dom_pascal_hex(domain_raw, if domain_raw <= 0xFFFF { 4 } else { 5 })
 }
 
-pub fn format_domain_pascal_hex_width(domain_raw: u32, width: usize) -> String {
+/// Formats a domain-hi value as a fixed-width PascalCase hex string.
+pub fn fmt_dom_pascal_hex(domain_raw: u32, width: usize) -> String {
     format!("${:0width$X}", domain_raw, width = width)
 }
 
@@ -232,8 +235,9 @@ pub fn format_domain_for_display(domain_raw: u32) -> (String, bool) {
     (format_domain_pascal_hex(domain_raw), false)
 }
 
-pub fn render_account_id_for_user(id: &AccountId) -> String {
-    let domain_raw = domain_raw_from_account_id(id);
+/// Renders an account id in user-readable form (pretty or canonical depending on domain).
+pub fn render_acct_id_ui(id: &AccountId) -> String {
+    let domain_raw = dom_raw_from_acct(id);
     let (domain_display, known_for_display) = format_domain_for_display(domain_raw);
     let known_domain_with_lo = if known_for_display
         && matches!(
@@ -260,11 +264,53 @@ pub struct Account {
     pub derivation_index: u32,
     pub balance_pwm: u128,
     pub staked: u128,
-    pub marks: u128,
+    #[serde(default, deserialize_with = "de_marks_compat")]
+    pub marks: u32,
     pub initialized: bool,
     pub index: u32,
     pub flags: u32,
     pub nonce: u64,
+    #[serde(default)]
+    pub last_claim_unix_time: u64,
+    #[serde(default)]
+    pub last_claim_anchor_ref: u64,
+    #[serde(default, rename = "last_free_claim_utc_day")]
+    pub free_claim_utc_day: Option<u64>,
+    #[serde(default)]
+    pub last_stake_change_height: u64,
+}
+
+fn migrate_marks_legacy(raw: u128) -> u32 {
+    if raw <= u32::MAX as u128 {
+        return raw as u32;
+    }
+    let scaled = raw / crate::display::PWM_RAW_SCALE;
+    scaled.min(u32::MAX as u128) as u32
+}
+
+fn de_marks_compat<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum MarksWire {
+        U32(u32),
+        U64(u64),
+        U128(u128),
+        Str(String),
+    }
+
+    let wire = MarksWire::deserialize(deserializer)?;
+    let raw = match wire {
+        MarksWire::U32(v) => v as u128,
+        MarksWire::U64(v) => v as u128,
+        MarksWire::U128(v) => v,
+        MarksWire::Str(s) => s
+            .parse::<u128>()
+            .map_err(|e| D::Error::custom(format!("invalid marks decimal string: {e}")))?,
+    };
+    Ok(migrate_marks_legacy(raw))
 }
 
 impl Account {
@@ -279,6 +325,10 @@ impl Account {
             index: 0,
             flags: 0,
             nonce: 0,
+            last_claim_unix_time: 0,
+            last_claim_anchor_ref: 0,
+            free_claim_utc_day: None,
+            last_stake_change_height: 0,
         }
     }
 }
@@ -286,10 +336,9 @@ impl Account {
 #[cfg(test)]
 mod tests {
     use super::{
-        account_id_to_bech32dx, account_id_to_human, decode_bech32dx, format_domain_for_display,
-        format_domain_pascal_hex, format_domain_pascal_hex_width, parse_account_id,
-        parse_account_id_for_migration, parse_acct_id_for_user, BECH32DX_HRP,
-        LEGACY_HUMAN_ACCOUNT_PREFIX,
+        account_id_to_bech32dx, account_id_to_human, decode_bech32dx, fmt_dom_pascal_hex,
+        format_domain_for_display, format_domain_pascal_hex, parse_account_id, parse_acct_id_mig,
+        parse_acct_id_ui, BECH32DX_HRP, LEGACY_HUMAN_ACCOUNT_PREFIX,
     };
 
     /// Parses raw hex plus legacy `pwm1` prefixed hex (formerly `parse_accepts_hex_and_human_prefix`).
@@ -425,7 +474,7 @@ mod tests {
     #[test]
     fn migr_rejects_miss_lo() {
         let legacy = "pwm1-CY-fBB921800-t25cb00000000000000000000000000000000000000000000000000";
-        let err = parse_account_id_for_migration(legacy).expect_err("must reject");
+        let err = parse_acct_id_mig(legacy).expect_err("must reject");
         assert!(err.contains("missing '/LO'"));
     }
 
@@ -433,7 +482,7 @@ mod tests {
     #[test]
     fn user_in_reject_ambig_legacy() {
         let legacy = "pwm1-CY-fBB921800-t25cb00000000000000000000000000000000000000000000000000";
-        let err = parse_acct_id_for_user(legacy).expect_err("must reject");
+        let err = parse_acct_id_ui(legacy).expect_err("must reject");
         assert!(err.contains("missing '/LO'"));
         assert!(err.contains("strict pretty"));
         assert!(err.contains("canonical bech32dx"));
@@ -444,7 +493,7 @@ mod tests {
     fn user_hex_ok_via_policy() {
         let id = [0xAA; 32];
         let hex = hex::encode(id);
-        assert_eq!(parse_acct_id_for_user(&hex).unwrap(), id);
+        assert_eq!(parse_acct_id_ui(&hex).unwrap(), id);
     }
 
     /// Pretty `CY/LO` suffix round-trips (formerly `parse_accepts_pretty_label_with_lo_suffix`).
@@ -494,7 +543,7 @@ mod tests {
     /// Pascal hex width helper widens sparse domain codes (formerly `pascal_hex_uses_20bit_width_when_needed`).
     #[test]
     fn pascal_hex_width_sparse() {
-        assert_eq!(format_domain_pascal_hex_width(0x0A3F2, 5), "$0A3F2");
+        assert_eq!(fmt_dom_pascal_hex(0x0A3F2, 5), "$0A3F2");
         assert_eq!(format_domain_pascal_hex(0x00AF), "$00AF");
     }
 }

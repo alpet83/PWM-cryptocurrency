@@ -42,7 +42,8 @@ pub fn parse_signing_key_hex(hex_key: &str) -> Result<ed25519_dalek::SigningKey,
 }
 
 /// Decrypt encrypted wallet blob; returns signing key + raw JSON bytes for F4 re-key cache.
-pub fn try_decrypt_wallet_secret_payload(
+/// Decrypts the wallet's secret payload; returns Err if passphrase is wrong or payload malformed.
+pub fn decrypt_wallet_secret(
     wallet: &WalletReadHeader,
     passphrase: Option<&str>,
 ) -> Result<(ed25519_dalek::SigningKey, Vec<u8>), String> {
@@ -157,7 +158,7 @@ pub fn load_wallet_identity(
             }
             "encrypted" => {
                 if let Some(pw) = pass {
-                    let (sk, pt) = try_decrypt_wallet_secret_payload(&wallet, Some(pw))?;
+                    let (sk, pt) = decrypt_wallet_secret(&wallet, Some(pw))?;
                     let until = Instant::now() + Duration::from_secs(unlock_secs);
                     (Some(sk), Some(until), true, Some(pt))
                 } else {
@@ -198,7 +199,8 @@ pub fn load_wallet_identity(
     })
 }
 
-pub fn wallet_try_unlock_with_passphrase(
+/// Attempts to unlock the wallet with the given passphrase.
+pub fn wallet_unlock(
     w: &mut WalletIdentity,
     passphrase: &str,
     unlock_secs: u64,
@@ -209,7 +211,7 @@ pub fn wallet_try_unlock_with_passphrase(
     if wallet.mode != "encrypted" {
         return Err("wallet is not encrypted".into());
     }
-    let (sk, pt) = try_decrypt_wallet_secret_payload(&wallet, Some(passphrase))?;
+    let (sk, pt) = decrypt_wallet_secret(&wallet, Some(passphrase))?;
     w.signing_key = Some(sk);
     w.secret_payload_plaintext = Some(pt);
     w.unlock_expires_at = Some(Instant::now() + Duration::from_secs(unlock_secs));
@@ -434,7 +436,8 @@ pub fn write_wallet_yaml_atomic(path: &Path, contents: &str) -> Result<(), Strin
 }
 
 /// Encrypt `plaintext_dev` or re-seal an `encrypted` wallet with `rekey_payload` (decrypted JSON bytes).
-pub fn wallet_encrypt_or_rekey_disk(
+/// Encrypts the wallet (first time) or re-keys it with a new passphrase, persisting to disk.
+pub fn wallet_rekey(
     path: &Path,
     new_passphrase: &str,
     rekey_payload: Option<&[u8]>,

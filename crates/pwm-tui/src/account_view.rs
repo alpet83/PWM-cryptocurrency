@@ -2,14 +2,14 @@
 
 use crate::config::{base_url, http_client, parse_status_shard_label, DEBUG_FETCH_INTERVAL};
 use crate::models::{
-    parse_hex_account_id, parse_u128, AcctRow, UNKNOWN_BALANCE_SENTINEL,
+    parse_hex_account_id, parse_u128, parse_u32, AcctRow, UNKNOWN_BALANCE_SENTINEL,
     UNKNOWN_INIT_NONCE_SENTINEL,
 };
 use crate::roaming::submit_roaming_intent;
 use crate::status::{
     fetch_json, merge_rpc_health, rpc_health_from_failure, JsonFetchFailure, RpcHealth,
 };
-use crate::tx_submit::submit_transfer;
+use crate::tx_submit::{submit_burn_mark, submit_transfer};
 use crate::wallet::IdentitySource;
 use pwm_core::{account_id_to_human, AccountId};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -18,6 +18,7 @@ use std::time::Instant;
 
 pub struct Ui {
     pub head: String,
+    pub head_height: Option<u64>,
     pub rows: Vec<AcctRow>,
     pub detail_line: String,
     pub debug_detail: String,
@@ -37,6 +38,7 @@ impl Default for Ui {
     fn default() -> Self {
         Self {
             head: "…".into(),
+            head_height: None,
             rows: vec![],
             detail_line: String::new(),
             debug_detail: String::new(),
@@ -51,6 +53,7 @@ impl Default for Ui {
 #[derive(Clone)]
 pub struct PollSnapshot {
     pub head: String,
+    pub head_height: Option<u64>,
     pub rows: Vec<AcctRow>,
     pub err: String,
     pub rpc_health: RpcHealth,
@@ -76,6 +79,14 @@ pub enum RpcTask {
         to: AccountId,
         amount: u128,
         fee: u128,
+        identity: IdentitySource,
+    },
+    SubmitBurnMark {
+        req_id: u64,
+        from: AccountId,
+        mark_amount: u32,
+        beneficiary: Option<AccountId>,
+        purpose: String,
         identity: IdentitySource,
     },
 }
@@ -123,6 +134,8 @@ pub fn acct_row_for_id(rows: &[AcctRow], id: &AccountId, label: Option<String>) 
             balance_pwm: 0,
             initialized: false,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         });
     if label.is_some() {
@@ -176,17 +189,16 @@ pub fn owner_and_receivers(
 pub fn poll_snapshot(client: &reqwest::blocking::Client) -> PollSnapshot {
     let b = base_url();
     let mut head = "…".to_string();
+    let mut head_height = None;
     let mut rows = Vec::new();
     let mut rpc_health = RpcHealth::Online;
     let mut rpc_shard_label = None;
     let mut parts: Vec<&'static str> = Vec::new();
     match fetch_json(client, &format!("{}/v1/head", b)) {
         Ok(v) => {
-            head = format!(
-                "height={} tip={}",
-                v["height"].as_u64().unwrap_or(0),
-                v["tip"].as_str().unwrap_or("?")
-            );
+            let height = v["height"].as_u64().unwrap_or(0);
+            head = format!("height={} tip={}", height, v["tip"].as_str().unwrap_or("?"));
+            head_height = Some(height);
         }
         Err(e) => {
             parts.push(match e {
@@ -245,6 +257,11 @@ pub fn poll_snapshot(client: &reqwest::blocking::Client) -> PollSnapshot {
                                         x["nonce"].as_u64().unwrap_or(0)
                                     }
                                 },
+                                marks: parse_u32(&x["marks"]),
+                                staked: x["staked"]
+                                    .as_str()
+                                    .and_then(|s| s.parse::<u128>().ok())
+                                    .unwrap_or(0),
                                 label: None,
                             })
                         })
@@ -270,6 +287,7 @@ pub fn poll_snapshot(client: &reqwest::blocking::Client) -> PollSnapshot {
     }
     PollSnapshot {
         head,
+        head_height,
         rows,
         err: parts.join("; "),
         rpc_health,
@@ -339,6 +357,22 @@ pub fn start_rpc_worker() -> (Sender<RpcTask>, Receiver<RpcEvent>) {
                     let _ = evt_tx.send(RpcEvent::SubmitDone {
                         req_id,
                         to_id: to,
+                        result,
+                    });
+                }
+                RpcTask::SubmitBurnMark {
+                    req_id,
+                    from,
+                    mark_amount,
+                    beneficiary,
+                    purpose,
+                    identity,
+                } => {
+                    let result =
+                        submit_burn_mark(&from, mark_amount, beneficiary, purpose, &identity);
+                    let _ = evt_tx.send(RpcEvent::SubmitDone {
+                        req_id,
+                        to_id: from,
                         result,
                     });
                 }

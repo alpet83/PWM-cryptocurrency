@@ -22,7 +22,7 @@ pub(super) async fn seed_try_tcp_connect(
                 None,
             );
             let next_due = now_ms.saturating_add(cfg.heartbeat_interval_ms.max(200));
-            set_seed_peer_next_due(&mut hs, seed_key, next_due);
+            set_seed_due(&mut hs, seed_key, next_due);
             drop(hs);
             tokio::time::sleep(std::time::Duration::from_millis(
                 cfg.heartbeat_interval_ms.max(200),

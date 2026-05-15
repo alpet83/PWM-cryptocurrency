@@ -23,7 +23,7 @@ use pwm_core::TAIL_BLOCK_CAP;
 use serde_json::Value;
 use std::path::Path as FsPath;
 use std::time::Instant;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// JsonFile epoch load: full replay vs trust checkpoint + tail-only blocks (see `validate_snapshot_trusted`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -131,7 +131,30 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
     }
     let mut prev = prev_gen();
     let mut replay_state = cfg.state0();
+    let total_blocks = snapshot.blocks.len() as u64;
+    let replay_start = Instant::now();
+    let mut last_log = replay_start;
+    info!(
+        target: SNAP_STARTUP_TARGET,
+        stage = "chain_verify",
+        total_blocks,
+        "chain_verify started"
+    );
     for (i, blk) in snapshot.blocks.iter().enumerate() {
+        let now = Instant::now();
+        if now.duration_since(last_log).as_secs() >= 10 {
+            info!(
+                target: SNAP_STARTUP_TARGET,
+                stage = "chain_verify",
+                block_idx = i as u64,
+                height = blk.hdr.height,
+                total_blocks,
+                blocks_done = i as u64,
+                elapsed_ms = replay_start.elapsed().as_millis() as u64,
+                "chain_verify progress"
+            );
+            last_log = now;
+        }
         let h = (i as u64) + 1;
         if blk.hdr.height != h {
             return Err(format!(
@@ -167,15 +190,28 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
             ));
         }
         for (tx_i, tx) in blk.txs.iter().enumerate() {
-            replay_state.apply_tx(tx).map_err(|e| {
-                format!(
+            replay_state
+                .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts)
+                .map_err(|e| {
+                    format!(
                     "snapshot chain mismatch: block[{i}] tx[{tx_i}] is invalid during replay: {e}"
                 )
-            })?;
+                })?;
         }
-        replay_state.accrue_marks(cfg.marks_coeff);
         let prod_acct = cfg.prod_acct(blk.hdr.prod_idx);
-        replay_state.reward_producer(&prod_acct, cfg.block_reward);
+        if cfg.is_legacy_policy() {
+            replay_state.accrue_marks(cfg.marks_coeff);
+            replay_state.reward_producer(&prod_acct, cfg.block_reward);
+        } else {
+            let season_ppm = cfg.season_ppm(blk.hdr.ts);
+            replay_state.accrue_marks_v2(cfg.marks_coeff, cfg.marks_stake_min, season_ppm);
+            replay_state.reward_producer_v2(
+                &prod_acct,
+                cfg.block_reward,
+                cfg.pwm_stake_min,
+                season_ppm,
+            );
+        }
         let replay_root = digest(&replay_state);
         if blk.hdr.state_root != replay_root {
             let tx_kind = block_tx_kind(blk);
@@ -223,6 +259,13 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
             );
         }
     }
+    info!(
+        target: SNAP_STARTUP_TARGET,
+        stage = "chain_verify",
+        total_blocks,
+        elapsed_ms = replay_start.elapsed().as_millis() as u64,
+        "chain_verify done"
+    );
     Ok(())
 }
 
@@ -414,7 +457,7 @@ pub(crate) fn decode_snapshot_txt(txt: &str, cfg: &GenCfg) -> Result<Option<Snap
 /// JSON parse + decode **without** replay validation. **Bench / diagnostics only.**
 pub(crate) fn decode_snap_raw(txt: &str, cfg: &GenCfg) -> Result<Option<SnapshotData>, String> {
     let raw: Value = serde_json::from_str(txt).map_err(|e| format!("parse snapshot JSON: {e}"))?;
-    decode_snapshot_value_without_validate(raw, cfg)
+    decode_snap_value_raw(raw, cfg)
 }
 
 /// Full chain replay verification (same work as inside a normal load after decode).
@@ -479,7 +522,7 @@ pub(crate) fn encode_inner_snap_json(
                 .to_string()
         })?;
         if super::epoch::manifest_file_path(p).exists() {
-            incremental::sync_epoch_disk_to_tip(p, inner)?;
+            incremental::sync_epoch_to_tip(p, inner)?;
         }
         let full = incremental::load_blocks_from_epochs(p)?;
         verify_tail_vs_epochs(&inner.chain, &full)?;
@@ -584,7 +627,7 @@ pub(crate) fn load_snapshot_timed(
         let epoch_load = if effective_opts.verify_chain {
             incremental::load_blocks_from_epochs(path)
         } else {
-            incremental::load_tail_blocks_from_epochs(path, TAIL_BLOCK_CAP)
+            incremental::load_tail_blocks(path, TAIL_BLOCK_CAP)
         };
         snap.blocks = epoch_load.map_err(|e| {
             warn!(
@@ -617,10 +660,7 @@ pub(crate) fn load_snapshot_timed(
     Ok((Some(snap), br))
 }
 
-fn decode_snapshot_value_without_validate(
-    raw: Value,
-    cfg: &GenCfg,
-) -> Result<Option<SnapshotData>, String> {
+fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData>, String> {
     let obj = raw
         .as_object()
         .ok_or_else(|| "parse snapshot JSON: root must be an object".to_string())?;
@@ -797,12 +837,12 @@ pub(crate) fn save_snapshot(path: &FsPath, inner: &Inner) -> Result<(), String> 
     Ok(())
 }
 
-/// JsonFile hot save (`snapshot_save_under_inner_lock`): sync epoch JSONL to tip, rewrite summary only.
+/// JsonFile hot save (`snap_save_locked`): sync epoch JSONL to tip, rewrite summary only.
 /// Avoids monolithic `encode_inner_snap_json` (no full `load_blocks_from_epochs` for merge).
 /// Legacy trees without epoch manifest still use [`save_snapshot`].
 pub(crate) fn json_file_runtime_persist(path: &FsPath, inner: &Inner) -> Result<(), String> {
     if manifest_file_path(path).exists() {
-        incremental::sync_epoch_disk_to_tip(path, inner)?;
+        incremental::sync_epoch_to_tip(path, inner)?;
         save_checkpoint_summary(path, inner)
     } else {
         save_snapshot(path, inner)
@@ -835,16 +875,46 @@ pub(crate) fn save_checkpoint_summary(path: &FsPath, inner: &Inner) -> Result<()
 }
 
 /// Same wire as checkpoint summary (tip-aligned state); used when seal did not run (e.g. relay).
-pub(crate) fn save_epochs_summary_at_tip(path: &FsPath, inner: &Inner) -> Result<(), String> {
+pub(crate) fn save_epochs_sum_tip(path: &FsPath, inner: &Inner) -> Result<(), String> {
     save_checkpoint_summary(path, inner)
 }
 
-/// Per-seal JsonFile path: append epoch JSONL, then summary on [`super::epoch::SNAP_CHK_BLK_IV`] boundary.
+/// Seal-time JsonFile flush: sync epoch JSONL tail to tip, then rewrite tip-aligned summary.
 pub(crate) fn json_file_seal_persist(path: &FsPath, inner: &Inner) -> Result<(), String> {
-    incremental::append_tip_block(path, inner)?;
-    let h = inner.chain.tip_h();
-    if h > 0 && h % super::epoch::SNAP_CHK_BLK_IV == 0 {
-        save_checkpoint_summary(path, inner)?;
+    incremental::sync_epoch_to_tip(path, inner)?;
+    save_checkpoint_summary(path, inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pwm_core::hd::domain_of_account_id;
+    use pwm_core::tx::{SignedTx, TxBody};
+
+    #[test]
+    fn snap_replay_uses_blk_ctx() {
+        let (cfg, sks) = pwm_core::dev_net();
+        let mut chain = pwm_core::Chain::boot(cfg.clone(), sks.clone());
+        let signer = cfg.accounts[0].acct;
+        let tx = SignedTx::sign_body(
+            &sks[0],
+            domain_of_account_id(&signer),
+            cfg.accounts[0].der_idx,
+            0,
+            TxBody::Stake { amount: 1 },
+        );
+        chain.seal(vec![tx]).expect("seal");
+        let blocks = chain.blocks.iter().cloned().collect::<Vec<_>>();
+        let mut snap = SnapshotData {
+            version: SNAPSHOT_VERSION,
+            genesis_accounts: snapshot_genesis_accounts(&cfg),
+            blocks,
+            state: chain.st.clone(),
+            roaming: SnapshotRoamingWire::default(),
+            cross_shard: CrossShardLedger::default(),
+            blocks_stored: BlocksStored::Inline,
+            checkpoint_height: 0,
+        };
+        validate_snapshot(&mut snap, &cfg).expect("replay with block context");
     }
-    Ok(())
 }

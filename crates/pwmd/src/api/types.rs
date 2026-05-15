@@ -77,15 +77,39 @@ pub struct StatusOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genesis_mismatch_received_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub genesis_mismatch_peer_node_id: Option<String>,
+    #[serde(rename = "genesis_mismatch_peer_node_id")]
+    pub genesis_mismatch_peer_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genesis_mismatch_peer_hint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub genesis_mismatch_at_unix_ms: Option<u64>,
+    #[serde(rename = "genesis_mismatch_at_unix_ms")]
+    pub genesis_mismatch_unix_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genesis_guard_recovery_hint: Option<&'static str>,
     pub cluster_id: String,
     pub node_id: String,
+    pub deployment_profile: String,
+    pub seal_role: String,
+    pub lease_backend_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_backend_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_last_backend_error: Option<String>,
+    pub validator_identity_hash: String,
+    pub node_instance_id: String,
+    pub lease_state: String,
+    pub seal_gate_allowed: bool,
+    pub lease_owner_id: String,
+    pub lease_term: u64,
+    pub lease_expires_at_ms: u64,
+    pub lease_last_tip: u64,
+    pub lease_fence: u64,
+    pub lease_last_reason: String,
+    pub lease_acquire_ok: u64,
+    pub lease_renew_ok: u64,
+    pub lease_loss_total: u64,
+    pub lease_reject_total: u64,
+    pub lease_takeover_ok: u64,
 }
 
 #[derive(Serialize)]
@@ -313,6 +337,7 @@ pub struct HeadOut {
 }
 
 #[derive(Serialize)]
+/// V2-2 Slice 0 API freeze: docs/reviews/sprint-v2-2-slice0-account-api-freeze.md.
 pub struct AcctOut {
     pub id: String,
     /// Legacy compatibility field.
@@ -330,7 +355,7 @@ pub struct AcctOut {
     pub spendable_on_this_shard: Option<String>,
     pub local_view_only: bool,
     pub staked: String,
-    pub marks: String,
+    pub marks: u32,
     pub initialized: bool,
     pub nonce: u64,
 }

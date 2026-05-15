@@ -104,6 +104,10 @@ struct SignedTxV2 {
     nonce: u64,
     body: TxBodyV2,
     #[serde(default)]
+    burn_purpose: Option<String>,
+    #[serde(default)]
+    import_fee: Option<String>,
+    #[serde(default)]
     import_provenance: Option<ImportProvV2>,
     signature: String,
 }
@@ -136,6 +140,12 @@ enum TxBodyV2 {
     BurnMark {
         mark_amount: String,
         beneficiary: Option<String>,
+    },
+    Claim {
+        mode: String,
+        claim_units: String,
+        anchor_ref: u64,
+        fee: String,
     },
     Export {
         to: String,
@@ -205,7 +215,8 @@ struct SnapshotCrossShardFactV2 {
 struct SnapshotStateV2 {
     accounts: Vec<SnapshotStateRowV2>,
     fee_pool: String,
-    #[serde(default)]
+    // Legacy mirror field: accepted on read for compatibility, omitted on write.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     marks_quota: Vec<SnapshotQuotaRowV2>,
     #[serde(default)]
     imported_set: Vec<String>,
@@ -236,6 +247,14 @@ struct SnapshotAccountV2 {
     index: u32,
     flags: u32,
     nonce: u64,
+    #[serde(default)]
+    last_claim_unix_time: u64,
+    #[serde(default)]
+    last_claim_anchor_ref: u64,
+    #[serde(default, rename = "last_free_claim_utc_day")]
+    free_claim_utc_day: Option<u64>,
+    #[serde(default)]
+    last_stake_change_height: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -391,14 +410,15 @@ struct SnapshotStateRow {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct SnapshotQuotaRow {
     id: [u8; 32],
-    quota: u128,
+    quota: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct SnapshotStateWire {
     accounts: Vec<SnapshotStateRow>,
     fee_pool: u128,
-    #[serde(default)]
+    // Legacy mirror field: accepted on read for compatibility, omitted on write.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     marks_quota: Vec<SnapshotQuotaRow>,
     #[serde(default)]
     imported_set: Vec<[u8; 32]>,
@@ -412,11 +432,19 @@ struct SnapshotAccountWire {
     derivation_index: u32,
     balance_pwm: u128,
     staked: u128,
-    marks: u128,
+    marks: u32,
     initialized: bool,
     index: u32,
     flags: u32,
     nonce: u64,
+    #[serde(default)]
+    last_claim_unix_time: u64,
+    #[serde(default)]
+    last_claim_anchor_ref: u64,
+    #[serde(default, rename = "last_free_claim_utc_day")]
+    free_claim_utc_day: Option<u64>,
+    #[serde(default)]
+    last_stake_change_height: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -439,6 +467,10 @@ impl From<Account> for SnapshotAccountWire {
             index: value.index,
             flags: value.flags,
             nonce: value.nonce,
+            last_claim_unix_time: value.last_claim_unix_time,
+            last_claim_anchor_ref: value.last_claim_anchor_ref,
+            free_claim_utc_day: value.free_claim_utc_day,
+            last_stake_change_height: value.last_stake_change_height,
         }
     }
 }
@@ -455,6 +487,10 @@ impl From<SnapshotAccountWire> for Account {
             index: value.index,
             flags: value.flags,
             nonce: value.nonce,
+            last_claim_unix_time: value.last_claim_unix_time,
+            last_claim_anchor_ref: value.last_claim_anchor_ref,
+            free_claim_utc_day: value.free_claim_utc_day,
+            last_stake_change_height: value.last_stake_change_height,
         }
     }
 }
@@ -474,14 +510,8 @@ where
     SnapshotStateWire {
         accounts,
         fee_pool: state.fee_pool,
-        marks_quota: state
-            .marks_quota
-            .iter()
-            .map(|(id, quota)| SnapshotQuotaRow {
-                id: *id,
-                quota: *quota,
-            })
-            .collect(),
+        // marks_quota is a removed legacy mirror; canonical snapshots no longer emit it.
+        marks_quota: Vec::new(),
         imported_set: state.imported_set.iter().copied().collect(),
         exported_registry: state
             .exported_registry
@@ -511,21 +541,7 @@ where
             )));
         }
     }
-    let mut marks_quota = BTreeMap::new();
-    for row in wire.marks_quota {
-        if marks_quota.insert(row.id, row.quota).is_some() {
-            return Err(serde::de::Error::custom(format!(
-                "snapshot state contract error: duplicate account id {} in state.marks_quota",
-                hex::encode(row.id)
-            )));
-        }
-        if !accounts.contains_key(&row.id) {
-            return Err(serde::de::Error::custom(format!(
-                "snapshot state contract error: marks_quota id {} is not present in state.accounts",
-                hex::encode(row.id)
-            )));
-        }
-    }
+    validate_quota_rows(wire.marks_quota, &accounts).map_err(serde::de::Error::custom)?;
     let mut imported_set = BTreeSet::new();
     for export_id in wire.imported_set {
         if !imported_set.insert(export_id) {
@@ -557,7 +573,6 @@ where
     Ok(ChainState {
         accounts,
         fee_pool: wire.fee_pool,
-        marks_quota,
         imported_set,
         exported_registry,
     })
@@ -568,6 +583,10 @@ fn hex_of<const N: usize>(bytes: &[u8; N]) -> String {
 }
 
 fn dec_of(value: u128) -> String {
+    value.to_string()
+}
+
+fn dec_of_u32(value: u32) -> String {
     value.to_string()
 }
 
@@ -610,6 +629,50 @@ fn dec_v2(value: &str, field: &str) -> Result<u128, String> {
     value
         .parse::<u128>()
         .map_err(|e| format!("{field}: invalid u128 decimal string: {e}"))
+}
+
+fn dec_v2_marks(value: &str, field: &str) -> Result<u32, String> {
+    let raw = dec_v2(value, field)?;
+    if raw <= u32::MAX as u128 {
+        return Ok(raw as u32);
+    }
+    let scaled = raw / pwm_core::PWM_RAW_SCALE;
+    Ok(scaled.min(u32::MAX as u128) as u32)
+}
+
+fn dec_v2_u32(value: &str, field: &str) -> Result<u32, String> {
+    let raw = dec_v2(value, field)?;
+    Ok(raw.min(u32::MAX as u128) as u32)
+}
+
+fn validate_quota_rows(
+    rows: Vec<SnapshotQuotaRow>,
+    accounts: &BTreeMap<[u8; 32], Account>,
+) -> Result<(), String> {
+    let mut seen = BTreeSet::new();
+    for row in rows {
+        if !seen.insert(row.id) {
+            return Err(format!(
+                "snapshot state contract error: duplicate account id {} in state.marks_quota",
+                hex::encode(row.id)
+            ));
+        }
+        let Some(account) = accounts.get(&row.id) else {
+            return Err(format!(
+                "snapshot state contract error: marks_quota id {} is not present in state.accounts",
+                hex::encode(row.id)
+            ));
+        };
+        if row.quota != account.marks {
+            return Err(format!(
+                "snapshot state contract error: marks_quota mismatch for id {}: quota={} marks={}",
+                hex::encode(row.id),
+                row.quota,
+                account.marks
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn data_to_v2(value: &SnapshotData) -> SnapshotDataV2 {
@@ -718,6 +781,8 @@ fn tx_to_v2(value: &SignedTx) -> SignedTxV2 {
         derivation_index: value.derivation_index,
         nonce: value.nonce,
         body: body_to_v2(&value.body),
+        burn_purpose: value.burn_purpose.clone(),
+        import_fee: value.import_fee.map(dec_of),
         import_provenance: value.import_provenance.as_ref().map(|prov| ImportProvV2 {
             to: hex_of(&prov.to),
             target_domain: prov.target_domain,
@@ -734,6 +799,12 @@ fn tx_from_v2(value: SignedTxV2, path: &str) -> Result<SignedTx, String> {
         derivation_index: value.derivation_index,
         nonce: value.nonce,
         body: body_from_v2(value.body, &format!("{path}.body"))?,
+        burn_purpose: value.burn_purpose,
+        import_fee: value
+            .import_fee
+            .as_deref()
+            .map(|v| dec_v2(v, &format!("{path}.import_fee")))
+            .transpose()?,
         import_provenance: match value.import_provenance {
             Some(prov) => Some(pwm_core::state::ExportProvenance {
                 to: hex_v2(&prov.to, &format!("{path}.import_provenance.to"))?,
@@ -767,8 +838,22 @@ fn body_to_v2(value: &TxBody) -> TxBodyV2 {
             mark_amount,
             beneficiary,
         } => TxBodyV2::BurnMark {
-            mark_amount: dec_of(*mark_amount),
+            mark_amount: dec_of_u32(*mark_amount),
             beneficiary: beneficiary.as_ref().map(hex_of),
+        },
+        TxBody::Claim {
+            mode,
+            claim_units,
+            anchor_ref,
+            fee,
+        } => TxBodyV2::Claim {
+            mode: match mode {
+                pwm_core::tx::ClaimMode::Free => "free".to_string(),
+                pwm_core::tx::ClaimMode::Paid => "paid".to_string(),
+            },
+            claim_units: dec_of_u32(*claim_units),
+            anchor_ref: *anchor_ref,
+            fee: dec_of(*fee),
         },
         TxBody::Export {
             to,
@@ -811,11 +896,26 @@ fn body_from_v2(value: TxBodyV2, path: &str) -> Result<TxBody, String> {
             mark_amount,
             beneficiary,
         } => Ok(TxBody::BurnMark {
-            mark_amount: dec_v2(&mark_amount, &format!("{path}.mark_amount"))?,
+            mark_amount: dec_v2_u32(&mark_amount, &format!("{path}.mark_amount"))?,
             beneficiary: beneficiary
                 .as_deref()
                 .map(|v| hex_v2(v, &format!("{path}.beneficiary")))
                 .transpose()?,
+        }),
+        TxBodyV2::Claim {
+            mode,
+            claim_units,
+            anchor_ref,
+            fee,
+        } => Ok(TxBody::Claim {
+            mode: match mode.as_str() {
+                "free" => pwm_core::tx::ClaimMode::Free,
+                "paid" => pwm_core::tx::ClaimMode::Paid,
+                _ => return Err(format!("{path}.mode: expected free|paid")),
+            },
+            claim_units: dec_v2_u32(&claim_units, &format!("{path}.claim_units"))?,
+            anchor_ref,
+            fee: dec_v2(&fee, &format!("{path}.fee"))?,
         }),
         TxBodyV2::Export {
             to,
@@ -851,14 +951,8 @@ fn state_to_v2(value: &ChainState) -> SnapshotStateV2 {
             })
             .collect(),
         fee_pool: dec_of(value.fee_pool),
-        marks_quota: value
-            .marks_quota
-            .iter()
-            .map(|(id, quota)| SnapshotQuotaRowV2 {
-                id: hex_of(id),
-                quota: dec_of(*quota),
-            })
-            .collect(),
+        // marks_quota is a removed legacy mirror; canonical snapshots no longer emit it.
+        marks_quota: Vec::new(),
         imported_set: value.imported_set.iter().map(hex_of).collect(),
         exported_registry: value
             .exported_registry
@@ -897,7 +991,7 @@ fn state_from_v2(value: SnapshotStateV2, path: &str) -> Result<ChainState, Strin
             .map(|(i, row)| {
                 Ok(SnapshotQuotaRow {
                     id: hex_v2(&row.id, &format!("{path}.marks_quota[{i}].id"))?,
-                    quota: dec_v2(&row.quota, &format!("{path}.marks_quota[{i}].quota"))?,
+                    quota: dec_v2_marks(&row.quota, &format!("{path}.marks_quota[{i}].quota"))?,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?,
@@ -936,11 +1030,15 @@ fn account_to_v2(value: &Account) -> SnapshotAccountV2 {
         derivation_index: value.derivation_index,
         balance_pwm: dec_of(value.balance_pwm),
         staked: dec_of(value.staked),
-        marks: dec_of(value.marks),
+        marks: dec_of_u32(value.marks),
         initialized: value.initialized,
         index: value.index,
         flags: value.flags,
         nonce: value.nonce,
+        last_claim_unix_time: value.last_claim_unix_time,
+        last_claim_anchor_ref: value.last_claim_anchor_ref,
+        free_claim_utc_day: value.free_claim_utc_day,
+        last_stake_change_height: value.last_stake_change_height,
     }
 }
 
@@ -950,11 +1048,15 @@ fn account_from_v2(value: SnapshotAccountV2, path: &str) -> Result<SnapshotAccou
         derivation_index: value.derivation_index,
         balance_pwm: dec_v2(&value.balance_pwm, &format!("{path}.balance_pwm"))?,
         staked: dec_v2(&value.staked, &format!("{path}.staked"))?,
-        marks: dec_v2(&value.marks, &format!("{path}.marks"))?,
+        marks: dec_v2_marks(&value.marks, &format!("{path}.marks"))?,
         initialized: value.initialized,
         index: value.index,
         flags: value.flags,
         nonce: value.nonce,
+        last_claim_unix_time: value.last_claim_unix_time,
+        last_claim_anchor_ref: value.last_claim_anchor_ref,
+        free_claim_utc_day: value.free_claim_utc_day,
+        last_stake_change_height: value.last_stake_change_height,
     })
 }
 
@@ -1034,21 +1136,7 @@ fn state_from_wire(wire: SnapshotStateWire) -> Result<ChainState, String> {
             ));
         }
     }
-    let mut marks_quota = BTreeMap::new();
-    for row in wire.marks_quota {
-        if marks_quota.insert(row.id, row.quota).is_some() {
-            return Err(format!(
-                "snapshot state contract error: duplicate account id {} in state.marks_quota",
-                hex::encode(row.id)
-            ));
-        }
-        if !accounts.contains_key(&row.id) {
-            return Err(format!(
-                "snapshot state contract error: marks_quota id {} is not present in state.accounts",
-                hex::encode(row.id)
-            ));
-        }
-    }
+    validate_quota_rows(wire.marks_quota, &accounts)?;
     let mut imported_set = BTreeSet::new();
     for export_id in wire.imported_set {
         if !imported_set.insert(export_id) {
@@ -1080,7 +1168,6 @@ fn state_from_wire(wire: SnapshotStateWire) -> Result<ChainState, String> {
     Ok(ChainState {
         accounts,
         fee_pool: wire.fee_pool,
-        marks_quota,
         imported_set,
         exported_registry,
     })

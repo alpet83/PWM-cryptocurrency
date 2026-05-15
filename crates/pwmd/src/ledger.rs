@@ -36,7 +36,10 @@ pub(crate) struct CrossShardFact {
     pub(crate) export_id: [u8; 32],
     pub(crate) source_domain_hi: u8,
     pub(crate) target_domain_hi: u8,
-    #[serde(deserialize_with = "crate::wire_serde::de_u128_compat")]
+    #[serde(
+        serialize_with = "crate::wire_serde::ser_u128_hex",
+        deserialize_with = "crate::wire_serde::de_u128_compat"
+    )]
     pub(crate) amount: u128,
     pub(crate) status: CrossShardStatus,
     pub(crate) first_height: u64,

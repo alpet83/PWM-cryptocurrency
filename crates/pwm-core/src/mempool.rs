@@ -41,6 +41,11 @@ impl Mpool {
         out
     }
 
+    /// Clone up to `max` oldest txs without mutating queue order.
+    pub fn snapshot(&self, max: usize) -> Vec<SignedTx> {
+        self.q.iter().take(max).cloned().collect()
+    }
+
     /// Put txs back at the **front** in block order (`txs[0]` becomes the next `pop_front`).
     pub fn prepend_block(&mut self, txs: Vec<SignedTx>) {
         for tx in txs.into_iter().rev() {

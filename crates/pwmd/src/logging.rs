@@ -190,7 +190,7 @@ fn color_field_value(value: &str) -> String {
     if looks_like_structure(value) {
         return wrap_color(value, "\x1b[97m");
     }
-    if looks_like_id_or_hash(value) {
+    if looks_like_id(value) {
         return wrap_color(value, "\x1b[92m");
     }
     if looks_like_numeric_value(value) {
@@ -228,7 +228,7 @@ fn now_hms_millis() -> String {
 }
 
 fn highlight_numbers(input: &str) -> String {
-    if looks_like_id_or_hash(input) {
+    if looks_like_id(input) {
         return input.to_string();
     }
     let mut out = String::with_capacity(input.len() + 8);
@@ -268,7 +268,8 @@ fn is_number_continue(ch: char) -> bool {
     ch.is_ascii_digit() || ch == '.'
 }
 
-fn looks_like_id_or_hash(input: &str) -> bool {
+/// Returns true if the string looks like an account id or hex hash.
+fn looks_like_id(input: &str) -> bool {
     if let Some(hex) = input.strip_prefix("0x") {
         return hex.len() >= 6 && hex.chars().all(|c| c.is_ascii_hexdigit());
     }
@@ -294,7 +295,7 @@ fn looks_like_structure(input: &str) -> bool {
 }
 
 fn looks_like_numeric_value(input: &str) -> bool {
-    if looks_like_id_or_hash(input) {
+    if looks_like_id(input) {
         return false;
     }
     input.chars().any(|c| c.is_ascii_digit())
@@ -1086,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    fn peer_target_isolated_from_main_sink() {
+    fn peer_sink_isolated_from_main() {
         let main = BufSink::default();
         let peer = BufSink::default();
         let sub = tracing_subscriber::registry()

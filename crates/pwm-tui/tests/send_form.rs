@@ -161,6 +161,8 @@ fn recv_panel_has_new_row() {
         balance_pwm: 1,
         initialized: true,
         nonce: 0,
+        marks: 0,
+        staked: 0,
         label: None,
     }];
     assert_eq!(receiver_table_len(&rows), 2);
@@ -178,6 +180,8 @@ fn recv_sel_clamps_last() {
             balance_pwm: 1,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -186,6 +190,8 @@ fn recv_sel_clamps_last() {
             balance_pwm: 2,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
     ];
@@ -354,6 +360,8 @@ fn owner_recv_wallet_pref() {
             balance_pwm: 1,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -362,6 +370,8 @@ fn owner_recv_wallet_pref() {
             balance_pwm: 2,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
     ];
@@ -401,6 +411,8 @@ fn owner_recv_book() {
             balance_pwm: 9,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -409,6 +421,8 @@ fn owner_recv_book() {
             balance_pwm: 3,
             initialized: true,
             nonce: 1,
+            marks: 0,
+            staked: 0,
             label: None,
         },
     ];
@@ -460,6 +474,8 @@ fn owner_recv_owned_idx() {
             balance_pwm: 5,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -468,6 +484,8 @@ fn owner_recv_owned_idx() {
             balance_pwm: 7,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -476,6 +494,8 @@ fn owner_recv_owned_idx() {
             balance_pwm: 1,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
     ];
@@ -528,6 +548,8 @@ fn owner_recv_book_own() {
         balance_pwm: 9,
         initialized: true,
         nonce: 0,
+        marks: 0,
+        staked: 0,
         label: None,
     }];
     let identity = IdentitySource::Wallet(WalletIdentity {
@@ -604,6 +626,8 @@ fn f6_row_owner_sender() {
             balance_pwm: 1,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -612,6 +636,8 @@ fn f6_row_owner_sender() {
             balance_pwm: 2,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
     ];
@@ -849,6 +875,8 @@ fn cy_act_reject_db_sk() {
         balance_pwm: 1,
         initialized: true,
         nonce: 0,
+        marks: 0,
+        staked: 0,
         label: None,
     }];
     let err = match f6_build_send_form(&identity, &owner_rows, 0, &[], 0) {
@@ -872,6 +900,8 @@ fn owner_recv_seed_v2() {
             balance_pwm: 5,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -880,6 +910,8 @@ fn owner_recv_seed_v2() {
             balance_pwm: 7,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -888,6 +920,8 @@ fn owner_recv_seed_v2() {
             balance_pwm: 1,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
     ];
@@ -918,6 +952,8 @@ fn owner_recv_keep_lo0() {
             balance_pwm: 9,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -926,6 +962,8 @@ fn owner_recv_keep_lo0() {
             balance_pwm: 3,
             initialized: true,
             nonce: 1,
+            marks: 0,
+            staked: 0,
             label: Some("lo_zero".into()),
         },
         AcctRow {
@@ -934,6 +972,8 @@ fn owner_recv_keep_lo0() {
             balance_pwm: 4,
             initialized: true,
             nonce: 2,
+            marks: 0,
+            staked: 0,
             label: Some("allowed".into()),
         },
     ];
@@ -1074,8 +1114,7 @@ fn load_enc_unlock_autolock() {
     let mut idw = load_wallet_identity(&path, None, 300, false).expect("load locked");
     assert!(idw.wallet_is_encrypted);
     assert!(idw.signing_key.is_none());
-    wallet_try_unlock_with_passphrase(&mut idw, std::str::from_utf8(passphrase).unwrap(), 60)
-        .expect("unlock");
+    wallet_unlock(&mut idw, std::str::from_utf8(passphrase).unwrap(), 60).expect("unlock");
     assert!(idw.signing_key.is_some());
     assert!(idw.secret_payload_plaintext.is_some());
     idw.unlock_expires_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));

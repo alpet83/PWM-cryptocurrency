@@ -1,8 +1,11 @@
-//! Genesis JSON ingestion (`schema_version` 4) into snapshot genesis rows.
+//! Genesis JSON ingestion (`schema_version` 4/5) into snapshot genesis rows.
 
 use super::types::SnapshotGenesisRow;
 use ed25519_dalek::SigningKey;
-use pwm_core::genesis::{FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg};
+use pwm_core::genesis::{
+    FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg, DEF_MARKS_STAKE_MIN, DEF_PWM_STAKE_MIN,
+    DEF_SEASON_COEFF_PPM, LEGACY_POLICY_VER,
+};
 use pwm_core::hd::account_id_from_parts;
 use pwm_core::{open_wallet_secret_ciphertext, WALLET_KDF};
 use serde::Deserialize;
@@ -23,6 +26,16 @@ struct GenesisCfgV4 {
     reward_policy: GenesisRewardV4,
     block_reward: String,
     marks_coeff: String,
+    #[serde(default = "default_pol_ver")]
+    policy_ver: u32,
+    #[serde(default = "def_pwm_min_s")]
+    pwm_stake_min: String,
+    #[serde(default = "def_marks_min_s")]
+    marks_stake_min: String,
+    #[serde(default)]
+    season_enabled: bool,
+    #[serde(default = "def_season_ppm_s")]
+    season_coeff_ppm: String,
 }
 
 #[derive(Deserialize)]
@@ -104,7 +117,24 @@ fn parse_u128_json(v: &str, field: &str) -> Result<u128, String> {
         .map_err(|e| format!("{field}: invalid u128 string: {e}"))
 }
 
-const GENESIS_SCHEMA_VERSION: u32 = 4;
+fn default_pol_ver() -> u32 {
+    LEGACY_POLICY_VER
+}
+
+fn def_pwm_min_s() -> String {
+    DEF_PWM_STAKE_MIN.to_string()
+}
+
+fn def_marks_min_s() -> String {
+    DEF_MARKS_STAKE_MIN.to_string()
+}
+
+fn def_season_ppm_s() -> String {
+    DEF_SEASON_COEFF_PPM.to_string()
+}
+
+const GENESIS_SCHEMA_VERSION: u32 = 5;
+const GENESIS_SCHEMA_BACKWARD: u32 = 4;
 const VALIDATOR_DERIVATION_PATH: &str = "m/1000000'/1'";
 const VALIDATOR_DERIVATION_PATH_IDX: [u32; 2] = [1_000_000, 1];
 const GENESIS_AEAD_NAME: &str = "chacha20poly1305";
@@ -113,9 +143,9 @@ const GENESIS_KDF_ITERS_MAX: u32 = 10_000_000;
 fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), String> {
     let b: GenesisFileV4 = serde_json::from_value(raw)
         .map_err(|e| format!("parse genesis v4 JSON: invalid v4 payload: {e}"))?;
-    if b.schema_version != GENESIS_SCHEMA_VERSION {
+    if b.schema_version != GENESIS_SCHEMA_VERSION && b.schema_version != GENESIS_SCHEMA_BACKWARD {
         return Err(format!(
-            "parse genesis JSON: unsupported schema_version {}; supported: 4",
+            "parse genesis JSON: unsupported schema_version {}; supported: 4, 5",
             b.schema_version
         ));
     }
@@ -147,6 +177,10 @@ fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), 
     }
     let block_reward = parse_u128_json(&b.gen_cfg.block_reward, "gen_cfg.block_reward")?;
     let marks_coeff = parse_u128_json(&b.gen_cfg.marks_coeff, "gen_cfg.marks_coeff")?;
+    let pwm_stake_min = parse_u128_json(&b.gen_cfg.pwm_stake_min, "gen_cfg.pwm_stake_min")?;
+    let marks_stake_min = parse_u128_json(&b.gen_cfg.marks_stake_min, "gen_cfg.marks_stake_min")?;
+    let season_coeff_ppm =
+        parse_u128_json(&b.gen_cfg.season_coeff_ppm, "gen_cfg.season_coeff_ppm")?;
     let rew = match b.gen_cfg.reward_policy.mode {
         GenesisRewardModeV4::ToProducerAccount => RewPol::ToProducerAccount,
     };
@@ -160,12 +194,17 @@ fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), 
             accounts: rows,
             block_reward,
             marks_coeff,
+            policy_ver: b.gen_cfg.policy_ver,
+            pwm_stake_min,
+            marks_stake_min,
+            season_enabled: b.gen_cfg.season_enabled,
+            season_coeff_ppm,
         },
         b.validator_keys,
     ))
 }
 
-/// Load `gen_cfg` + encrypted validator keys (schema_version=4 only).
+/// Load `gen_cfg` + encrypted validator keys (schema_version=4/5).
 pub fn load_genesis_bundle(
     path: &std::path::Path,
     genesis_passphrase: Option<&str>,
@@ -176,15 +215,15 @@ pub fn load_genesis_bundle(
     let obj = raw
         .as_object()
         .ok_or_else(|| "parse genesis JSON: root must be an object".to_string())?;
-    let ver = obj
-        .get("schema_version")
-        .ok_or_else(|| "parse genesis JSON: missing schema_version (required: 4)".to_string())?;
+    let ver = obj.get("schema_version").ok_or_else(|| {
+        "parse genesis JSON: missing schema_version (required: 4 or 5)".to_string()
+    })?;
     let Some(v) = ver.as_u64() else {
         return Err("parse genesis JSON: schema_version must be an unsigned integer".to_string());
     };
-    if v != GENESIS_SCHEMA_VERSION as u64 {
+    if v != GENESIS_SCHEMA_VERSION as u64 && v != GENESIS_SCHEMA_BACKWARD as u64 {
         return Err(format!(
-            "parse genesis JSON: unsupported schema_version {v}; supported: 4"
+            "parse genesis JSON: unsupported schema_version {v}; supported: 4, 5"
         ));
     }
     let (cfg, validator_keys) = parse_genesis_v4(raw)?;
@@ -195,7 +234,7 @@ pub fn load_genesis_bundle(
         return Err("validator_keys length must match gen_cfg.validators.set".into());
     }
     let passphrase = genesis_passphrase.ok_or_else(|| {
-        "genesis passphrase is required for schema_version=4 (use --genesis-passphrase or PWM_GENESIS_PASSPHRASE)"
+        "genesis passphrase is required for schema_version=4/5 (use --genesis-passphrase or PWM_GENESIS_PASSPHRASE)"
             .to_string()
     })?;
     if passphrase.trim().is_empty() {

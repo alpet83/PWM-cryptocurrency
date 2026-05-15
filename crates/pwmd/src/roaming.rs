@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn export_readiness_allows_tip_advance_empty_blocks() {
+    fn export_rd_tip_advance_empty() {
         let (cfg, sks) = dev_net();
         let sk = &sks[0];
         let aid = cfg.accounts[0].acct;

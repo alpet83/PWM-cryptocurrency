@@ -209,11 +209,22 @@ fn snap_rt_imp_guard_pv() {
     let dom_b = domain_of_account_id(&aid_b);
 
     let init = SignedTx::sign_body(&sk_b, dom_b, i_b, 0, TxBody::Init { index: 0, flags: 0 });
-    let export = SignedTx::sign_body(
+    let xfer = SignedTx::sign_body(
         sk_v,
         dom_v,
         0,
         0,
+        TxBody::Transfer {
+            to: aid_b,
+            amount: pwm_core::tx::MIN_IMPORT_FEE_UNITS,
+            fee: 1,
+        },
+    );
+    let export = SignedTx::sign_body(
+        sk_v,
+        dom_v,
+        0,
+        1,
         TxBody::Export {
             to: aid_b,
             target_domain: dom_b,
@@ -234,7 +245,7 @@ fn snap_rt_imp_guard_pv() {
         },
     );
     chain
-        .seal(vec![init, export, import])
+        .seal(vec![init, xfer, export, import])
         .expect("seal import flow");
 
     let inner = Inner {
@@ -278,11 +289,24 @@ fn snap_rt_handoff_import_ok() {
 
     let (cfg, sks) = dev_net();
     let mut chain = Chain::boot(cfg.clone(), sks);
+    let sk_v = &chain.val_sks[0];
+    let aid_v = cfg.accounts[0].acct;
+    let dom_v = domain_of_account_id(&aid_v);
     let (sk_b, i_b, aid_b) = user_sk(&[0x66; 32]);
     let dom_b = domain_of_account_id(&aid_b);
 
     let init = SignedTx::sign_body(&sk_b, dom_b, i_b, 0, TxBody::Init { index: 7, flags: 0 });
-    chain.seal(vec![init]).expect("seal init");
+    let xfer = SignedTx::sign_body(
+        sk_v,
+        dom_v,
+        0,
+        0,
+        TxBody::Transfer {
+            to: aid_b,
+            amount: pwm_core::tx::MIN_IMPORT_FEE_UNITS,
+            fee: 1,
+        },
+    );
 
     let export_id = [0xCE; 32];
     let amount = 25u128;
@@ -305,7 +329,9 @@ fn snap_rt_handoff_import_ok() {
             amount,
         }),
     );
-    chain.seal(vec![import]).expect("seal import");
+    chain
+        .seal(vec![init, xfer, import])
+        .expect("seal init xfer import");
 
     let inner = Inner {
         chain,
@@ -803,6 +829,7 @@ fn snap_or_mk_quota() {
     save_snapshot(&p, &inner).expect("save");
     let raw = std::fs::read_to_string(&p).expect("read");
     let mut v: serde_json::Value = serde_json::from_str(&raw).expect("json");
+    v["state"]["marks_quota"] = serde_json::json!([]);
     let quota = v["state"]["marks_quota"]
         .as_array_mut()
         .expect("state.marks_quota");
@@ -813,7 +840,48 @@ fn snap_or_mk_quota() {
     std::fs::write(&p, serde_json::to_string_pretty(&v).expect("encode")).expect("write");
     let err = load_snapshot(&p, &cfg).expect_err("must reject orphan marks_quota ids");
     assert!(
-        err.contains("parse canonical snapshot JSON"),
+        err.contains("marks_quota id"),
+        "unexpected error text: {err}"
+    );
+    let _ = std::fs::remove_file(&p);
+}
+
+/// Legacy mark quota rows must mirror account.marks exactly.
+#[test]
+fn snap_reject_quota_mismatch() {
+    let (cfg, sks) = dev_net();
+    let mut chain = Chain::boot(cfg.clone(), sks);
+    chain.seal(vec![]).expect("seal");
+    let inner = Inner {
+        chain,
+        pool: Mpool::new(16),
+        roaming_pool: crate::roaming::RoamingPool::default(),
+        cross_shard: crate::ledger::CrossShardLedger::default(),
+        federation: Default::default(),
+        peer_account_views: std::collections::HashMap::new(),
+        recent_flow: std::collections::VecDeque::new(),
+    };
+    let p = temp_path("snapshot_quota_mismatch");
+    save_snapshot(&p, &inner).expect("save");
+    let raw = std::fs::read_to_string(&p).expect("read");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("json");
+    let first_id = v["state"]["accounts"][0]["id"]
+        .as_str()
+        .expect("state.accounts[0].id")
+        .to_string();
+    let marks = v["state"]["accounts"][0]["account"]["marks"]
+        .as_str()
+        .expect("state.accounts[0].account.marks")
+        .parse::<u128>()
+        .expect("marks u128");
+    v["state"]["marks_quota"] = serde_json::json!([{
+        "id": first_id,
+        "quota": (marks.saturating_add(1)).to_string()
+    }]);
+    std::fs::write(&p, serde_json::to_string_pretty(&v).expect("encode")).expect("write");
+    let err = load_snapshot(&p, &cfg).expect_err("must reject marks_quota mismatch");
+    assert!(
+        err.contains("marks_quota mismatch"),
         "unexpected error text: {err}"
     );
     let _ = std::fs::remove_file(&p);

@@ -11,6 +11,13 @@ pub(crate) fn user_sk(seed: &[u8; 32]) -> (SigningKey, u32, pwm_core::AccountId)
     (sk, i, aid)
 }
 
+/// Credits liquid PWM so `Import` can debit `MIN_IMPORT_FEE_UNITS` (v2 import fee floor).
+pub(crate) fn credit_min_import_fee_tests(st: &mut pwm_core::State, aid: &pwm_core::AccountId) {
+    use pwm_core::tx::MIN_IMPORT_FEE_UNITS;
+    let acc = st.accounts.get_mut(aid).expect("acct must exist");
+    acc.balance_pwm = acc.balance_pwm.saturating_add(MIN_IMPORT_FEE_UNITS);
+}
+
 pub(crate) fn routable_user_sk(mut seed: [u8; 32]) -> (SigningKey, u32, pwm_core::AccountId) {
     for _ in 0..4096 {
         let (sk, i, aid) = user_sk(&seed);
@@ -48,17 +55,24 @@ pub(crate) fn user_sk_matching_domain_hi(
     panic!("failed to find user_sk seed for domain_hi=0x{want_hi:02X}");
 }
 
+pub(crate) fn routable_user_sk_for_app(
+    seed_base: [u8; 32],
+    app: &App,
+) -> (SigningKey, u32, pwm_core::AccountId) {
+    user_sk_matching_domain_hi(seed_base, app.identity.cluster_domain_hi)
+}
+
 pub(crate) fn router_dev(app: App) -> Router {
     router(app, CorsLayer::permissive())
 }
 
-pub(crate) fn mk_app_explicit_shard(shard: ShardId) -> App {
+pub(crate) fn mk_app_explicit_shard(shard: DevLane) -> App {
     let (cfg, sks) = dev_net();
     let identity = RuntimeIdentity {
         network_id: "devnet".to_string(),
         cluster_domain_hi: match shard {
-            ShardId::A => 0x10,
-            ShardId::B => 0x20,
+            DevLane::Lane0 => 0x10,
+            DevLane::Lane1 => 0x20,
         },
         cluster_id: "explicit-cluster".to_string(),
         node_id: "explicit-node".to_string(),
@@ -68,7 +82,7 @@ pub(crate) fn mk_app_explicit_shard(shard: ShardId) -> App {
 }
 
 pub(crate) fn app_with_identity(
-    shard: ShardId,
+    shard: DevLane,
     network_id: &str,
     domain_hi: u8,
     cluster_id: &str,
@@ -83,6 +97,22 @@ pub(crate) fn app_with_identity(
         mode: RuntimeIdentityMode::Explicit,
     };
     crate::bootstrap::app_from_chain_boot(cfg, sks, None, shard, Some(identity))
+}
+
+pub(crate) fn app_for_domain(shard: DevLane, domain_hi: u8) -> App {
+    app_with_identity(shard, "devnet", domain_hi, "test-cluster", "test-node")
+}
+
+pub(crate) fn app_for_sender(aid: &pwm_core::AccountId) -> App {
+    let shard = shard_for_phase1_account(aid).expect("sender shard");
+    let hi = domain_of_account_id(aid).to_be_bytes()[0];
+    app_for_domain(shard, hi)
+}
+
+pub(crate) fn app_for_devnet_sender(shard: DevLane) -> App {
+    let (cfg, _) = dev_net();
+    let hi = domain_of_account_id(&cfg.accounts[0].acct).to_be_bytes()[0];
+    app_for_domain(shard, hi)
 }
 
 pub(crate) fn temp_path(name: &str) -> PathBuf {
@@ -139,7 +169,7 @@ pub(crate) fn sample_hello(local: &App, node_id: &str, domain_hi: u8, nonce: Vec
         genesis_hash,
         cluster: NodeHelloCluster {
             domain_hi,
-            cluster_id: "probe-cluster".to_string(),
+            cluster_id: local.identity.cluster_id.clone(),
         },
         node: NodeHelloNode {
             node_id: node_id.to_string(),
@@ -149,6 +179,21 @@ pub(crate) fn sample_hello(local: &App, node_id: &str, domain_hi: u8, nonce: Vec
             protocol_version: "0.1.0".to_string(),
             tx_features: vec!["local_transfer_v1".to_string()],
             services: vec!["mempool".to_string()],
+            sync_profile: None,
+            deployment_profile: crate::handshake::DeploymentProfile::SingleSealer,
+            seal_role: crate::handshake::SealRole::Active,
+            validator_identity_hash: Some("vh-helper".to_string()),
+            node_instance_id: Some("inst-helper".to_string()),
+            lease_owner_id: None,
+            lease_term: None,
+            lease_expires_at_ms: None,
+            lease_last_tip: None,
+            lease_fence: None,
+            cluster_attest_enabled: false,
+            cluster_role: crate::handshake::ClusterRole::None,
+            cluster_members: Vec::new(),
+            cluster_quorum_k: None,
+            cluster_quorum_n: None,
         },
         nonce,
         timestamp_ms: current_time_ms().expect("clock"),
@@ -183,7 +228,7 @@ pub(crate) async fn assert_recipient_prefilter_rejects(
             fee: 0,
         },
     );
-    let svc = router_dev(app_from_dev_net_shard(ShardId::A)).into_service();
+    let svc = router_dev(app_from_devnet(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(
             Request::post("/v1/tx")
@@ -222,7 +267,7 @@ pub(crate) async fn assert_rcv_px_expl(
             fee: 0,
         },
     );
-    let svc = router_dev(mk_app_explicit_shard(ShardId::A)).into_service();
+    let svc = router_dev(mk_app_explicit_shard(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(
             Request::post("/v1/tx")
@@ -265,7 +310,7 @@ pub(crate) async fn assert_export_prefilter_rejects(
             fee: 1,
         },
     );
-    let svc = router_dev(app_from_dev_net_shard(ShardId::A)).into_service();
+    let svc = router_dev(app_from_devnet(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(
             Request::post("/v1/tx")
@@ -347,9 +392,11 @@ pub(crate) async fn seed_handoff_provenance_for_import(
     [u8; 32],
     pwm_core::state::ExportProvenance,
 ) {
-    let source_app = app_from_dev_net_shard(ShardId::A);
-    let (import_sk, import_i, import_aid) = routable_user_sk([0x39; 32]);
+    let source_app = app_from_devnet(DevLane::Lane1);
+    let (import_sk, import_i, import_aid) = routable_user_sk_for_app([0x39; 32], target_app);
     let import_dom = domain_of_account_id(&import_aid);
+    let (source_sk, source_i, source_aid) = routable_user_sk_for_app([0x4A; 32], &source_app);
+    let source_dom = domain_of_account_id(&source_aid);
     let init = SignedTx::sign_body(
         &import_sk,
         import_dom,
@@ -357,28 +404,50 @@ pub(crate) async fn seed_handoff_provenance_for_import(
         0,
         TxBody::Init { index: 1, flags: 0 },
     );
-    let export = {
-        let g = source_app.inner.read().await;
-        let sk_v = &g.chain.val_sks[0];
-        let aid_v = g.chain.cfg.accounts[0].acct;
-        let dom_v = domain_of_account_id(&aid_v);
-        SignedTx::sign_body(
-            sk_v,
-            dom_v,
-            0,
-            0,
-            TxBody::Export {
-                to: import_aid,
-                target_domain: import_dom,
-                amount,
-                fee: 0,
-            },
-        )
+    let export_nonce = {
+        let mut g = source_app.inner.write().await;
+        if !g.chain.st.accounts.contains_key(&source_aid) {
+            let init_source = SignedTx::sign_body(
+                &source_sk,
+                source_dom,
+                source_i,
+                0,
+                TxBody::Init {
+                    index: source_i,
+                    flags: 0,
+                },
+            );
+            g.chain
+                .st
+                .apply_tx(&init_source)
+                .expect("init source sender");
+        }
+        let src = g
+            .chain
+            .st
+            .accounts
+            .get_mut(&source_aid)
+            .expect("source sender");
+        src.balance_pwm = src.balance_pwm.saturating_add(amount.saturating_add(10));
+        src.nonce
     };
+    let export = SignedTx::sign_body(
+        &source_sk,
+        source_dom,
+        source_i,
+        export_nonce,
+        TxBody::Export {
+            to: import_aid,
+            target_domain: import_dom,
+            amount,
+            fee: 0,
+        },
+    );
     let export_id = export.export_id().expect("export id");
     {
         let mut g = target_app.inner.write().await;
         g.chain.st.apply_tx(&init).expect("init importer");
+        credit_min_import_fee_tests(&mut g.chain.st, &import_aid);
     }
     let source_svc = router_dev(source_app.clone()).into_service();
     let ready_rs = source_svc
@@ -409,8 +478,10 @@ pub(crate) async fn seed_handoff_provenance_for_import(
         )
         .await
         .unwrap();
-    assert_eq!(create.status(), StatusCode::OK);
+    let create_status = create.status();
     let create_body = to_bytes(create.into_body(), 64 * 1024).await.unwrap();
+    let create_text = String::from_utf8_lossy(&create_body);
+    assert_eq!(create_status, StatusCode::OK, "body={create_text}");
     let create_json: serde_json::Value = serde_json::from_slice(&create_body).unwrap();
     let intent_id = create_json["intent_id"].as_str().expect("intent_id");
     let finalize = source_svc
@@ -456,11 +527,27 @@ pub(crate) async fn source_handoff(
     source_app: &App,
     amount: u128,
 ) -> (serde_json::Value, [u8; 32]) {
+    let (cfg, _) = dev_net();
+    let source = cfg.accounts[0].acct;
+    let source_hi = domain_of_account_id(&source).to_be_bytes()[0];
+    source_handoff_for_hi(source_app, amount, source_hi.wrapping_add(1)).await
+}
+
+pub(crate) async fn source_handoff_for_hi(
+    source_app: &App,
+    amount: u128,
+    target_hi: u8,
+) -> (serde_json::Value, [u8; 32]) {
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
     let source_dom = domain_of_account_id(&source);
-    let recipient = valid_cross_domain_recipient(source_dom.to_be_bytes()[0]);
+    let recipient = if target_hi == source_dom.to_be_bytes()[0] {
+        valid_cross_domain_recipient(source_dom.to_be_bytes()[0])
+    } else {
+        let (_, _, aid) = user_sk_matching_domain_hi([0x5B; 32], target_hi);
+        aid
+    };
     let target_domain = domain_of_account_id(&recipient);
     let tx = SignedTx::sign_body(
         sk,

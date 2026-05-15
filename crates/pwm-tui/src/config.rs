@@ -33,7 +33,8 @@ pub fn base_url() -> String {
 
 /// HTTP RPC of the **counterparty** shard for `GET /v1/account` (nonce + balance) on the recipient.
 /// Override with `PWM_TUI_TARGET_RPC`; otherwise flip `:3030` ↔ `:3031` in `PWM_RPC` (demo layout).
-pub fn cross_shard_target_rpc_base() -> String {
+/// Returns the cross-shard target RPC base URL from config.
+pub fn xshard_rpc_base() -> String {
     if let Ok(u) = std::env::var("PWM_TUI_TARGET_RPC") {
         let t = u.trim();
         if !t.is_empty() {
@@ -50,7 +51,8 @@ pub fn cross_shard_target_rpc_base() -> String {
     base
 }
 
-pub fn shard_hint_from_rpc_url(rpc_url: &str) -> &'static str {
+/// Derives a shard-domain hint from the RPC base URL.
+pub fn shard_hint_rpc(rpc_url: &str) -> &'static str {
     if rpc_url.contains(":3030") {
         "shard A?"
     } else if rpc_url.contains(":3031") {
@@ -73,16 +75,8 @@ pub fn rpc_context_label(rpc_url: &str, status_shard_label: Option<&str>) -> Str
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(ToString::to_string)
-        .unwrap_or_else(|| shard_hint_from_rpc_url(rpc_url).to_string());
+        .unwrap_or_else(|| shard_hint_rpc(rpc_url).to_string());
     format!("RPC={} ({})", rpc_url, shard_label)
-}
-
-pub fn f5_burn_not_wired_message(rpc_url: &str) -> String {
-    format!(
-        "F5 burn is not wired in TUI yet. Use CLI on the same RPC:\n\
-         pwm --rpc {rpc_url} tx-burn-mark ...\n\
-         See docs/tester-guide-cli-tui-scenarios.md §4."
-    )
 }
 
 pub fn shard_cli_hint(rpc_url: &str) -> String {
@@ -101,7 +95,7 @@ static RPC_CLIENT_FALLBACK_WARNED: AtomicBool = AtomicBool::new(false);
 pub const DEBUG_FETCH_INTERVAL: Duration = Duration::from_millis(800);
 /// Keep a short local timeline in-memory (most recent first).
 pub const OP_HISTORY_MAX_ITEMS: usize = 20;
-pub const SEND_FLOW_AUTO_STEP_TIMEOUT: Duration = Duration::from_secs(5);
+pub const SEND_FLOW_STEP_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub fn wallet_unlock_secs_clamped(args: &Args) -> u64 {
     args.wallet_unlock_secs.clamp(1, WALLET_UNLOCK_SECS_MAX)

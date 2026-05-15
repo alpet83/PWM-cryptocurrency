@@ -218,6 +218,7 @@ fn slice20_dual_flow_ok() {
     std::fs::create_dir_all(&states_dir).unwrap();
 
     let wallet_cy = wallets_dir.join("wallet-cy.yaml");
+    let wallet_gen = wallets_dir.join("wallet-genesis.yaml");
     let wallet_do = wallets_dir.join("wallet-do.yaml");
     let wallet_recv_cy = wallets_dir.join("wallet-recv-cy.yaml");
     let wallet_do_dest = wallets_dir.join("wallet-do-dest.yaml");
@@ -237,8 +238,7 @@ fn slice20_dual_flow_ok() {
     );
     let sender_hex = hex::encode(sender_acct);
 
-    // DO signer (Import signer). This account is intentionally NOT included in genesis
-    // (genesis is built from wallet-cy only), so tx-import will exercise auto tx-init.
+    // DO signer (Import signer). Keep this account in a dedicated wallet for tx-import.
     let do_signer_di = 61572_u32;
     let do_signer = derive_account_id(master_seed_hex, do_signer_di);
     assert_eq!(domain_of_account_id(&do_signer).to_be_bytes()[0], do_hi);
@@ -267,6 +267,7 @@ fn slice20_dual_flow_ok() {
             ])
             .current_dir(repo_root()),
     );
+    std::fs::copy(&wallet_cy, &wallet_gen).expect("clone wallet for genesis");
 
     // DO wallet contains ONLY the signer account used for tx-import.
     run_checked_capture(
@@ -323,13 +324,29 @@ fn slice20_dual_flow_ok() {
             .current_dir(repo_root()),
     );
 
-    // Build genesis from wallet-cy: funds CY sender; does not pre-fund receiver nor DO signer.
+    // Add DO signer into genesis-only wallet so IMPORT has fee floor liquidity
+    // (`MIN_IMPORT_FEE_UNITS`) after recent roaming economics updates.
+    run_checked_capture(
+        Command::new(&pwm_bin)
+            .args([
+                "wallet",
+                "account",
+                "add",
+                "--wallet",
+                wallet_gen.to_str().unwrap(),
+                "--derivation-index",
+                &do_signer_di.to_string(),
+            ])
+            .current_dir(repo_root()),
+    );
+
+    // Build genesis from dedicated wallet (sender + import signer); still does not pre-fund recipients.
     run_checked_capture(Command::new(&pwm_bin).args([
         "--genesis-passphrase",
         "12345",
         "genesis-build",
         "--wallet",
-        wallet_cy.to_str().unwrap(),
+        wallet_gen.to_str().unwrap(),
         "--out",
         genesis_json.to_str().unwrap(),
         "--premine-bal",
@@ -722,7 +739,7 @@ fn slice20_dual_flow_ok() {
 /// Two **processes** + real transport: cross-shard peers must not enter false `bridge_federation_trust_refused`
 /// (level-2 digest compared only for same `domain_hi`).
 #[test]
-fn cross_shard_two_pwmd_bridge_federation_ok() {
+fn cross_shard_bridge_ok() {
     let master_seed_hex = "edf0537be8ab846b22990ef31c8c7c61dbdad1d1a53c930fb102d048d6ffb520";
     let sender_di = 167708_u32;
 

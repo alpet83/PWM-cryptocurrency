@@ -2,13 +2,14 @@
 
 use crate::cli_config::rpc_http_timeout;
 use crate::wallet::WalletAccountEntry;
+use pwm_core::summarize_tx_reject_json;
 use pwm_core::tx::SignedTx;
 use pwm_core::AccountId;
 use serde_json::Value;
 use std::io::IsTerminal;
 use std::path::Path;
 
-pub(crate) fn format_wallet_account_list_line(account: &WalletAccountEntry) -> String {
+pub(crate) fn fmt_wallet_acct_line(account: &WalletAccountEntry) -> String {
     let marker = if account.is_active { "*" } else { " " };
     format!(
         "{marker} id_hex={} id_pretty={} derivation_index={} derivation_path={}",
@@ -75,7 +76,15 @@ fn parse_u64_json_field(v: &Value, field: &str) -> Option<u64> {
     })
 }
 
-pub(crate) fn parse_nonce_from_account_json(body: &str) -> Option<u64> {
+fn parse_u32_json_field(v: &Value, field: &str) -> Option<u32> {
+    v.get(field).and_then(|n| match n {
+        Value::String(s) => s.parse().ok(),
+        Value::Number(num) => num.as_u64().and_then(|x| u32::try_from(x).ok()),
+        _ => None,
+    })
+}
+
+pub(crate) fn parse_nonce_acct_json(body: &str) -> Option<u64> {
     let v: Value = serde_json::from_str(body).ok()?;
     parse_u64_json_field(&v, "nonce")
 }
@@ -124,7 +133,7 @@ pub(crate) fn nonce_404_account_hint(status_code: u16, body: &str) -> Option<&'s
 }
 
 pub(crate) fn parse_nonce_init(body: &str) -> Result<(u64, bool), String> {
-    let nonce = parse_nonce_from_account_json(body).ok_or_else(|| {
+    let nonce = parse_nonce_acct_json(body).ok_or_else(|| {
         format!(
             "missing/invalid `nonce` in /v1/account JSON (body prefix={})",
             {
@@ -297,7 +306,7 @@ pub(crate) fn fetch_nonce(
             }
         });
     }
-    parse_nonce_from_account_json(&body).ok_or_else(|| {
+    parse_nonce_acct_json(&body).ok_or_else(|| {
         let hint = truncate_rpc_body_hint(&body, 240);
         format!(
             "nonce fetch: HTTP 200 but missing/invalid `nonce` (expected JSON number or decimal string). {}",
@@ -308,6 +317,58 @@ pub(crate) fn fetch_nonce(
             }
         )
     })
+}
+
+pub(crate) fn fetch_marks(
+    c: &reqwest::blocking::Client,
+    rpc_base: &str,
+    from: AccountId,
+) -> Result<u32, String> {
+    let from_hex = hex::encode(from);
+    let url = format!("{}/v1/account/{}", rpc_base, from_hex);
+    let r = c
+        .get(&url)
+        .send()
+        .map_err(|e| map_reqwest_err(&e, "marks fetch"))?;
+    let status = r.status();
+    let body = r.text().unwrap_or_default();
+    if !status.is_success() {
+        let hint = truncate_rpc_body_hint(&body, 240);
+        return Err(if hint.is_empty() {
+            format!("marks fetch: HTTP {status} from {url}")
+        } else {
+            format!("marks fetch: HTTP {status} from {url}: {hint}")
+        });
+    }
+    let v: Value = serde_json::from_str(&body).map_err(|e| {
+        format!(
+            "marks fetch: failed to parse /v1/account JSON for {}: {e}",
+            hex::encode(from)
+        )
+    })?;
+    parse_u32_json_field(&v, "marks").ok_or_else(|| {
+        let hint = truncate_rpc_body_hint(&body, 240);
+        format!(
+            "marks fetch: HTTP 200 but missing/invalid `marks` (expected JSON number or decimal string). {}",
+            if hint.is_empty() {
+                "(empty body)".into()
+            } else {
+                hint
+            }
+        )
+    })
+}
+
+pub(crate) fn format_tx_submit_error(status: reqwest::StatusCode, body: &str, url: &str) -> String {
+    if let Some(hint) = summarize_tx_reject_json(body) {
+        return format!("tx submit: HTTP {status} ({url}): {hint}");
+    }
+    let hint = truncate_rpc_body_hint(body, 400);
+    if hint.is_empty() {
+        format!("tx submit: HTTP {status} ({url})")
+    } else {
+        format!("tx submit: HTTP {status} ({url}): {hint}")
+    }
 }
 
 pub(crate) fn post_signed_tx(
@@ -327,12 +388,7 @@ pub(crate) fn post_signed_tx(
         println!("{status}");
         return Ok(());
     }
-    let hint = truncate_rpc_body_hint(&body, 400);
-    Err(if hint.is_empty() {
-        format!("tx submit: HTTP {status} ({url})")
-    } else {
-        format!("tx submit: HTTP {status} ({url}): {hint}")
-    })
+    Err(format_tx_submit_error(status, &body, &url))
 }
 
 pub(crate) fn load_handoff_json(path: &Path) -> Result<Value, String> {

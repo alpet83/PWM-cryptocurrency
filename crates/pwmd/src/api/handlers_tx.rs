@@ -1,9 +1,9 @@
 //! HTTP handlers for signed transaction submission (`POST /v1/tx`).
 
 use super::common::{
-    acct_view, ensure_user_tx_allowed, persist_snapshot_or_http_err, push_readiness_reject_flow,
-    push_tx_flow, readiness_reject_json, rollback_commit, snapshot_save_under_inner_lock, take_bak,
-    tx_id_hex, tx_kind,
+    acct_view, ensure_user_tx_allowed, persist_snap, push_readiness_reject_flow, push_tx_flow,
+    readiness_reject_json, rollback_commit, snap_save_locked, take_bak, tx_id_hex, tx_kind,
+    tx_reject_json,
 };
 use crate::ledger::{summary_log_line, SUMMARY_BLOCK_INTERVAL};
 use crate::relay;
@@ -18,7 +18,7 @@ use pwm_core::tx::{TxBody, TxError};
 use pwm_core::{validate_tx_shape, SignedTx};
 use tracing::{error, info};
 
-fn tx_tip_precheck_err(e: TxError) -> (StatusCode, String) {
+fn tx_tip_precheck_err(tx: &SignedTx, e: TxError) -> (StatusCode, String) {
     use TxError::*;
     let status = match e {
         BadNonce | Insufficient | InsufficientMarks | AlreadyInit | DuplicateImport => {
@@ -26,7 +26,10 @@ fn tx_tip_precheck_err(e: TxError) -> (StatusCode, String) {
         }
         _ => StatusCode::BAD_REQUEST,
     };
-    (status, format!("tx cannot apply at tip: {e}"))
+    (
+        status,
+        tx_reject_json(tx, "preflight", &e, format!("tx cannot apply at tip: {e}")),
+    )
 }
 
 pub(super) async fn v1_tx(
@@ -71,7 +74,7 @@ pub(super) async fn v1_tx(
     validate_tx_shape(&tx).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            format!("tx validation failed: {e}"),
+            tx_reject_json(&tx, "preflight", &e, format!("tx validation failed: {e}")),
         )
     })?;
     let mut g = a.inner.write().await;
@@ -193,7 +196,7 @@ pub(super) async fn v1_tx(
             if h > 0 && h % SUMMARY_BLOCK_INTERVAL == 0 {
                 info!("{}", summary_log_line(&g.cross_shard.summary()));
             }
-            let save_result = snapshot_save_under_inner_lock(&a, &g);
+            let save_result = snap_save_locked(&a, &g);
             if let Some((path, result)) = save_result {
                 if let Err(e) = result {
                     rollback_commit(&mut g, bak);
@@ -217,8 +220,14 @@ pub(super) async fn v1_tx(
             return Ok(StatusCode::NO_CONTENT);
         }
         _ => {
-            if let Err(e) = g.chain.st.precheck_apply_tip(&tx) {
-                return Err(tx_tip_precheck_err(e));
+            let (next_h, next_ts) = g.chain.next_apply_ctx().map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("precheck context resolve failed: {e}"),
+                )
+            })?;
+            if let Err(e) = g.chain.st.precheck_apply_with_ctx(&tx, next_h, next_ts) {
+                return Err(tx_tip_precheck_err(&tx, e));
             }
             g.pool.push(tx.clone()).map_err(|_| {
                 (
@@ -236,8 +245,8 @@ pub(super) async fn v1_tx(
             );
         }
     }
-    let save_result = snapshot_save_under_inner_lock(&a, &g);
+    let save_result = snap_save_locked(&a, &g);
     drop(g);
-    persist_snapshot_or_http_err(&a, save_result, "after_tx").await?;
+    persist_snap(&a, save_result, "after_tx").await?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -85,7 +85,7 @@ pub(super) struct HarnessNode {
 }
 
 pub(super) fn app_with_identity(
-    shard: ShardId,
+    shard: DevLane,
     network_id: &str,
     domain_hi: u8,
     cluster_id: &str,
@@ -147,6 +147,21 @@ fn harness_hello(node: &HarnessNode, now_ms: u64) -> NodeHello {
             protocol_version: "0.1.0".to_string(),
             tx_features: vec!["peer-only-harness".to_string()],
             services: vec!["peer".to_string()],
+            sync_profile: None,
+            deployment_profile: crate::handshake::DeploymentProfile::SingleSealer,
+            seal_role: crate::handshake::SealRole::Active,
+            validator_identity_hash: Some("vh-harness".to_string()),
+            node_instance_id: Some(format!("inst-{}", node.node_id)),
+            lease_owner_id: None,
+            lease_term: None,
+            lease_expires_at_ms: None,
+            lease_last_tip: None,
+            lease_fence: None,
+            cluster_attest_enabled: false,
+            cluster_role: crate::handshake::ClusterRole::None,
+            cluster_members: Vec::new(),
+            cluster_quorum_k: None,
+            cluster_quorum_n: None,
         },
         nonce: now_ms.to_be_bytes().to_vec(),
         timestamp_ms: now_ms,
@@ -167,6 +182,21 @@ fn frame_label(msg: &PeerWireMsg) -> &'static str {
         PeerWireMsg::HeartbeatAck { .. } => "heartbeat_ack",
         PeerWireMsg::CrossShardFacts { .. } => "cross_shard_facts",
         PeerWireMsg::AccountViews { .. } => "account_views",
+        PeerWireMsg::SyncProfileAnnounce { .. } => "sync_profile_announce",
+        PeerWireMsg::SyncTipAnnounce { .. } => "sync_tip_announce",
+        PeerWireMsg::SyncHeadersReq { .. } => "sync_headers_req",
+        PeerWireMsg::SyncHeadersBatch { .. } => "sync_headers_batch",
+        PeerWireMsg::SyncBlocksReq { .. } => "sync_blocks_req",
+        PeerWireMsg::SyncBlocksBatch { .. } => "sync_blocks_batch",
+        PeerWireMsg::SyncTxAnnounce { .. } => "sync_tx_announce",
+        PeerWireMsg::SyncTxReq { .. } => "sync_tx_req",
+        PeerWireMsg::SyncTxBatch { .. } => "sync_tx_batch",
+        PeerWireMsg::SyncNack { .. } => "sync_nack",
+        PeerWireMsg::SyncCatchupReq { .. } => "sync_catchup_req",
+        PeerWireMsg::SyncCatchupChunk { .. } => "sync_catchup_chunk",
+        PeerWireMsg::SyncCatchupDone { .. } => "sync_catchup_done",
+        PeerWireMsg::ClusterPropose { .. } => "cluster_propose",
+        PeerWireMsg::ClusterAttest { .. } => "cluster_attest",
     }
 }
 
@@ -274,7 +304,22 @@ pub(super) async fn run_inbound_peer(
             }
             HarnessRead::Frame(PeerWireMsg::AccountViews { .. })
             | HarnessRead::Frame(PeerWireMsg::CrossShardFacts { .. })
-            | HarnessRead::Frame(PeerWireMsg::HeartbeatAck { .. }) => {
+            | HarnessRead::Frame(PeerWireMsg::HeartbeatAck { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncProfileAnnounce { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTipAnnounce { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncHeadersReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncHeadersBatch { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncBlocksReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncBlocksBatch { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTxAnnounce { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTxReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTxBatch { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncNack { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncCatchupReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncCatchupChunk { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncCatchupDone { .. })
+            | HarnessRead::Frame(PeerWireMsg::ClusterPropose { .. })
+            | HarnessRead::Frame(PeerWireMsg::ClusterAttest { .. }) => {
                 idle_reads = 0;
             }
             HarnessRead::Frame(PeerWireMsg::Hello { .. } | PeerWireMsg::HelloAck { .. }) => {
@@ -336,7 +381,22 @@ pub(super) async fn run_outbound_peer(
             }
             HarnessRead::Frame(
                 PeerWireMsg::CrossShardFacts { .. } | PeerWireMsg::AccountViews { .. },
-            ) => {}
+            )
+            | HarnessRead::Frame(PeerWireMsg::SyncProfileAnnounce { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTipAnnounce { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncHeadersReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncHeadersBatch { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncBlocksReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncBlocksBatch { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTxAnnounce { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTxReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncTxBatch { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncNack { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncCatchupReq { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncCatchupChunk { .. })
+            | HarnessRead::Frame(PeerWireMsg::SyncCatchupDone { .. })
+            | HarnessRead::Frame(PeerWireMsg::ClusterPropose { .. })
+            | HarnessRead::Frame(PeerWireMsg::ClusterAttest { .. }) => {}
             HarnessRead::Frame(other) => {
                 return Err(format!("idle_probe_unexpected_frame: {other:?}"));
             }
@@ -364,6 +424,11 @@ pub(super) async fn run_outbound_peer(
             &PeerWireMsg::Heartbeat {
                 unix_ms,
                 chain_tip_height: None,
+                lease_owner_id: None,
+                lease_term: None,
+                lease_expires_at_ms: None,
+                lease_last_tip: None,
+                lease_fence: None,
                 federation_shard_id: None,
                 federation_gossip: None,
             },
@@ -391,6 +456,21 @@ pub(super) async fn run_outbound_peer(
                 HarnessRead::Frame(
                     PeerWireMsg::CrossShardFacts { .. } | PeerWireMsg::AccountViews { .. },
                 ) => {}
+                HarnessRead::Frame(PeerWireMsg::SyncProfileAnnounce { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncTipAnnounce { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncHeadersReq { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncHeadersBatch { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncBlocksReq { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncBlocksBatch { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncTxAnnounce { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncTxReq { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncTxBatch { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncNack { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncCatchupReq { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncCatchupChunk { .. })
+                | HarnessRead::Frame(PeerWireMsg::SyncCatchupDone { .. })
+                | HarnessRead::Frame(PeerWireMsg::ClusterPropose { .. })
+                | HarnessRead::Frame(PeerWireMsg::ClusterAttest { .. }) => {}
                 HarnessRead::Frame(PeerWireMsg::Hello { .. } | PeerWireMsg::HelloAck { .. }) => {
                     return Err("heartbeat_unexpected_handshake_frame".to_string());
                 }

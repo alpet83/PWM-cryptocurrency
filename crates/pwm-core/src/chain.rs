@@ -18,6 +18,17 @@ pub fn prev_gen() -> [u8; 32] {
     *blake3::hash(b"PWMv0/GENESIS").as_bytes()
 }
 
+/// Seal-time source for block headers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SealTimeMode {
+    /// Default production behavior: use wall clock from `SystemTime::now()`.
+    WallClock,
+    /// Test/dev behavior: derive timestamp from deterministic height context.
+    DeterministicHeight,
+}
+
+const DET_SEAL_TS_BASE: u64 = 1_700_000_000;
+
 /// In-memory devnet chain.
 pub struct Chain {
     pub cfg: GenCfg,
@@ -27,6 +38,7 @@ pub struct Chain {
     pub blocks: VecDeque<Block>,
     pub canonical_h: u64,
     pub st: State,
+    pub seal_time_mode: SealTimeMode,
 }
 
 impl Chain {
@@ -50,6 +62,7 @@ impl Chain {
             blocks: VecDeque::new(),
             canonical_h: 0,
             st,
+            seal_time_mode: SealTimeMode::WallClock,
         }
     }
 
@@ -72,20 +85,36 @@ impl Chain {
         self.canonical_h = self.blocks.back().map(|b| b.hdr.height).unwrap_or(0);
     }
 
-    /// Seals one block: apply txs atomically, accrue marks, pay producer, verify PoA sig.
-    pub fn seal(&mut self, txs: Vec<SignedTx>) -> Result<(), SealAbort> {
+    pub fn set_seal_time_mode(&mut self, mode: SealTimeMode) {
+        self.seal_time_mode = mode;
+    }
+
+    /// Returns `(next_height, now_unix_secs)` for tx application outside/inside sealing.
+    pub fn next_apply_ctx(&self) -> Result<(u64, u64), String> {
         let height = self.tip_h() + 1;
+        let ts = match self.seal_time_mode {
+            SealTimeMode::WallClock => std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_secs(),
+            SealTimeMode::DeterministicHeight => DET_SEAL_TS_BASE.saturating_add(height),
+        };
+        Ok((height, ts))
+    }
+
+    /// Seals one block: apply txs atomically, pay producer, verify PoA sig (marks are not accrued here; genesis seeds marks).
+    pub fn seal(&mut self, txs: Vec<SignedTx>) -> Result<(), SealAbort> {
+        let (height, ts) = self.next_apply_ctx().map_err(|e| (e, txs.clone()))?;
         let prev = self.tip_hash();
         let n = self.cfg.vals.set.len();
         let prod_idx = ((height - 1) as usize % n) as u32;
 
         let mut st = self.st.clone();
         for tx in &txs {
-            if let Err(e) = st.apply_tx(tx) {
+            if let Err(e) = st.apply_tx_with_ctx(tx, height, ts) {
                 return Err((format!("tx: {e}"), txs));
             }
         }
-        st.accrue_marks(self.cfg.marks_coeff);
         let prod_acct = self.cfg.prod_acct(prod_idx);
         if !st.accounts.contains_key(&prod_acct) {
             return Err((
@@ -96,15 +125,20 @@ impl Chain {
                 txs,
             ));
         }
-        st.reward_producer(&prod_acct, self.cfg.block_reward);
+        if self.cfg.is_legacy_policy() {
+            st.reward_producer(&prod_acct, self.cfg.block_reward);
+        } else {
+            let season_ppm = self.cfg.season_ppm(ts);
+            st.reward_producer_v2(
+                &prod_acct,
+                self.cfg.block_reward,
+                self.cfg.pwm_stake_min,
+                season_ppm,
+            );
+        }
 
         let state_root = digest(&st);
         let tx_root = txs_root(&txs);
-        let ts = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-            Ok(d) => d.as_secs(),
-            Err(e) => return Err((e.to_string(), txs)),
-        };
-
         let hdr = BlockHdr {
             height,
             prev_hash: prev,
@@ -143,6 +177,7 @@ pub fn absorb_blocks_tail(blocks: Vec<Block>) -> VecDeque<Block> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::block::hdr_hash;
     use crate::genesis::{FundingCfg, RewPol, VRow, ValCfg};
     use crate::hd::account_id_from_parts;
     use slip10_ed25519::derive_ed25519_private_key;
@@ -303,6 +338,60 @@ mod tests {
         assert_eq!(bal, 66);
     }
 
+    #[test]
+    fn legacy_keeps_reward_path() {
+        let (g, sks) = crate::genesis::dev_net();
+        let aid = g.accounts[0].acct;
+        let mut c = Chain::boot(g, sks);
+        {
+            let acc = c.st.accounts.get_mut(&aid).expect("validator");
+            acc.staked = 250_000;
+        }
+        c.cfg.policy_ver = 1;
+        c.cfg.pwm_stake_min = 500_000;
+        c.cfg.marks_stake_min = 500_000;
+        c.cfg.season_enabled = true;
+        c.cfg.season_coeff_ppm = 500_000;
+        c.seal(vec![]).expect("seal");
+        let acc = c.st.accounts.get(&aid).expect("validator");
+        assert_eq!(acc.balance_pwm, 1_000_100);
+        // Genesis marks from 1 PWM balance; seal does not call accrue_marks.
+        assert_eq!(acc.marks, 1);
+    }
+
+    #[test]
+    fn policy_v2_gates_with_season() {
+        let (g, sks) = crate::genesis::dev_net();
+        let aid = g.accounts[0].acct;
+        let mut c = Chain::boot(g, sks);
+        {
+            let acc = c.st.accounts.get_mut(&aid).expect("validator");
+            acc.staked = 250_000;
+        }
+        c.cfg.policy_ver = 2;
+        c.cfg.pwm_stake_min = 200_000;
+        c.cfg.marks_stake_min = 200_000;
+        c.cfg.season_enabled = true;
+        c.cfg.season_coeff_ppm = 500_000;
+        c.seal(vec![]).expect("seal");
+        let acc = c.st.accounts.get(&aid).expect("validator");
+        assert_eq!(acc.balance_pwm, 1_000_050);
+        assert_eq!(acc.marks, 1);
+    }
+
+    /// Empty seal does not accrue marks; accounts keep genesis-seeded marks only.
+    #[test]
+    fn seal_no_accrue_marks() {
+        let (g, sks) = crate::genesis::dev_net();
+        let aid = g.accounts[0].acct;
+        let mut c = Chain::boot(g, sks);
+        let want = c.st.accounts.get(&aid).expect("acct").marks;
+        c.st.accounts.get_mut(&aid).expect("acct").staked = 250_000;
+        c.seal(vec![]).expect("seal");
+        let got = c.st.accounts.get(&aid).expect("acct").marks;
+        assert_eq!(got, want, "seal must not accrue marks from stake");
+    }
+
     /// Boot panics if validator acct missing from funding rows (formerly `boot_rejects_missing_validator_funding_account`).
     #[test]
     #[should_panic(expected = "validators.set[0].acct must exist in funding.accounts")]
@@ -316,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn tail_cap_evicts_old_keeps_tip() {
+    fn tail_cap_keeps_tip() {
         let (g, sks) = crate::genesis::dev_net();
         let mut c = Chain::boot(g, sks);
         for _ in 0..1005 {
@@ -330,5 +419,23 @@ mod tests {
         c.seal(vec![]).expect("seal after cap");
         assert_eq!(c.tip_h(), 1006);
         assert_eq!(c.blocks.back().map(|b| b.hdr.height), Some(1006));
+    }
+
+    #[test]
+    fn det_mode_stable_hdr_hash() {
+        let (g1, sks1) = crate::genesis::dev_net();
+        let (g2, sks2) = crate::genesis::dev_net();
+        let mut c1 = Chain::boot(g1, sks1);
+        let mut c2 = Chain::boot(g2, sks2);
+        c1.set_seal_time_mode(SealTimeMode::DeterministicHeight);
+        c2.set_seal_time_mode(SealTimeMode::DeterministicHeight);
+
+        c1.seal(vec![]).expect("seal c1");
+        c2.seal(vec![]).expect("seal c2");
+
+        let h1 = c1.blocks.back().expect("block c1");
+        let h2 = c2.blocks.back().expect("block c2");
+        assert_eq!(h1.hdr.ts, h2.hdr.ts);
+        assert_eq!(hdr_hash(&h1.hdr), hdr_hash(&h2.hdr));
     }
 }

@@ -6,6 +6,18 @@ mod connect;
 mod handshake;
 mod session;
 
+async fn seed_wait_ms(app: &App, cfg: &TransportConfig, seed_key: &str, now_ms: u64) -> u64 {
+    let marker_wait = {
+        let hs = app.handshake.read().await;
+        hs.transport
+            .seed_peers
+            .get(seed_key)
+            .map(|x| x.next_due_ms.saturating_sub(now_ms))
+            .unwrap_or(0)
+    };
+    marker_wait.max(super::peer_retry_sleep_ms(cfg, seed_key, now_ms))
+}
+
 pub(crate) async fn run_seed_session(app: App, cfg: TransportConfig, seed: std::net::SocketAddr) {
     const DRAIN_TIMEOUT_CAP_MS: u64 = 25;
     let seed_key = seed.to_string();
@@ -44,9 +56,8 @@ pub(crate) async fn run_seed_session(app: App, cfg: TransportConfig, seed: std::
             DRAIN_TIMEOUT_CAP_MS,
         )
         .await;
-        tokio::time::sleep(std::time::Duration::from_millis(
-            super::peer_retry_sleep_ms(&cfg, &seed_key, now_ms),
-        ))
-        .await;
+        let wait_ms =
+            seed_wait_ms(&app, &cfg, &seed_key, current_time_ms().unwrap_or(now_ms)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
     }
 }

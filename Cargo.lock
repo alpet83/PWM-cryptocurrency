@@ -734,6 +734,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1637,18 +1647,20 @@ dependencies = [
 
 [[package]]
 name = "pwmd"
-version = "0.1.48"
+version = "0.1.53"
 dependencies = [
  "axum",
  "clap",
  "criterion",
  "ed25519-dalek",
+ "fs2",
  "hex",
  "pwm-core",
  "reqwest",
  "rpassword",
  "serde",
  "serde_json",
+ "serde_yaml",
  "slip10_ed25519",
  "tokio",
  "tower",

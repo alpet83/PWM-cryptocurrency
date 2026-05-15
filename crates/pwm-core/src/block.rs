@@ -75,6 +75,7 @@ pub fn hdr_hash(h: &BlockHdr) -> [u8; 32] {
 }
 
 #[cfg(test)]
+// keep-in-sync: naming script
 mod hdr_hex_tests {
     use super::{hdr_hash, BlockHdr};
 
@@ -91,7 +92,7 @@ mod hdr_hex_tests {
     }
 
     #[test]
-    fn hdr_json_uses_hex_strings() {
+    fn hdr_json_hex_str() {
         let h = sample_hdr();
         let j = serde_json::to_string(&h).expect("json");
         assert!(
@@ -101,7 +102,7 @@ mod hdr_hex_tests {
     }
 
     #[test]
-    fn hdr_json_roundtrip_and_legacy_byte_array() {
+    fn hdr_json_legacy_arr() {
         let h = sample_hdr();
         let j = serde_json::to_string(&h).expect("json");
         let back: BlockHdr = serde_json::from_str(&j).expect("de");
@@ -121,7 +122,7 @@ mod hdr_hex_tests {
     }
 
     #[test]
-    fn hdr_bincode_hash_stable_across_codec() {
+    fn hdr_bincode_hash_stable() {
         let h = sample_hdr();
         let h1 = hdr_hash(&h);
         let raw = bincode::serialize(&h).expect("bincode ser");

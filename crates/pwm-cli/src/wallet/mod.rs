@@ -27,7 +27,7 @@ pub use types::{
 
 #[cfg(test)]
 mod tests {
-    use super::store::{detect_schema_version, load_wallet_yaml_v3_raw};
+    use super::store::{detect_schema_version, load_wallet_v3_raw};
     use super::types::{
         WalletSecretPayload, WalletYamlV3, WalletYamlV3Account, LEGACY_ACTIVE_ACCOUNT_KEY,
     };
@@ -35,8 +35,8 @@ mod tests {
     use crate::bruteforce::domain_matches;
     use base64::Engine;
     use pwm_core::{
-        account_id_to_human, append_wallet_yaml_address_book, parse_account_id,
-        seal_wallet_secret_plaintext, AddressBookEntry,
+        account_id_to_human, append_addr_book, parse_account_id, seal_wallet_secret_plaintext,
+        AddressBookEntry,
     };
     use slip10_ed25519::derive_ed25519_private_key;
     use std::path::Path;
@@ -353,11 +353,11 @@ address_book:
 
         let owner = parse_account_id(w.account_id_hex.as_str()).unwrap();
         let owner_human = account_id_to_human(&owner);
-        append_wallet_yaml_address_book(&path, &owner_human, None).unwrap();
+        append_addr_book(&path, &owner_human, None).unwrap();
 
         assert!(check_tx_send_recipient_book(&path, &peer_human).is_err());
 
-        append_wallet_yaml_address_book(&path, &peer_human, None).unwrap();
+        append_addr_book(&path, &peer_human, None).unwrap();
         check_tx_send_recipient_book(&path, &peer_human).unwrap();
 
         let _ = std::fs::remove_file(&path);
@@ -389,7 +389,7 @@ address_book:
         .unwrap();
         save_wallet_yaml(&path, &w).unwrap();
         let owner = parse_account_id(w.account_id_hex.as_str()).unwrap();
-        append_wallet_yaml_address_book(&path, &account_id_to_human(&owner), None).unwrap();
+        append_addr_book(&path, &account_id_to_human(&owner), None).unwrap();
 
         let err = tx_send_address_book_gate(Some(path.as_path()), None, &outsider_human)
             .expect_err("book");
@@ -1039,7 +1039,7 @@ master_seed_hex: "{seed_hex}"
             crate::bruteforce::DomainMatchMode::HighByteOnly,
         )
         .expect("resume");
-        let wallet_v3 = load_wallet_yaml_v3_raw(&path).expect("wallet");
+        let wallet_v3 = load_wallet_v3_raw(&path).expect("wallet");
         let expected = wallet_v3
             .accounts
             .iter()

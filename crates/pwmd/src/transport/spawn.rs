@@ -62,6 +62,11 @@ pub fn spawn_peer_listener_loop(app: App, cfg: TransportConfig) {
                     cfg.peer_listen,
                     e
                 );
+                warn!(
+                    "peer listener bind {} failed: {} (Windows 10013: check reserved TCP ranges, e.g. netsh interface ipv4 show excludedportrange protocol=tcp; use other --transport-peer-listen ports)",
+                    cfg.peer_listen,
+                    e
+                );
                 return;
             }
         };

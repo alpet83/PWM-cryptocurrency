@@ -1,29 +1,22 @@
-//! Shard identifiers and runtime network/cluster identity for pwmd.
+//! Dev lane identifiers and runtime network/cluster identity for pwmd.
 
 use serde::Deserialize;
 use serde::Serialize;
 use std::net::SocketAddr;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum ShardId {
+#[serde(rename_all = "snake_case")]
+pub enum DevLane {
     #[default]
-    A,
-    B,
+    Lane0,
+    Lane1,
 }
 
-impl ShardId {
+impl DevLane {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::A => "A",
-            Self::B => "B",
-        }
-    }
-
-    pub fn namespace(self) -> &'static str {
-        match self {
-            Self::A => "shard-a",
-            Self::B => "shard-b",
+            Self::Lane0 => "lane0",
+            Self::Lane1 => "lane1",
         }
     }
 }
@@ -48,8 +41,6 @@ pub enum RuntimeIdentityMode {
     Explicit,
     /// Relay-compatible neutral baseline without shard alias affinity.
     Neutral,
-    /// Relay-compatible baseline; keeps legacy shard alias mapping for migration safety.
-    Alias { shard: ShardId },
 }
 
 impl RuntimeIdentityMode {
@@ -61,7 +52,6 @@ impl RuntimeIdentityMode {
         match self {
             Self::Explicit => "shard_enforced",
             Self::Neutral => "relay_baseline",
-            Self::Alias { .. } => "relay_baseline",
         }
     }
 }
@@ -116,11 +106,11 @@ pub fn parse_cluster_domain_hi(raw: &str) -> Result<u8, String> {
 }
 
 pub fn resolve_runtime_identity(
-    shard: ShardId,
+    dev_lane: DevLane,
     input: RuntimeIdentityInput,
 ) -> Result<RuntimeIdentity, String> {
     if !input.has_any() {
-        return Ok(default_runtime_identity_for_shard(shard));
+        return Ok(default_dev_lane_identity(dev_lane));
     }
     let missing = input.missing_fields();
     if !missing.is_empty() {
@@ -138,22 +128,23 @@ pub fn resolve_runtime_identity(
     })
 }
 
-pub(crate) fn default_runtime_identity_for_shard(shard: ShardId) -> RuntimeIdentity {
+/// Returns explicit devnet identity defaults for a given local dev lane.
+pub(crate) fn default_dev_lane_identity(dev_lane: DevLane) -> RuntimeIdentity {
     RuntimeIdentity {
         network_id: "devnet".to_string(),
-        cluster_domain_hi: match shard {
-            ShardId::A => 0x10,
-            ShardId::B => 0x20,
+        cluster_domain_hi: match dev_lane {
+            DevLane::Lane0 => 0x10,
+            DevLane::Lane1 => 0x20,
         },
-        cluster_id: match shard {
-            ShardId::A => "compat-shard-a".to_string(),
-            ShardId::B => "compat-shard-b".to_string(),
+        cluster_id: match dev_lane {
+            DevLane::Lane0 => "dev-cluster-0x10".to_string(),
+            DevLane::Lane1 => "dev-cluster-0x20".to_string(),
         },
-        node_id: match shard {
-            ShardId::A => "compat-node-a".to_string(),
-            ShardId::B => "compat-node-b".to_string(),
+        node_id: match dev_lane {
+            DevLane::Lane0 => "dev-node-0x10".to_string(),
+            DevLane::Lane1 => "dev-node-0x20".to_string(),
         },
-        mode: RuntimeIdentityMode::Alias { shard },
+        mode: RuntimeIdentityMode::Explicit,
     }
 }
 
@@ -171,7 +162,6 @@ pub fn storage_namespace(identity: &RuntimeIdentity) -> String {
     match identity.mode {
         RuntimeIdentityMode::Explicit => domain_namespace(identity.cluster_domain_hi),
         RuntimeIdentityMode::Neutral => "neutral".to_string(),
-        RuntimeIdentityMode::Alias { shard } => shard.namespace().to_string(),
     }
 }
 
@@ -180,10 +170,9 @@ pub fn neutral_listen_dir_tag(listen: SocketAddr) -> String {
     listen.to_string().replace(':', "+")
 }
 
-pub fn runtime_shard_label(identity: &RuntimeIdentity, shard: ShardId) -> String {
+pub fn runtime_shard_label(identity: &RuntimeIdentity, _dev_lane: DevLane) -> String {
     match identity.mode {
         RuntimeIdentityMode::Neutral => "neutral".to_string(),
-        RuntimeIdentityMode::Alias { .. } => shard.as_str().to_string(),
         RuntimeIdentityMode::Explicit => {
             if let Some(entry) =
                 pwm_core::domain_index::lookup_regulatory_by_hi(identity.cluster_domain_hi)

@@ -2,11 +2,11 @@
 
 use pwm_core::hd::domain_of_account_id;
 use pwm_core::state::ExportProvenance;
-use pwm_core::tx::{SignedTx, TxBody};
+use pwm_core::tx::{SignedTx, TxBody, MIN_IMPORT_FEE_UNITS};
 use pwm_core::AccountId;
 use serde_json::Value;
 
-use crate::config::{base_url, cross_shard_target_rpc_base, http_client, rpc_timeout_hint};
+use crate::config::{base_url, http_client, rpc_timeout_hint, xshard_rpc_base};
 use crate::rpc_account::{fetch_nonce, truncate_rpc_err_hint};
 use crate::signing::signing_material_for_sender;
 use crate::wallet::IdentitySource;
@@ -218,7 +218,7 @@ pub fn submit_roaming_intent(
     let (sk, dom, idx) = signing_material_for_sender(from, identity)?;
     let client = http_client();
     let rpc = base_url();
-    let target_rpc = cross_shard_target_rpc_base();
+    let target_rpc = xshard_rpc_base();
     let nonce = fetch_nonce(&client, &rpc, *from)?;
     let export_tx = SignedTx::sign_body(
         &sk,
@@ -270,6 +270,7 @@ pub fn submit_roaming_intent(
     let mut last_seen = created.status.clone();
     let mut last_poll_error: Option<String> = None;
     let mut import_submitted = false;
+    let mut import_fee_used: Option<u128> = None;
     let mut pre_recv_bal: Option<u128> = None;
 
     if created.status == "relayed" {
@@ -278,7 +279,8 @@ pub fn submit_roaming_intent(
             if pre_recv_bal.is_none() {
                 pre_recv_bal = fetch_account_balance_raw(&client, &target_rpc, *to).ok();
             }
-            submit_import_after_relay(to, amount, &created.export_id, identity)?;
+            let imp_fee = submit_import_after_relay(to, amount, &created.export_id, identity)?;
+            import_fee_used = Some(imp_fee);
             import_submitted = true;
         }
     }
@@ -307,30 +309,32 @@ pub fn submit_roaming_intent(
                 if pre_recv_bal.is_none() {
                     pre_recv_bal = fetch_account_balance_raw(&client, &target_rpc, *to).ok();
                 }
-                if let Err(e) = submit_import_after_relay(to, amount, &created.export_id, identity)
-                {
-                    return Err(format!(
-                        "Cross-shard flow diagnostics:\n{}",
-                        [
-                            "1) preflight (export-readiness): OK - readiness подтверждён.".to_string(),
-                            if created.duplicate {
-                                format!(
-                                    "2) export submit (roaming/export intent): OK - intent={} export={} (duplicate reused).",
-                                    created.intent_id, created.export_id
-                                )
-                            } else {
-                                format!(
-                                    "2) export submit (roaming/export intent): OK - intent={} export={}.",
-                                    created.intent_id, created.export_id
-                                )
-                            },
-                            "3) handoff/provenance register: OK - provenance доставлен (relayed)."
-                                .to_string(),
-                            format!("4) import submit: FAIL — {e}"),
-                            "5) balance verify (target): SKIP — import not applied.".to_string(),
-                        ]
-                        .join("\n")
-                    ));
+                match submit_import_after_relay(to, amount, &created.export_id, identity) {
+                    Ok(imp_fee) => import_fee_used = Some(imp_fee),
+                    Err(e) => {
+                        return Err(format!(
+                            "Cross-shard flow diagnostics:\n{}",
+                            [
+                                "1) preflight (export-readiness): OK - readiness подтверждён.".to_string(),
+                                if created.duplicate {
+                                    format!(
+                                        "2) export submit (roaming/export intent): OK - intent={} export={} (duplicate reused).",
+                                        created.intent_id, created.export_id
+                                    )
+                                } else {
+                                    format!(
+                                        "2) export submit (roaming/export intent): OK - intent={} export={}.",
+                                        created.intent_id, created.export_id
+                                    )
+                                },
+                                "3) handoff/provenance register: OK - provenance доставлен (relayed)."
+                                    .to_string(),
+                                format!("4) import submit: FAIL — {e}"),
+                                "5) balance verify (target): SKIP — import not applied.".to_string(),
+                            ]
+                            .join("\n")
+                        ));
+                    }
                 }
                 import_submitted = true;
             }
@@ -344,7 +348,17 @@ pub fn submit_roaming_intent(
                 None
             };
             let step5 = if st.status == "imported" {
-                format_balance_verify_step5(&target_rpc, pre_recv_bal, post_bal, amount, fee)
+                let import_fee = import_fee_used.unwrap_or(MIN_IMPORT_FEE_UNITS);
+                let expected_delta = amount.saturating_sub(import_fee);
+                format_balance_verify_step5(
+                    &target_rpc,
+                    pre_recv_bal,
+                    post_bal,
+                    amount,
+                    expected_delta,
+                    fee,
+                    import_fee,
+                )
             } else {
                 "5) balance verify (target): SKIP — lifecycle not imported.".into()
             };
@@ -371,9 +385,8 @@ pub fn submit_roaming_intent(
     )
 }
 
-/// Mirrors `pwm-cli` `import_provenance_from_target_facts` — IMPORT must carry signed provenance
-/// for deterministic replay on the target (`enforce_import_provenance_prefilter`).
-fn import_provenance_from_target_facts_once(
+/// Fetches matching import provenance from target facts in one attempt.
+fn import_prov_once(
     c: &reqwest::blocking::Client,
     rpc_base: &str,
     export_id: &[u8; 32],
@@ -432,7 +445,8 @@ fn import_provenance_from_target_facts_once(
     ))
 }
 
-fn import_provenance_from_target_facts_retry(
+/// Retries target fact polling until provenance is found or attempts are exhausted.
+fn import_prov_retry(
     c: &reqwest::blocking::Client,
     rpc_base: &str,
     export_id: &[u8; 32],
@@ -441,7 +455,7 @@ fn import_provenance_from_target_facts_retry(
 ) -> Result<ExportProvenance, String> {
     let mut last = String::new();
     for attempt in 0..24usize {
-        match import_provenance_from_target_facts_once(c, rpc_base, export_id, to, amount_raw) {
+        match import_prov_once(c, rpc_base, export_id, to, amount_raw) {
             Ok(p) => return Ok(p),
             Err(e) => {
                 last = e;
@@ -496,7 +510,8 @@ fn fetch_account_balance_raw(
         .map_err(|e| format!("balance fetch: parse balance: {e}"))
 }
 
-fn post_imp_tx_src_relay(
+/// Relays the import tx to the source-shard relay endpoint.
+fn relay_imp_tx(
     c: &reqwest::blocking::Client,
     source_rpc: &str,
     tx: &SignedTx,
@@ -542,19 +557,13 @@ fn submit_import_after_relay(
     amount_raw: u128,
     export_id_hex: &str,
     identity: &IdentitySource,
-) -> Result<(), String> {
+) -> Result<u128, String> {
     let export_id = parse_export_id_hex(export_id_hex)?;
     let (sk, dom, idx) = signing_material_for_sender(to, identity)?;
     let client = http_client();
-    let target_rpc = cross_shard_target_rpc_base();
+    let target_rpc = xshard_rpc_base();
     let nonce = fetch_nonce(&client, &target_rpc, *to)?;
-    let prov = import_provenance_from_target_facts_retry(
-        &client,
-        &target_rpc,
-        &export_id,
-        to,
-        amount_raw,
-    )?;
+    let prov = import_prov_retry(&client, &target_rpc, &export_id, to, amount_raw)?;
     let mut tx = SignedTx::sign_body(
         &sk,
         dom,
@@ -567,46 +576,88 @@ fn submit_import_after_relay(
         },
     );
     tx.set_import_provenance_signed(&sk, Some(prov));
-    post_imp_tx_src_relay(&client, &base_url(), &tx)
+    let import_fee = tx.import_fee.unwrap_or(MIN_IMPORT_FEE_UNITS);
+    relay_imp_tx(&client, &base_url(), &tx)?;
+    Ok(import_fee)
 }
 
 fn format_balance_verify_step5(
     target_rpc: &str,
     pre: Option<u128>,
     post: Option<u128>,
-    expected_credit: u128,
-    fee_raw: u128,
+    amount_raw: u128,
+    expected_delta: u128,
+    export_fee_raw: u128,
+    import_fee_raw: u128,
 ) -> String {
-    let fee_note = if fee_raw > 0 {
-        format!(
-            " Source debits amount+fee; recipient credit equals export amount only (fee {} raw not credited).",
-            fee_raw
-        )
-    } else {
-        String::new()
-    };
+    let fee_note = format!(
+        " Source: export debits amount+export_fee={export_fee_raw} raw. Target: import fee={import_fee_raw} raw. Expected net delta = amount({amount_raw}) - import_fee({import_fee_raw})."
+    );
     match (pre, post) {
         (Some(b0), Some(b1)) => {
             let d = b1.saturating_sub(b0);
-            if d == expected_credit {
+            if d == expected_delta {
                 format!(
-                    "5) balance verify (target): OK — delta={d} raw, expected credit {expected_credit}.{fee_note} rpc={target_rpc}"
+                    "5) balance verify (target): OK — delta={d} raw, expected net delta {expected_delta} (= amount {amount_raw} - import_fee {import_fee_raw}).{fee_note} rpc={target_rpc}"
                 )
             } else {
                 format!(
-                    "5) balance verify (target): FAIL — delta={d} raw, expected {expected_credit}.{fee_note} pre={b0} post={b1} rpc={target_rpc}"
+                    "5) balance verify (target): FAIL — delta={d} raw, expected net delta {expected_delta} (= amount {amount_raw} - import_fee {import_fee_raw}).{fee_note} pre={b0} post={b1} rpc={target_rpc}"
                 )
             }
         }
         (_, Some(b1)) => {
             format!(
-                "5) balance verify (target): INFO — post_balance={b1} raw, expected credit {expected_credit}.{fee_note} (pre-balance unavailable) rpc={target_rpc}"
+                "5) balance verify (target): INFO — post_balance={b1} raw, expected net delta {expected_delta} (= amount {amount_raw} - import_fee {import_fee_raw}).{fee_note} (pre-balance unavailable) rpc={target_rpc}"
             )
         }
         _ => {
             format!(
-                "5) balance verify (target): INFO — could not read account on target (set PWM_TUI_TARGET_RPC if port flip heuristic is wrong). expected credit {expected_credit}.{fee_note} rpc={target_rpc}"
+                "5) balance verify (target): INFO — could not read account on target (set PWM_TUI_TARGET_RPC if port flip heuristic is wrong). expected net delta {expected_delta} (= amount {amount_raw} - import_fee {import_fee_raw}).{fee_note} rpc={target_rpc}"
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_balance_verify_step5;
+
+    #[test]
+    fn step5_target_uses_net_delta() {
+        let msg = format_balance_verify_step5(
+            "http://127.0.0.1:3031",
+            Some(1_000_000_000),
+            Some(1_000_990_000),
+            1_000_000,
+            990_000,
+            5_000,
+            10_000,
+        );
+        assert!(msg.contains("OK"), "{msg}");
+        assert!(msg.contains("delta=990000 raw"), "{msg}");
+        assert!(
+            msg.contains("expected net delta 990000 (= amount 1000000 - import_fee 10000)"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn step5_text_mentions_import_fee() {
+        let msg = format_balance_verify_step5(
+            "http://127.0.0.1:3031",
+            Some(2_000_000_000),
+            Some(2_001_000_000),
+            1_000_000,
+            990_000,
+            20_000,
+            10_000,
+        );
+        assert!(msg.contains("FAIL"), "{msg}");
+        assert!(
+            msg.contains("Source: export debits amount+export_fee=20000 raw."),
+            "{msg}"
+        );
+        assert!(msg.contains("Target: import fee=10000 raw."), "{msg}");
     }
 }

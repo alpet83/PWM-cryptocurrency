@@ -12,7 +12,8 @@ pub(crate) struct HandshakeMetrics {
 
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
 pub struct TransportCounters {
-    pub dial_attempt_by_class_result: HashMap<String, u64>,
+    #[serde(rename = "dial_attempt_by_class_result")]
+    pub dial_attempt_class_result: HashMap<String, u64>,
     pub peer_close_by_reason: HashMap<String, u64>,
     pub reconnect_decision_by_reason: HashMap<String, u64>,
     pub backoff_skip_total: u64,
@@ -22,7 +23,8 @@ pub struct TransportCounters {
 pub struct TransportSnapshot {
     pub ticks_total: u64,
     pub counters: TransportCounters,
-    pub last_attempt_ms_by_class: HashMap<String, u64>,
+    #[serde(rename = "last_attempt_ms_by_class")]
+    pub last_attempt_by_class: HashMap<String, u64>,
     pub last_result_by_class: HashMap<String, String>,
     pub native_underflow_ticks: u64,
     pub native_underflow_threshold_ticks: u64,
@@ -52,6 +54,41 @@ pub struct TransportSnapshot {
     pub session_disconnected_total: u64,
     pub session_untrusted_total: u64,
     pub session_trusted_total: u64,
+    #[serde(rename = "sync_v1_msg_seen_total")]
+    pub sync_v1_seen_total: u64,
+    #[serde(rename = "sync_v1_msg_drop_total")]
+    pub sync_v1_drop_total: u64,
+    #[serde(rename = "sync_v1_msg_drop_reason_total")]
+    pub sync_v1_drop_reason: HashMap<String, u64>,
+    pub sync_tx_seen_total: u64,
+    pub sync_tx_accept_total: u64,
+    pub sync_tx_drop_total: u64,
+    #[serde(rename = "sync_tx_drop_reason_total")]
+    pub sync_tx_drop_reason: HashMap<String, u64>,
+    pub mempool_ingress_kind_total: HashMap<String, u64>,
+    #[serde(rename = "mempool_cluster_push_suppressed_total")]
+    pub mempool_push_suppressed: HashMap<String, u64>,
+    pub mempool_egress_relay_total: HashMap<String, u64>,
+    pub sync_tip_seen_total: u64,
+    #[serde(rename = "sync_tip_divergence_disconnect_total")]
+    pub sync_tip_disconnect_total: u64,
+    pub sync_hdr_req_total: u64,
+    pub sync_hdr_resp_total: u64,
+    pub sync_blk_req_total: u64,
+    pub sync_blk_resp_total: u64,
+    pub sync_apply_ok_total: u64,
+    pub sync_apply_fail_total: u64,
+    pub sync_fork_conflict_total: u64,
+    pub sync_cup_start_total: u64,
+    pub sync_cup_chunk_total: u64,
+    pub sync_cup_done_total: u64,
+    pub sync_cup_fail_total: u64,
+    pub sync_cup_drop_total: u64,
+    #[serde(rename = "sync_cup_fail_reason_total")]
+    pub sync_cup_fail_reason: HashMap<String, u64>,
+    /// Epoch catch-up aborted: peer tip lag fell within short-tail window (see `sync_live` demotion).
+    #[serde(rename = "sync_cup_demote_short_tail_total")]
+    pub sync_cup_demote_tail: u64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -67,7 +104,7 @@ pub(crate) struct TransportState {
     pub(crate) seed_peers: HashMap<String, TransportPeerState>,
     pub(crate) snapshot: TransportSnapshot,
     pub(crate) reconnect_runaway_streak: u32,
-    pub(crate) reconnect_runaway_guard_until_ms: u64,
+    pub(crate) reconnect_guard_until_ms: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
@@ -91,7 +128,7 @@ impl Default for TransportState {
             snapshot: TransportSnapshot {
                 ticks_total: 0,
                 counters: TransportCounters::default(),
-                last_attempt_ms_by_class: HashMap::new(),
+                last_attempt_by_class: HashMap::new(),
                 last_result_by_class: HashMap::new(),
                 native_underflow_ticks: 0,
                 native_underflow_threshold_ticks: 3,
@@ -117,9 +154,35 @@ impl Default for TransportState {
                 session_disconnected_total: 0,
                 session_untrusted_total: 0,
                 session_trusted_total: 0,
+                sync_v1_seen_total: 0,
+                sync_v1_drop_total: 0,
+                sync_v1_drop_reason: HashMap::new(),
+                sync_tx_seen_total: 0,
+                sync_tx_accept_total: 0,
+                sync_tx_drop_total: 0,
+                sync_tx_drop_reason: HashMap::new(),
+                mempool_ingress_kind_total: HashMap::new(),
+                mempool_push_suppressed: HashMap::new(),
+                mempool_egress_relay_total: HashMap::new(),
+                sync_tip_seen_total: 0,
+                sync_tip_disconnect_total: 0,
+                sync_hdr_req_total: 0,
+                sync_hdr_resp_total: 0,
+                sync_blk_req_total: 0,
+                sync_blk_resp_total: 0,
+                sync_apply_ok_total: 0,
+                sync_apply_fail_total: 0,
+                sync_fork_conflict_total: 0,
+                sync_cup_start_total: 0,
+                sync_cup_chunk_total: 0,
+                sync_cup_done_total: 0,
+                sync_cup_fail_total: 0,
+                sync_cup_drop_total: 0,
+                sync_cup_fail_reason: HashMap::new(),
+                sync_cup_demote_tail: 0,
             },
             reconnect_runaway_streak: 0,
-            reconnect_runaway_guard_until_ms: 0,
+            reconnect_guard_until_ms: 0,
         }
     }
 }
@@ -156,11 +219,18 @@ fn compose_class_result_key(class_key: &str, result: DialAttemptResult) -> Strin
 }
 
 pub(super) fn increment_string_u64_bucket(map: &mut HashMap<String, u64>, key: &str) {
-    if let Some(v) = map.get_mut(key) {
-        *v += 1;
+    add_str_u64_bucket(map, key, 1);
+}
+
+pub(super) fn add_str_u64_bucket(map: &mut HashMap<String, u64>, key: &str, delta: u64) {
+    if delta == 0 {
         return;
     }
-    map.insert(key.to_owned(), 1);
+    if let Some(v) = map.get_mut(key) {
+        *v = v.saturating_add(delta);
+        return;
+    }
+    map.insert(key.to_owned(), delta);
 }
 
 pub(super) fn increment_reject_reason_total(metrics: &mut HandshakeMetrics, reason_label: &str) {
@@ -177,11 +247,11 @@ pub(super) fn update_last_attempt_snapshot(
     now_ms: u64,
     result_label: &str,
 ) {
-    if let Some(ts) = snapshot.last_attempt_ms_by_class.get_mut(class_key) {
+    if let Some(ts) = snapshot.last_attempt_by_class.get_mut(class_key) {
         *ts = now_ms;
     } else {
         snapshot
-            .last_attempt_ms_by_class
+            .last_attempt_by_class
             .insert(class_key.to_owned(), now_ms);
     }
     if let Some(last) = snapshot.last_result_by_class.get_mut(class_key) {
@@ -202,6 +272,6 @@ pub(super) fn record_transport_attempt(
 ) {
     let key = compose_class_result_key(class_key, result);
     let result_label = result.as_label();
-    increment_string_u64_bucket(&mut snapshot.counters.dial_attempt_by_class_result, &key);
+    increment_string_u64_bucket(&mut snapshot.counters.dial_attempt_class_result, &key);
     update_last_attempt_snapshot(snapshot, class_key, now_ms, result_label);
 }

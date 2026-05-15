@@ -1,5 +1,6 @@
 //! Graceful node shutdown: persist snapshot then stop HTTP server.
 
+use crate::snapshot::SealPersistMode;
 use crate::App;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -11,12 +12,14 @@ pub(super) async fn v1_shutdown(
     {
         let inner = app.inner.read().await;
         if let Some(ref backend) = app.autosnapshot_backend {
-            backend.save_seal_persist(&inner).map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("shutdown snapshot persist failed: {e}"),
-                )
-            })?;
+            backend
+                .save_seal_persist(&inner, SealPersistMode::ShutdownFull)
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("shutdown snapshot persist failed: {e}"),
+                    )
+                })?;
         }
     }
     if let Ok(mut slot) = app.shutdown_tx.lock() {

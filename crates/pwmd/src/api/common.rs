@@ -8,9 +8,10 @@ use crate::App;
 use axum::http::StatusCode;
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
 use pwm_core::hd::domain_of_account_id;
-use pwm_core::tx::TxBody;
+use pwm_core::tx::{TxBody, TxError};
 use pwm_core::SignedTx;
 use serde::Serialize;
+use serde_json::json;
 use tracing::error;
 
 #[derive(Serialize)]
@@ -237,9 +238,72 @@ pub(super) fn tx_kind(tx: &SignedTx) -> &'static str {
         TxBody::Stake { .. } => "stake",
         TxBody::Unstake { .. } => "unstake",
         TxBody::BurnMark { .. } => "burn_mark",
+        TxBody::Claim { .. } => "claim",
         TxBody::Export { .. } => "export",
         TxBody::Import { .. } => "import",
     }
+}
+
+pub(crate) fn reject_tx_kind(tx: &SignedTx) -> &'static str {
+    match tx.body {
+        TxBody::BurnMark { .. } => "burn",
+        TxBody::Claim { .. } => "claim",
+        TxBody::Import { .. } => "import",
+        TxBody::Export { .. } => "export",
+        TxBody::Transfer { .. } => "transfer",
+        TxBody::Init { .. } => "init",
+        TxBody::Stake { .. } => "stake",
+        TxBody::Unstake { .. } => "unstake",
+    }
+}
+
+pub(crate) fn tx_err_wire(e: &TxError, tx_kind: &str) -> (&'static str, &'static str) {
+    use TxError::*;
+    match e {
+        // Burn stable errors (RFC 0014 baseline)
+        InvalidPurposeLength | InvalidPurposeChars if tx_kind == "burn" => {
+            ("E_BURN_SCHEMA_INVALID", "VALIDATION_ERROR")
+        }
+        InsufficientMarks if tx_kind == "burn" => ("E_BURN_OVER_BALANCE", "STATE_CONFLICT"),
+        DomainMismatch if tx_kind == "burn" => ("E_BURN_POLICY_REJECT", "POLICY_REJECT"),
+
+        // Claim stable errors (RFC 0013/0014 baseline)
+        ClaimFeeModeConflict => ("E_MODE_FEE_CONFLICT", "POLICY_REJECT"),
+        ClaimDeltaInvalid => ("E_CLAIM_UNITS_INVALID", "VALIDATION_ERROR"),
+        ClaimAnchorRangeInvalid => ("E_ANCHOR_RANGE_INVALID", "STATE_CONFLICT"),
+        ClaimAnchorContinuityBroken => ("E_ANCHOR_CONTINUITY_BROKEN", "STATE_CONFLICT"),
+        ClaimOverMatured => ("E_CLAIM_OVER_MATURED", "STATE_CONFLICT"),
+        FreeClaimDailyLimit => ("E_FREE_CLAIM_DAILY_LIMIT", "POLICY_REJECT"),
+
+        // Import fee baseline.
+        ImportFeeTooLow => ("E_IMPORT_FEE_TOO_LOW", "POLICY_REJECT"),
+
+        // Keep fixed fallback for non-freeze, generic schema failures.
+        _ => ("E_SCHEMA_INVALID", "VALIDATION_ERROR"),
+    }
+}
+
+pub(crate) fn tx_reject_json(
+    tx: &SignedTx,
+    phase: &'static str,
+    e: &TxError,
+    message: String,
+) -> String {
+    let tx_kind = reject_tx_kind(tx);
+    let trace_id = tx_id_hex(tx);
+    let (code, response_class) = tx_err_wire(e, tx_kind);
+    json!({
+        "ok": false,
+        "phase": phase,
+        "tx_kind": tx_kind,
+        "response_class": response_class,
+        "error": {
+            "code": code,
+            "message": message,
+            "trace_id": trace_id,
+        },
+    })
+    .to_string()
 }
 
 pub(super) fn tx_id_hex(tx: &SignedTx) -> String {
@@ -323,7 +387,8 @@ pub(super) fn push_tx_flow(
     });
 }
 
-pub(super) fn snapshot_save_under_inner_lock(
+/// Saves a snapshot while holding the inner state lock.
+pub(super) fn snap_save_locked(
     app: &App,
     g: &crate::state::Inner,
 ) -> Option<(Option<std::path::PathBuf>, Result<(), String>)> {
@@ -419,7 +484,7 @@ pub(super) fn acct_out_for_runtime(
         spendable_on_this_shard: (!is_foreign).then(|| ac.balance_pwm.to_string()),
         local_view_only: is_foreign,
         staked: ac.staked.to_string(),
-        marks: ac.marks.to_string(),
+        marks: ac.marks,
         initialized: ac.initialized,
         nonce: ac.nonce,
     }
@@ -491,7 +556,8 @@ pub(super) async fn foreign_home_lookup_state(
     }
 }
 
-pub(super) async fn persist_snapshot_or_http_err(
+/// Persists the current snapshot; maps errors to HTTP 500.
+pub(super) async fn persist_snap(
     app: &App,
     save_result: Option<(Option<std::path::PathBuf>, Result<(), String>)>,
     flow: &'static str,
@@ -558,9 +624,9 @@ pub(super) async fn mark_relay_ok(
             "roaming intent disappeared after relay".to_string(),
         ))?
         .status;
-    let save_result = snapshot_save_under_inner_lock(app, &g);
+    let save_result = snap_save_locked(app, &g);
     drop(g);
-    persist_snapshot_or_http_err(app, save_result, "after_roaming_relay").await?;
+    persist_snap(app, save_result, "after_roaming_relay").await?;
     Ok(status)
 }
 
@@ -581,9 +647,9 @@ pub(super) async fn mark_relay_err(
         intent_id: Some(hex32(&intent_id)),
         note: Some(err),
     });
-    let save_result = snapshot_save_under_inner_lock(app, &g);
+    let save_result = snap_save_locked(app, &g);
     drop(g);
-    persist_snapshot_or_http_err(app, save_result, "after_roaming_relay_error").await
+    persist_snap(app, save_result, "after_roaming_relay_error").await
 }
 
 pub(super) async fn ensure_ready(app: &App) -> Result<(), (StatusCode, String)> {

@@ -6,7 +6,7 @@ use super::prelude::*;
 /// POST /v1/peer/hello accepts a matching native-domain hello and classifies counters on /v1/dev/peers.
 #[tokio::test]
 async fn v1_hi_accepts_native_cls() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let hello = sample_hello(&app, "peer-native", 0x10, vec![1, 2, 3, 4]);
     let svc = router_dev(app.clone()).into_service();
     let res = svc
@@ -39,7 +39,7 @@ async fn v1_hi_accepts_native_cls() {
 /// Peer hello rejects bad signatures, nonce replay branching, wrong network/genesis hashes, and malformed capabilities.
 #[tokio::test]
 async fn v1_hi_mx_sig() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let mut bad_sig = sample_hello(&app, "peer-bad-sig", 0x10, vec![10, 11, 12]);
     bad_sig.signature[0] ^= 0x55;
 
@@ -91,7 +91,7 @@ async fn v1_hi_mx_sig() {
 /// Genesis mismatch peer hello blocks /v1/tx and roaming exports with user-tx-blocked errors.
 #[tokio::test]
 async fn v1_gen_mismatch_blocks_tx() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let mut genesis_bad = sample_hello(&app, "peer-genesis-block", 0x10, vec![91, 92, 93]);
     genesis_bad.genesis_hash = Some("wrong".to_string());
     genesis_bad
@@ -173,7 +173,7 @@ async fn v1_gen_mismatch_blocks_tx() {
 /// /v1/status surfaces genesis_guard fields and mismatch diagnostics after a rejected hello.
 #[tokio::test]
 async fn v1_status_gen_guard_diag() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let mut genesis_bad = sample_hello(&app, "peer-genesis-status", 0x10, vec![101, 102, 103]);
     genesis_bad.genesis_hash = Some("wrong".to_string());
     genesis_bad
@@ -202,7 +202,7 @@ async fn v1_status_gen_guard_diag() {
     assert_eq!(json["genesis_guard"], "blocked");
     assert_eq!(json["genesis_mismatch_total"], 1);
     assert_eq!(json["genesis_mismatch_received_hash"], "wrong");
-    assert_eq!(json["genesis_mismatch_peer_node_id"], "peer-genesis-status");
+    assert_eq!(json["genesis_mismatch_peer_id"], "peer-genesis-status");
     assert_eq!(json["genesis_mismatch_peer_hint"], "http");
     assert!(json["effective_genesis_hash"]
         .as_str()
@@ -212,7 +212,7 @@ async fn v1_status_gen_guard_diag() {
         json["genesis_mismatch_expected_hash"],
         json["effective_genesis_hash"]
     );
-    assert!(json["genesis_mismatch_at_unix_ms"].as_u64().unwrap_or(0) > 0);
+    assert!(json["genesis_mismatch_unix_ms"].as_u64().unwrap_or(0) > 0);
     assert!(json["genesis_guard_recovery_hint"]
         .as_str()
         .unwrap_or_default()
@@ -227,7 +227,7 @@ async fn v1_status_gen_guard_diag() {
 /// Inbound accepted foreign hellos increase live_peer_count without satisfying trusted relay health.
 #[tokio::test]
 async fn inbound_hi_no_relay_ok() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     {
         let mut cfg = app.transport_config.write().await;
         cfg.peer_seeds = vec![SocketAddr::from(([127, 0, 0, 1], 1))];
@@ -263,7 +263,7 @@ async fn inbound_hi_no_relay_ok() {
 
 #[tokio::test]
 async fn network_mismatch_sets_status_diagnostic() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let mut hello = sample_hello(&app, "peer-wrong-net", 0x10, vec![121, 122, 123]);
     hello.network_id = "wrongnet".to_string();
     hello.sign(&SigningKey::from_bytes(&[9u8; 32])).unwrap();
@@ -300,7 +300,7 @@ async fn network_mismatch_sets_status_diagnostic() {
 /// Foreign hellos classify accept/reject paths and update dev peer stats and reject_reason counters.
 #[tokio::test]
 async fn v1_hi_foreign_reject_ctr() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let foreign_ok = sample_hello(&app, "peer-foreign", 0x20, vec![61, 62, 63]);
     let mut bad_sig = sample_hello(&app, "peer-foreign-bad", 0x20, vec![71, 72, 73]);
     bad_sig.signature[0] ^= 0xAA;
@@ -565,10 +565,10 @@ fn xfer_deg_underflow_ticks() {
     assert_eq!(hs.transport.snapshot.native_degraded_transitions, 2);
 }
 
-/// /v1/dev/peers echoes transport.tick counters plus dial_attempt_by_class_result rollups.
+/// /v1/dev/peers echoes transport.tick counters plus dial_attempt_class_result rollups.
 #[tokio::test]
 async fn v1_dev_peers_xfer_snap() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     {
         let mut hs = app.handshake.write().await;
         hs.peers.insert(
@@ -603,11 +603,11 @@ async fn v1_dev_peers_xfer_snap() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["transport"]["ticks_total"], 1);
     assert_eq!(
-        json["transport"]["counters"]["dial_attempt_by_class_result"]["native:success"],
+        json["transport"]["counters"]["dial_attempt_class_result"]["native:success"],
         1
     );
     assert_eq!(
-        json["transport"]["counters"]["dial_attempt_by_class_result"]["foreign:retryable_fail"],
+        json["transport"]["counters"]["dial_attempt_class_result"]["foreign:retryable_fail"],
         1
     );
     assert_eq!(json["soak"]["loop_ticks_capped"], 0);
@@ -617,8 +617,8 @@ async fn v1_dev_peers_xfer_snap() {
 /// real transport tick completes seed dial, handshake acceptance, and trust bookkeeping.
 #[tokio::test]
 async fn real_xfer_seed_hs_ok() {
-    let app = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let seed_app = app_with_identity(ShardId::B, "testnet-qa", 0x20, "cluster-b", "node-b");
+    let app = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let seed_app = app_with_identity(DevLane::Lane1, "testnet-qa", 0x20, "cluster-b", "node-b");
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let cfg = TransportConfig {
@@ -647,7 +647,7 @@ async fn real_xfer_seed_hs_ok() {
         hs.transport
             .snapshot
             .counters
-            .dial_attempt_by_class_result
+            .dial_attempt_class_result
             .get("foreign:success")
             .copied(),
         Some(1)
@@ -698,8 +698,8 @@ async fn write_wire_payload(stream: &mut tokio::net::TcpStream, payload: &[u8]) 
 /// Dedicated peer_listen sockets establish a trusted stateful peer session via outbound seed dialing.
 #[tokio::test]
 async fn xfer_state_sock_connect() {
-    let app_a = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let app_b = app_with_identity(ShardId::B, "testnet-qa", 0x20, "cluster-b", "node-b");
+    let app_a = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app_b = app_with_identity(DevLane::Lane1, "testnet-qa", 0x20, "cluster-b", "node-b");
     let peer_a = reserve_loopback_addr();
     let peer_b = reserve_loopback_addr();
     let mut cfg_a = TransportConfig::default();
@@ -739,8 +739,8 @@ async fn xfer_state_sock_connect() {
 /// Symmetric peer_listen + dual stateful loops keep bidirectional trusted sessions without churn counters.
 #[tokio::test]
 async fn xfer_state_bidir_stable() {
-    let app_a = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let app_b = app_with_identity(ShardId::B, "testnet-qa", 0x20, "cluster-b", "node-b");
+    let app_a = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app_b = app_with_identity(DevLane::Lane1, "testnet-qa", 0x20, "cluster-b", "node-b");
     let peer_a = reserve_loopback_addr();
     let peer_b = reserve_loopback_addr();
     let mut cfg_a = TransportConfig::default();
@@ -792,11 +792,94 @@ async fn xfer_state_bidir_stable() {
     );
 }
 
+/// Same-shard follower (cluster disabled) converges to a cluster-enabled source tip over steady bidirectional TCP.
+#[tokio::test]
+async fn same_shard_follower_tcp_tip() {
+    let mut app_src = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    app_src.cluster_cfg.enabled = true;
+    app_src.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
+    app_src.cluster_cfg.members = vec!["node-a".to_string(), "node-b".to_string()];
+    app_src.cluster_cfg.quorum_n = 2;
+    app_src.cluster_cfg.quorum_k = 1;
+    app_src.node_instance_id = "node-a".to_string();
+    {
+        let mut g = app_src.inner.write().await;
+        g.chain
+            .seal(Vec::new())
+            .expect("source must seal one block");
+    }
+    let (src_tip_h, src_tip_hash) = {
+        let g = app_src.inner.read().await;
+        (g.chain.tip_h(), hex::encode(g.chain.tip_hash()))
+    };
+    assert!(src_tip_h >= 1, "source tip must be above genesis");
+    let mut app_follow =
+        app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-b");
+    app_follow.cluster_cfg.enabled = false;
+    app_follow.cluster_cfg.role = crate::handshake::ClusterRole::None;
+    let peer_src = reserve_loopback_addr();
+    let peer_follow = reserve_loopback_addr();
+    let mut cfg_src = TransportConfig::default();
+    cfg_src.enabled = true;
+    cfg_src.peer_listen = peer_src;
+    cfg_src.peer_seeds = vec![peer_follow];
+    cfg_src.retry_base_ms = 50;
+    cfg_src.heartbeat_interval_ms = 80;
+    cfg_src.heartbeat_timeout_ms = 250;
+    let mut cfg_follow = TransportConfig::default();
+    cfg_follow.enabled = true;
+    cfg_follow.peer_listen = peer_follow;
+    cfg_follow.peer_seeds = vec![peer_src];
+    cfg_follow.retry_base_ms = 50;
+    cfg_follow.heartbeat_interval_ms = 80;
+    cfg_follow.heartbeat_timeout_ms = 250;
+    let follow_div_base = {
+        let hs = app_follow.handshake.read().await;
+        hs.transport.snapshot.sync_tip_disconnect_total
+    };
+    let src_div_base = {
+        let hs = app_src.handshake.read().await;
+        hs.transport.snapshot.sync_tip_disconnect_total
+    };
+    spawn_peer_listener_loop(app_src.clone(), cfg_src.clone());
+    spawn_peer_listener_loop(app_follow.clone(), cfg_follow.clone());
+    spawn_stateful_transport_loop(app_src.clone(), cfg_src);
+    spawn_stateful_transport_loop(app_follow.clone(), cfg_follow);
+    let converged = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let (tip_h, tip_hash) = {
+                let g = app_follow.inner.read().await;
+                (g.chain.tip_h(), hex::encode(g.chain.tip_hash()))
+            };
+            if tip_h == src_tip_h && tip_hash == src_tip_hash {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(80)).await;
+        }
+    })
+    .await;
+    assert!(
+        converged.is_ok(),
+        "follower did not converge to source tip_h={src_tip_h} hash={src_tip_hash}"
+    );
+    let hs_follow = app_follow.handshake.read().await;
+    assert_eq!(
+        hs_follow.transport.snapshot.sync_tip_disconnect_total, follow_div_base,
+        "follower divergence disconnect counter must not grow"
+    );
+    drop(hs_follow);
+    let hs_src = app_src.handshake.read().await;
+    assert_eq!(
+        hs_src.transport.snapshot.sync_tip_disconnect_total, src_div_base,
+        "source divergence disconnect counter must not grow"
+    );
+}
+
 /// Synthetic account_views traffic satisfies heartbeat freshness for a trusted AccountViews stream.
 #[tokio::test]
 async fn xfer_st_data_hb_ok() {
-    let app_a = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let app_b = app_with_identity(ShardId::B, "testnet-qa", 0x20, "cluster-b", "node-b");
+    let app_a = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app_b = app_with_identity(DevLane::Lane1, "testnet-qa", 0x20, "cluster-b", "node-b");
     let peer_a = reserve_loopback_addr();
     let seed_addr = reserve_loopback_addr();
     let mut cfg_a = TransportConfig::default();
@@ -873,7 +956,7 @@ async fn xfer_st_data_hb_ok() {
 /// Healthy trusted sessions emit healthy_session_skip reconnect decisions instead of needless redials.
 #[tokio::test]
 async fn xfer_health_skip_redial() {
-    let app = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
     let seed = reserve_loopback_addr();
     let now_ms = current_time_ms().unwrap_or(0);
     {
@@ -895,6 +978,9 @@ async fn xfer_health_skip_redial() {
                 cluster_id: "cluster-b".to_string(),
                 pubkey: [7u8; 32],
                 domain_hi: 0x20,
+                instance_id: None,
+                cluster_attest_enabled: false,
+                cluster_role: crate::handshake::ClusterRole::None,
             },
         );
         hs.transport
@@ -941,7 +1027,7 @@ async fn xfer_health_skip_redial() {
 /// Trusted AccountViews merges surface authoritative_home_balance lookups for foreign-domain accounts.
 #[tokio::test]
 async fn trust_foreign_view_ok() {
-    let app = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
     let (_, _, foreign_id) = user_sk_matching_domain_hi([0x42; 32], 0x20);
     {
         let mut g = app.inner.write().await;
@@ -986,6 +1072,9 @@ async fn trust_foreign_view_ok() {
                 cluster_id: "cluster-b".to_string(),
                 pubkey: [7u8; 32],
                 domain_hi: 0x20,
+                instance_id: None,
+                cluster_attest_enabled: false,
+                cluster_role: crate::handshake::ClusterRole::None,
             },
         );
         hs.trusted_account_streams.insert(
@@ -1017,7 +1106,7 @@ async fn trust_foreign_view_ok() {
 /// Trusted peers without wired AccountStreams still report unavailable home lookups (no spoofed balances).
 #[tokio::test]
 async fn trust_foreign_lookup_na() {
-    let app = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
     let (_, _, foreign_id) = user_sk_matching_domain_hi([0x52; 32], 0x20);
     {
         let mut g = app.inner.write().await;
@@ -1049,6 +1138,9 @@ async fn trust_foreign_lookup_na() {
                 cluster_id: "cluster-b".to_string(),
                 pubkey: [7u8; 32],
                 domain_hi: 0x20,
+                instance_id: None,
+                cluster_attest_enabled: false,
+                cluster_role: crate::handshake::ClusterRole::None,
             },
         );
     }
@@ -1071,8 +1163,8 @@ async fn trust_foreign_lookup_na() {
 /// Stateful transport records hello_rejected / handshake close reasons when inbound network mismatches.
 #[tokio::test]
 async fn xfer_state_mismatch_diag() {
-    let app_a = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let app_b = app_with_identity(ShardId::B, "wrongnet", 0x20, "cluster-b", "node-b");
+    let app_a = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app_b = app_with_identity(DevLane::Lane1, "wrongnet", 0x20, "cluster-b", "node-b");
     let peer_a = reserve_loopback_addr();
     let peer_b = reserve_loopback_addr();
     let mut cfg_a = TransportConfig::default();
@@ -1127,8 +1219,8 @@ async fn xfer_state_mismatch_diag() {
 /// Remote hello_ack network skew yields remote_hello_rejected without trust or session counters.
 #[tokio::test]
 async fn xfer_remote_hi_mismatch() {
-    let app_a = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let app_b = app_with_identity(ShardId::B, "wrongnet", 0x20, "cluster-b", "node-b");
+    let app_a = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app_b = app_with_identity(DevLane::Lane1, "wrongnet", 0x20, "cluster-b", "node-b");
     let peer_a = reserve_loopback_addr();
     let peer_b = reserve_loopback_addr();
     let mut cfg_a = TransportConfig::default();
@@ -1180,7 +1272,7 @@ async fn xfer_remote_hi_mismatch() {
 /// Faulty seed acknowledgements drive wire/read diagnostics and prevent successful session trust.
 #[tokio::test]
 async fn xfer_wire_fail_diag() {
-    let app_a = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app_a = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
     let peer_a = reserve_loopback_addr();
     let seed_addr = reserve_loopback_addr();
     let mut cfg_a = TransportConfig::default();
@@ -1246,8 +1338,8 @@ async fn xfer_wire_fail_diag() {
 /// EOF after hello_ack records a peer-close reason bucket without losing connected telemetry.
 #[tokio::test]
 async fn xfer_eof_close_reason() {
-    let app_a = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let app_b = app_with_identity(ShardId::B, "testnet-qa", 0x20, "cluster-b", "node-b");
+    let app_a = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app_b = app_with_identity(DevLane::Lane1, "testnet-qa", 0x20, "cluster-b", "node-b");
     let peer_a = reserve_loopback_addr();
     let seed_addr = reserve_loopback_addr();
     let mut cfg_a = TransportConfig::default();
@@ -1322,8 +1414,8 @@ async fn xfer_eof_close_reason() {
 /// Dialing peers with mismatched genesis_hash increments genesis_guard totals and dial failure counters.
 #[tokio::test]
 async fn real_xfer_gen_mismatch() {
-    let app = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
-    let seed_app = app_with_identity(ShardId::B, "testnet-qa", 0x20, "cluster-b", "node-b");
+    let app = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let seed_app = app_with_identity(DevLane::Lane1, "testnet-qa", 0x20, "cluster-b", "node-b");
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let cfg = TransportConfig {
@@ -1367,7 +1459,7 @@ async fn real_xfer_gen_mismatch() {
         hs.transport
             .snapshot
             .counters
-            .dial_attempt_by_class_result
+            .dial_attempt_class_result
             .get("unknown:retryable_fail")
             .copied(),
         Some(1)
@@ -1377,7 +1469,7 @@ async fn real_xfer_gen_mismatch() {
 /// Connect-timeout failures enqueue seed backoff timestamps and increment backoff_skip_total appropriately.
 #[tokio::test]
 async fn real_xfer_backoff_conn() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let cfg = TransportConfig {
         enabled: true,
         peer_seeds: vec![SocketAddr::from(([127, 0, 0, 1], 1))],
@@ -1408,7 +1500,7 @@ async fn real_xfer_backoff_conn() {
 /// Non-JSON /v1/status responses surface status_decode_failed in transport.last_peer_error.
 #[tokio::test]
 async fn real_xfer_status_decode_bad() {
-    let app = app_with_identity(ShardId::A, "testnet-qa", 0x10, "cluster-a", "node-a");
+    let app = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-a");
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -1438,7 +1530,7 @@ async fn real_xfer_status_decode_bad() {
 /// tick_attempt_budget rotates through deterministic seed peers while tracking churn counters.
 #[tokio::test]
 async fn real_xfer_seed_rot_budget() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let seeds = vec![
         SocketAddr::from(([127, 0, 0, 1], 1)),
         SocketAddr::from(([127, 0, 0, 1], 2)),
@@ -1485,7 +1577,7 @@ async fn real_xfer_seed_rot_budget() {
 /// Flaky reconnect paths hit Retrying/Disconnected states with bounded_retry_cooldowns_total accounting.
 #[tokio::test]
 async fn real_xfer_reconn_bounded() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let addr = SocketAddr::from(([127, 0, 0, 1], 1));
     {
         let mut hs = app.handshake.write().await;
@@ -1528,7 +1620,7 @@ async fn real_xfer_reconn_bounded() {
 /// Soak rollup counters respect soak_counter_cap plus periodic soak_health_snapshot_total pacing.
 #[tokio::test]
 async fn real_xfer_soak_bounds() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let cfg = TransportConfig {
         enabled: true,
         peer_seeds: vec![SocketAddr::from(([127, 0, 0, 1], 1))],
@@ -1560,7 +1652,7 @@ async fn real_xfer_soak_bounds() {
 /// Runaway reconnect guard pauses dial attempts during cooldown and resumes afterwards.
 #[tokio::test]
 async fn real_xfer_runaway_guard() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let cfg = TransportConfig {
         enabled: true,
         peer_seeds: vec![SocketAddr::from(([127, 0, 0, 1], 1))],
@@ -1585,7 +1677,7 @@ async fn real_xfer_runaway_guard() {
         hs.transport
             .snapshot
             .counters
-            .dial_attempt_by_class_result
+            .dial_attempt_class_result
             .get("unknown:retryable_fail")
             .copied()
             .unwrap_or(0)
@@ -1598,7 +1690,7 @@ async fn real_xfer_runaway_guard() {
         hs.transport
             .snapshot
             .counters
-            .dial_attempt_by_class_result
+            .dial_attempt_class_result
             .get("unknown:retryable_fail")
             .copied()
             .unwrap_or(0)
@@ -1611,7 +1703,7 @@ async fn real_xfer_runaway_guard() {
         .transport
         .snapshot
         .counters
-        .dial_attempt_by_class_result
+        .dial_attempt_class_result
         .get("unknown:retryable_fail")
         .copied()
         .unwrap_or(0);

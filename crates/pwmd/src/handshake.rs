@@ -13,6 +13,14 @@ pub const REASON_LABEL_NETWORK_MISMATCH: &str = "network_mismatch";
 pub const REASON_LABEL_GENESIS_MISMATCH: &str = "genesis_mismatch";
 pub const REASON_LABEL_TIMESTAMP_SKEW: &str = "timestamp_skew";
 pub const REASON_LABEL_MALFORMED: &str = "malformed";
+pub const REASON_LABEL_PROTO_BAD: &str = "protocol_version_malformed";
+pub const REASON_LABEL_PROTO_MAJOR: &str = "protocol_version_major_mismatch";
+pub const REASON_LABEL_ACTIVE_CONFLICT: &str = "same_validator_active_conflict";
+pub const PWM_PROTOCOL_VERSION: &str = "0.1.0";
+pub const SYNC_WIRE_V1: u16 = 1;
+pub const SYNC_HDR_MAX: u16 = 512;
+pub const SYNC_BLK_MAX: u16 = 64;
+pub const SYNC_TX_MAX: u16 = 2048;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeHello {
@@ -52,6 +60,124 @@ pub struct NodeHelloCapabilities {
     pub protocol_version: String,
     pub tx_features: Vec<String>,
     pub services: Vec<String>,
+    #[serde(default)]
+    pub sync_profile: Option<NodeHelloSyncProfile>,
+    #[serde(default)]
+    pub deployment_profile: DeploymentProfile,
+    #[serde(default)]
+    pub seal_role: SealRole,
+    #[serde(default)]
+    pub validator_identity_hash: Option<String>,
+    #[serde(default)]
+    pub node_instance_id: Option<String>,
+    #[serde(default)]
+    pub lease_owner_id: Option<String>,
+    #[serde(default)]
+    pub lease_term: Option<u64>,
+    #[serde(default)]
+    pub lease_expires_at_ms: Option<u64>,
+    #[serde(default)]
+    pub lease_last_tip: Option<u64>,
+    #[serde(default)]
+    pub lease_fence: Option<u64>,
+    /// RFC16 capability negotiation stays additive for legacy peers.
+    #[serde(default)]
+    pub cluster_attest_enabled: bool,
+    #[serde(default)]
+    pub cluster_role: ClusterRole,
+    #[serde(default)]
+    pub cluster_members: Vec<String>,
+    #[serde(default)]
+    pub cluster_quorum_k: Option<u8>,
+    #[serde(default)]
+    pub cluster_quorum_n: Option<u8>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NodeHelloSyncProfile {
+    pub sync_wire_version: u16,
+    pub max_headers_per_msg: u16,
+    pub max_blocks_per_msg: u16,
+    pub max_txs_per_msg: u16,
+    pub supports_epoch_catchup: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncMode {
+    FullV1,
+    LegacyObserve,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DeploymentProfile {
+    #[default]
+    SingleSealer,
+    MultiSealerExperimental,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SealRole {
+    #[default]
+    Active,
+    Standby,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterRole {
+    #[default]
+    None,
+    Proposer,
+    Attester,
+}
+
+impl NodeHelloCapabilities {
+    pub fn supports_sync_v1(&self) -> bool {
+        let has_sync = self.services.iter().any(|svc| svc == "sync");
+        let Some(profile) = self.sync_profile.as_ref() else {
+            return false;
+        };
+        has_sync
+            && profile.sync_wire_version == SYNC_WIRE_V1
+            && profile.max_headers_per_msg > 0
+            && profile.max_headers_per_msg <= SYNC_HDR_MAX
+            && profile.max_blocks_per_msg > 0
+            && profile.max_blocks_per_msg <= SYNC_BLK_MAX
+            && profile.max_txs_per_msg > 0
+            && profile.max_txs_per_msg <= SYNC_TX_MAX
+    }
+
+    pub fn sync_mode(&self) -> SyncMode {
+        if self.supports_sync_v1() {
+            SyncMode::FullV1
+        } else {
+            SyncMode::LegacyObserve
+        }
+    }
+
+    pub fn validator_hash(&self) -> Option<&str> {
+        self.validator_identity_hash
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    }
+
+    pub fn node_instance_id(&self) -> Option<&str> {
+        self.node_instance_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    }
+
+    pub fn lease_owner_id(&self) -> Option<&str> {
+        self.lease_owner_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +195,8 @@ pub enum HandshakeRejectReason {
     GenesisMismatch,
     TimestampSkew,
     Malformed,
+    ProtocolVersionMalformed,
+    ProtocolVersionMajorMismatch,
 }
 
 impl HandshakeRejectReason {
@@ -81,8 +209,67 @@ impl HandshakeRejectReason {
             Self::GenesisMismatch => REASON_LABEL_GENESIS_MISMATCH,
             Self::TimestampSkew => REASON_LABEL_TIMESTAMP_SKEW,
             Self::Malformed => REASON_LABEL_MALFORMED,
+            Self::ProtocolVersionMalformed => REASON_LABEL_PROTO_BAD,
+            Self::ProtocolVersionMajorMismatch => REASON_LABEL_PROTO_MAJOR,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProtocolVersion {
+    pub major: u64,
+    pub minor: u64,
+    pub patch: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProtocolCompat {
+    Exact,
+    FractionalMismatch,
+}
+
+impl ProtocolVersion {
+    pub fn parse(raw: &str) -> Result<Self, HandshakeRejectReason> {
+        let mut parts = raw.trim().split('.');
+        let Some(major_s) = parts.next() else {
+            return Err(HandshakeRejectReason::ProtocolVersionMalformed);
+        };
+        let Some(minor_s) = parts.next() else {
+            return Err(HandshakeRejectReason::ProtocolVersionMalformed);
+        };
+        let Some(patch_s) = parts.next() else {
+            return Err(HandshakeRejectReason::ProtocolVersionMalformed);
+        };
+        if parts.next().is_some() {
+            return Err(HandshakeRejectReason::ProtocolVersionMalformed);
+        }
+        let major = major_s
+            .parse::<u64>()
+            .map_err(|_| HandshakeRejectReason::ProtocolVersionMalformed)?;
+        let minor = minor_s
+            .parse::<u64>()
+            .map_err(|_| HandshakeRejectReason::ProtocolVersionMalformed)?;
+        let patch = patch_s
+            .parse::<u64>()
+            .map_err(|_| HandshakeRejectReason::ProtocolVersionMalformed)?;
+        Ok(Self {
+            major,
+            minor,
+            patch,
+        })
+    }
+}
+
+pub fn protocol_compat(remote_raw: &str) -> Result<ProtocolCompat, HandshakeRejectReason> {
+    let local = ProtocolVersion::parse(PWM_PROTOCOL_VERSION)?;
+    let remote = ProtocolVersion::parse(remote_raw)?;
+    if local.major != remote.major {
+        return Err(HandshakeRejectReason::ProtocolVersionMajorMismatch);
+    }
+    if local.minor != remote.minor || local.patch != remote.patch {
+        return Ok(ProtocolCompat::FractionalMismatch);
+    }
+    Ok(ProtocolCompat::Exact)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -187,6 +374,24 @@ impl NodeHello {
         {
             return Err(HandshakeRejectReason::Malformed);
         }
+        if self
+            .capabilities
+            .validator_identity_hash
+            .as_deref()
+            .is_some_and(|v| v.trim().is_empty())
+            || self
+                .capabilities
+                .node_instance_id
+                .as_deref()
+                .is_some_and(|v| v.trim().is_empty())
+            || self
+                .capabilities
+                .cluster_members
+                .iter()
+                .any(|v| v.trim().is_empty())
+        {
+            return Err(HandshakeRejectReason::Malformed);
+        }
         Ok(())
     }
 }
@@ -235,9 +440,30 @@ mod tests {
                 pubkey: sk.verifying_key().to_bytes(),
             },
             capabilities: NodeHelloCapabilities {
-                protocol_version: "0.1.0".to_string(),
+                protocol_version: PWM_PROTOCOL_VERSION.to_string(),
                 tx_features: vec!["local_transfer_v1".to_string()],
                 services: vec!["mempool".to_string(), "sync".to_string()],
+                sync_profile: Some(NodeHelloSyncProfile {
+                    sync_wire_version: SYNC_WIRE_V1,
+                    max_headers_per_msg: SYNC_HDR_MAX,
+                    max_blocks_per_msg: SYNC_BLK_MAX,
+                    max_txs_per_msg: SYNC_TX_MAX,
+                    supports_epoch_catchup: true,
+                }),
+                deployment_profile: DeploymentProfile::SingleSealer,
+                seal_role: SealRole::Active,
+                validator_identity_hash: Some("vhash".to_string()),
+                node_instance_id: Some("inst-a".to_string()),
+                lease_owner_id: None,
+                lease_term: None,
+                lease_expires_at_ms: None,
+                lease_last_tip: None,
+                lease_fence: None,
+                cluster_attest_enabled: false,
+                cluster_role: ClusterRole::None,
+                cluster_members: Vec::new(),
+                cluster_quorum_k: None,
+                cluster_quorum_n: None,
             },
             nonce: vec![1, 2, 3, 4],
             timestamp_ms: 1000,
@@ -416,5 +642,56 @@ mod tests {
             HandshakeRejectReason::Malformed.as_label(),
             REASON_LABEL_MALFORMED
         );
+        assert_eq!(
+            HandshakeRejectReason::ProtocolVersionMalformed.as_label(),
+            REASON_LABEL_PROTO_BAD
+        );
+        assert_eq!(
+            HandshakeRejectReason::ProtocolVersionMajorMismatch.as_label(),
+            REASON_LABEL_PROTO_MAJOR
+        );
+        assert_eq!(
+            REASON_LABEL_ACTIVE_CONFLICT,
+            "same_validator_active_conflict"
+        );
+    }
+
+    #[test]
+    fn mode_legacy_without_profile() {
+        let (mut hello, _sk) = sample_hello();
+        hello.capabilities.sync_profile = None;
+        assert_eq!(hello.capabilities.sync_mode(), SyncMode::LegacyObserve);
+    }
+
+    #[test]
+    fn mode_full_with_valid_profile() {
+        let (hello, _sk) = sample_hello();
+        assert_eq!(hello.capabilities.sync_mode(), SyncMode::FullV1);
+    }
+
+    #[test]
+    fn parse_proto_ok() {
+        let got = ProtocolVersion::parse("1.2.3").expect("must parse semver");
+        assert_eq!(got.major, 1);
+        assert_eq!(got.minor, 2);
+        assert_eq!(got.patch, 3);
+    }
+
+    #[test]
+    fn parse_proto_bad() {
+        let err = ProtocolVersion::parse("1.2").expect_err("must reject malformed semver");
+        assert_eq!(err, HandshakeRejectReason::ProtocolVersionMalformed);
+    }
+
+    #[test]
+    fn compat_major_bad() {
+        let err = protocol_compat("1.0.0").expect_err("must reject major mismatch");
+        assert_eq!(err, HandshakeRejectReason::ProtocolVersionMajorMismatch);
+    }
+
+    #[test]
+    fn compat_minor_warn() {
+        let got = protocol_compat("0.2.0").expect("must allow minor mismatch");
+        assert_eq!(got, ProtocolCompat::FractionalMismatch);
     }
 }

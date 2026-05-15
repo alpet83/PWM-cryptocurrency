@@ -35,7 +35,7 @@ mod tests {
     use crate::state::ExportProvenance;
 
     #[test]
-    fn digest_is_deterministic_for_same_payload() {
+    fn digest_stable_same_payload() {
         let mut a = BridgeFederationCommitment {
             imported_set: BTreeSet::new(),
             exported_registry: BTreeMap::new(),

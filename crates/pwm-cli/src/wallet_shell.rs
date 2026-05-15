@@ -105,7 +105,8 @@ pub(crate) fn validate_explicit_derivation_account(hit: &BruteforceMatch) -> Res
     validate_recipient_address_policy(&hit.account_id)
 }
 
-pub(crate) fn wallet_regulatory_label_for_hit(hit: &BruteforceMatch) -> Option<String> {
+/// Returns the regulatory/compliance label for a wallet address-book hit.
+pub(crate) fn wallet_reg_label(hit: &BruteforceMatch) -> Option<String> {
     pwm_core::domain_index::lookup_for_display(hit.domain as u32).map(|e| e.label.to_string())
 }
 

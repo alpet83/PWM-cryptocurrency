@@ -11,8 +11,21 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "clickhouse-snapshot")]
 use tracing::{debug, warn};
 
+/// Seal-time durability mode for autosnapshot hooks.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SealPersistMode {
+    /// Background cadence hit (every `SNAP_CHK_BLK_IV` blocks in lifecycle).
+    Periodic,
+    /// Explicit full flush (graceful shutdown / safe fallback).
+    ShutdownFull,
+}
+
 #[cfg(feature = "clickhouse-snapshot")]
-fn ch_save_seal_with_fallback(c: &SnapChCfg, inner: &Inner) -> Result<(), String> {
+fn ch_save_seal_fallback(
+    c: &SnapChCfg,
+    inner: &Inner,
+    _mode: SealPersistMode,
+) -> Result<(), String> {
     match c.ch_save_seal(inner) {
         Ok(()) => Ok(()),
         Err(e) => {
@@ -23,6 +36,7 @@ fn ch_save_seal_with_fallback(c: &SnapChCfg, inner: &Inner) -> Result<(), String
                     p.display(),
                     e
                 );
+                // Json fallback must converge disk state to the current tip.
                 io::json_file_seal_persist(p.as_path(), inner).map_err(|e2| {
                     format!(
                         "clickhouse seal: {e}; json fallback ({p}): {e2}",
@@ -37,7 +51,7 @@ fn ch_save_seal_with_fallback(c: &SnapChCfg, inner: &Inner) -> Result<(), String
 }
 
 #[cfg(feature = "clickhouse-snapshot")]
-fn ch_save_tip_with_fallback(c: &SnapChCfg, inner: &Inner) -> Result<(), String> {
+fn ch_save_tip_fallback(c: &SnapChCfg, inner: &Inner) -> Result<(), String> {
     match c.ch_save_tip_summary(inner) {
         Ok(()) => Ok(()),
         Err(e) => {
@@ -48,7 +62,7 @@ fn ch_save_tip_with_fallback(c: &SnapChCfg, inner: &Inner) -> Result<(), String>
                     p.display(),
                     e
                 );
-                io::save_epochs_summary_at_tip(p.as_path(), inner).map_err(|e2| {
+                io::save_epochs_sum_tip(p.as_path(), inner).map_err(|e2| {
                     format!(
                         "clickhouse tip: {e}; json fallback ({p}): {e2}",
                         p = p.display()
@@ -72,19 +86,26 @@ pub(crate) enum SnapshotBackend {
 }
 
 impl SnapshotBackend {
-    /// Seal-time persistence: JsonFile epoch append + checkpoint; ClickHouse per-block insert + periodic checkpoint.
-    pub(crate) fn save_seal_persist(&self, inner: &Inner) -> Result<(), String> {
+    /// Seal-time persistence: JsonFile tip-sync + summary flush; ClickHouse keeps native behavior.
+    pub(crate) fn save_seal_persist(
+        &self,
+        inner: &Inner,
+        mode: SealPersistMode,
+    ) -> Result<(), String> {
         match self {
-            Self::JsonFile { path } => io::json_file_seal_persist(Path::new(path), inner),
+            Self::JsonFile { path } => {
+                let _ = mode;
+                io::json_file_seal_persist(Path::new(path), inner)
+            }
             #[cfg(feature = "clickhouse-snapshot")]
-            Self::ClickHouse(c) => ch_save_seal_with_fallback(c, inner),
+            Self::ClickHouse(c) => ch_save_seal_fallback(c, inner, mode),
         }
     }
 
     /// Tip summary without new block (e.g. relay roaming); JsonFile rewrites `pwm-data.json` only.
     pub(crate) fn save_tip_summary(&self, inner: &Inner) -> Result<(), String> {
         match self {
-            Self::JsonFile { path } => io::save_epochs_summary_at_tip(Path::new(path), inner),
+            Self::JsonFile { path } => io::save_epochs_sum_tip(Path::new(path), inner),
             #[cfg(feature = "clickhouse-snapshot")]
             Self::ClickHouse(c) => c.ch_save_tip_summary(inner),
         }
@@ -125,7 +146,7 @@ impl SnapshotBackend {
         match self {
             Self::JsonFile { path } => io::json_file_runtime_persist(Path::new(path), inner),
             #[cfg(feature = "clickhouse-snapshot")]
-            Self::ClickHouse(c) => ch_save_tip_with_fallback(c, inner),
+            Self::ClickHouse(c) => ch_save_tip_fallback(c, inner),
         }
     }
 

@@ -2,12 +2,13 @@
 
 use crate::cli_parse::{parse_address_input, resolve_tx_send_amount};
 use crate::cmd_roaming;
-use crate::rpc_helpers::{fetch_nonce, post_signed_tx, preflight_recipient_init};
+use crate::purpose_expand::expand_purpose;
+use crate::rpc_helpers::{fetch_marks, fetch_nonce, post_signed_tx, preflight_recipient_init};
 use crate::signer::load_tx_signer_source;
 use crate::wallet::assert_tx_recipient_allowed;
 use crate::wallet::load_wallet_yaml_upgrade;
 use crate::{exit_user_error, http_client_for_rpc};
-use pwm_core::tx::{SignedTx, TxBody};
+use pwm_core::tx::{ClaimMode, SignedTx, TxBody};
 use pwm_core::validate_recipient_domain_policy;
 use std::path::PathBuf;
 
@@ -90,7 +91,7 @@ pub(crate) fn run_tx_send(
     if same_hi {
         post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
     } else {
-        cmd_roaming::run_tx_send_cross_domain(rpc_base, &source, to_id, amount, fee, nonce);
+        cmd_roaming::run_roaming_tx(rpc_base, &source, to_id, amount, fee, nonce);
     }
 }
 
@@ -140,6 +141,47 @@ pub(crate) fn run_tx_unstake(
     post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
 }
 
+pub(crate) fn parse_claim_mode_cli(raw: &str) -> Result<ClaimMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "free" => Ok(ClaimMode::Free),
+        "paid" => Ok(ClaimMode::Paid),
+        other => Err(format!(
+            "invalid --claim-mode {other:?}: expected `free` or `paid`"
+        )),
+    }
+}
+
+pub(crate) fn run_tx_claim(
+    rpc_base: &str,
+    wallet: Option<PathBuf>,
+    master: Option<String>,
+    domain: Option<String>,
+    wallet_passphrase: Option<&str>,
+    upgrade_wallet: bool,
+    mode: ClaimMode,
+    claim_units: u32,
+    anchor_ref: u64,
+    fee: u128,
+) {
+    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
+        .unwrap_or_else(|e| exit_user_error(&e));
+    let c = http_client_for_rpc();
+    let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
+    let tx = SignedTx::sign_body(
+        &source.sk,
+        source.dom,
+        source.idx,
+        nonce,
+        TxBody::Claim {
+            mode,
+            claim_units,
+            anchor_ref,
+            fee,
+        },
+    );
+    post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
+}
+
 pub(crate) fn run_tx_burn_mark(
     rpc_base: &str,
     wallet: Option<PathBuf>,
@@ -147,12 +189,18 @@ pub(crate) fn run_tx_burn_mark(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
-    mark_amount: u128,
+    mark_amount: u32,
     beneficiary: Option<String>,
+    purpose: Option<String>,
 ) {
     let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
         .unwrap_or_else(|e| exit_user_error(&e));
     let c = http_client_for_rpc();
+    let marks_before = fetch_marks(&c, rpc_base, source.from).unwrap_or_else(|e| {
+        eprintln!("pwm: warn: could not fetch marks: {e}");
+        0
+    });
+    eprintln!("pwm: current marks: {marks_before}");
     let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
     let beneficiary = beneficiary
         .as_deref()
@@ -180,7 +228,7 @@ pub(crate) fn run_tx_burn_mark(
                 "{e}. Hint: verify beneficiary domain policy and --rpc/PWM_RPC target shard"
             ))
         });
-    let tx = SignedTx::sign_body(
+    let mut tx = SignedTx::sign_body(
         &source.sk,
         source.dom,
         source.idx,
@@ -190,5 +238,16 @@ pub(crate) fn run_tx_burn_mark(
             beneficiary,
         },
     );
+    if let Some(p) = purpose {
+        let expanded = expand_purpose(&p);
+        tx.set_burn_purpose_signed(&source.sk, expanded);
+    } else {
+        eprintln!(
+            "pwm: note: burn uses a built-in default purpose; pass --purpose for an explicit v2 dedication string (RFC 0011)."
+        );
+    }
+    // Node rejects insufficient marks with error code "E_BURN_OVER_BALANCE" (STATE_CONFLICT),
+    // Display message: "insufficient marks" (TxError::InsufficientMarks -> #[error]).
     post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
+    eprintln!("pwm: burn submitted; marks before: {marks_before}");
 }

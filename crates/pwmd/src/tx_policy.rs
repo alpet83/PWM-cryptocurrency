@@ -1,11 +1,11 @@
 //! Signed-tx preflight guards: shards, recipients, burns, and import provenance.
 
-use crate::ShardId;
+use crate::DevLane;
 use axum::http::StatusCode;
 use pwm_core::address_book::validate_recipient_address_policy;
 use pwm_core::domain_index::{category_for_raw, DomainCategory};
 use pwm_core::hd::domain_of_account_id;
-use pwm_core::tx::{burn_context_is_source_domain, TxBody};
+use pwm_core::tx::{TxBody, TxError};
 use pwm_core::SignedTx;
 use tracing::info;
 
@@ -19,11 +19,11 @@ const RECIPIENT_UNINIT_ERR_TEXT: &str =
 ///
 /// This is intentionally **not** a protocol rule for `TRANSFER` same-shard routing.
 /// Phase 1 domain classes are defined in `pwm_core::domain_index` (see RFC 1 §5.1).
-pub(crate) fn shard_for_phase1_account(id: &pwm_core::AccountId) -> Result<ShardId, String> {
+pub(crate) fn shard_for_phase1_account(id: &pwm_core::AccountId) -> Result<DevLane, String> {
     let raw = domain_of_account_id(id) as u32;
     match category_for_raw(raw) {
-        Some(DomainCategory::Regulatory) => Ok(ShardId::A),
-        Some(DomainCategory::Sector) => Ok(ShardId::B),
+        Some(DomainCategory::Regulatory) => Ok(DevLane::Lane0),
+        Some(DomainCategory::Sector) => Ok(DevLane::Lane1),
         Some(DomainCategory::Reserve) => Err(format!(
             "account domain 0x{:04X} is reserve-class and not routable on dev shard map",
             raw as u16
@@ -84,6 +84,17 @@ pub(crate) fn enforce_import_provenance_prefilter(
     else {
         return Ok(());
     };
+    if tx.import_fee.unwrap_or(0) < pwm_core::tx::MIN_IMPORT_FEE_UNITS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            crate::api::common::tx_reject_json(
+                tx,
+                "preflight",
+                &TxError::ImportFeeTooLow,
+                "import fee is below MIN_IMPORT_FEE_UNITS".to_string(),
+            ),
+        ));
+    }
     if st.imported_set.contains(export_id) {
         return Err((StatusCode::CONFLICT, DUPLICATE_IMPORT_ERR_TEXT.to_string()));
     }
@@ -176,7 +187,7 @@ pub(crate) fn enforce_recipient_init_gate(
 
 pub(crate) fn enforce_local_tx_guards(
     tx: &SignedTx,
-    local_shard: ShardId,
+    local_shard: DevLane,
     local_domain_hi: u8,
 ) -> Result<(), (StatusCode, String)> {
     let sender = tx.computed_account_id();
@@ -261,7 +272,7 @@ pub(crate) fn enforce_local_tx_guards(
         }
         _ => "local_account_op",
     };
-    let shard_lbl = shard_label_for_domain_hi(local_domain_hi);
+    let shard_lbl = shard_label(local_domain_hi);
     info!(
         "tx routing guard: shard={} sender_domain=0x{:04X} sender_hi=0x{:02X} receiver={} mode={}",
         shard_lbl,
@@ -271,7 +282,7 @@ pub(crate) fn enforce_local_tx_guards(
             .map(|(hi, shard)| format!(
                 "0x{hi:02X}/{}",
                 if shard.is_some() {
-                    shard_label_for_domain_hi(hi)
+                    shard_label(hi)
                 } else {
                     "non_routable".to_string()
                 }
@@ -280,7 +291,7 @@ pub(crate) fn enforce_local_tx_guards(
         route_mode
     );
     // Roaming txs are routed by explicit `domain_hi` identity (Sprint 13 baseline), not by the legacy
-    // Phase1 process-shard map (`ShardId::A|B`).
+    // Phase1 process-shard map (`DevLane::Lane0|Lane1`).
     if matches!(&tx.body, TxBody::Export { .. } | TxBody::Import { .. }) {
         return Ok(());
     }
@@ -307,13 +318,6 @@ pub(crate) fn enforce_local_tx_guards(
         }
     }
     if matches!(&tx.body, TxBody::BurnMark { .. }) {
-        if !burn_context_is_source_domain(tx) {
-            return Err((
-                StatusCode::CONFLICT,
-                "cross-domain burn context is source-only on local tx path; use explicit EXPORT/IMPORT flow"
-                    .to_string(),
-            ));
-        }
         if let Some(to) = receiver {
             let recv_shard =
                 shard_for_phase1_account(&to).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
@@ -329,7 +333,8 @@ pub(crate) fn enforce_local_tx_guards(
     Ok(())
 }
 
-fn shard_label_for_domain_hi(local_domain_hi: u8) -> String {
+/// Returns a short human-readable label for a domain-hi byte.
+fn shard_label(local_domain_hi: u8) -> String {
     // Guard logs must use runtime shard labels derived from node's configured domain-hi.
     // Legacy `A|B` labels are not acceptable here (Slice20 requirement).
     pwm_core::domain_index::lookup_regulatory_by_hi(local_domain_hi)
@@ -340,7 +345,7 @@ fn shard_label_for_domain_hi(local_domain_hi: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::{enforce_local_tx_guards, shard_for_phase1_account};
-    use crate::ShardId;
+    use crate::DevLane;
     use axum::http::StatusCode;
     use ed25519_dalek::SigningKey;
     use pwm_core::address_book::validate_recipient_address_policy;
@@ -359,7 +364,7 @@ mod tests {
 
     fn routable_user_in_shard(
         seed_start: [u8; 32],
-        want: ShardId,
+        want: DevLane,
         want_hi: Option<u8>,
     ) -> (SigningKey, u32, [u8; 32]) {
         let mut seed = seed_start;
@@ -380,7 +385,7 @@ mod tests {
 
     fn routable_user_in_shard_opt(
         seed_start: [u8; 32],
-        want: ShardId,
+        want: DevLane,
         want_hi: Option<u8>,
     ) -> Option<(SigningKey, u32, [u8; 32])> {
         let mut seed = seed_start;
@@ -403,7 +408,7 @@ mod tests {
     #[test]
     fn burn_guard_ok_shard_ben() {
         let (sk, i, sender) = (41u8..=80u8)
-            .find_map(|b| routable_user_in_shard_opt([b; 32], ShardId::A, None))
+            .find_map(|b| routable_user_in_shard_opt([b; 32], DevLane::Lane0, None))
             .expect("must find routable account in shard A");
         let sender_shard = shard_for_phase1_account(&sender).expect("sender shard");
         let sender_hi = domain_of_account_id(&sender).to_be_bytes()[0];
@@ -427,7 +432,7 @@ mod tests {
     /// Policy-invalid beneficiary id fails burn submission (formerly `burn_mark_guard_rejects_policy_invalid_beneficiary`).
     #[test]
     fn burn_guard_reject_bad_ben() {
-        let (sk, i, sender) = routable_user_in_shard([51u8; 32], ShardId::A, None);
+        let (sk, i, sender) = routable_user_in_shard([51u8; 32], DevLane::Lane0, None);
         let sender_shard = shard_for_phase1_account(&sender).expect("sender shard");
         let mut bad_beneficiary = [0u8; 32];
         bad_beneficiary[0] = 0xF0;
@@ -448,10 +453,10 @@ mod tests {
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
-    /// Cross-shard beneficiary is rejected by burn guards (formerly `burn_mark_guard_rejects_cross_domain_context`).
+    /// Cross-domain beneficiary passes burn guard (V2-7: burn_ctx_source_dom removed).
     #[test]
-    fn burn_guard_reject_cross_dom() {
-        let (sk, i, sender) = routable_user_in_shard([61u8; 32], ShardId::A, None);
+    fn burn_guard_ok_cross_dom() {
+        let (sk, i, sender) = routable_user_in_shard([61u8; 32], DevLane::Lane0, None);
         let sender_shard = shard_for_phase1_account(&sender).expect("sender shard");
         let sender_hi = domain_of_account_id(&sender).to_be_bytes()[0];
         let mut cross_domain_beneficiary = [0u8; 32];
@@ -466,16 +471,14 @@ mod tests {
                 beneficiary: Some(cross_domain_beneficiary),
             },
         );
-        let err = enforce_local_tx_guards(&tx, sender_shard, sender_hi)
-            .expect_err("must reject cross-domain burn context");
-        assert_eq!(err.0, StatusCode::CONFLICT);
-        assert!(err.1.contains("source-only"));
+        let res = enforce_local_tx_guards(&tx, sender_shard, sender_hi);
+        assert!(res.is_ok());
     }
 
     /// Invalid export recipient id hits HTTP BAD_REQUEST guard (formerly `export_guard_rejects_policy_invalid_recipient`).
     #[test]
     fn export_guard_reject_bad_to() {
-        let (sk, i, sender) = routable_user_in_shard([71u8; 32], ShardId::A, None);
+        let (sk, i, sender) = routable_user_in_shard([71u8; 32], DevLane::Lane0, None);
         let sender_domain = domain_of_account_id(&sender);
         let sender_shard = shard_for_phase1_account(&sender).expect("sender shard");
         let sender_hi = sender_domain.to_be_bytes()[0];
@@ -504,7 +507,7 @@ mod tests {
     /// High-byte helpers map CY/DO style labels expected in logs (formerly `shard_label_for_domain_hi_maps_to_expected_runtime_labels`).
     #[test]
     fn hi_lbl_runtime_fixture_ok() {
-        assert_eq!(super::shard_label_for_domain_hi(0x2C), "CY");
-        assert_eq!(super::shard_label_for_domain_hi(0x32), "DO");
+        assert_eq!(super::shard_label(0x2C), "CY");
+        assert_eq!(super::shard_label(0x32), "DO");
     }
 }

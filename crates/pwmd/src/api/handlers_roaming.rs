@@ -3,9 +3,9 @@
 use super::common::{
     acct_view, ensure_bridge_federation_ok, ensure_ready, ensure_trusted_handoff_source,
     ensure_user_tx_allowed, handoff_from_intent_status, hex32, mark_relay_err, mark_relay_ok,
-    parse_handoff_amount, parse_handoff_id, parse_id, persist_snapshot_or_http_err,
-    push_readiness_reject_flow, push_tx_flow, readiness_reject_json, rollback_commit,
-    snapshot_save_under_inner_lock, take_bak, tx_id_hex, tx_kind, verify_handoff,
+    parse_handoff_amount, parse_handoff_id, parse_id, persist_snap, push_readiness_reject_flow,
+    push_tx_flow, readiness_reject_json, rollback_commit, snap_save_locked, take_bak, tx_id_hex,
+    tx_kind, verify_handoff,
 };
 use super::types::{
     CreateRoamingIntentIn, CreateRoamingIntentOut, ExportReadinessIn, ExportReadinessOut,
@@ -207,7 +207,7 @@ pub(super) async fn v1_roaming_intent_create(
             "roaming intent created".to_string()
         }),
     );
-    let save_result = snapshot_save_under_inner_lock(&a, &g);
+    let save_result = snap_save_locked(&a, &g);
     let mut ready_snap_path: Option<Option<std::path::PathBuf>> = None;
     if let Some((path, result)) = save_result {
         if let Err(e) = result {
@@ -326,7 +326,7 @@ pub(super) async fn v1_roaming_intent_finalize(
         intent_id: Some(hex32(&key)),
         note: Some(message.clone()),
     });
-    let save_result = snapshot_save_under_inner_lock(&a, &g);
+    let save_result = snap_save_locked(&a, &g);
     drop(g);
     if let Some((path, result)) = save_result {
         match result {
@@ -512,7 +512,7 @@ pub(super) async fn v1_export_handoff_register(
         intent_id: Some(input.intent_id.clone()),
         note: Some("operator handoff provenance registered".to_string()),
     });
-    let save_result = snapshot_save_under_inner_lock(&a, &g);
+    let save_result = snap_save_locked(&a, &g);
     drop(g);
     let Some((path, result)) = save_result else {
         if duplicate {
@@ -603,13 +603,13 @@ pub(super) async fn v1_roaming_intent_status(
         ))?
         .clone();
     let save_result = if expired > 0 {
-        snapshot_save_under_inner_lock(&a, &g)
+        snap_save_locked(&a, &g)
     } else {
         None
     };
     drop(g);
     if expired > 0 {
-        persist_snapshot_or_http_err(&a, save_result, "after_roaming_expire").await?;
+        persist_snap(&a, save_result, "after_roaming_expire").await?;
     }
     Ok(Json(IntentStatusOut {
         intent_id: hex32(&intent.intent_id),

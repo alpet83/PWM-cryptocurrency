@@ -17,7 +17,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Cross-shard `tx-send`: roaming intent lifecycle (shared with roaming HTTP helpers in this module).
-pub(crate) fn run_tx_send_cross_domain(
+/// Cross-domain roaming send: builds and submits a cross-shard TRANSFER tx.
+pub(crate) fn run_roaming_tx(
     rpc_base: &str,
     source: &TxSignerSource,
     to_id: AccountId,
@@ -124,10 +125,10 @@ pub(crate) fn run_tx_import(
     if uri_amount.is_some() {
         exit_user_error("URI amount is not allowed for --to in tx-import");
     }
-    let export_id = parse_export_id_hex_arg(&export_id).unwrap_or_else(|e| exit_user_error(&e));
+    let export_id = parse_export_hex(&export_id).unwrap_or_else(|e| exit_user_error(&e));
     preflight_recipient_init(&c, rpc_base, to, "tx-import").unwrap_or_else(|e| exit_user_error(&e));
     let nonce = ensure_import_sender(&c, rpc_base, &source).unwrap_or_else(|e| exit_user_error(&e));
-    let prov = import_provenance_from_target_facts(&c, rpc_base, &export_id, to, amount)
+    let prov = import_prov_facts(&c, rpc_base, &export_id, to, amount)
         .unwrap_or_else(|e| exit_user_error(&e));
     let mut tx = SignedTx::sign_body(
         &source.sk,
@@ -147,7 +148,8 @@ pub(crate) fn run_tx_import(
 }
 
 /// Loads [`ExportProvenance`] from target node's `/v1/cross-shard/facts` (required for deterministic import replay).
-fn import_provenance_from_target_facts(
+/// Resolves import provenance from target-shard RPC facts.
+fn import_prov_facts(
     c: &reqwest::blocking::Client,
     rpc_base: &str,
     export_id: &[u8; 32],
@@ -357,7 +359,8 @@ pub(crate) struct IntentStatusResp {
     pub(crate) last_error: Option<String>,
 }
 
-pub(crate) fn user_msg_roaming_intent_error(status: reqwest::StatusCode, body: &str) -> String {
+/// Formats a user-facing error message for a failed roaming intent.
+pub(crate) fn roaming_intent_err(status: reqwest::StatusCode, body: &str) -> String {
     let details = truncate_rpc_body_hint(body, 240);
     let body_lc = body.to_ascii_lowercase();
     if status == reqwest::StatusCode::CONFLICT
@@ -397,7 +400,7 @@ pub(crate) fn post_roaming_intent(
     let status = r.status();
     let body = r.text().unwrap_or_default();
     if !status.is_success() {
-        return Err(user_msg_roaming_intent_error(status, &body));
+        return Err(roaming_intent_err(status, &body));
     }
     serde_json::from_str::<CreateRoamingIntentResp>(&body).map_err(|e| {
         format!(
@@ -445,7 +448,7 @@ pub(crate) fn get_roaming_intent_status(
     let status = r.status();
     let body = r.text().unwrap_or_default();
     if !status.is_success() {
-        return Err(user_msg_roaming_intent_error(status, &body));
+        return Err(roaming_intent_err(status, &body));
     }
     serde_json::from_str::<IntentStatusResp>(&body).map_err(|e| {
         format!(
@@ -488,7 +491,8 @@ pub(crate) fn is_terminal_intent_status(status: &str) -> bool {
     matches!(status, "imported" | "expired" | "failed")
 }
 
-pub(crate) fn parse_export_id_hex_arg(raw: &str) -> Result<[u8; 32], String> {
+/// Parses the export-id hex argument from CLI input.
+pub(crate) fn parse_export_hex(raw: &str) -> Result<[u8; 32], String> {
     hex32(raw).map_err(|_| {
         format!(
             "Invalid value for --export-id: expected 32-byte hex (64 hex chars), got `{}`",

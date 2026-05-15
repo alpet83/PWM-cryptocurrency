@@ -2,8 +2,8 @@
 
 use base64::Engine;
 use pwm_core::{
-    account_id_to_bech32dx, account_id_to_human, parse_account_id, parse_account_id_for_migration,
-    AccountId, AddressBookEntry,
+    account_id_to_bech32dx, account_id_to_human, parse_account_id, parse_acct_id_mig, AccountId,
+    AddressBookEntry,
 };
 use serde::Deserialize;
 use slip10_ed25519::derive_ed25519_private_key;
@@ -113,7 +113,7 @@ pub fn save_wallet_yaml(path: &Path, wallet: &WalletYaml) -> Result<(), String> 
 
 pub fn save_wallet_v3_new(path: &Path, wallet: &WalletYaml) -> Result<(), String> {
     ensure_wallet_parent_dir(path)?;
-    let wallet_v3 = migrate_wallet_v2_to_v3(wallet)?;
+    let wallet_v3 = migrate_wallet_v2v3(wallet)?;
     let serialized = ser_v3_clean(&wallet_v3)?;
     fs::write(path, serialized).map_err(|e| e.to_string())
 }
@@ -149,9 +149,9 @@ pub fn load_wallet_yaml_upgrade(path: &Path, upgrade_wallet: bool) -> Result<Wal
     wallet.ignored_legacy_pretty_entries =
         normalize_address_book_entries(&mut wallet.address_book)?;
     if schema_version == 2 {
-        let migrated = migrate_wallet_v2_to_v3(&wallet)?;
+        let migrated = migrate_wallet_v2v3(&wallet)?;
         if upgrade_wallet {
-            save_wallet_yaml_v3_strict(path, &migrated)?;
+            save_wallet_v3(path, &migrated)?;
             let migrated_raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
             wallet = parse_wallet_yaml_v3(&migrated_raw)?;
         } else {
@@ -172,7 +172,7 @@ pub fn detect_resume_der_index(
     let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let schema_version = detect_schema_version(&raw)?;
     if schema_version == 3 {
-        let wallet_v3 = load_wallet_yaml_v3_raw(path)?;
+        let wallet_v3 = load_wallet_v3_raw(path)?;
         let scoped_max = wallet_v3
             .accounts
             .iter()
@@ -186,7 +186,8 @@ pub fn detect_resume_der_index(
     }
 }
 
-fn migrate_wallet_v2_to_v3(wallet: &WalletYaml) -> Result<WalletYamlV3, String> {
+/// Migrates a v2 wallet YAML structure to the v3 format in-place.
+fn migrate_wallet_v2v3(wallet: &WalletYaml) -> Result<WalletYamlV3, String> {
     let derivation_path = wallet
         .derivation_path
         .as_deref()
@@ -230,7 +231,8 @@ fn migrate_wallet_v2_to_v3(wallet: &WalletYaml) -> Result<WalletYamlV3, String> 
     })
 }
 
-pub(crate) fn load_wallet_yaml_v3_raw(path: &Path) -> Result<WalletYamlV3, String> {
+/// Loads a v3 wallet YAML file without validation (raw deserialization).
+pub(crate) fn load_wallet_v3_raw(path: &Path) -> Result<WalletYamlV3, String> {
     let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
     if detect_schema_version(&raw)? != 3 {
         return Err("wallet account commands require schema v3 wallet file".to_string());
@@ -243,7 +245,8 @@ pub(crate) fn load_wallet_yaml_v3_raw(path: &Path) -> Result<WalletYamlV3, Strin
     Ok(wallet_v3)
 }
 
-fn save_wallet_yaml_v3_strict(path: &Path, wallet_v3: &WalletYamlV3) -> Result<(), String> {
+/// Saves wallet state as v3 YAML with strict field validation.
+fn save_wallet_v3(path: &Path, wallet_v3: &WalletYamlV3) -> Result<(), String> {
     ensure_wallet_parent_dir(path)?;
     let serialized = ser_v3_clean(wallet_v3)?;
     write_atomic(path, &serialized)
@@ -347,7 +350,8 @@ pub(crate) fn detect_schema_version(raw: &str) -> Result<u32, String> {
     Ok(parsed.schema_version.unwrap_or(2))
 }
 
-fn parse_der_idx_m0_path(path: &str) -> Result<u32, String> {
+/// Parses a BIP32 m/0 derivation path from a DER index string.
+fn parse_der_m0_path(path: &str) -> Result<u32, String> {
     let trimmed = path.trim();
     const PREFIX: &str = "m/0/";
     if !trimmed.starts_with(PREFIX) {
@@ -362,7 +366,7 @@ fn parse_der_idx_m0_path(path: &str) -> Result<u32, String> {
 
 fn validate_v3_derivation_paths(wallet_v3: &WalletYamlV3) -> Result<(), String> {
     for account in &wallet_v3.accounts {
-        let path_idx = parse_der_idx_m0_path(&account.derivation_path)?;
+        let path_idx = parse_der_m0_path(&account.derivation_path)?;
         if path_idx != account.derivation_index {
             return Err(format!(
                 "wallet schema v3 derivation_path {:?} does not match derivation_index {}",
@@ -389,7 +393,7 @@ fn parse_wallet_yaml_v3(raw: &str) -> Result<WalletYaml, String> {
         default_v3_account(&wallet_v3.accounts).expect("validated non-empty accounts");
 
     if wallet_v3.mode == "plaintext_dev" {
-        validate_v3_accounts_against_master(&wallet_v3)?;
+        validate_v3_master(&wallet_v3)?;
     }
 
     Ok(WalletYaml {
@@ -421,7 +425,8 @@ fn parse_wallet_yaml_v3(raw: &str) -> Result<WalletYaml, String> {
     })
 }
 
-fn validate_v3_accounts_against_master(wallet_v3: &WalletYamlV3) -> Result<(), String> {
+/// Validates all v3 wallet accounts against the master key derivation.
+fn validate_v3_master(wallet_v3: &WalletYamlV3) -> Result<(), String> {
     let seed_hex = match wallet_v3
         .master_seed_hex
         .as_deref()
@@ -504,18 +509,19 @@ pub fn recover_wallet_file(
 }
 
 fn resolve_wallet_account_id(wallet: &WalletYaml) -> Result<AccountId, String> {
-    if let Some(id) = account_id_from_truth_source(wallet)? {
+    if let Some(id) = acct_id_from_source(wallet)? {
         return Ok(id);
     }
     if !wallet.account_id_hex.trim().is_empty() {
         return parse_account_id(wallet.account_id_hex.trim())
             .map_err(|e| format!("wallet account_id_hex is invalid: {e}"));
     }
-    parse_account_id_for_migration(wallet.account_id_human.trim())
+    parse_acct_id_mig(wallet.account_id_human.trim())
         .map_err(|e| format!("wallet account_id_human migration error: {e}"))
 }
 
-fn account_id_from_truth_source(wallet: &WalletYaml) -> Result<Option<AccountId>, String> {
+/// Resolves account id from the authoritative source (wallet or RPC).
+fn acct_id_from_source(wallet: &WalletYaml) -> Result<Option<AccountId>, String> {
     let index = parse_derivation_index(wallet)?;
     if let Some(seed_hex) = wallet
         .master_seed_hex
@@ -583,7 +589,7 @@ fn normalize_address_book_entries(entries: &mut Vec<AddressBookEntry>) -> Result
             ignored += 1;
             continue;
         }
-        let id = parse_account_id_for_migration(entry.address_str().trim())
+        let id = parse_acct_id_mig(entry.address_str().trim())
             .map_err(|e| format!("wallet address_book[{idx}] migration error: {e}"))?;
         let canonical = account_id_to_bech32dx(&id);
         match entry {

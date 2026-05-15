@@ -1,28 +1,23 @@
 //! Devnet node binary: REST `/v1/*`, PoA seal loop.
 
 use clap::{Parser, ValueEnum};
+use pwmd::handshake::{ClusterRole, DeploymentProfile, SealRole};
 use pwmd::{
     default_runtime_identity_neutral, init_logging, logger, neutral_listen_dir_tag,
-    parse_cluster_domain_hi, resolve_runtime_identity, storage_namespace, ConsoleColorMode,
-    GenesisSource, LogFileMode, LoggingConfig, PersistSnapKind, PwmdConfig, RuntimeIdentityInput,
-    RuntimeIdentityMode, ShardId, TransportConfig,
+    parse_cluster_domain_hi, resolve_runtime_identity, storage_namespace, ClusterCfg,
+    ConsoleColorMode, DebugDumpCfg, DevLane, GenesisSource, LeaseBackendMode, LogFileMode,
+    LoggingConfig, PersistSnapKind, PwmdConfig, RuntimeIdentityInput, RuntimeIdentityMode,
+    TransportConfig,
 };
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 #[derive(Parser)]
 #[command(name = "pwmd")]
 struct Cli {
-    /// DEPRECATED legacy compat selector (`A` or `B`) for relay baseline fallback.
-    /// Domain-first contract: prefer explicit identity flags (`--network-id`,
-    /// `--domain-hi`/`--domain-cluster`, `--cluster-id`, `--node-id`).
-    /// Sprint 11 soft-break policy: kept as compatibility path, no hard removal.
-    #[deprecated(
-        since = "0.1.0",
-        note = "prefer domain-first identity flags (--network-id, --domain-hi, --cluster-id, --node-id)"
-    )]
-    #[arg(long, value_name = "A|B")]
-    shard: Option<String>,
+    /// Two local dev lanes require explicit identity flags:
+    /// `--domain-hi`/`--cluster-domain-hi` + `--cluster-id` + `--node-id`.
     /// Domain-first runtime identity: explicit network id (e.g. `devnet`, `testnet-v1`).
     #[arg(long)]
     network_id: Option<String>,
@@ -42,6 +37,9 @@ struct Cli {
     /// Domain-first runtime identity: explicit stable node identifier in this network.
     #[arg(long)]
     node_id: Option<String>,
+    /// Stable peer `node_instance_id` (RFC16 `cluster-members` must match this and peers). Default is `{node_id}-{pid}-{time_ms}`.
+    #[arg(long, env = "PWM_NODE_INSTANCE_ID")]
+    node_instance_id: Option<String>,
     /// HTTP listen address (e.g. `127.0.0.1:3030`).
     #[arg(long)]
     listen: Option<std::net::SocketAddr>,
@@ -66,6 +64,12 @@ struct Cli {
     /// Comma-separated seed peers for real transport (e.g. 127.0.0.1:4040,127.0.0.1:4041).
     #[arg(long, value_delimiter = ',', value_name = "ADDR[,ADDR...]")]
     transport_peer_seed: Vec<std::net::SocketAddr>,
+    /// Optional YAML file with bootstrap peers.
+    /// Legacy v1: `peers: ["127.0.0.1:13030"]`.
+    /// Multi-shard v2: `shards: {"0x2C": [{id, peer, validator}]}` (keys: `0xNN` or `0..255`).
+    /// If omitted, pwmd checks `<state_root>/peers.yaml` and uses it only when the file exists.
+    #[arg(long, value_name = "PATH")]
+    peers_list: Option<PathBuf>,
     /// HTTP peer base(s) for one-window relay (`/v1/status`, provenance). Defaults: each `--transport-peer-seed` host with port−100 (inverse of rpc+100 peer convention).
     #[arg(long, value_delimiter = ',', value_name = "ADDR[,ADDR...]")]
     transport_relay_http_seed: Vec<std::net::SocketAddr>,
@@ -91,8 +95,8 @@ struct Cli {
     #[arg(long, default_value_t = 1_000_000)]
     transport_soak_counter_cap: u64,
     /// Optional periodic health aggregation interval in transport ticks (0 disables).
-    #[arg(long, default_value_t = 0)]
-    transport_soak_health_interval_ticks: u64,
+    #[arg(long = "transport-soak-health-interval-ticks", default_value_t = 0)]
+    transport_soak_health_ticks: u64,
     /// Runaway reconnect streak limit before safety stop guard activates.
     #[arg(long, default_value_t = 12)]
     transport_runaway_streak_limit: u32,
@@ -185,10 +189,135 @@ struct Cli {
     snapshot_verify_chain: bool,
     /// After fatal snapshot load errors, keep HTTP up in `ready_degraded` instead of exiting (default: exit).
     #[arg(long = "keep-alive-on-snapshot-error", default_value_t = false, action = clap::ArgAction::SetTrue)]
-    keep_alive_on_snapshot_error: bool,
+    keep_alive_snapshot_error: bool,
     /// [Debug] Put a fake genesis digest in transport `NodeHello` so honest peers reject this node (pair with `--transport-real`).
     #[arg(long, default_value_t = false, action = clap::ArgAction::SetTrue)]
     broke_trust_test: bool,
+    /// [Test-only] Graceful stop once canonical height reaches/exceeds this value.
+    #[arg(long, value_name = "HEIGHT")]
+    debug_stop_height: Option<u64>,
+    /// [Test/dev-only] Deterministic seal timestamp source (`base + height`) for hash-parity runs.
+    #[arg(
+        long = "debug-deterministic-seal-time",
+        default_value_t = false,
+        action = clap::ArgAction::SetTrue
+    )]
+    debug_deterministic_seal_time: bool,
+    /// [Test/dev-only] Align local seal attempts around second midpoint (`~500ms`) to reduce wall-clock drift.
+    #[arg(
+        long = "debug-align-seal-mid-second",
+        default_value_t = false,
+        action = clap::ArgAction::SetTrue
+    )]
+    debug_align_seal_mid: bool,
+    /// [Test/dev-only] Disable periodic local seal-loop for non-cluster follower/replay harnesses.
+    /// In cluster mode, `--cluster-role attester` already implies no local competing seal loop (RFC16 §8.2).
+    #[arg(
+        long = "debug-disable-seal-loop",
+        default_value_t = false,
+        action = clap::ArgAction::SetTrue
+    )]
+    debug_disable_seal_loop: bool,
+    /// Runtime deployment profile for same-validator guard policy.
+    #[arg(
+        long = "deployment-profile",
+        env = "PWM_DEPLOYMENT_PROFILE",
+        value_enum,
+        default_value_t = CliDeploymentProfile::SingleSealer
+    )]
+    deployment_profile: CliDeploymentProfile,
+    /// Optional explicit local seal role override (`active`/`standby`).
+    #[arg(long = "seal-role", env = "PWM_SEAL_ROLE", value_enum)]
+    seal_role: Option<CliSealRole>,
+    /// Single-sealer lease TTL in milliseconds (active renew window).
+    #[arg(
+        long = "seal-lease-ttl-ms",
+        env = "PWM_SEAL_LEASE_TTL_MS",
+        default_value_t = 10_000
+    )]
+    seal_lease_ttl_ms: u64,
+    /// Standby takeover timeout after observed lease expiry (milliseconds).
+    #[arg(
+        long = "seal-takeover-timeout-ms",
+        env = "PWM_SEAL_TAKEOVER_TIMEOUT_MS",
+        default_value_t = 8_000
+    )]
+    seal_takeover_timeout_ms: u64,
+    /// Max local tip lag tolerated before standby can take over.
+    #[arg(
+        long = "seal-takeover-max-tip-lag",
+        env = "PWM_SEAL_TAKEOVER_MAX_TIP_LAG",
+        default_value_t = 1
+    )]
+    seal_takeover_tip_lag: u64,
+    /// Lease backend mode for single-sealer gate (`file` fail-closed default, or explicit `process-local` fallback).
+    #[arg(
+        long = "seal-lease-backend",
+        env = "PWM_SEAL_LEASE_BACKEND",
+        value_enum,
+        default_value_t = CliLeaseBackend::File
+    )]
+    seal_lease_backend: CliLeaseBackend,
+    /// Directory that stores per-validator lease files for `file` backend.
+    #[arg(
+        long = "seal-lease-dir",
+        env = "PWM_SEAL_LEASE_DIR",
+        value_name = "DIR"
+    )]
+    seal_lease_dir: Option<PathBuf>,
+    /// [Debug] Dump local block JSON after persistent sync-tip divergence trigger.
+    #[arg(
+        long = "debug-dump-on-divergence",
+        default_value_t = false,
+        action = clap::ArgAction::SetTrue
+    )]
+    debug_dump_on_divergence: bool,
+    /// [Debug] Output directory for block dumps (default: `<data_file_parent>/blocks`).
+    #[arg(
+        long = "debug-dump-dir",
+        env = "PWM_DEBUG_DUMP_DIR",
+        value_name = "DIR"
+    )]
+    debug_dump_dir: Option<PathBuf>,
+    /// [Debug] Upper bound for number of dump files written by this process.
+    #[arg(
+        long = "debug-dump-cap",
+        env = "PWM_DEBUG_DUMP_CAP",
+        default_value_t = 16
+    )]
+    debug_dump_cap: u64,
+    /// [Debug] Consecutive divergence observations needed before writing a dump.
+    #[arg(
+        long = "debug-dump-trigger-streak",
+        env = "PWM_DEBUG_DUMP_TRIGGER_STREAK",
+        default_value_t = 2
+    )]
+    debug_dump_trigger_streak: u8,
+    /// Enable RFC16 cluster attestation logic (default off).
+    #[arg(long = "cluster-enabled", default_value_t = false, action = clap::ArgAction::SetTrue)]
+    cluster_enabled: bool,
+    /// RFC16 role for cluster mode; `attester` implies standby/no local seal loop by role derivation (RFC16 §8.2).
+    #[arg(long = "cluster-role", env = "PWM_CLUSTER_ROLE", value_enum, default_value_t = CliClusterRole::None)]
+    cluster_role: CliClusterRole,
+    /// Comma-separated static cluster members (`node_instance_id` values; use `--node-instance-id` on each node so these match wire).
+    #[arg(
+        long = "cluster-members",
+        value_delimiter = ',',
+        value_name = "ID[,ID...]"
+    )]
+    cluster_members: Vec<String>,
+    /// RFC16 §7: attester ACK count (`k`) excludes proposer (2-of-2 intent => k=1, n=2).
+    #[arg(long = "cluster-quorum-k", default_value_t = 1)]
+    cluster_quorum_k: u8,
+    /// Quorum N in k-of-n when cluster mode is enabled (limited to <=3 in this slice).
+    #[arg(long = "cluster-quorum-n", default_value_t = 2)]
+    cluster_quorum_n: u8,
+    /// RFC16 §6.1 bounded catch-up window before attest reject.
+    #[arg(long = "cluster-tx-catchup-ms", default_value_t = 500)]
+    cluster_tx_catchup_ms: u64,
+    /// RFC16 attest timeout window for quorum collection.
+    #[arg(long = "cluster-attest-timeout-ms", default_value_t = 1000)]
+    cluster_attest_timeout_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -233,20 +362,76 @@ enum CliSnapBackend {
     Clickhouse,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+enum CliDeploymentProfile {
+    SingleSealer,
+    MultiSealerExperimental,
+}
+
+impl From<CliDeploymentProfile> for DeploymentProfile {
+    fn from(value: CliDeploymentProfile) -> Self {
+        match value {
+            CliDeploymentProfile::SingleSealer => Self::SingleSealer,
+            CliDeploymentProfile::MultiSealerExperimental => Self::MultiSealerExperimental,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+enum CliSealRole {
+    Active,
+    Standby,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+enum CliLeaseBackend {
+    File,
+    ProcessLocal,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+enum CliClusterRole {
+    None,
+    Proposer,
+    Attester,
+}
+
+impl From<CliLeaseBackend> for LeaseBackendMode {
+    fn from(value: CliLeaseBackend) -> Self {
+        match value {
+            CliLeaseBackend::File => Self::File,
+            CliLeaseBackend::ProcessLocal => Self::ProcessLocal,
+        }
+    }
+}
+
+impl From<CliSealRole> for SealRole {
+    fn from(value: CliSealRole) -> Self {
+        match value {
+            CliSealRole::Active => Self::Active,
+            CliSealRole::Standby => Self::Standby,
+        }
+    }
+}
+
+impl From<CliClusterRole> for ClusterRole {
+    fn from(value: CliClusterRole) -> Self {
+        match value {
+            CliClusterRole::None => Self::None,
+            CliClusterRole::Proposer => Self::Proposer,
+            CliClusterRole::Attester => Self::Attester,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    let shard_arg_used = deprecated_shard_arg_was_used();
     let cli = Cli::parse();
-    let compat_shard =
-        compat_shard_flag(&cli).map(|raw| match raw.trim().to_ascii_uppercase().as_str() {
-            "A" => ShardId::A,
-            "B" => ShardId::B,
-            other => {
-                eprintln!("pwmd: invalid --shard value {other:?}; expected A or B");
-                std::process::exit(2);
-            }
-        });
-    let shard = compat_shard.unwrap_or(ShardId::A);
+    let dev_lane = DevLane::Lane0;
     let genesis_passphrase = resolve_genesis_passphrase(&cli).unwrap_or_else(|e| {
         eprintln!("pwmd startup failed: {e}");
         std::process::exit(2);
@@ -258,10 +443,9 @@ async fn main() {
         },
         None => GenesisSource::DevNet,
     };
-    let listen = cli.listen.unwrap_or_else(|| match compat_shard {
-        Some(ShardId::B) => std::net::SocketAddr::from(([127, 0, 0, 1], 3031)),
-        _ => std::net::SocketAddr::from(([127, 0, 0, 1], 3030)),
-    });
+    let listen = cli
+        .listen
+        .unwrap_or(std::net::SocketAddr::from(([127, 0, 0, 1], 3030)));
     let has_explicit_identity_input = cli.network_id.is_some()
         || cli.cluster_domain_hi.is_some()
         || cli.cluster_id.is_some()
@@ -281,10 +465,10 @@ async fn main() {
         cluster_id: cli.cluster_id.map(|v| v.trim().to_string()),
         node_id: cli.node_id.map(|v| v.trim().to_string()),
     };
-    let identity = if !has_explicit_identity_input && compat_shard.is_none() {
+    let identity = if !has_explicit_identity_input {
         default_runtime_identity_neutral()
     } else {
-        match resolve_runtime_identity(shard, identity_input) {
+        match resolve_runtime_identity(dev_lane, identity_input) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("pwmd startup failed: {e}");
@@ -331,9 +515,7 @@ async fn main() {
         }
     }
     let log = logger();
-    if shard_arg_used {
-        log.info("deprecated --shard compatibility path used; prefer domain-first identity flags");
-    }
+    log_build_control(log);
     let data_file = cli.data_file.unwrap_or_else(|| {
         let ns_dir = if matches!(identity.mode, RuntimeIdentityMode::Neutral) {
             cli.state_root
@@ -344,6 +526,9 @@ async fn main() {
         };
         ns_dir.join("pwm-data.json")
     });
+    let seal_lease_dir = cli
+        .seal_lease_dir
+        .unwrap_or_else(|| cli.state_root.join("leases"));
     let persist_snap = match cli.snapshot_backend {
         CliSnapBackend::JsonFile => PersistSnapKind::JsonFile,
         #[cfg(feature = "clickhouse-snapshot")]
@@ -351,12 +536,57 @@ async fn main() {
     };
     let snapshot_verify_chain = cli.snapshot_verify_chain
         || pwm_env_truthy(std::env::var("PWM_SNAPSHOT_VERIFY_CHAIN").ok().as_deref());
-    let exit_on_fatal_snapshot = !(cli.keep_alive_on_snapshot_error
+    let exit_on_fatal_snapshot = !(cli.keep_alive_snapshot_error
         || pwm_env_truthy(
             std::env::var("PWM_KEEP_ALIVE_ON_SNAPSHOT_ERROR")
                 .ok()
                 .as_deref(),
         ));
+    let debug_det_seal_time = cli.debug_deterministic_seal_time
+        || pwm_env_truthy(
+            std::env::var("PWM_DEBUG_DETERMINISTIC_SEAL_TIME")
+                .ok()
+                .as_deref(),
+        );
+    let debug_align_mid = cli.debug_align_seal_mid
+        || pwm_env_truthy(
+            std::env::var("PWM_DEBUG_ALIGN_SEAL_MID_SECOND")
+                .ok()
+                .as_deref(),
+        );
+    let debug_disable_seal_loop = cli.debug_disable_seal_loop
+        || pwm_env_truthy(std::env::var("PWM_DEBUG_DISABLE_SEAL_LOOP").ok().as_deref());
+    let debug_dump_on_div = cli.debug_dump_on_divergence
+        || pwm_env_truthy(
+            std::env::var("PWM_DEBUG_DUMP_ON_DIVERGENCE")
+                .ok()
+                .as_deref(),
+        );
+    let peer_listen = resolve_peer_listen(cli.transport_peer_listen, listen).unwrap_or_else(|e| {
+        eprintln!("pwmd startup failed: {e}");
+        std::process::exit(2);
+    });
+    let peer_list_explicit = cli.peers_list.is_some();
+    let peer_list_path = pwmd::pick_peer_file(cli.peers_list.as_deref(), &cli.state_root);
+    let peer_file_loaded = peer_list_path.as_ref().map(|path| {
+        pwmd::load_peer_file(
+            path.as_path(),
+            identity.cluster_domain_hi,
+            peer_list_explicit,
+        )
+        .unwrap_or_else(|e| {
+            eprintln!("pwmd startup failed: {e}");
+            std::process::exit(2);
+        })
+    });
+    let (peer_file_seeds, peer_file_state) = if let Some(loaded) = peer_file_loaded {
+        (loaded.seeds, Some(loaded.state))
+    } else {
+        (Vec::new(), None)
+    };
+    let mut effective_peer_seeds =
+        pwmd::merge_peer_seeds(&peer_file_seeds, &cli.transport_peer_seed);
+    pwmd::drop_self_seed(&mut effective_peer_seeds, peer_listen);
     let cfg = PwmdConfig {
         listen,
         genesis,
@@ -375,17 +605,48 @@ async fn main() {
         snapshot_verify_chain,
         exit_on_fatal_snapshot,
         broke_trust_test: cli.broke_trust_test,
-        shard,
+        debug_stop_height: cli.debug_stop_height,
+        debug_det_seal_time,
+        debug_align_mid,
+        debug_disable_seal_loop,
+        deployment_profile: cli.deployment_profile.into(),
+        seal_role_override: cli.seal_role.map(Into::into),
+        seal_lease_ttl_ms: cli.seal_lease_ttl_ms.max(1_000),
+        seal_takeover_timeout_ms: cli.seal_takeover_timeout_ms.max(1_000),
+        seal_takeover_tip_lag: cli.seal_takeover_tip_lag,
+        seal_lease_backend: cli.seal_lease_backend.into(),
+        seal_lease_dir,
+        debug_dump: DebugDumpCfg {
+            on_divergence: debug_dump_on_div,
+            dir: cli.debug_dump_dir,
+            max_files: cli.debug_dump_cap.max(1),
+            trigger_streak: cli.debug_dump_trigger_streak.max(2),
+        },
+        cluster: ClusterCfg {
+            enabled: cli.cluster_enabled,
+            role: cli.cluster_role.into(),
+            members: cli
+                .cluster_members
+                .iter()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .collect(),
+            quorum_k: cli.cluster_quorum_k,
+            quorum_n: cli.cluster_quorum_n,
+            tx_catchup_ms: cli.cluster_tx_catchup_ms,
+            attest_timeout_ms: cli.cluster_attest_timeout_ms,
+        },
+        node_instance_id_override: cli
+            .node_instance_id
+            .as_ref()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        shard: dev_lane,
         identity,
         transport: TransportConfig {
             enabled: cli.transport_real,
-            peer_listen: resolve_peer_listen(cli.transport_peer_listen, listen).unwrap_or_else(
-                |e| {
-                    eprintln!("pwmd startup failed: {e}");
-                    std::process::exit(2);
-                },
-            ),
-            peer_seeds: cli.transport_peer_seed,
+            peer_listen,
+            peer_seeds: effective_peer_seeds.clone(),
             relay_http_seeds: cli.transport_relay_http_seed,
             connect_timeout_ms: cli.transport_connect_timeout_ms,
             handshake_timeout_ms: cli.transport_handshake_timeout_ms,
@@ -394,7 +655,7 @@ async fn main() {
             retry_base_ms: cli.transport_retry_base_ms,
             retry_max_ms: cli.transport_retry_max_ms,
             soak_counter_cap: cli.transport_soak_counter_cap,
-            soak_health_interval_ticks: cli.transport_soak_health_interval_ticks,
+            soak_health_interval_ticks: cli.transport_soak_health_ticks,
             reconnect_runaway_streak_limit: cli.transport_runaway_streak_limit,
             reconnect_runaway_cooldown_ms: cli.transport_runaway_cooldown_ms,
         },
@@ -403,6 +664,12 @@ async fn main() {
     if let Err(e) = pwmd::run_with(cfg).await {
         log.error(&format!("pwmd runtime failed: {e}"));
         std::process::exit(1);
+    }
+    if let (Some(path), Some(state)) = (peer_list_path.as_ref(), peer_file_state.as_ref()) {
+        if let Err(e) = pwmd::save_peer_file(path.as_path(), state, &effective_peer_seeds) {
+            log.error(&format!("pwmd peer list save failed: {e}"));
+            std::process::exit(1);
+        }
     }
 }
 
@@ -428,17 +695,59 @@ fn pwm_env_truthy(raw: Option<&str>) -> bool {
     !(t.is_empty() || t == "0" || t == "false" || t == "no" || t == "off")
 }
 
-fn deprecated_shard_arg_was_used() -> bool {
-    std::env::args_os().skip(1).any(|arg| {
-        let v = arg.to_string_lossy();
-        v == "--shard" || v.starts_with("--shard=")
-    })
+const BUILD_TS_ENV: Option<&str> = option_env!("PWM_BUILD_TIMESTAMP_UTC");
+const BUILD_GIT_ENV: Option<&str> = option_env!("PWM_GIT_SHA");
+
+fn build_marker() -> String {
+    let mut marker = format!("pwmd/{}", env!("CARGO_PKG_VERSION"));
+    if let Some(ts) = BUILD_TS_ENV {
+        if !ts.trim().is_empty() {
+            marker.push_str("+ts:");
+            marker.push_str(ts.trim());
+        }
+    }
+    if let Some(sha) = BUILD_GIT_ENV {
+        if !sha.trim().is_empty() {
+            marker.push_str("+git:");
+            marker.push_str(sha.trim());
+        }
+    }
+    marker
 }
 
-/// Reads deprecated `--shard`; isolated so `main` stays free of `deprecated` field warnings.
-#[allow(deprecated)]
-fn compat_shard_flag(cli: &Cli) -> Option<&str> {
-    cli.shard.as_deref()
+fn binary_meta_fields(path: &Path) -> (String, String) {
+    let path_field = path.display().to_string();
+    match std::fs::metadata(path)
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+        .and_then(|mtime| mtime.duration_since(UNIX_EPOCH).ok())
+    {
+        Some(dur) => (path_field, format!("{}ms", dur.as_millis())),
+        None => (path_field, "unavailable".to_string()),
+    }
+}
+
+fn log_build_control(log: pwmd::NodeLogger) {
+    match std::env::current_exe() {
+        Ok(path) => {
+            let (path_field, mtime_field) = binary_meta_fields(path.as_path());
+            log.info(&format!(
+                "build control marker={} binary_path={} binary_mtime_utc_unix={} pid={}",
+                build_marker(),
+                path_field,
+                mtime_field,
+                std::process::id()
+            ));
+        }
+        Err(err) => {
+            log.info(&format!(
+                "build control marker={} binary_path=unavailable binary_mtime_utc_unix=unavailable pid={} reason={}",
+                build_marker(),
+                std::process::id(),
+                err
+            ));
+        }
+    }
 }
 
 fn resolve_genesis_passphrase(cli: &Cli) -> Result<Option<String>, String> {
@@ -495,8 +804,10 @@ fn resolve_peer_listen(
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_peer_listen;
+    use super::{binary_meta_fields, build_marker, resolve_peer_listen};
+    use std::fs;
     use std::net::SocketAddr;
+    use std::path::PathBuf;
 
     /// Default derived peer listens at rpc_listen+100 (formerly `peer_listen_defaults_to_rpc_plus_100`).
     #[test]
@@ -520,5 +831,43 @@ mod tests {
         let rpc = SocketAddr::from(([127, 0, 0, 1], 3030));
         let err = resolve_peer_listen(Some(rpc), rpc).expect_err("must reject same socket");
         assert!(err.contains("must differ"));
+    }
+
+    #[test]
+    fn build_ctl_marker_has_ver() {
+        let marker = build_marker();
+        assert!(marker.starts_with("pwmd/"));
+    }
+
+    #[test]
+    fn binary_meta_marks_missing() {
+        let uniq = format!(
+            "pwmd-missing-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        );
+        let path = PathBuf::from(std::env::temp_dir()).join(uniq);
+        let (_, mtime_field) = binary_meta_fields(path.as_path());
+        assert_eq!(mtime_field, "unavailable");
+    }
+
+    #[test]
+    fn binary_meta_reads_mtime() {
+        let uniq = format!(
+            "pwmd-meta-{}-{}.tmp",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        );
+        let path = PathBuf::from(std::env::temp_dir()).join(uniq);
+        fs::write(&path, b"pwmd").expect("create temp binary marker");
+        let (_, mtime_field) = binary_meta_fields(path.as_path());
+        assert!(mtime_field.ends_with("ms"));
+        let _ = fs::remove_file(path);
     }
 }

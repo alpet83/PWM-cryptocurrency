@@ -50,6 +50,7 @@ pub(super) async fn v1_peer_hello(
         "http",
         false,
         Some(bridge_commitment.as_str()),
+        a.identity.cluster_id.as_str(),
     ) {
         Ok(class) => Ok(Json(PeerHelloOut {
             accepted: true,

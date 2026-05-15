@@ -52,7 +52,7 @@ pub use peer_types::{
 use peer_types::{ClassLabel, PeerCloseReason, PeerReconnectReason};
 #[allow(unused_imports)]
 pub(crate) use transport_tick::run_transport_tick_with;
-use transport_tick::{mark_seed_peer_node, set_seed_peer_next_due};
+use transport_tick::{mark_seed_peer_node, set_seed_due};
 pub(crate) use transport_tick::{run_real_transport_tick, run_transport_tick};
 
 use metrics::{bounded_add_u64, increment_string_u64_bucket, record_transport_attempt};

@@ -11,7 +11,8 @@ pub const DEFAULT_BENCH_GENESIS_PATH: &str = "./tmp/genesis-custom.json";
 /// Example: `PWM_SNAPSHOT_BENCH_DIR=P:\opt\docker\PWM-cryptocurrency\tmp\state-testnet`
 pub const ENV_SNAPSHOT_BENCH_DIR: &str = "PWM_SNAPSHOT_BENCH_DIR";
 
-fn bench_snap_path_from_env() -> PathBuf {
+/// Resolves the benchmark snapshot path from the environment.
+fn bench_snap_path() -> PathBuf {
     if let Ok(dir) = std::env::var(ENV_SNAPSHOT_BENCH_DIR) {
         let d = PathBuf::from(dir.trim());
         if !d.as_os_str().is_empty() {
@@ -23,7 +24,8 @@ fn bench_snap_path_from_env() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(DEFAULT_BENCH_SNAPSHOT_PATH))
 }
 
-fn bench_genesis_path_from_env() -> PathBuf {
+/// Resolves the benchmark genesis path from the environment.
+fn bench_genesis_path() -> PathBuf {
     if let Ok(dir) = std::env::var(ENV_SNAPSHOT_BENCH_DIR) {
         let d = PathBuf::from(dir.trim());
         let g = d.join("genesis-custom.json");
@@ -46,8 +48,8 @@ pub struct BenchSnapCtx {
 
 /// Prefer on-disk QA snapshot+genesis from PS1 scripts; fall back to synthetic dev_net fixture.
 pub fn resolve_bench_snapshot() -> BenchSnapCtx {
-    let snap_pb = bench_snap_path_from_env();
-    let gen_pb = bench_genesis_path_from_env();
+    let snap_pb = bench_snap_path();
+    let gen_pb = bench_genesis_path();
     let pass = std::env::var("PWM_SNAPSHOT_BENCH_GENESIS_PASS").unwrap_or_else(|_| "12345".into());
     if snap_pb.is_file() && gen_pb.is_file() {
         if let Ok((cfg, _sks)) = crate::snapshot::load_genesis_bundle(&gen_pb, Some(pass.trim())) {
@@ -64,7 +66,7 @@ pub fn resolve_bench_snapshot() -> BenchSnapCtx {
             }
         }
     }
-    let (cfg, json) = mk_dev_cfg_and_json();
+    let (cfg, json) = mk_dev_cfg_json();
     let path = std::env::temp_dir().join(format!("pwmd_bench_syn_{}.json", std::process::id()));
     std::fs::write(&path, json.as_bytes()).expect("bench syn write");
     BenchSnapCtx {
@@ -75,7 +77,7 @@ pub fn resolve_bench_snapshot() -> BenchSnapCtx {
 }
 
 /// Deterministic dev-net chain snapshot used across JsonFile vs CH benches/tests.
-pub fn mk_dev_cfg_and_json() -> (GenCfg, String) {
+pub fn mk_dev_cfg_json() -> (GenCfg, String) {
     let (cfg, sks) = pwm_core::dev_net();
     let mut chain = pwm_core::Chain::boot(cfg.clone(), sks);
     chain.seal(vec![]).expect("bench seal");

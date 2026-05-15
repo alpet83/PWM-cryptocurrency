@@ -113,6 +113,8 @@ address_book: []
             balance_pwm: 1,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
         AcctRow {
@@ -121,6 +123,8 @@ address_book: []
             balance_pwm: 2,
             initialized: true,
             nonce: 0,
+            marks: 0,
+            staked: 0,
             label: None,
         },
     ];
@@ -198,6 +202,8 @@ fn footer_rpc_offline_order() {
         true,
         "http://example:3030",
         None,
+        None,
+        false,
     );
     assert_eq!(line.spans[0].content, "RPC offline");
     assert_eq!(line.spans[0].style.fg, Some(Color::Red));
@@ -213,7 +219,7 @@ fn footer_rpc_offline_order() {
         "footer should advertise F3: {flat}"
     );
     assert!(flat.contains("F4 encrypt"), "{flat}");
-    assert!(flat.contains("F5 burn->CLI"), "{flat}");
+    assert!(flat.contains("F5 burn"), "{flat}");
     assert!(!flat.contains("F7 inter-shard->CLI"), "{flat}");
     assert!(flat.contains("PWM_TUI_DEBUG=1"));
     assert!(flat.contains("wallet: ok"));
@@ -232,6 +238,8 @@ fn footer_rpc_online_one() {
         false,
         "http://127.0.0.1:4040",
         None,
+        None,
+        false,
     );
     assert_eq!(line.spans.len(), 1);
     assert_ne!(line.spans[0].style.fg, Some(Color::Red));
@@ -246,16 +254,10 @@ fn footer_rpc_online_one() {
 /// Demo RPC ports map to human shard hints (A/B vs unknown).
 #[test]
 fn shard_hint_demo_ports() {
+    assert_eq!(pwm_tui::shard_hint_rpc("http://127.0.0.1:3030"), "shard A?");
+    assert_eq!(pwm_tui::shard_hint_rpc("http://127.0.0.1:3031"), "shard B?");
     assert_eq!(
-        pwm_tui::shard_hint_from_rpc_url("http://127.0.0.1:3030"),
-        "shard A?"
-    );
-    assert_eq!(
-        pwm_tui::shard_hint_from_rpc_url("http://127.0.0.1:3031"),
-        "shard B?"
-    );
-    assert_eq!(
-        pwm_tui::shard_hint_from_rpc_url("http://127.0.0.1:4040"),
+        pwm_tui::shard_hint_rpc("http://127.0.0.1:4040"),
         "unknown shard"
     );
 }
@@ -290,21 +292,6 @@ fn parse_shard_label_vals() {
 fn rpc_ctx_prefers_status() {
     let ctx = pwm_tui::rpc_context_label("http://127.0.0.1:3130", Some("CY"));
     assert_eq!(ctx, "RPC=http://127.0.0.1:3130 (CY)");
-}
-
-/// F5 burn stub message cites CLI command and tester doc section.
-#[test]
-fn f5_burn_stub_msg() {
-    let msg = pwm_tui::f5_burn_not_wired_message("http://127.0.0.1:3031");
-    assert!(msg.contains("F5 burn is not wired in TUI yet"), "{msg}");
-    assert!(
-        msg.contains("pwm --rpc http://127.0.0.1:3031 tx-burn-mark ..."),
-        "{msg}"
-    );
-    assert!(
-        msg.contains("docs/tester-guide-cli-tui-scenarios.md §4"),
-        "{msg}"
-    );
 }
 
 /// Inter-shard helper text references handoff/import CLI steps.
@@ -614,6 +601,8 @@ fn preflight_sel_init_blocks_locked() {
         balance_pwm: 0,
         initialized: false,
         nonce: 0,
+        marks: 0,
+        staked: 0,
         label: None,
     };
     let identity = IdentitySource::Wallet(WalletIdentity {
@@ -648,6 +637,8 @@ fn preflight_sel_ready_ok() {
         balance_pwm: 1,
         initialized: true,
         nonce: 3,
+        marks: 0,
+        staked: 0,
         label: Some("ok".into()),
     };
     assert!(matches!(
@@ -688,6 +679,8 @@ fn xfer_dst_uninit_row() {
         balance_pwm: 0,
         initialized: false,
         nonce: 0,
+        marks: 0,
+        staked: 0,
         label: None,
     };
     let err = preflight_xfer_dst(&from, &to, &[], &[row])
@@ -729,7 +722,7 @@ fn enc_disk_rekey_denied() {
     let path =
         std::env::temp_dir().join(format!("pwm-tui-rekey-denied-{}.yml", std::process::id()));
     std::fs::write(&path, yaml).unwrap();
-    let err = pwm_tui::wallet_encrypt_or_rekey_disk(&path, "newpw", None).expect_err("must fail");
+    let err = pwm_tui::wallet_rekey(&path, "newpw", None).expect_err("must fail");
     assert!(
         err.contains("unlock") || err.contains("Passphrase"),
         "err={err}"
@@ -839,7 +832,7 @@ address_book: []
     );
     let path = std::env::temp_dir().join(format!("pwm-tui-plain-enc-{}.yml", std::process::id()));
     std::fs::write(&path, yaml).unwrap();
-    pwm_tui::wallet_encrypt_or_rekey_disk(&path, "encrypt-me", None).expect("encrypt");
+    pwm_tui::wallet_rekey(&path, "encrypt-me", None).expect("encrypt");
     let id = load_wallet_identity(&path, Some("encrypt-me"), 300, false).expect("reload encrypted");
     assert!(id.wallet_is_encrypted);
     assert!(id.signing_key.is_some());
@@ -876,8 +869,7 @@ fn wallet_rekey_new_pw() {
         .secret_payload_plaintext
         .clone()
         .expect("decrypted payload must be cached after unlock");
-    pwm_tui::wallet_encrypt_or_rekey_disk(&path, "new-pass", Some(decrypted.as_slice()))
-        .expect("rekey");
+    pwm_tui::wallet_rekey(&path, "new-pass", Some(decrypted.as_slice())).expect("rekey");
 
     let old_err = match load_wallet_identity(&path, Some("old-pass"), 300, false) {
         Ok(_) => panic!("old passphrase must fail after re-key"),
@@ -921,8 +913,7 @@ fn wallet_rekey_corrupt_fail() {
         .secret_payload_plaintext
         .clone()
         .expect("decrypted payload must be cached after unlock");
-    pwm_tui::wallet_encrypt_or_rekey_disk(&path, "new-pass", Some(decrypted.as_slice()))
-        .expect("rekey");
+    pwm_tui::wallet_rekey(&path, "new-pass", Some(decrypted.as_slice())).expect("rekey");
 
     let after_rekey = std::fs::read_to_string(&path).expect("read yaml");
     let marker = "encrypted_payload_b64:";
@@ -1044,10 +1035,10 @@ fn send_flow_auto_step() {
     let mut flow = pwm_tui::SendStepFlow::from_submit_message(
         "Cross-shard flow diagnostics:\n1) preflight OK\n2) export OK",
         false,
-        now - pwm_tui::SEND_FLOW_AUTO_STEP_TIMEOUT,
+        now - pwm_tui::SEND_FLOW_STEP_TIMEOUT,
     );
     assert!(flow.is_active());
-    let changed = flow.auto_advance_if_due(now, pwm_tui::SEND_FLOW_AUTO_STEP_TIMEOUT);
+    let changed = flow.auto_advance_if_due(now, pwm_tui::SEND_FLOW_STEP_TIMEOUT);
     assert!(changed);
     assert!(!flow.is_active());
     assert_eq!(flow.shown_steps, 2);

@@ -5,13 +5,13 @@ use slip10_ed25519::derive_ed25519_private_key;
 use std::path::Path;
 
 use crate::wallet::crypto::wallet_secrets;
-use crate::wallet::store::{default_v3_account, load_wallet_yaml_v3_raw, save_v3_merge};
+use crate::wallet::store::{default_v3_account, load_wallet_v3_raw, save_v3_merge};
 use crate::wallet::types::{
     WalletAccountEntry, WalletAccountRemoveResult, WalletYaml, WalletYamlV3Account,
 };
 
 pub fn wallet_account_list(path: &Path) -> Result<Vec<WalletAccountEntry>, String> {
-    let wallet_v3 = load_wallet_yaml_v3_raw(path)?;
+    let wallet_v3 = load_wallet_v3_raw(path)?;
     let default_id = default_v3_account(&wallet_v3.accounts)
         .expect("validated non-empty accounts")
         .id_hex
@@ -34,7 +34,7 @@ pub fn wallet_account_add(
     derivation_index: u32,
     passphrase: Option<&str>,
 ) -> Result<WalletAccountEntry, String> {
-    let wallet_v3 = load_wallet_yaml_v3_raw(path)?;
+    let wallet_v3 = load_wallet_v3_raw(path)?;
     let seed_hex_owned = match wallet_v3.mode.as_str() {
         "plaintext_dev" => wallet_v3
             .master_seed_hex
@@ -96,7 +96,7 @@ pub fn wallet_account_add_seed(
     derivation_index: u32,
     seed: &[u8; 32],
 ) -> Result<WalletAccountEntry, String> {
-    let mut wallet_v3 = load_wallet_yaml_v3_raw(path)?;
+    let mut wallet_v3 = load_wallet_v3_raw(path)?;
     let baseline = wallet_v3
         .accounts
         .first()
@@ -164,7 +164,7 @@ pub fn wallet_account_remove(
     path: &Path,
     id_hex: &str,
 ) -> Result<WalletAccountRemoveResult, String> {
-    let mut wallet_v3 = load_wallet_yaml_v3_raw(path)?;
+    let mut wallet_v3 = load_wallet_v3_raw(path)?;
     if wallet_v3.accounts.len() == 1 {
         return Err("wallet account remove refused: cannot remove last account".to_string());
     }
@@ -195,7 +195,7 @@ pub fn wallet_account_remove(
 }
 
 pub fn wallet_account_use(path: &Path, id_hex: &str) -> Result<(), String> {
-    let wallet_v3 = load_wallet_yaml_v3_raw(path)?;
+    let wallet_v3 = load_wallet_v3_raw(path)?;
     let wanted =
         parse_account_id(id_hex.trim()).map_err(|e| format!("invalid --id-hex account id: {e}"))?;
     let wanted_hex = hex::encode(wanted);

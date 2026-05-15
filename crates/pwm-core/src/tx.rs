@@ -7,6 +7,18 @@ use crate::types::AccountId;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 
+pub const MIN_IMPORT_FEE_UNITS: u128 = 10_000;
+/// Sentinel value for `TxBody::Claim.claim_units`: instructs the node to
+/// materialise all currently matured marks without the client computing the amount.
+pub const CLAIM_ALL: u32 = u32::MAX;
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaimMode {
+    Free,
+    Paid,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TxBody {
@@ -16,27 +28,41 @@ pub enum TxBody {
     },
     Transfer {
         to: AccountId,
+        #[serde(with = "crate::ser_json_u128")]
         amount: u128,
+        #[serde(with = "crate::ser_json_u128")]
         fee: u128,
     },
     Stake {
+        #[serde(with = "crate::ser_json_u128")]
         amount: u128,
     },
     Unstake {
+        #[serde(with = "crate::ser_json_u128")]
         amount: u128,
     },
     BurnMark {
-        mark_amount: u128,
+        mark_amount: u32,
         beneficiary: Option<AccountId>,
+    },
+    Claim {
+        mode: ClaimMode,
+        claim_units: u32,
+        anchor_ref: u64,
+        #[serde(with = "crate::ser_json_u128")]
+        fee: u128,
     },
     Export {
         to: AccountId,
         target_domain: u16,
+        #[serde(with = "crate::ser_json_u128")]
         amount: u128,
+        #[serde(with = "crate::ser_json_u128")]
         fee: u128,
     },
     Import {
         to: AccountId,
+        #[serde(with = "crate::ser_json_u128")]
         amount: u128,
         export_id: [u8; 32],
     },
@@ -47,7 +73,9 @@ impl TxBody {
     /// Burn-mark flow is fixed to zero fee in Sprint 8 baseline.
     pub fn fee_amount(&self) -> u128 {
         match self {
-            TxBody::Transfer { fee, .. } | TxBody::Export { fee, .. } => *fee,
+            TxBody::Transfer { fee, .. }
+            | TxBody::Export { fee, .. }
+            | TxBody::Claim { fee, .. } => *fee,
             TxBody::Init { .. }
             | TxBody::Stake { .. }
             | TxBody::Unstake { .. }
@@ -64,6 +92,11 @@ pub struct SignedTx {
     pub derivation_index: u32,
     pub nonce: u64,
     pub body: TxBody,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub burn_purpose: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(with = "crate::ser_json_u128::opt")]
+    pub import_fee: Option<u128>,
     /// Optional embedded provenance for target-side IMPORT replay determinism.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub import_provenance: Option<ExportProvenance>,
@@ -112,6 +145,15 @@ impl SignedTx {
             } => {
                 v.push(5);
                 v.extend_from_slice(&mark_amount.to_le_bytes());
+                let purpose = self
+                    .burn_purpose
+                    .as_deref()
+                    .map(normalize_burn_purpose)
+                    .unwrap_or_default();
+                let purpose_bytes = purpose.as_bytes();
+                let len_u16 = u16::try_from(purpose_bytes.len()).unwrap_or(u16::MAX);
+                v.extend_from_slice(&len_u16.to_le_bytes());
+                v.extend_from_slice(purpose_bytes);
                 match beneficiary {
                     Some(b) => {
                         v.push(1);
@@ -119,6 +161,21 @@ impl SignedTx {
                     }
                     None => v.push(0),
                 }
+            }
+            TxBody::Claim {
+                mode,
+                claim_units,
+                anchor_ref,
+                fee,
+            } => {
+                v.push(8);
+                v.push(match mode {
+                    ClaimMode::Free => 0,
+                    ClaimMode::Paid => 1,
+                });
+                v.extend_from_slice(&claim_units.to_le_bytes());
+                v.extend_from_slice(&anchor_ref.to_le_bytes());
+                v.extend_from_slice(&fee.to_le_bytes());
             }
             TxBody::Export {
                 to,
@@ -140,6 +197,7 @@ impl SignedTx {
                 v.push(7);
                 v.extend_from_slice(to);
                 v.extend_from_slice(&amount.to_le_bytes());
+                v.extend_from_slice(&self.import_fee.unwrap_or(0).to_le_bytes());
                 v.extend_from_slice(export_id);
                 match &self.import_provenance {
                     Some(p) => {
@@ -192,9 +250,16 @@ impl SignedTx {
             derivation_index,
             nonce,
             body,
+            burn_purpose: None,
+            import_fee: None,
             import_provenance: None,
             signature: [0u8; 64],
         };
+        match &tx.body {
+            TxBody::BurnMark { .. } => tx.burn_purpose = Some("default".to_string()),
+            TxBody::Import { .. } => tx.import_fee = Some(MIN_IMPORT_FEE_UNITS),
+            _ => {}
+        }
         let msg = tx.signing_message();
         tx.signature = sign(signing_key, &msg);
         tx
@@ -206,6 +271,18 @@ impl SignedTx {
         provenance: Option<ExportProvenance>,
     ) {
         self.import_provenance = provenance;
+        let msg = self.signing_message();
+        self.signature = sign(signing_key, &msg);
+    }
+
+    pub fn set_burn_purpose_signed(&mut self, signing_key: &SigningKey, purpose: String) {
+        self.burn_purpose = Some(purpose);
+        let msg = self.signing_message();
+        self.signature = sign(signing_key, &msg);
+    }
+
+    pub fn set_import_fee_signed(&mut self, signing_key: &SigningKey, fee: u128) {
+        self.import_fee = Some(fee);
         let msg = self.signing_message();
         self.signature = sign(signing_key, &msg);
     }
@@ -225,18 +302,56 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
             return Err(TxError::InvalidTransfer);
         }
     }
+    match &tx.body {
+        TxBody::BurnMark { .. } => {
+            let normalized = tx
+                .burn_purpose
+                .as_deref()
+                .map(normalize_burn_purpose)
+                .ok_or(TxError::InvalidPurposeLength)?;
+            validate_burn_purpose(&normalized)?;
+        }
+        TxBody::Claim {
+            mode,
+            claim_units,
+            fee,
+            ..
+        } => {
+            if *claim_units == 0 {
+                return Err(TxError::ClaimDeltaInvalid);
+            }
+            match mode {
+                ClaimMode::Free if *fee != 0 => return Err(TxError::ClaimFeeModeConflict),
+                ClaimMode::Paid if *fee == 0 => return Err(TxError::ClaimFeeModeConflict),
+                _ => {}
+            }
+        }
+        TxBody::Import { .. } => {
+            if tx.import_fee.unwrap_or(0) < MIN_IMPORT_FEE_UNITS {
+                return Err(TxError::ImportFeeTooLow);
+            }
+        }
+        _ => {}
+    }
     Ok(())
 }
 
-/// Source-only burn context: beneficiary must stay in sender's domain-hi boundary.
-pub fn burn_context_is_source_domain(tx: &SignedTx) -> bool {
-    match &tx.body {
-        TxBody::BurnMark {
-            beneficiary: Some(to),
-            ..
-        } => domain_of_account_id(to).to_be_bytes()[0] == tx.domain_code.to_be_bytes()[0],
-        _ => true,
+pub fn normalize_burn_purpose(value: &str) -> String {
+    value.trim().to_string()
+}
+
+fn validate_burn_purpose(value: &str) -> Result<(), TxError> {
+    let len = value.as_bytes().len();
+    if !(1..=80).contains(&len) {
+        return Err(TxError::InvalidPurposeLength);
     }
+    if value
+        .chars()
+        .any(|ch| matches!(ch as u32, 0x0000..=0x001F | 0x007F..=0x009F))
+    {
+        return Err(TxError::InvalidPurposeChars);
+    }
+    Ok(())
 }
 
 pub fn same_hi_domain(from: &AccountId, to: &AccountId) -> bool {
@@ -309,16 +424,35 @@ pub enum TxError {
     InvalidImport,
     #[error("duplicate import")]
     DuplicateImport,
+    #[error("invalid purpose length")]
+    InvalidPurposeLength,
+    #[error("invalid purpose chars")]
+    InvalidPurposeChars,
+    #[error("claim fee mode conflict")]
+    ClaimFeeModeConflict,
+    #[error("claim delta invalid")]
+    ClaimDeltaInvalid,
+    #[error("claim anchor range invalid")]
+    ClaimAnchorRangeInvalid,
+    #[error("claim anchor continuity broken")]
+    ClaimAnchorContinuityBroken,
+    #[error("claim over matured")]
+    ClaimOverMatured,
+    #[error("free claim daily limit")]
+    FreeClaimDailyLimit,
+    #[error("import fee too low")]
+    ImportFeeTooLow,
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        burn_context_is_source_domain, export_context_is_valid, import_context_is_valid,
-        same_hi_domain, validate_tx_shape, SignedTx, TxBody, TxError,
+        export_context_is_valid, import_context_is_valid, same_hi_domain, validate_tx_shape,
+        SignedTx, TxBody, TxError, MIN_IMPORT_FEE_UNITS,
     };
     use crate::hd::domain_of_account_id;
     use ed25519_dalek::SigningKey;
+    use serde_json::{from_slice, to_vec};
     use slip10_ed25519::derive_ed25519_private_key;
 
     fn signer(seed: &[u8; 32]) -> (SigningKey, u32) {
@@ -354,6 +488,48 @@ mod tests {
         assert_eq!(body.fee_amount(), 0);
     }
 
+    #[test]
+    fn burn_purpose_rejects_control_chars() {
+        let (sk, idx) = signer(&[77u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let dom = domain_of_account_id(&probe.computed_account_id());
+        let mut tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            1,
+            TxBody::BurnMark {
+                mark_amount: 1,
+                beneficiary: None,
+            },
+        );
+        tx.set_burn_purpose_signed(&sk, "bad\u{0001}purpose".to_string());
+        let err = validate_tx_shape(&tx).expect_err("purpose with C0 must fail");
+        assert!(matches!(err, TxError::InvalidPurposeChars));
+    }
+
+    #[test]
+    fn import_fee_rejects_below_minimum() {
+        let (sk, idx) = signer(&[78u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let mut tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            1,
+            TxBody::Import {
+                to: aid,
+                amount: 10,
+                export_id: [3u8; 32],
+            },
+        );
+        tx.set_import_fee_signed(&sk, MIN_IMPORT_FEE_UNITS - 1);
+        let err = validate_tx_shape(&tx).expect_err("import fee below floor must fail");
+        assert!(matches!(err, TxError::ImportFeeTooLow));
+    }
+
     /// Self-transfer shape check fails early (formerly `validate_tx_shape_rejects_self_transfer`).
     #[test]
     fn shape_reject_xfer_self() {
@@ -374,50 +550,6 @@ mod tests {
         );
         let err = validate_tx_shape(&tx).expect_err("self-transfer must be rejected");
         assert!(matches!(err, TxError::InvalidTransfer));
-    }
-
-    /// Burn beneficiary on source hi-byte passes context check (formerly `burn_context_allows_source_domain_beneficiary`).
-    #[test]
-    fn ben_same_shard_ok() {
-        let (sk, idx) = signer(&[41u8; 32]);
-        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
-        let sender_hi = domain_of_account_id(&probe.computed_account_id()).to_be_bytes()[0];
-        let domain = ((sender_hi as u16) << 8) | 0x01;
-        let mut beneficiary = [0u8; 32];
-        beneficiary[0] = sender_hi;
-        let tx = SignedTx::sign_body(
-            &sk,
-            domain,
-            idx,
-            1,
-            TxBody::BurnMark {
-                mark_amount: 1,
-                beneficiary: Some(beneficiary),
-            },
-        );
-        assert!(burn_context_is_source_domain(&tx));
-    }
-
-    /// Cross-hi beneficiary fails burn context (formerly `burn_context_rejects_cross_domain_beneficiary`).
-    #[test]
-    fn burn_ctx_reject_cross_hi() {
-        let (sk, idx) = signer(&[42u8; 32]);
-        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
-        let sender_hi = domain_of_account_id(&probe.computed_account_id()).to_be_bytes()[0];
-        let domain = ((sender_hi as u16) << 8) | 0x01;
-        let mut beneficiary = [0u8; 32];
-        beneficiary[0] = sender_hi.wrapping_add(1);
-        let tx = SignedTx::sign_body(
-            &sk,
-            domain,
-            idx,
-            1,
-            TxBody::BurnMark {
-                mark_amount: 1,
-                beneficiary: Some(beneficiary),
-            },
-        );
-        assert!(!burn_context_is_source_domain(&tx));
     }
 
     /// `export_id` stable for identical export fields (formerly `export_id_is_stable_for_identical_tx_fields`).
@@ -533,5 +665,28 @@ mod tests {
         assert!(same_hi_domain(&a, &b));
         b[0] = 0x32;
         assert!(!same_hi_domain(&a, &b));
+    }
+
+    #[test]
+    fn signed_tx_json_roundtrip_u128() {
+        let (sk, idx) = signer(&[91u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let mut to = probe.computed_account_id();
+        to[0] = to[0].wrapping_add(1);
+        let dom = domain_of_account_id(&to);
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            7,
+            TxBody::Transfer {
+                to,
+                amount: (u64::MAX as u128) + 123_456_789_012_345_678_u128,
+                fee: (u64::MAX as u128) + 10_000_u128,
+            },
+        );
+        let encoded = to_vec(&tx).expect("signed tx json");
+        let decoded: SignedTx = from_slice(&encoded).expect("signed tx decode");
+        assert_eq!(decoded, tx);
     }
 }

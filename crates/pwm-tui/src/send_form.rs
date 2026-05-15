@@ -2,9 +2,9 @@
 
 use std::time::{Duration, Instant};
 
-use pwm_core::{parse_account_id, parse_acct_id_for_user, parse_decimal_pwm_units, AccountId};
+use pwm_core::{parse_account_id, parse_acct_id_ui, parse_decimal_pwm_units, AccountId};
 
-use crate::config::SEND_FLOW_AUTO_STEP_TIMEOUT;
+use crate::config::SEND_FLOW_STEP_TIMEOUT;
 use crate::modals::TextInput;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,7 +71,7 @@ impl SendStepFlow {
         self.shown_steps < self.steps.len()
     }
 
-    fn next_step(&mut self, now: Instant) -> bool {
+    pub(crate) fn next_step(&mut self, now: Instant) -> bool {
         if !self.is_active() {
             return false;
         }
@@ -87,7 +87,7 @@ impl SendStepFlow {
         false
     }
 
-    fn status_text(&self, now: Instant, timeout: Duration) -> String {
+    pub(crate) fn status_text(&self, now: Instant, timeout: Duration) -> String {
         let mut out = Vec::with_capacity(self.shown_steps + 3);
         out.push(self.title.clone());
         out.extend(self.steps.iter().take(self.shown_steps).cloned());
@@ -137,7 +137,7 @@ impl SendForm {
     pub fn try_advance_flow(&mut self, now: Instant) -> bool {
         if let Some(flow) = self.flow.as_mut() {
             if flow.next_step(now) {
-                self.status = flow.status_text(now, SEND_FLOW_AUTO_STEP_TIMEOUT);
+                self.status = flow.status_text(now, SEND_FLOW_STEP_TIMEOUT);
                 self.status_is_error = flow.failed;
                 return true;
             }
@@ -147,8 +147,8 @@ impl SendForm {
 
     pub fn auto_advance_flow(&mut self, now: Instant) -> bool {
         if let Some(flow) = self.flow.as_mut() {
-            if flow.auto_advance_if_due(now, SEND_FLOW_AUTO_STEP_TIMEOUT) {
-                self.status = flow.status_text(now, SEND_FLOW_AUTO_STEP_TIMEOUT);
+            if flow.auto_advance_if_due(now, SEND_FLOW_STEP_TIMEOUT) {
+                self.status = flow.status_text(now, SEND_FLOW_STEP_TIMEOUT);
                 self.status_is_error = flow.failed;
                 return true;
             }
@@ -167,7 +167,7 @@ impl SendForm {
             Err(err) => (err.as_str(), true),
         };
         let flow = SendStepFlow::from_submit_message(msg, is_error, now);
-        self.status = flow.status_text(now, SEND_FLOW_AUTO_STEP_TIMEOUT);
+        self.status = flow.status_text(now, SEND_FLOW_STEP_TIMEOUT);
         self.status_is_error = flow.failed;
         self.flow = Some(flow);
         if self.pending_book_prompt_to.is_none() {
@@ -303,7 +303,7 @@ pub fn value_with_caret(value: &str, cursor: usize, active: bool) -> String {
 
 pub fn validate_send_form(form: &SendForm) -> Result<(AccountId, AccountId, u128, u128), String> {
     let from = parse_account_id(&form.from).map_err(|e| format!("from: {e}"))?;
-    let to = parse_acct_id_for_user(form.to.as_str()).map_err(|e| format!("to: {e}"))?;
+    let to = parse_acct_id_ui(form.to.as_str()).map_err(|e| format!("to: {e}"))?;
     let amount =
         parse_decimal_pwm_units(form.amount.as_str().trim()).map_err(|e| format!("amount: {e}"))?;
     if amount == 0 {

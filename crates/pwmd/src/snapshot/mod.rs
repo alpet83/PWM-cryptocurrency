@@ -19,9 +19,9 @@ pub(crate) use genesis::snapshot_genesis_accounts;
 pub(crate) use io::{
     decode_snap_raw, encode_inner_snap_json, encode_snap_data_txt, json_file_seal_persist,
     load_snapshot, load_snapshot_timed, replay_validate, save_checkpoint_summary,
-    save_epochs_summary_at_tip, save_snapshot, snap_wire_json_bytes, SnapshotLoadOpts,
+    save_epochs_sum_tip, save_snapshot, snap_wire_json_bytes, SnapshotLoadOpts,
 };
 pub use repair::{repair_json_epochs, SnapRepairOpts, SnapRepairReport};
-pub(crate) use store::SnapshotBackend;
+pub(crate) use store::{SealPersistMode, SnapshotBackend};
 pub(crate) use telemetry::{SnapIoTiming, SNAP_STARTUP_TARGET};
 pub(crate) use types::{BlocksStored, SnapshotData, SnapshotRoamingWire, SNAPSHOT_VERSION};

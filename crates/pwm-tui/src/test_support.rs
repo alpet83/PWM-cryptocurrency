@@ -10,10 +10,9 @@ pub use crate::account_view::{
     start_rpc_worker, DebugCache, Panel, PollSnapshot, RpcEvent, RpcTask, Ui,
 };
 pub use crate::config::{
-    base_url, f5_burn_not_wired_message, http_client, inter_shard_status_short,
-    parse_status_shard_label, rpc_context_label, shard_cli_hint, shard_hint_from_rpc_url,
-    wallet_unlock_secs_clamped, Args, DEBUG_FETCH_INTERVAL, OP_HISTORY_MAX_ITEMS,
-    SEND_FLOW_AUTO_STEP_TIMEOUT,
+    base_url, http_client, inter_shard_status_short, parse_status_shard_label, rpc_context_label,
+    shard_cli_hint, shard_hint_rpc, wallet_unlock_secs_clamped, Args, DEBUG_FETCH_INTERVAL,
+    OP_HISTORY_MAX_ITEMS, SEND_FLOW_STEP_TIMEOUT,
 };
 pub use crate::history::{
     format_hms_utc, handle_submit_done_history, now_unix_secs, push_op_history,
@@ -52,14 +51,13 @@ pub use crate::tx_submit::{
     format_submit_transfer_error, is_cross_domain_route, submit_init, submit_transfer,
 };
 pub use crate::wallet::{
-    build_plaintext_secret_json, choose_identity, default_wallet_candidate,
+    build_plaintext_secret_json, choose_identity, decrypt_wallet_secret, default_wallet_candidate,
     default_wallet_if_present, identity_f3_action_label, identity_lock_status_suffix,
     load_owned_accounts, load_wallet_identity, merge_normalized_wallet_header,
-    parse_signing_key_hex, replace_wallet_file, try_decrypt_wallet_secret_payload,
-    validate_encrypt_passphrase_inputs, wallet_apply_auto_lock, wallet_encrypt_or_rekey_disk,
-    wallet_lock_now, wallet_try_unlock_with_passphrase, wallet_upgrade_encryption_hook,
-    write_wallet_yaml_atomic, yaml_map_get_string, yaml_root_map, IdentitySource,
-    DETAIL_CHUNK_ROWS, FALLBACK_MODE_WARNING, FALLBACK_WARN_CHUNK_ROWS,
+    parse_signing_key_hex, replace_wallet_file, validate_encrypt_passphrase_inputs,
+    wallet_apply_auto_lock, wallet_lock_now, wallet_rekey, wallet_unlock,
+    wallet_upgrade_encryption_hook, write_wallet_yaml_atomic, yaml_map_get_string, yaml_root_map,
+    IdentitySource, DETAIL_CHUNK_ROWS, FALLBACK_MODE_WARNING, FALLBACK_WARN_CHUNK_ROWS,
 };
 
 pub fn preflight_sel_init_auto(

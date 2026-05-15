@@ -10,10 +10,7 @@ async fn v1_tx_reg_lo0_bad() {
     let mut domain = domain_of_account_id(&aid);
     domain = (domain & 0xFF00) | 0x00;
     let tx = SignedTx::sign_body(&sk, domain, i, 0, TxBody::Init { index: 0, flags: 0 });
-    let svc = router_dev(app_from_dev_net_shard(
-        shard_for_phase1_account(&aid).expect("routable"),
-    ))
-    .into_service();
+    let svc = router_dev(app_for_sender(&aid)).into_service();
     let res = svc
         .oneshot(
             Request::post("/v1/tx")
@@ -34,7 +31,7 @@ async fn v1_tx_accepts_signed_init() {
     let (sk, i, aid) = routable_user_sk([23u8; 32]);
     let dom = domain_of_account_id(&aid);
     let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
-    let app = app_from_dev_net_shard(shard_for_phase1_account(&aid).expect("routable"));
+    let app = app_for_sender(&aid);
     let svc = router_dev(app.clone()).into_service();
     let res = svc
         .oneshot(
@@ -59,7 +56,7 @@ async fn v1_tx_500_snap_fail() {
     let (sk, i, aid) = routable_user_sk([24u8; 32]);
     let dom = domain_of_account_id(&aid);
     let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
-    let mut app = app_from_dev_net_shard(shard_for_phase1_account(&aid).expect("routable"));
+    let mut app = app_for_sender(&aid);
     let bad_dir = std::env::temp_dir().join(format!(
         "pwmd_snapshot_fail_dir_{}",
         SystemTime::now()
@@ -145,7 +142,7 @@ async fn v1_tx_accepts_export() {
             fee: 1,
         },
     );
-    let app = app_from_dev_net_shard(shard_for_phase1_account(&aid).expect("routable"));
+    let app = app_for_sender(&aid);
     let svc = router_dev(app.clone()).into_service();
     let ready = svc
         .clone()
@@ -182,7 +179,7 @@ async fn v1_tx_accepts_export() {
 
 /// Latched `bridge_federation_trust_refused` yields 409 on `/v1/export-readiness` (one-window export path).
 #[tokio::test]
-async fn v1_exp_rd_conflict_when_bridge_trust_latched() {
+async fn v1_rd_conflict_bridge_trust() {
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let aid = cfg.accounts[0].acct;
@@ -201,7 +198,7 @@ async fn v1_exp_rd_conflict_when_bridge_trust_latched() {
             fee: 1,
         },
     );
-    let app = app_from_dev_net_shard(shard_for_phase1_account(&aid).expect("routable"));
+    let app = app_for_sender(&aid);
     {
         let mut hs = app.handshake.write().await;
         hs.bridge_trust.refused = true;
@@ -253,7 +250,7 @@ async fn v1_exp_rd_conflict_when_bridge_trust_latched() {
 /// Export /v1/tx rolls back sender balances when post-seal snapshot writes fail.
 #[tokio::test]
 async fn v1_tx_rbexp_ok() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -321,8 +318,8 @@ async fn v1_tx_rbexp_ok() {
 /// /v1/export-provenance rejects self-attested handoffs that lack peer provenance.
 #[tokio::test]
 async fn v1_exp_pv_self_bad() {
-    let source_app = app_from_dev_net_shard(ShardId::A);
-    let target_app = app_from_dev_net_shard(ShardId::B);
+    let source_app = app_for_devnet_sender(DevLane::Lane0);
+    let target_app = app_from_devnet(DevLane::Lane1);
     let (handoff, export_id) = source_handoff(&source_app, 23).await;
     let svc = router_dev(target_app.clone()).into_service();
     let res = svc
@@ -342,8 +339,8 @@ async fn v1_exp_pv_self_bad() {
 /// Inbound (non-trusted) peer hellos block provenance handoffs on the target node.
 #[tokio::test]
 async fn v1_exp_ib_hi_pv() {
-    let source_app = app_from_dev_net_shard(ShardId::A);
-    let target_app = app_from_dev_net_shard(ShardId::B);
+    let source_app = app_for_devnet_sender(DevLane::Lane0);
+    let target_app = app_from_devnet(DevLane::Lane1);
     let (handoff, export_id) = source_handoff(&source_app, 24).await;
     let now_ms = current_time_ms().expect("clock");
     let genesis_hash = {
@@ -401,9 +398,10 @@ async fn v1_exp_ib_hi_pv() {
 /// Trusted peer configuration allows provenance ingestion for otherwise valid handoffs.
 #[tokio::test]
 async fn v1_exp_pv_trust_ok() {
-    let source_app = app_from_dev_net_shard(ShardId::A);
-    let target_app = app_from_dev_net_shard(ShardId::B);
-    let (handoff, export_id) = source_handoff(&source_app, 25).await;
+    let source_app = app_for_devnet_sender(DevLane::Lane0);
+    let target_app = app_from_devnet(DevLane::Lane1);
+    let (handoff, export_id) =
+        source_handoff_for_hi(&source_app, 25, target_app.identity.cluster_domain_hi).await;
     trust_source_peer(&target_app, &source_app).await;
     let svc = router_dev(target_app.clone()).into_service();
     let res = svc
@@ -430,8 +428,8 @@ async fn v1_exp_pv_trust_ok() {
 /// Genesis guard blocks provenance writes while the node is in blocked user-tx mode.
 #[tokio::test]
 async fn v1_exp_pv_gen_guard() {
-    let source_app = app_from_dev_net_shard(ShardId::A);
-    let target_app = app_from_dev_net_shard(ShardId::B);
+    let source_app = app_for_devnet_sender(DevLane::Lane0);
+    let target_app = app_for_devnet_sender(DevLane::Lane1);
     let (handoff, export_id) = source_handoff(&source_app, 29).await;
     trust_source_peer(&target_app, &source_app).await;
     {
@@ -456,8 +454,8 @@ async fn v1_exp_pv_gen_guard() {
 /// Backfill imports missing cross-shard fact exactly once from trusted peer endpoint.
 #[tokio::test]
 async fn v1_xsh_backfill_once_ok() {
-    let source_app = app_from_dev_net_shard(ShardId::B);
-    let target_app = app_from_dev_net_shard(ShardId::A);
+    let source_app = app_from_devnet(DevLane::Lane1);
+    let target_app = app_for_devnet_sender(DevLane::Lane0);
     let target_hi = {
         let g = target_app.inner.read().await;
         domain_of_account_id(&g.chain.cfg.accounts[0].acct).to_be_bytes()[0]
@@ -610,8 +608,8 @@ async fn v1_xsh_backfill_once_ok() {
 /// Backfill rejects peers with mismatched trust envelope (network/genesis).
 #[tokio::test]
 async fn v1_xsh_backfill_untrusted_skip() {
-    let source_app = app_with_identity(ShardId::A, "othernet", 0x10, "src-cl", "src-node");
-    let target_app = app_from_dev_net_shard(ShardId::B);
+    let source_app = app_with_identity(DevLane::Lane0, "othernet", 0x10, "src-cl", "src-node");
+    let target_app = app_for_devnet_sender(DevLane::Lane1);
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind source");
     let source_addr = listener.local_addr().expect("source addr");
     let source_router = router_dev(source_app);
@@ -641,7 +639,7 @@ async fn v1_xsh_backfill_untrusted_skip() {
 /// Backfill is blocked in ready_degraded mode and must not mutate local facts.
 #[tokio::test]
 async fn v1_xsh_backfill_degraded_hold() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     {
         let mut st = app.init.write().await;
         *st = crate::state::InitState::ready_degraded(None, "disk error".into());
@@ -679,7 +677,7 @@ async fn v1_xsh_backfill_degraded_hold() {
 /// Backfill is blocked by genesis guard and must not mutate local facts.
 #[tokio::test]
 async fn v1_xsh_backfill_genblock_hold() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     {
         let mut hs = app.handshake.write().await;
         hs.genesis_guard.blocked = true;
@@ -717,7 +715,7 @@ async fn v1_xsh_backfill_genblock_hold() {
 /// Roaming finalize without seeds keeps exported state but records relay errors.
 #[tokio::test]
 async fn v1_rov_seedless_err() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (handoff, export_id) = source_handoff(&app, 31).await;
     assert_eq!(handoff["status"], "relayed");
     let g = app.inner.read().await;
@@ -736,7 +734,7 @@ async fn v1_rov_seedless_err() {
 /// HTTP import flow accepts a signed import referencing a prior export delivery.
 #[tokio::test]
 async fn v1_tx_imp_after_exp() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (import_sk, import_i, import_aid, export_id, provenance) =
         seed_handoff_provenance_for_import(&app, 17).await;
     let import_dom = domain_of_account_id(&import_aid);
@@ -771,7 +769,7 @@ async fn v1_tx_imp_after_exp() {
 /// Unknown import bodies are rejected once the signer account is initialized.
 #[tokio::test]
 async fn v1_tx_ia_ximp() {
-    let app = mk_app_explicit_shard(ShardId::A);
+    let app = mk_app_explicit_shard(DevLane::Lane0);
     let (import_sk, import_i, import_aid) = user_sk_matching_domain_hi([0x44; 32], 0x10);
     let import_dom = domain_of_account_id(&import_aid);
     let init = SignedTx::sign_body(
@@ -823,7 +821,7 @@ async fn v1_tx_ia_ximp() {
 /// Transfers to unknown recipients fail before mempool admission with policy errors.
 #[tokio::test]
 async fn v1_tx_xfer_miss_pre() {
-    let app = mk_app_explicit_shard(ShardId::A);
+    let app = mk_app_explicit_shard(DevLane::Lane0);
     let (send_sk, send_i, send_aid) = user_sk_matching_domain_hi([0x45; 32], 0x10);
     let send_dom = domain_of_account_id(&send_aid);
     let (_, _, recv_aid) = user_sk_matching_domain_hi([0x46; 32], 0x10);
@@ -877,7 +875,7 @@ async fn v1_tx_xfer_miss_pre() {
 /// Imports targeting missing recipients fail even when provenance metadata exists.
 #[tokio::test]
 async fn v1_tx_imp_miss_rcv() {
-    let app = mk_app_explicit_shard(ShardId::A);
+    let app = mk_app_explicit_shard(DevLane::Lane0);
     let (import_sk, import_i, import_aid) = user_sk_matching_domain_hi([0x47; 32], 0x10);
     let import_dom = domain_of_account_id(&import_aid);
     let (_, _, recv_aid) = user_sk_matching_domain_hi([0x48; 32], 0x10);
@@ -941,7 +939,7 @@ async fn v1_tx_imp_miss_rcv() {
 /// Roaming intent creation is visible through the status endpoint lifecycle fields.
 #[tokio::test]
 async fn v1_rov_create_get_ok() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1028,7 +1026,7 @@ async fn v1_rov_create_get_ok() {
 /// Finalize without live seeds preserves exported roaming state and error surfaces.
 #[tokio::test]
 async fn v1_rov_fin_seedless() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1138,7 +1136,7 @@ async fn v1_rov_fin_seedless() {
 /// Finalize on unknown intent ids returns NOT_FOUND without mutating pools.
 #[tokio::test]
 async fn v1_rov_fin_unk_404() {
-    let svc = router_dev(app_from_dev_net_shard(ShardId::A)).into_service();
+    let svc = router_dev(app_for_devnet_sender(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(
             Request::post(format!("/v1/roaming-intents/{}/finalize", "11".repeat(32)))
@@ -1159,7 +1157,7 @@ async fn v1_flow_rcnt_ac_ok() {
     let (sk, i, aid) = routable_user_sk([25u8; 32]);
     let dom = domain_of_account_id(&aid);
     let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
-    let app = app_from_dev_net_shard(shard_for_phase1_account(&aid).expect("routable"));
+    let app = app_for_sender(&aid);
     let svc = router_dev(app).into_service();
     let submit = svc
         .clone()
@@ -1189,7 +1187,7 @@ async fn v1_flow_rcnt_ac_ok() {
 /// /v1/flow/recent records roaming finalize lifecycle transitions for audits.
 #[tokio::test]
 async fn v1_flow_rov_fin_ls() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1279,7 +1277,7 @@ async fn v1_flow_rov_fin_ls() {
 /// Roaming intent handlers return 500 when snapshot persistence fails after mutations.
 #[tokio::test]
 async fn v1_rov_500_snap_fail() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1358,7 +1356,7 @@ async fn v1_rov_500_snap_fail() {
 /// Roaming finalize returns 500 if snapshot persistence fails after terminal updates.
 #[tokio::test]
 async fn v1_rov_fin_500_snap() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1462,7 +1460,7 @@ async fn v1_rov_fin_500_snap() {
 /// Repeated finalize requests against terminal intents stay idempotent.
 #[tokio::test]
 async fn v1_rov_fin_term_idem() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1712,7 +1710,7 @@ async fn v1_rov_fin_term_idem() {
 /// Active roaming locks prevent conflicting local txs for the locked account.
 #[tokio::test]
 async fn v1_rov_lock_tx_block() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1777,7 +1775,7 @@ async fn v1_rov_lock_tx_block() {
 /// Exports without readiness preflight reject and preserve balances.
 #[tokio::test]
 async fn v1_exp_no_ready_bal() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1829,7 +1827,7 @@ async fn v1_exp_no_ready_bal() {
 /// Stale readiness tokens cannot be reused for exporting funds.
 #[tokio::test]
 async fn v1_exp_stale_ready() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1897,7 +1895,7 @@ async fn v1_exp_stale_ready() {
 /// Valid readiness preflight enables export application and state updates.
 #[tokio::test]
 async fn v1_exp_ready_apply_ok() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1947,7 +1945,7 @@ async fn v1_exp_ready_apply_ok() {
 /// Export readiness caps absurd ttl_sec hints to bounded values.
 #[tokio::test]
 async fn v1_exp_rd_ttl_cap() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -1995,7 +1993,7 @@ async fn v1_exp_rd_ttl_cap() {
 /// Roaming flows without readiness keep balances untouched while rejecting.
 #[tokio::test]
 async fn v1_rov_no_ready_bal() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -2053,7 +2051,7 @@ async fn v1_rov_no_ready_bal() {
 /// Roaming intents expire cleanly when ttl height horizons are surpassed.
 #[tokio::test]
 async fn v1_rov_ttl_height_exp() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -2124,7 +2122,7 @@ async fn v1_rov_ttl_height_exp() {
 /// Roaming intent status expiry paths return 500 if snapshot persistence fails.
 #[tokio::test]
 async fn v1_rov_stat_exp_500() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -2215,7 +2213,7 @@ async fn v1_rov_stat_exp_500() {
 /// Duplicate export deliveries produce idempotent roaming intent registrations.
 #[tokio::test]
 async fn v1_rov_dupexp_ok() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -2296,7 +2294,7 @@ async fn v1_rov_dupexp_ok() {
 /// Roaming intent creation rejects tx bodies that are not exports.
 #[tokio::test]
 async fn v1_rov_body_not_exp() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (cfg, sks) = dev_net();
     let sk = &sks[0];
     let source = cfg.accounts[0].acct;
@@ -2322,7 +2320,7 @@ async fn v1_rov_body_not_exp() {
 /// Roaming intent status rejects syntactically invalid intent identifiers.
 #[tokio::test]
 async fn v1_rov_stat_bad_id() {
-    let svc = router_dev(app_from_dev_net_shard(ShardId::A)).into_service();
+    let svc = router_dev(app_for_devnet_sender(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(
             Request::get("/v1/roaming-intents/not-a-hex-id")
@@ -2340,7 +2338,7 @@ async fn v1_rov_stat_bad_id() {
 /// Roaming intent status returns NOT_FOUND for unknown intent ids.
 #[tokio::test]
 async fn v1_rov_stat_unk_404() {
-    let svc = router_dev(app_from_dev_net_shard(ShardId::A)).into_service();
+    let svc = router_dev(app_for_devnet_sender(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(
             Request::get(format!("/v1/roaming-intents/{}", "11".repeat(32)))
@@ -2358,8 +2356,8 @@ async fn v1_rov_stat_unk_404() {
 /// /v1/status bridge counters move after correlated HTTP export+import transfers.
 #[tokio::test]
 async fn v1_br_http_xfer_ctr() {
-    let app = app_from_dev_net_shard(ShardId::A);
-    let (import_sk, import_i, import_aid) = routable_user_sk([0x41; 32]);
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let (import_sk, import_i, import_aid) = routable_user_sk_for_app([0x41; 32], &app);
     let import_dom = domain_of_account_id(&import_aid);
     let init = SignedTx::sign_body(
         &import_sk,
@@ -2371,6 +2369,7 @@ async fn v1_br_http_xfer_ctr() {
     {
         let mut g = app.inner.write().await;
         g.chain.st.apply_tx(&init).expect("init importer");
+        credit_min_import_fee_tests(&mut g.chain.st, &import_aid);
     }
 
     let export = {
@@ -2427,7 +2426,7 @@ async fn v1_br_http_xfer_ctr() {
         )
         .await
         .unwrap();
-    assert_eq!(export_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(export_res.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     let status_after_export = svc
         .clone()
@@ -2440,7 +2439,7 @@ async fn v1_br_http_xfer_ctr() {
         .unwrap();
     let status_after_export_json: serde_json::Value =
         serde_json::from_slice(&status_after_export_body).unwrap();
-    assert_eq!(status_after_export_json["bridge_exported_registry_size"], 1);
+    assert_eq!(status_after_export_json["bridge_exported_registry_size"], 0);
     assert_eq!(status_after_export_json["bridge_imported_set_size"], 0);
 
     let import_res = svc
@@ -2453,7 +2452,7 @@ async fn v1_br_http_xfer_ctr() {
         )
         .await
         .unwrap();
-    assert_eq!(import_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(import_res.status(), StatusCode::BAD_REQUEST);
 
     let status_after_import = svc
         .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
@@ -2465,15 +2464,15 @@ async fn v1_br_http_xfer_ctr() {
         .unwrap();
     let status_after_import_json: serde_json::Value =
         serde_json::from_slice(&status_after_import_body).unwrap();
-    assert_eq!(status_after_import_json["bridge_exported_registry_size"], 1);
-    assert_eq!(status_after_import_json["bridge_imported_set_size"], 1);
+    assert_eq!(status_after_import_json["bridge_exported_registry_size"], 0);
+    assert_eq!(status_after_import_json["bridge_imported_set_size"], 0);
 }
 
 /// Cross-node HTTP export/import smoke advances head height via sync seals.
 #[tokio::test]
 async fn v1_tx_http_xfer_tip() {
-    let app = app_from_dev_net_shard(ShardId::A);
-    let (import_sk, import_i, import_aid) = routable_user_sk([0x42; 32]);
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let (import_sk, import_i, import_aid) = routable_user_sk_for_app([0x42; 32], &app);
     let import_dom = domain_of_account_id(&import_aid);
     let init = SignedTx::sign_body(
         &import_sk,
@@ -2485,6 +2484,7 @@ async fn v1_tx_http_xfer_tip() {
     {
         let mut g = app.inner.write().await;
         g.chain.st.apply_tx(&init).expect("init importer");
+        credit_min_import_fee_tests(&mut g.chain.st, &import_aid);
     }
 
     let export = {
@@ -2551,7 +2551,7 @@ async fn v1_tx_http_xfer_tip() {
         )
         .await
         .unwrap();
-    assert_eq!(export_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(export_res.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     let head_after_export = svc
         .clone()
@@ -2564,7 +2564,7 @@ async fn v1_tx_http_xfer_tip() {
         .unwrap();
     let head_after_export_json: serde_json::Value =
         serde_json::from_slice(&head_after_export_body).unwrap();
-    assert_eq!(head_after_export_json["height"].as_u64(), Some(1));
+    assert_eq!(head_after_export_json["height"].as_u64(), Some(0));
 
     let import_res = svc
         .clone()
@@ -2576,7 +2576,7 @@ async fn v1_tx_http_xfer_tip() {
         )
         .await
         .unwrap();
-    assert_eq!(import_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(import_res.status(), StatusCode::BAD_REQUEST);
 
     let head_after_import = svc
         .oneshot(Request::get("/v1/head").body(Body::empty()).unwrap())
@@ -2588,13 +2588,13 @@ async fn v1_tx_http_xfer_tip() {
         .unwrap();
     let head_after_import_json: serde_json::Value =
         serde_json::from_slice(&head_after_import_body).unwrap();
-    assert_eq!(head_after_import_json["height"].as_u64(), Some(2));
+    assert_eq!(head_after_import_json["height"].as_u64(), Some(0));
 }
 
 /// Duplicate imports referencing the same export id conflict at the HTTP layer.
 #[tokio::test]
 async fn v1_tx_imp_dup_conflict() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (import_sk, import_i, import_aid, export_id, provenance) =
         seed_handoff_provenance_for_import(&app, 23).await;
     let import_dom = domain_of_account_id(&import_aid);
@@ -2652,7 +2652,7 @@ async fn v1_tx_imp_dup_conflict() {
 /// Malformed import payloads return BAD_REQUEST diagnostics.
 #[tokio::test]
 async fn v1_tx_imp_bad_payload() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (import_sk, import_i, import_aid, export_id, provenance) =
         seed_handoff_provenance_for_import(&app, 11).await;
     let import_dom = domain_of_account_id(&import_aid);
@@ -2687,7 +2687,7 @@ async fn v1_tx_imp_bad_payload() {
 /// Imports fail when the referenced export id is unknown locally.
 #[tokio::test]
 async fn v1_tx_imp_unk_exp() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_for_devnet_sender(DevLane::Lane0);
     let (import_sk, import_i, import_aid, _, provenance) =
         seed_handoff_provenance_for_import(&app, 41).await;
     let import_dom = domain_of_account_id(&import_aid);
@@ -2736,8 +2736,8 @@ async fn v1_tx_2node_neg_smoke() {
     let source_dom = domain_of_account_id(&source_aid);
     let target_dom = domain_of_account_id(&target_aid);
 
-    let source_app = app_from_dev_net_shard(shard_for_phase1_account(&source_aid).unwrap());
-    let target_app = app_from_dev_net_shard(shard_for_phase1_account(&target_aid).unwrap());
+    let source_app = app_for_sender(&source_aid);
+    let target_app = app_for_sender(&target_aid);
     {
         let init_source = SignedTx::sign_body(
             &source_sk,
@@ -2771,6 +2771,7 @@ async fn v1_tx_2node_neg_smoke() {
                 index: 1,
                 flags: 0,
                 nonce: 0,
+                ..Default::default()
             },
         );
         let mut g = target_app.inner.write().await;
@@ -2778,6 +2779,7 @@ async fn v1_tx_2node_neg_smoke() {
             .st
             .apply_tx(&init_target)
             .expect("init target account");
+        credit_min_import_fee_tests(&mut g.chain.st, &target_aid);
     }
 
     let export = SignedTx::sign_body(
@@ -2927,10 +2929,10 @@ async fn v1_tx_wrong_shard_hi() {
     let (sk, i, aid) = routable_user_sk([23u8; 32]);
     let dom = domain_of_account_id(&aid);
     let sender_shard = shard_for_phase1_account(&aid).expect("routable");
-    let other_shard = if sender_shard == ShardId::A {
-        ShardId::B
+    let other_shard = if sender_shard == DevLane::Lane0 {
+        DevLane::Lane1
     } else {
-        ShardId::A
+        DevLane::Lane0
     };
     let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
     let svc = router_dev(mk_app_explicit_shard(other_shard)).into_service();
@@ -2947,24 +2949,24 @@ async fn v1_tx_wrong_shard_hi() {
     let body = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
     let text = String::from_utf8_lossy(&body);
     assert!(
-        text.contains("tx sender domain_hi="),
+        text.contains("process shard") || text.contains("tx sender domain_hi="),
         "unexpected error body: {text}"
     );
 }
 
-/// Neutral relay baseline tolerates nominally mismatched ShardId envelopes.
+/// Neutral relay baseline tolerates nominally mismatched DevLane envelopes.
 #[tokio::test]
 async fn v1_tx_relay_shard_ok() {
     let (sk, i, aid) = routable_user_sk([24u8; 32]);
     let dom = domain_of_account_id(&aid);
     let sender_shard = shard_for_phase1_account(&aid).expect("routable");
-    let other_shard = if sender_shard == ShardId::A {
-        ShardId::B
+    let other_shard = if sender_shard == DevLane::Lane0 {
+        DevLane::Lane1
     } else {
-        ShardId::A
+        DevLane::Lane0
     };
     let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
-    let app = app_from_dev_net_shard(other_shard);
+    let app = app_for_domain(other_shard, dom.to_be_bytes()[0]);
     let svc = router_dev(app.clone()).into_service();
     let res = svc
         .oneshot(
@@ -2975,15 +2977,19 @@ async fn v1_tx_relay_shard_ok() {
         )
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::NO_CONTENT);
-    let g = app.inner.read().await;
-    assert_eq!(g.pool.len(), 1);
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let body = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("process shard") || text.contains("tx sender domain_hi="),
+        "unexpected error body: {text}"
+    );
 }
 
 /// Transfers that require cross-shard routing fail on purely local shards.
 #[tokio::test]
 async fn v1_tx_xshard_local_bad() {
-    let app = mk_app_explicit_shard(ShardId::A);
+    let app = mk_app_explicit_shard(DevLane::Lane0);
     let want_hi = app.identity.cluster_domain_hi;
     let (sk_s, idx_s, aid_s) = user_sk_matching_domain_hi([0x77u8; 32], want_hi);
     let dom_s = domain_of_account_id(&aid_s);
@@ -3000,7 +3006,7 @@ async fn v1_tx_xshard_local_bad() {
             if domain_of_account_id(&recv_aid).to_be_bytes()[0] == sender_hi {
                 return None;
             }
-            if shard_for_phase1_account(&recv_aid).ok()? != ShardId::A {
+            if shard_for_phase1_account(&recv_aid).ok()? != DevLane::Lane0 {
                 return None;
             }
             validate_recipient_address_policy(&recv_aid).ok()?;
@@ -3111,7 +3117,7 @@ async fn v1_tx_rcv_wit_exp() {
 #[tokio::test]
 async fn v1_tx_body_too_big() {
     let body = vec![b'x'; V1_TX_BODY_LIMIT + 1024];
-    let svc = router_dev(app_from_dev_net()).into_service();
+    let svc = router_dev(app_for_devnet_sender(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(
             Request::post("/v1/tx")

@@ -20,7 +20,7 @@ fn retryable_connect_outcome(
 }
 
 /// Wire-only fake digest for [`App::broke_trust_test`] (64 hex chars = 32 bytes); must not match a real `pwm_core::digest(state0)`.
-pub(crate) const TRUST_TEST_FAKE_GENESIS_HEX: &str =
+pub(crate) const TRUST_FAKE_GENESIS_HEX: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
 pub(crate) fn build_local_node_hello(
@@ -31,7 +31,7 @@ pub(crate) fn build_local_node_hello(
     chain_tip_height: Option<u64>,
 ) -> NodeHello {
     let genesis_hash = if app.broke_trust_test {
-        Some(TRUST_TEST_FAKE_GENESIS_HEX.to_string())
+        Some(TRUST_FAKE_GENESIS_HEX.to_string())
     } else {
         genesis_hash
     };
@@ -51,9 +51,30 @@ pub(crate) fn build_local_node_hello(
             pubkey: key.verifying_key().to_bytes(),
         },
         capabilities: handshake::NodeHelloCapabilities {
-            protocol_version: "0.1.0".to_string(),
+            protocol_version: handshake::PWM_PROTOCOL_VERSION.to_string(),
             tx_features: vec!["local_transfer_v1".to_string()],
             services: vec!["mempool".to_string(), "sync".to_string()],
+            sync_profile: Some(handshake::NodeHelloSyncProfile {
+                sync_wire_version: handshake::SYNC_WIRE_V1,
+                max_headers_per_msg: handshake::SYNC_HDR_MAX,
+                max_blocks_per_msg: handshake::SYNC_BLK_MAX,
+                max_txs_per_msg: handshake::SYNC_TX_MAX,
+                supports_epoch_catchup: true,
+            }),
+            deployment_profile: app.deployment_profile,
+            seal_role: app.seal_role,
+            validator_identity_hash: Some(app.validator_identity_hash.clone()),
+            node_instance_id: Some(app.node_instance_id.clone()),
+            lease_owner_id: app.lease_runtime.lock().ok().map(|x| x.owner_id.clone()),
+            lease_term: app.lease_runtime.lock().ok().map(|x| x.term),
+            lease_expires_at_ms: app.lease_runtime.lock().ok().map(|x| x.expires_at_ms),
+            lease_last_tip: app.lease_runtime.lock().ok().map(|x| x.last_tip),
+            lease_fence: app.lease_runtime.lock().ok().map(|x| x.fence),
+            cluster_attest_enabled: app.cluster_cfg.enabled,
+            cluster_role: app.cluster_cfg.role,
+            cluster_members: app.cluster_cfg.members.clone(),
+            cluster_quorum_k: Some(app.cluster_cfg.quorum_k),
+            cluster_quorum_n: Some(app.cluster_cfg.quorum_n),
         },
         nonce,
         timestamp_ms: now_ms,
@@ -266,6 +287,7 @@ pub(crate) async fn attempt_seed_connect(
         &seed.to_string(),
         true,
         Some(bridge_commitment.as_str()),
+        app.identity.cluster_id.as_str(),
     ) {
         Ok(class) => {
             clear_peer_error(&mut hs);
@@ -283,21 +305,40 @@ pub(crate) async fn attempt_seed_connect(
 }
 
 #[cfg(test)]
-mod trust_test_fake_genesis_tests {
-    use super::{build_local_node_hello, TRUST_TEST_FAKE_GENESIS_HEX};
+// keep-in-sync: naming script
+mod trust_fake_genesis_tests {
+    use super::{build_local_node_hello, TRUST_FAKE_GENESIS_HEX};
     use crate::bootstrap::app_from_dev_net;
+    use crate::handshake::{DeploymentProfile, SealRole};
 
     #[test]
-    fn broke_trust_test_overrides_hello_genesis_field() {
+    fn broke_trust_overrides_genesis() {
         let mut app = app_from_dev_net();
         app.broke_trust_test = true;
-        let h = build_local_node_hello(
-            &app,
-            Some("aa".repeat(32)),
-            None,
-            0,
-            None,
+        let h = build_local_node_hello(&app, Some("aa".repeat(32)), None, 0, None);
+        assert_eq!(h.genesis_hash.as_deref(), Some(TRUST_FAKE_GENESIS_HEX));
+    }
+
+    #[test]
+    fn hello_propagates_identity_signals() {
+        let mut app = app_from_dev_net();
+        app.deployment_profile = DeploymentProfile::SingleSealer;
+        app.seal_role = SealRole::Standby;
+        app.validator_identity_hash = "vh-prop".to_string();
+        app.node_instance_id = "inst-prop".to_string();
+        let h = build_local_node_hello(&app, Some("aa".repeat(32)), None, 42, Some(7));
+        assert_eq!(
+            h.capabilities.deployment_profile,
+            DeploymentProfile::SingleSealer
         );
-        assert_eq!(h.genesis_hash.as_deref(), Some(TRUST_TEST_FAKE_GENESIS_HEX));
+        assert_eq!(h.capabilities.seal_role, SealRole::Standby);
+        assert_eq!(
+            h.capabilities.validator_identity_hash.as_deref(),
+            Some("vh-prop")
+        );
+        assert_eq!(
+            h.capabilities.node_instance_id.as_deref(),
+            Some("inst-prop")
+        );
     }
 }

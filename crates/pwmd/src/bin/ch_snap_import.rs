@@ -6,7 +6,7 @@ use pwm_core::digest;
 use pwmd::{
     load_genesis_bundle, norm_ch_http_base, parse_cluster_domain_hi, pwmd_snap_row_key,
     resolve_ch_database, resolve_runtime_identity, snap_ch_sql_id, snap_ch_tbl_pair,
-    snap_ch_tbl_validators, RuntimeIdentityInput, ShardId, SnapChCfg,
+    snap_ch_tbl_validators, DevLane, RuntimeIdentityInput, SnapChCfg,
 };
 use std::path::PathBuf;
 
@@ -58,7 +58,7 @@ fn main() {
         cluster_id: Some(cli.cluster_id.trim().to_string()),
         node_id: Some(cli.node_id.trim().to_string()),
     };
-    let identity = resolve_runtime_identity(ShardId::A, identity_input).unwrap_or_else(|e| {
+    let identity = resolve_runtime_identity(DevLane::Lane0, identity_input).unwrap_or_else(|e| {
         eprintln!("pwmd-ch-snap-import: identity: {e}");
         std::process::exit(2);
     });

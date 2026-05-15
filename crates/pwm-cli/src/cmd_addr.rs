@@ -9,8 +9,8 @@ use crate::cli_parse::{master_seed, parse_domain};
 use crate::exit_user_error;
 use crate::rpc_helpers::{map_reqwest_err, truncate_rpc_body_hint};
 use crate::wallet::{
-    build_wallet_yaml, detect_resume_der_index, save_wallet_v3_new, wallet_account_add_seed,
-    WalletProtection,
+    build_wallet_yaml, detect_resume_der_index, load_wallet_yaml_upgrade, save_wallet_v3_new,
+    wallet_account_add_seed, wallet_secrets, WalletProtection,
 };
 use crate::wallet_shell::{
     parse_domain_label_only, resolve_bruteforce_wallet_protection, validate_user_profile_flags,
@@ -142,7 +142,8 @@ pub(crate) fn persist_wallet_account_output(
     }
 }
 
-fn try_auto_init_after_bruteforce(
+/// Attempts automatic INIT tx submission after successful brute-force key derivation.
+fn try_auto_init(
     c: &reqwest::blocking::Client,
     rpc_base: &str,
     sk: &SigningKey,
@@ -183,25 +184,105 @@ pub(crate) fn is_rpc_unavailable_error(err: &str) -> bool {
     err.contains("cannot connect") || err.contains("RPC timeout")
 }
 
+pub(crate) fn resolve_master_seed(
+    cli_master: Option<String>,
+    wal_out_explicit: bool,
+    wal_path: &Path,
+    overwrite_wallet: bool,
+    upgrade_wallet: bool,
+    wallet_passphrase: Option<&str>,
+) -> Result<[u8; 32], String> {
+    if overwrite_wallet {
+        let Some(seed) = resolve_seed_candidate(cli_master.as_deref())? else {
+            return Err(
+                "master seed is required with --overwrite-wallet: provide non-empty --master (or PWM_MASTER_SEED) or MASTER_SEED"
+                    .to_string(),
+            );
+        };
+        return Ok(seed);
+    }
+
+    if wal_out_explicit && wal_path.exists() {
+        let wallet = load_wallet_yaml_upgrade(wal_path, upgrade_wallet).map_err(|e| {
+            format!("failed to read wallet file for wallet-authoritative master seed: {e}")
+        })?;
+        let secrets = wallet_secrets(&wallet, wallet_passphrase).map_err(|e| {
+            format!("failed to decode wallet secrets for wallet-authoritative master seed: {e}")
+        })?;
+        let wallet_seed = master_seed(&secrets.master_seed_hex)
+            .map_err(|e| format!("wallet master_seed_hex is invalid: {e}"))?;
+        if let Some(candidate_seed) = resolve_seed_candidate(cli_master.as_deref())? {
+            if candidate_seed != wallet_seed {
+                return Err(
+                    "master seed conflict: provided --master/PWM_MASTER_SEED/MASTER_SEED does not match existing --wallet-out master seed"
+                        .to_string(),
+                );
+            }
+        }
+        return Ok(wallet_seed);
+    }
+
+    if let Some(seed) = resolve_seed_candidate(cli_master.as_deref())? {
+        return Ok(seed);
+    }
+
+    if !wal_out_explicit {
+        return Err(
+            "master seed is required: provide --master value, PWM_MASTER_SEED, MASTER_SEED, or explicit --wallet-out with existing wallet"
+                .to_string(),
+        );
+    }
+    Err(format!(
+        "master seed fallback requires existing --wallet-out file: '{}' not found",
+        wal_path.display()
+    ))
+}
+
+fn resolve_seed_candidate(cli_master: Option<&str>) -> Result<Option<[u8; 32]>, String> {
+    let cli_or_pwm = cli_master.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(master) = cli_or_pwm {
+        let seed = master_seed(master).map_err(|e| format!("invalid --master seed: {e}"))?;
+        return Ok(Some(seed));
+    }
+    if let Ok(s) = std::env::var("MASTER_SEED") {
+        let t = s.trim();
+        if !t.is_empty() {
+            let seed = master_seed(t).map_err(|e| format!("invalid MASTER_SEED env: {e}"))?;
+            return Ok(Some(seed));
+        }
+    }
+    Ok(None)
+}
+
 pub(crate) fn run_addr_derive(
-    master: String,
+    master: Option<String>,
     domain: String,
     max_try: u32,
     wallet_out: Option<PathBuf>,
+    wal_out_explicit: bool,
     wallet_passphrase: Option<String>,
+    upgrade_wallet: bool,
 ) {
     eprintln!(
         "warning: `addr-derive` is deprecated and will be removed in a future release; use `addr-bruteforce` instead"
     );
-    let seed = master_seed(&master).expect("master");
+    let wallet_path = resolve_wallet_out_path(wallet_out.clone())
+        .unwrap_or_else(|e| exit_user_error(&format!("failed to resolve wallet output path: {e}")));
+    let seed = resolve_master_seed(
+        master,
+        wal_out_explicit,
+        wallet_path.as_path(),
+        false,
+        upgrade_wallet,
+        wallet_passphrase.as_deref(),
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
     let dom = parse_domain(&domain).expect("domain");
     let r = brute_cluster_address(&seed, dom, max_try).expect("no match");
     let (domain_display, domain_ok) = format_domain_for_display(dom as u32);
     let account_id_pretty = account_id_to_human(&r.3);
     let account_id_bech32dx = account_id_to_bech32dx(&r.3);
-    let wallet_path = resolve_wallet_out_path(wallet_out.clone())
-        .unwrap_or_else(|e| exit_user_error(&format!("failed to resolve wallet output path: {e}")));
-    let wallet_write = if wallet_out.is_some() {
+    let wallet_write = if wal_out_explicit {
         let (wallet_protection, warn_plaintext) =
             resolve_bruteforce_wallet_protection(wallet_passphrase.as_deref())
                 .unwrap_or_else(|e| exit_user_error(&e));
@@ -244,12 +325,13 @@ pub(crate) fn run_addr_derive(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_addr_bruteforce(
-    master: String,
+    master: Option<String>,
     domain: String,
     flags_mask: u32,
     expected_flags: u32,
     max_try: u32,
     wallet_out: Option<PathBuf>,
+    wal_out_explicit: bool,
     overwrite_wallet: bool,
     wallet_passphrase: Option<String>,
     upgrade_wallet: bool,
@@ -257,7 +339,15 @@ pub(crate) fn run_addr_bruteforce(
 ) {
     let wallet_out = resolve_wallet_out_path(wallet_out)
         .unwrap_or_else(|e| exit_user_error(&format!("failed to resolve wallet output path: {e}")));
-    let seed = master_seed(&master).expect("master");
+    let seed = resolve_master_seed(
+        master,
+        wal_out_explicit,
+        wallet_out.as_path(),
+        overwrite_wallet,
+        upgrade_wallet,
+        wallet_passphrase.as_deref(),
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
     let domain_entry = parse_domain_label_only(&domain).expect("domain");
     if domain_entry.category != DomainCategory::Regulatory {
         panic!(
@@ -351,7 +441,7 @@ pub(crate) fn run_addr_bruteforce(
 
     let c = http_client_for_rpc();
     let init_sk = SigningKey::from_bytes(&hit.signing_key);
-    match try_auto_init_after_bruteforce(
+    match try_auto_init(
         &c,
         rpc_base,
         &init_sk,

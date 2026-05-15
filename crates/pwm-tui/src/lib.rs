@@ -1,6 +1,6 @@
 //! Network account table (public-friendly). Optional debug JSON via PWM_TUI_DEBUG=1.
 
-use pwm_core::{account_id_to_human, append_wallet_yaml_address_book, AccountId};
+use pwm_core::{account_id_to_human, append_addr_book, AccountId};
 use ratatui::prelude::*;
 
 mod config;
@@ -11,10 +11,9 @@ pub mod tui_loop;
 pub use config::Args;
 #[allow(unused_imports)]
 pub(crate) use config::{
-    base_url, f5_burn_not_wired_message, http_client, inter_shard_status_short,
-    parse_status_shard_label, rpc_context_label, shard_cli_hint, shard_hint_from_rpc_url,
-    wallet_unlock_secs_clamped, DEBUG_FETCH_INTERVAL, OP_HISTORY_MAX_ITEMS,
-    SEND_FLOW_AUTO_STEP_TIMEOUT,
+    base_url, http_client, inter_shard_status_short, parse_status_shard_label, rpc_context_label,
+    shard_cli_hint, shard_hint_rpc, wallet_unlock_secs_clamped, DEBUG_FETCH_INTERVAL,
+    OP_HISTORY_MAX_ITEMS, SEND_FLOW_STEP_TIMEOUT,
 };
 
 mod status;
@@ -29,7 +28,7 @@ mod models;
 
 #[allow(unused_imports)]
 pub(crate) use models::{
-    format_balance_cell, format_init_cell, parse_hex_account_id, parse_u128, AcctRow,
+    format_balance_cell, format_init_cell, parse_hex_account_id, parse_u128, parse_u32, AcctRow,
     BookRecipient, OwnedWalletAccount, WalletIdentity, WalletV3Meta, UNKNOWN_BALANCE_SENTINEL,
     UNKNOWN_INIT_NONCE_SENTINEL,
 };
@@ -44,14 +43,13 @@ mod wallet;
 pub use wallet::default_wallet_if_present;
 #[allow(unused_imports)]
 pub(crate) use wallet::{
-    build_plaintext_secret_json, choose_identity, default_wallet_candidate,
+    build_plaintext_secret_json, choose_identity, decrypt_wallet_secret, default_wallet_candidate,
     identity_f3_action_label, identity_lock_status_suffix, load_owned_accounts,
     load_wallet_identity, merge_normalized_wallet_header, parse_signing_key_hex,
-    replace_wallet_file, try_decrypt_wallet_secret_payload, validate_encrypt_passphrase_inputs,
-    wallet_apply_auto_lock, wallet_encrypt_or_rekey_disk, wallet_lock_now,
-    wallet_try_unlock_with_passphrase, wallet_upgrade_encryption_hook, write_wallet_yaml_atomic,
-    yaml_map_get_string, yaml_root_map, IdentitySource, DETAIL_CHUNK_ROWS, FALLBACK_MODE_WARNING,
-    FALLBACK_WARN_CHUNK_ROWS,
+    replace_wallet_file, validate_encrypt_passphrase_inputs, wallet_apply_auto_lock,
+    wallet_lock_now, wallet_rekey, wallet_unlock, wallet_upgrade_encryption_hook,
+    write_wallet_yaml_atomic, yaml_map_get_string, yaml_root_map, IdentitySource,
+    DETAIL_CHUNK_ROWS, FALLBACK_MODE_WARNING, FALLBACK_WARN_CHUNK_ROWS,
 };
 
 mod rpc_account;
@@ -71,8 +69,17 @@ pub(crate) use signing::{
 mod tx_submit;
 #[allow(unused_imports)]
 pub(crate) use tx_submit::{
-    format_submit_transfer_error, is_cross_domain_route, submit_init, submit_transfer,
+    format_submit_transfer_error, is_cross_domain_route, submit_burn_mark, submit_claim,
+    submit_init, submit_stake, submit_transfer, submit_unstake,
 };
+
+mod burn_form;
+#[allow(unused_imports)]
+pub(crate) use burn_form::{burn_replay_guard_status, validate_burn_form, BurnField, BurnForm};
+
+mod stake_form;
+#[allow(unused_imports)]
+pub(crate) use stake_form::{validate_stake_form, StakeField, StakeForm, StakeMode};
 
 mod roaming;
 #[allow(unused_imports)]
@@ -152,6 +159,68 @@ pub(crate) fn f6_build_send_form(
         .map(|r| account_id_to_human(&r.id))
         .unwrap_or_default();
     Ok(SendForm::new(from, to, selected.is_none()))
+}
+
+/// Build F5 burn modal from selected owner row.
+pub(crate) fn f5_build_burn_form(
+    identity: &IdentitySource,
+    owner_rows: &[AcctRow],
+    owner_sel: usize,
+    receiver_rows: &[AcctRow],
+    recv_sel: usize,
+) -> Result<BurnForm, String> {
+    let locked = matches!(
+        identity,
+        IdentitySource::Wallet(w) if w.wallet_is_encrypted && w.signing_key.is_none()
+    );
+    if locked {
+        return Err("Wallet is locked: press F3 to unlock before burning marks.".into());
+    }
+    let owner = owner_rows
+        .get(owner_sel)
+        .ok_or_else(|| "F5 burn blocked: no selected Owner row".to_string())?;
+    let _ = signing_material_for_sender(&owner.id, identity)
+        .map_err(|e| format!("F5 burn blocked: {e}"))?;
+    let from = account_id_to_human(&owner.id);
+    let (beneficiary, beneficiary_editable) = match selected_to_receiver(receiver_rows, recv_sel) {
+        Some(r) => (account_id_to_human(&r.id), false),
+        None => (String::new(), true),
+    };
+    Ok(BurnForm::new(
+        from,
+        owner.marks,
+        beneficiary,
+        beneficiary_editable,
+    ))
+}
+
+/// True when F5 burn shows the stake-first hint (nothing staked and no marks).
+#[inline]
+pub(crate) fn f5_burn_hint_needed(staked: u128, marks: u32) -> bool {
+    staked == 0 && marks == 0
+}
+
+/// Build F7 stake/unstake modal from selected owner row.
+pub(crate) fn f7_build_stake_form(
+    identity: &IdentitySource,
+    owner_rows: &[AcctRow],
+    owner_sel: usize,
+    mode: StakeMode,
+) -> Result<StakeForm, String> {
+    let locked = matches!(
+        identity,
+        IdentitySource::Wallet(w) if w.wallet_is_encrypted && w.signing_key.is_none()
+    );
+    if locked {
+        return Err("Wallet is locked: press F3 to unlock before stake/unstake.".into());
+    }
+    let owner = owner_rows
+        .get(owner_sel)
+        .ok_or_else(|| "F7 stake blocked: no selected Owner row".to_string())?;
+    let _ = signing_material_for_sender(&owner.id, identity)
+        .map_err(|e| format!("F7 stake blocked: {e}"))?;
+    let from = account_id_to_human(&owner.id);
+    Ok(StakeForm::new(mode, from, owner.balance_pwm, owner.staked))
 }
 
 /// Preflight transfer recipient: must be known in rows or allowed cross-domain route.

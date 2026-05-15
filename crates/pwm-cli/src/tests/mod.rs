@@ -1,22 +1,22 @@
 //! pwm-cli scenario tests spanning wallet flows and RPC helpers.
 
 use super::{
-    ensure_import_sender, get_roaming_intent_status, is_terminal_intent_status,
-    parse_export_id_hex_arg, post_export_handoff, post_import_retry, post_roaming_intent,
-    tx_import_contract_note, user_msg_roaming_intent_error, wallet_account_add,
-    wallet_account_list, Cli, Cmd, WalletAccountCmd, WalletCmd,
+    ensure_import_sender, get_roaming_intent_status, is_terminal_intent_status, parse_export_hex,
+    post_export_handoff, post_import_retry, post_roaming_intent, roaming_intent_err,
+    tx_import_contract_note, wallet_account_add, wallet_account_list, Cli, Cmd, WalletAccountCmd,
+    WalletCmd,
 };
 use crate::bruteforce::DomainMatchMode;
 use crate::cli_config::DEFAULT_WALLET_OUT_REL;
 use crate::cli_parse::{parse_address_arg, parse_address_input, resolve_tx_send_amount};
 use crate::cmd_addr::{
     bruteforce_resume_index, fmt_addr_bruteforce_results, is_rpc_unavailable_error,
-    persist_wallet_account_output,
+    persist_wallet_account_output, resolve_master_seed,
 };
-use crate::cmd_genesis::build_genesis_v4_wallet;
+use crate::cmd_genesis::{build_genesis_v4_wallet, GENESIS_SCHEMA_VERSION};
 use crate::rpc_helpers::{
-    nonce_404_account_hint, parse_account_lookup_meta, parse_nonce_from_account_json,
-    post_signed_tx, preflight_recipient_init,
+    nonce_404_account_hint, parse_account_lookup_meta, parse_nonce_acct_json, post_signed_tx,
+    preflight_recipient_init,
 };
 use crate::signer::{load_tx_signer_source, TxSignerSource};
 use crate::wallet::{
@@ -77,13 +77,13 @@ fn label_only_accepts_sector_label() {
 }
 
 #[test]
-/// `parse_nonce_from_account_json` accepts numeric JSON values or decimal digit strings.
+/// `parse_nonce_acct_json` accepts numeric JSON values or decimal digit strings.
 fn acct_json_nonce_parse_formats() {
-    assert_eq!(parse_nonce_from_account_json(r#"{"nonce":7}"#), Some(7));
-    assert_eq!(parse_nonce_from_account_json(r#"{"nonce":"12"}"#), Some(12));
-    assert_eq!(parse_nonce_from_account_json(r#"{"nonce":"bad"}"#), None);
-    assert_eq!(parse_nonce_from_account_json(r#"{"height":1}"#), None);
-    assert_eq!(parse_nonce_from_account_json("not-json"), None);
+    assert_eq!(parse_nonce_acct_json(r#"{"nonce":7}"#), Some(7));
+    assert_eq!(parse_nonce_acct_json(r#"{"nonce":"12"}"#), Some(12));
+    assert_eq!(parse_nonce_acct_json(r#"{"nonce":"bad"}"#), None);
+    assert_eq!(parse_nonce_acct_json(r#"{"height":1}"#), None);
+    assert_eq!(parse_nonce_acct_json("not-json"), None);
 }
 
 #[test]
@@ -254,19 +254,37 @@ fn bf_cli_flags_mask_default() {
 }
 
 #[test]
-/// `addr-derive` without `--wallet-out` stays stateless (no wallet output path).
-fn addr_der_cli_stateless() {
+/// `addr-bruteforce` parses without explicit `--master`.
+fn bf_cli_master_opt() {
     let cli = Cli::try_parse_from([
         "pwm",
-        "addr-derive",
-        "--master",
-        &"11".repeat(32),
+        "addr-bruteforce",
         "--domain",
-        "0x2C00",
+        "CY",
+        "--expected-flags",
+        "0",
+        "--wallet-out",
+        "wallet.yaml",
     ])
-    .expect("must parse addr-derive without wallet-out");
+    .expect("must parse addr-bruteforce without explicit master");
     match cli.cmd {
-        Cmd::AddrDer { wallet_out, .. } => assert!(wallet_out.is_none()),
+        Cmd::AddrBruteforce { master, .. } => assert!(master.is_none()),
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+/// `addr-derive` without `--wallet-out` stays stateless (no wallet output path).
+fn addr_der_cli_stateless() {
+    let cli = Cli::try_parse_from(["pwm", "addr-derive", "--domain", "0x2C00"])
+        .expect("must parse addr-derive without wallet-out");
+    match cli.cmd {
+        Cmd::AddrDer {
+            master, wallet_out, ..
+        } => {
+            assert!(master.is_none());
+            assert!(wallet_out.is_none());
+        }
         _ => panic!("unexpected cmd"),
     }
 }
@@ -277,8 +295,6 @@ fn addr_der_cli_wallet_out() {
     let cli = Cli::try_parse_from([
         "pwm",
         "addr-derive",
-        "--master",
-        &"11".repeat(32),
         "--domain",
         "0x2C00",
         "--wallet-out",
@@ -286,9 +302,30 @@ fn addr_der_cli_wallet_out() {
     ])
     .expect("must parse addr-derive with wallet-out");
     match cli.cmd {
-        Cmd::AddrDer { wallet_out, .. } => {
+        Cmd::AddrDer {
+            master, wallet_out, ..
+        } => {
+            assert!(master.is_none());
             assert_eq!(wallet_out, Some(PathBuf::from("wallet.yaml")));
         }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+/// `addr-derive` still accepts explicit `--master`.
+fn addr_der_cli_master_opt() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "addr-derive",
+        "--master",
+        &"11".repeat(32),
+        "--domain",
+        "0x2C00",
+    ])
+    .expect("must parse addr-derive with explicit master");
+    match cli.cmd {
+        Cmd::AddrDer { master, .. } => assert_eq!(master, Some("11".repeat(32))),
         _ => panic!("unexpected cmd"),
     }
 }
@@ -315,8 +352,8 @@ fn gen_build_cli_required() {
 }
 
 #[test]
-/// `build_genesis_v4_wallet` yields schema v4 bundle and config.
-fn gen_build_v4_bundle() {
+/// `build_genesis_v4_wallet` emits bundle/config with current genesis schema.
+fn gen_build_schema5_bundle() {
     let wallet_path = std::env::temp_dir().join(format!(
         "pwm_cli_genesis_build_wallet_{}.yaml",
         rand::random::<u128>()
@@ -357,7 +394,8 @@ fn gen_build_v4_bundle() {
         None,
     )
     .expect("build genesis");
-    assert_eq!(bundle.schema_version, 4);
+    // Slice 0 schema prep moved emitted genesis schema to v5.
+    assert_eq!(bundle.schema_version, GENESIS_SCHEMA_VERSION);
     assert_eq!(bundle.gen_cfg.funding.accounts.len(), 3);
     assert_eq!(bundle.gen_cfg.validators.set.len(), 1);
     assert_eq!(bundle.validator_keys.len(), 1);
@@ -903,8 +941,8 @@ fn wal_acct_list_active() {
         ..active.clone()
     };
 
-    let active_line = crate::rpc_helpers::format_wallet_account_list_line(&active);
-    let inactive_line = crate::rpc_helpers::format_wallet_account_list_line(&inactive);
+    let active_line = crate::rpc_helpers::fmt_wallet_acct_line(&active);
+    let inactive_line = crate::rpc_helpers::fmt_wallet_acct_line(&inactive);
 
     assert!(active_line.starts_with("* id_hex="));
     assert!(inactive_line.starts_with("  id_hex="));
@@ -1306,6 +1344,245 @@ fn bf_cli_pass_enc_mode() {
 }
 
 #[test]
+/// `resolve_master_seed` uses explicit `--master` when wallet is not authoritative.
+fn seed_resolve_cli_wins() {
+    let wallet_path = std::env::temp_dir().join(format!(
+        "pwm_cli_seed_cli_wins_{}.yaml",
+        rand::random::<u128>()
+    ));
+    let got = resolve_master_seed(
+        Some("11".repeat(32)),
+        true,
+        wallet_path.as_path(),
+        false,
+        false,
+        None,
+    )
+    .expect("master from cli/env");
+    assert_eq!(got, [0x11u8; 32]);
+}
+
+#[test]
+/// Plaintext wallet fallback uses `master_seed_hex` when `--wallet-out` is explicit.
+fn seed_resolve_wallet_plain() {
+    let wallet_path = std::env::temp_dir().join(format!(
+        "pwm_cli_seed_wallet_plain_{}.yaml",
+        rand::random::<u128>()
+    ));
+    let seed = [0x41u8; 32];
+    let (sk, pk, idx, id) =
+        pwm_core::hd::brute_cluster_address(&seed, 0x2C00, 500_000).expect("fixture hit");
+    let wallet = build_wallet_yaml(
+        seed,
+        sk.to_bytes(),
+        pk,
+        idx,
+        0x2C00,
+        0x03FF,
+        0,
+        0,
+        hex::encode(id),
+        account_id_to_human(&id),
+        Some("CY".to_string()),
+        WalletProtection::PlaintextDev,
+    )
+    .expect("wallet");
+    save_wallet_v3_new(&wallet_path, &wallet).expect("save wallet");
+
+    let got = resolve_master_seed(None, true, wallet_path.as_path(), false, false, None)
+        .expect("master from wallet");
+    assert_eq!(got, seed);
+    let _ = std::fs::remove_file(&wallet_path);
+}
+
+#[test]
+/// Encrypted wallet fallback requires passphrase and can decrypt with it.
+fn seed_resolve_wallet_enc() {
+    let wallet_path = std::env::temp_dir().join(format!(
+        "pwm_cli_seed_wallet_enc_{}.yaml",
+        rand::random::<u128>()
+    ));
+    let seed = [0x52u8; 32];
+    let passphrase = "seed-pass";
+    let (sk, pk, idx, id) =
+        pwm_core::hd::brute_cluster_address(&seed, 0x2C00, 500_000).expect("fixture hit");
+    let wallet = build_wallet_yaml(
+        seed,
+        sk.to_bytes(),
+        pk,
+        idx,
+        0x2C00,
+        0x03FF,
+        0,
+        0,
+        hex::encode(id),
+        account_id_to_human(&id),
+        Some("CY".to_string()),
+        WalletProtection::Encrypted {
+            passphrase: passphrase.to_string(),
+        },
+    )
+    .expect("wallet");
+    save_wallet_v3_new(&wallet_path, &wallet).expect("save wallet");
+
+    let err = resolve_master_seed(None, true, wallet_path.as_path(), false, false, None)
+        .expect_err("encrypted wallet needs passphrase");
+    assert!(err.contains("failed to decode wallet secrets"));
+    let got = resolve_master_seed(
+        None,
+        true,
+        wallet_path.as_path(),
+        false,
+        false,
+        Some(passphrase),
+    )
+    .expect("master from encrypted wallet");
+    assert_eq!(got, seed);
+    let _ = std::fs::remove_file(&wallet_path);
+}
+
+#[test]
+/// Missing explicit wallet fallback path returns actionable error.
+fn seed_resolve_wallet_miss() {
+    let wallet_path = std::env::temp_dir().join(format!(
+        "pwm_cli_seed_wallet_missing_{}.yaml",
+        rand::random::<u128>()
+    ));
+    let err = resolve_master_seed(None, true, wallet_path.as_path(), false, false, None)
+        .expect_err("missing wallet");
+    assert!(err.contains("requires existing --wallet-out file"));
+    let err = resolve_master_seed(None, false, wallet_path.as_path(), false, false, None)
+        .expect_err("no stateless fallback");
+    assert!(
+        err.contains("master seed is required") && err.contains("PWM_MASTER_SEED"),
+        "{err}"
+    );
+}
+
+#[test]
+/// Existing wallet rejects mismatched external master candidate.
+fn seed_resolve_wallet_conflict() {
+    let wallet_path = std::env::temp_dir().join(format!(
+        "pwm_cli_seed_wallet_conflict_{}.yaml",
+        rand::random::<u128>()
+    ));
+    let wallet_seed = [0x61u8; 32];
+    let (sk, pk, idx, id) =
+        pwm_core::hd::brute_cluster_address(&wallet_seed, 0x2C00, 500_000).expect("fixture hit");
+    let wallet = build_wallet_yaml(
+        wallet_seed,
+        sk.to_bytes(),
+        pk,
+        idx,
+        0x2C00,
+        0x03FF,
+        0,
+        0,
+        hex::encode(id),
+        account_id_to_human(&id),
+        Some("CY".to_string()),
+        WalletProtection::PlaintextDev,
+    )
+    .expect("wallet");
+    save_wallet_v3_new(&wallet_path, &wallet).expect("save wallet");
+    let cli_seed = "62".repeat(32);
+    let err = resolve_master_seed(
+        Some(cli_seed),
+        true,
+        wallet_path.as_path(),
+        false,
+        false,
+        None,
+    )
+    .expect_err("must reject conflicting master");
+    assert!(
+        err.contains("master seed conflict")
+            && err.contains("--master/PWM_MASTER_SEED/MASTER_SEED")
+            && err.contains("--wallet-out"),
+        "{err}"
+    );
+    let _ = std::fs::remove_file(&wallet_path);
+}
+
+#[test]
+/// Existing wallet accepts matching external master candidate.
+fn seed_resolve_wallet_match() {
+    let wallet_path = std::env::temp_dir().join(format!(
+        "pwm_cli_seed_wallet_match_{}.yaml",
+        rand::random::<u128>()
+    ));
+    let wallet_seed = [0x71u8; 32];
+    let (sk, pk, idx, id) =
+        pwm_core::hd::brute_cluster_address(&wallet_seed, 0x2C00, 500_000).expect("fixture hit");
+    let wallet = build_wallet_yaml(
+        wallet_seed,
+        sk.to_bytes(),
+        pk,
+        idx,
+        0x2C00,
+        0x03FF,
+        0,
+        0,
+        hex::encode(id),
+        account_id_to_human(&id),
+        Some("CY".to_string()),
+        WalletProtection::PlaintextDev,
+    )
+    .expect("wallet");
+    save_wallet_v3_new(&wallet_path, &wallet).expect("save wallet");
+    let got = resolve_master_seed(
+        Some("71".repeat(32)),
+        true,
+        wallet_path.as_path(),
+        false,
+        false,
+        None,
+    )
+    .expect("must accept matching master");
+    assert_eq!(got, wallet_seed);
+    let _ = std::fs::remove_file(&wallet_path);
+}
+
+#[test]
+/// Overwrite mode ignores wallet seed and takes external candidate.
+fn seed_resolve_overwrite_wins() {
+    let wallet_path = std::env::temp_dir().join(format!(
+        "pwm_cli_seed_overwrite_wins_{}.yaml",
+        rand::random::<u128>()
+    ));
+    let wallet_seed = [0x81u8; 32];
+    let (sk, pk, idx, id) =
+        pwm_core::hd::brute_cluster_address(&wallet_seed, 0x2C00, 500_000).expect("fixture hit");
+    let wallet = build_wallet_yaml(
+        wallet_seed,
+        sk.to_bytes(),
+        pk,
+        idx,
+        0x2C00,
+        0x03FF,
+        0,
+        0,
+        hex::encode(id),
+        account_id_to_human(&id),
+        Some("CY".to_string()),
+        WalletProtection::PlaintextDev,
+    )
+    .expect("wallet");
+    save_wallet_v3_new(&wallet_path, &wallet).expect("save wallet");
+    let got = resolve_master_seed(
+        Some("82".repeat(32)),
+        true,
+        wallet_path.as_path(),
+        true,
+        false,
+        None,
+    )
+    .expect("overwrite uses external seed");
+    assert_eq!(got, [0x82u8; 32]);
+    let _ = std::fs::remove_file(&wallet_path);
+}
+
+#[test]
 /// `is_rpc_unavailable_error` detects connect failures.
 fn rpc_err_detect_connect() {
     assert!(is_rpc_unavailable_error(
@@ -1381,9 +1658,11 @@ fn tx_burn_cli_ben_pretty() {
         Cmd::TxBurnMark {
             beneficiary: got,
             mark_amount,
+            purpose,
             ..
         } => {
             assert_eq!(mark_amount, 12);
+            assert!(purpose.is_none());
             assert_eq!(
                 parse_account_id(got.as_deref().unwrap()).unwrap(),
                 beneficiary_id
@@ -1433,8 +1712,11 @@ fn tx_burn_cli_ben_canon() {
     .expect("must parse tx-burn-mark with canonical beneficiary");
     match cli.cmd {
         Cmd::TxBurnMark {
-            beneficiary: got, ..
+            beneficiary: got,
+            purpose,
+            ..
         } => {
+            assert!(purpose.is_none());
             assert_eq!(
                 parse_account_id(got.as_deref().unwrap()).unwrap(),
                 [6u8; 32]
@@ -1442,6 +1724,127 @@ fn tx_burn_cli_ben_canon() {
         }
         _ => panic!("unexpected cmd"),
     }
+}
+
+#[test]
+fn tx_burn_cli_purpose_flag() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-burn-mark",
+        "--wallet",
+        "wallet.yaml",
+        "--mark-amount",
+        "3",
+        "--purpose",
+        "salted-email-proof-v1",
+    ])
+    .expect("parse");
+    match cli.cmd {
+        Cmd::TxBurnMark {
+            purpose,
+            mark_amount,
+            ..
+        } => {
+            assert_eq!(mark_amount, 3);
+            assert_eq!(purpose.as_deref(), Some("salted-email-proof-v1"));
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_claim_cli_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-claim",
+        "--wallet",
+        "wallet.yaml",
+        "--claim-mode",
+        "free",
+        "--claim-units",
+        "10",
+        "--anchor-ref",
+        "42",
+        "--fee",
+        "0",
+    ])
+    .expect("parse");
+    match cli.cmd {
+        Cmd::TxClaim {
+            claim_mode,
+            claim_units,
+            anchor_ref,
+            fee,
+            ..
+        } => {
+            assert_eq!(claim_mode, "free");
+            assert_eq!(claim_units, 10);
+            assert_eq!(anchor_ref, 42);
+            assert_eq!(fee, 0);
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_claim_cli_parse_paid() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-claim",
+        "--wallet",
+        "wallet.yaml",
+        "--claim-mode",
+        "paid",
+        "--claim-units",
+        "11",
+        "--anchor-ref",
+        "43",
+        "--fee",
+        "5",
+    ])
+    .expect("parse");
+    match cli.cmd {
+        Cmd::TxClaim {
+            claim_mode,
+            claim_units,
+            anchor_ref,
+            fee,
+            ..
+        } => {
+            assert_eq!(claim_mode, "paid");
+            assert_eq!(claim_units, 11);
+            assert_eq!(anchor_ref, 43);
+            assert_eq!(fee, 5);
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+// Invalid --claim-mode must return an error mentioning --claim-mode.
+fn tx_claim_mode_cli_err() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-claim",
+        "--wallet",
+        "wallet.yaml",
+        "--claim-mode",
+        "weird",
+        "--claim-units",
+        "10",
+        "--anchor-ref",
+        "42",
+        "--fee",
+        "0",
+    ])
+    .expect("parse");
+    let raw_mode = match cli.cmd {
+        Cmd::TxClaim { claim_mode, .. } => claim_mode,
+        _ => panic!("unexpected cmd"),
+    };
+    let err = crate::cmd_tx::parse_claim_mode_cli(&raw_mode).expect_err("must reject mode");
+    assert!(err.contains("--claim-mode"));
+    assert!(!err.contains("invalid --mode "));
 }
 
 #[test]
@@ -1791,18 +2194,18 @@ fn tx_imp_note_need_init() {
 }
 
 #[test]
-/// `parse_export_id_hex_arg` rejects non-hex input and wrong-length hex.
+/// `parse_export_hex` rejects non-hex input and wrong-length hex.
 fn parse_exp_id_hex_bad() {
-    let err = parse_export_id_hex_arg("xyz").expect_err("must reject malformed export id");
+    let err = parse_export_hex("xyz").expect_err("must reject malformed export id");
     assert!(err.contains("Invalid value for --export-id"));
-    let err_short = parse_export_id_hex_arg("aa").expect_err("must reject short export id");
+    let err_short = parse_export_hex("aa").expect_err("must reject short export id");
     assert!(err_short.contains("32-byte hex"));
 }
 
 #[test]
-/// `user_msg_roaming_intent_error` maps HTTP 409 duplicate intent.
+/// `roaming_intent_err` maps HTTP 409 duplicate intent.
 fn roam_err_map_dup() {
-    let msg = user_msg_roaming_intent_error(
+    let msg = roaming_intent_err(
         reqwest::StatusCode::CONFLICT,
         "duplicate roaming intent already exists",
     );
@@ -1810,10 +2213,9 @@ fn roam_err_map_dup() {
 }
 
 #[test]
-/// `user_msg_roaming_intent_error` maps HTTP 400 bodies.
+/// `roaming_intent_err` maps HTTP 400 bodies.
 fn roam_err_map_bad_req() {
-    let msg =
-        user_msg_roaming_intent_error(reqwest::StatusCode::BAD_REQUEST, "invalid target domain");
+    let msg = roaming_intent_err(reqwest::StatusCode::BAD_REQUEST, "invalid target domain");
     assert!(msg.contains("invalid"), "{msg}");
 }
 
@@ -1884,6 +2286,26 @@ fn tx_send_local_v1_tx() {
     );
     let client = reqwest::blocking::Client::new();
     post_signed_tx(&client, &rpc, &tx).expect("local tx send path must stay valid");
+}
+
+#[test]
+/// `post_signed_tx` surfaces InsufficientMarks from RPC JSON error body.
+fn tx_burn_err_insufficient_marks() {
+    let rpc = spawn_mock_http_server(vec![("POST /v1/tx HTTP/1.1", 400, "InsufficientMarks")]);
+    let sk = ed25519_dalek::SigningKey::from_bytes(&[31u8; 32]);
+    let tx = SignedTx::sign_body(
+        &sk,
+        0x2C00,
+        1,
+        9,
+        TxBody::BurnMark {
+            mark_amount: 99,
+            beneficiary: None,
+        },
+    );
+    let client = reqwest::blocking::Client::new();
+    let err = post_signed_tx(&client, &rpc, &tx).expect_err("burn must surface rejection");
+    assert!(err.contains("InsufficientMarks"), "{err}");
 }
 
 #[test]

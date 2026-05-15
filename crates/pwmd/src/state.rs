@@ -1,9 +1,13 @@
 //! Tokio-guarded node state: chain, mempool, roaming pool, handshake snapshot.
 
+use crate::handshake::{DeploymentProfile, SealRole};
 use crate::identity::RuntimeIdentity;
+use crate::lease::{LeaseBackendMode, LeaseCfg, LeaseRuntime, LeaseStats};
+use crate::lease_backend::LeaseBackend;
 use crate::ledger::CrossShardLedger;
 use crate::roaming::RoamingPool;
 use crate::transport::HandshakeState;
+use crate::ClusterCfg;
 use crate::TransportConfig;
 use pwm_core::tx::TxBody;
 use pwm_core::{Chain, Mpool, SignedTx};
@@ -21,7 +25,7 @@ pub struct App {
     pub(crate) data_file: Option<PathBuf>,
     /// Autosnapshot target (explicit CH or JSON beside `data_file`).
     pub(crate) autosnapshot_backend: Option<crate::snapshot::SnapshotBackend>,
-    pub(crate) shard: crate::identity::ShardId,
+    pub(crate) shard: crate::identity::DevLane,
     pub(crate) handshake: Arc<RwLock<HandshakeState>>,
     pub(crate) dev_profile: bool,
     /// When true, JsonFile epoch snapshots run full chain replay on load. Production default is false (trust checkpoint + tail) via `PwmdConfig`.
@@ -30,6 +34,30 @@ pub struct App {
     pub(crate) exit_on_fatal_snapshot: bool,
     /// Debug: advertise a fake genesis digest in transport `NodeHello` so honest peers reject handshakes.
     pub(crate) broke_trust_test: bool,
+    /// Test-only deterministic stop threshold used by automated wave harnesses.
+    pub(crate) debug_stop_height: Option<u64>,
+    /// Test/dev-only: align local seal attempts around second midpoint (`~500ms`) when enabled.
+    pub(crate) debug_align_mid: bool,
+    /// Test/dev-only periodic local sealing switch for follower-mode harnesses.
+    pub(crate) debug_disable_seal_loop: bool,
+    pub(crate) deployment_profile: DeploymentProfile,
+    pub(crate) seal_role: SealRole,
+    pub(crate) lease_cfg: LeaseCfg,
+    pub(crate) lease_mode: LeaseBackendMode,
+    pub(crate) lease_path: Option<PathBuf>,
+    pub(crate) lease_last_err: Arc<Mutex<Option<String>>>,
+    pub(crate) lease_backend: Arc<dyn LeaseBackend>,
+    pub(crate) lease_runtime: Arc<Mutex<LeaseRuntime>>,
+    pub(crate) lease_stats: Arc<LeaseStats>,
+    pub(crate) cluster_cfg: ClusterCfg,
+    pub(crate) validator_identity_hash: String,
+    pub(crate) node_instance_id: String,
+    /// Debug dump controls for persistent tip divergence diagnostics.
+    pub(crate) debug_dump: crate::config::DebugDumpCfg,
+    /// Process-local count of written debug dumps (bounded by `debug_dump.max_files`).
+    pub(crate) dump_count: Arc<AtomicU64>,
+    /// Last block height durably persisted into snapshot storage.
+    pub(crate) last_snapshot_height: Arc<AtomicU64>,
     pub(crate) identity: RuntimeIdentity,
     pub(crate) state_namespace: String,
     pub(crate) hello_nonce_ctr: Arc<AtomicU64>,
@@ -52,7 +80,10 @@ pub struct Inner {
 pub(crate) struct PeerAccountViewWire {
     pub(crate) id: pwm_core::AccountId,
     pub(crate) domain_hi: u8,
-    #[serde(deserialize_with = "crate::wire_serde::de_u128_compat")]
+    #[serde(
+        serialize_with = "crate::wire_serde::ser_u128_hex",
+        deserialize_with = "crate::wire_serde::de_u128_compat"
+    )]
     pub(crate) balance_pwm: u128,
     pub(crate) initialized: bool,
     pub(crate) nonce: u64,
@@ -69,10 +100,6 @@ pub(crate) struct PeerAccountView {
 }
 
 impl Inner {
-    pub(crate) fn normalize_marks_quota(&mut self) {
-        self.chain.st.normalize_marks_quota();
-    }
-
     pub(crate) fn push_flow(&mut self, row: FlowTraceRow) {
         const RECENT_FLOW_CAP: usize = 256;
         self.recent_flow.push_back(row);

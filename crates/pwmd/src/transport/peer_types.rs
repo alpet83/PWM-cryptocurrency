@@ -1,6 +1,7 @@
 //! Peer classification enums and handshake-visible peer roster records.
 
 use super::*;
+use crate::handshake::ClusterRole;
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -34,6 +35,9 @@ pub(crate) struct TrustedPeer {
     pub(crate) cluster_id: String,
     pub(crate) pubkey: [u8; 32],
     pub(crate) domain_hi: u8,
+    pub(crate) instance_id: Option<String>,
+    pub(crate) cluster_attest_enabled: bool,
+    pub(crate) cluster_role: ClusterRole,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -136,6 +140,7 @@ pub(crate) enum PeerCloseReason {
     WireTimeout,
     Eof,
     ProtocolError,
+    SyncTipDivergence,
     ExplicitShutdown,
 }
 
@@ -147,6 +152,7 @@ impl PeerCloseReason {
             Self::WireTimeout => "wire_timeout",
             Self::Eof => "eof",
             Self::ProtocolError => "protocol_error",
+            Self::SyncTipDivergence => "sync_tip_divergence",
             Self::ExplicitShutdown => "explicit_shutdown",
         }
     }
@@ -161,6 +167,7 @@ pub(crate) enum PeerReconnectReason {
     WireTimeout,
     Eof,
     ProtocolError,
+    SyncTipDivergence,
     ExplicitShutdown,
 }
 
@@ -174,6 +181,7 @@ impl PeerReconnectReason {
             Self::WireTimeout => "wire_timeout",
             Self::Eof => "eof",
             Self::ProtocolError => "protocol_error",
+            Self::SyncTipDivergence => "sync_tip_divergence",
             Self::ExplicitShutdown => "explicit_shutdown",
         }
     }

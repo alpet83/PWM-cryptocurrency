@@ -58,8 +58,14 @@ pub(crate) enum Cmd {
     /// Brute cluster address for `--domain` (hex u16).
     #[command(name = "addr-derive", visible_alias = "addr-der")]
     AddrDer {
-        #[arg(long)]
-        master: String,
+        #[arg(
+            long,
+            env = "PWM_MASTER_SEED",
+            num_args = 0..=1,
+            default_missing_value = "",
+            help = "32-byte master seed hex. With explicit existing --wallet-out, wallet seed is authoritative; external seed (--master/PWM_MASTER_SEED/MASTER_SEED) must match (or use --overwrite-wallet in addr-bruteforce)."
+        )]
+        master: Option<String>,
         #[arg(long)]
         domain: String,
         #[arg(long, default_value_t = 500_000)]
@@ -70,8 +76,14 @@ pub(crate) enum Cmd {
     /// Single-thread linear bruteforce by domain + flags mask with wallet save.
     #[command(name = "addr-bruteforce")]
     AddrBruteforce {
-        #[arg(long)]
-        master: String,
+        #[arg(
+            long,
+            env = "PWM_MASTER_SEED",
+            num_args = 0..=1,
+            default_missing_value = "",
+            help = "32-byte master seed hex. With explicit existing --wallet-out, wallet seed is authoritative; external seed (--master/PWM_MASTER_SEED/MASTER_SEED) must match unless --overwrite-wallet is used."
+        )]
+        master: Option<String>,
         #[arg(
             long,
             help = "Domain label from pwm_core::domain_index. Phase1 user profile accepts country labels only (e.g. CY, US)"
@@ -231,14 +243,62 @@ pub(crate) enum Cmd {
         domain: Option<String>,
         #[arg(
             long,
-            help = "Burn amount in marks_quota units. Tx is sent to current RPC target (`--rpc` / `PWM_RPC`)."
+            help = "Burn amount in marks units. Tx is sent to current RPC target (`--rpc` / `PWM_RPC`)."
         )]
-        mark_amount: u128,
+        mark_amount: u32,
         #[arg(
             long,
             help = "Optional beneficiary address. Accepted: pretty (pwm1-LABEL-f<flags8hex>-t<tail52hex>), canonical bech32DX (pwm1...), legacy hex, legacy PWMv0-hex. Keep `--rpc` / `PWM_RPC` pointed to the source-shard node for this signer."
         )]
         beneficiary: Option<String>,
+        #[arg(
+            long,
+            help = "Dedication text for the burn (v2, RFC 0011): trimmed UTF-8, 1..80 bytes, no C0/C1 controls. If omitted, a built-in default is used (stderr note). Supports placeholders: {utc_time} (DD-MM-YY HH:MM:SSZ), {utc_timestamp} (Unix seconds)."
+        )]
+        purpose: Option<String>,
+    },
+    /// POST signed ClaimTx (materialize matured marks, use --all to let node compute amount).
+    #[command(name = "tx-claim")]
+    TxClaim {
+        #[arg(
+            long,
+            help = "Wallet YAML path (primary signing source). Used unless --master override is provided.",
+            required_unless_present = "master"
+        )]
+        wallet: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Dev override for signing source. When set, signer is derived from master+domain instead of wallet.",
+            requires = "domain"
+        )]
+        master: Option<String>,
+        #[arg(
+            long,
+            help = "Sender domain for --master override (label/raw as before).",
+            requires = "master"
+        )]
+        domain: Option<String>,
+        #[arg(
+            long,
+            help = "Claim billing mode: `free` (fee must be 0) or `paid` (fee must be > 0)."
+        )]
+        claim_mode: String,
+        /// Claim units to materialise. Pass 0 or omit to use --all.
+        #[arg(long, default_value = "0")]
+        claim_units: u32,
+        /// Claim all currently matured marks (sends CLAIM_ALL sentinel to node).
+        #[arg(long, default_value_t = false)]
+        all: bool,
+        #[arg(
+            long,
+            help = "Anchor reference height (per chain rules / wallet integration)."
+        )]
+        anchor_ref: u64,
+        #[arg(
+            long,
+            help = "Fee in raw units (1 PWM = 1_000_000 raw). Must be 0 for mode=free."
+        )]
+        fee: u128,
     },
     /// POST signed EXPORT for inter-shard source flow.
     TxExport {

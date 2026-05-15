@@ -1,11 +1,58 @@
 //! Resolved daemon configuration: listen addr, genesis source, logging, transport.
 
 use crate::default_runtime_identity_neutral;
+use crate::handshake::{ClusterRole, DeploymentProfile, SealRole};
+use crate::lease::LeaseBackendMode;
 use crate::snapshot::SnapshotBackend;
+use crate::DevLane;
 use crate::RuntimeIdentity;
-use crate::ShardId;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+
+#[derive(Clone, Debug)]
+pub struct DebugDumpCfg {
+    pub on_divergence: bool,
+    pub dir: Option<PathBuf>,
+    pub max_files: u64,
+    pub trigger_streak: u8,
+}
+
+#[derive(Clone, Debug)]
+pub struct ClusterCfg {
+    pub enabled: bool,
+    pub role: ClusterRole,
+    pub members: Vec<String>,
+    pub quorum_k: u8,
+    pub quorum_n: u8,
+    pub tx_catchup_ms: u64,
+    pub attest_timeout_ms: u64,
+}
+
+impl Default for ClusterCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            role: ClusterRole::None,
+            members: Vec::new(),
+            // RFC16 §7: `k` counts distinct attester ACKs (proposer is excluded from `k`).
+            quorum_k: 1,
+            quorum_n: 2,
+            tx_catchup_ms: 500,
+            attest_timeout_ms: 1_000,
+        }
+    }
+}
+
+impl Default for DebugDumpCfg {
+    fn default() -> Self {
+        Self {
+            on_divergence: false,
+            dir: None,
+            max_files: 16,
+            trigger_streak: 2,
+        }
+    }
+}
 
 /// Where to load genesis + validator signing keys from.
 #[derive(Clone, Debug)]
@@ -28,7 +75,7 @@ impl Default for PersistSnapKind {
     }
 }
 
-/// Runtime options for `pwmd` (domain-first identity; internal `ShardId` for Phase1 guards).
+/// Runtime options for `pwmd` (domain-first identity; internal `DevLane` for Phase1 guards).
 #[derive(Clone, Debug)]
 pub struct PwmdConfig {
     pub listen: SocketAddr,
@@ -52,7 +99,35 @@ pub struct PwmdConfig {
     pub exit_on_fatal_snapshot: bool,
     /// Debug only: fake genesis digest in peer `NodeHello` (peers reject; use with `--transport-real`).
     pub broke_trust_test: bool,
-    pub shard: ShardId,
+    /// Test-only deterministic stop after reaching this canonical height.
+    pub debug_stop_height: Option<u64>,
+    /// Test/dev-only: deterministic seal timestamp (`base + height`) for hash-parity harnesses.
+    pub debug_det_seal_time: bool,
+    /// Test/dev-only: align local seal attempts around second midpoint (`~500ms`) to reduce drift.
+    pub debug_align_mid: bool,
+    /// Test/dev-only: disable periodic local seal-loop (follower-only apply via sync/catch-up).
+    pub debug_disable_seal_loop: bool,
+    /// Deployment runtime profile for same-validator guard policy.
+    pub deployment_profile: DeploymentProfile,
+    /// Optional explicit local seal role override (default derives from runtime mode).
+    pub seal_role_override: Option<SealRole>,
+    /// Single-sealer lease TTL in milliseconds.
+    pub seal_lease_ttl_ms: u64,
+    /// Single-sealer standby takeover wait after observed expiry (milliseconds).
+    pub seal_takeover_timeout_ms: u64,
+    /// Max tolerated local lag vs last active lease tip before takeover.
+    pub seal_takeover_tip_lag: u64,
+    /// External lease backend mode for single-sealer gate.
+    pub seal_lease_backend: LeaseBackendMode,
+    /// Directory for per-validator lease files when backend is `file`.
+    pub seal_lease_dir: PathBuf,
+    /// Debug dump controls for persistent tip divergence diagnostics.
+    pub debug_dump: DebugDumpCfg,
+    /// RFC16 cluster attestation profile (default off keeps legacy behavior).
+    pub cluster: ClusterCfg,
+    /// Stable `node_instance_id` for peer hello and RFC16 `cluster-members` (omit for pid+time default).
+    pub node_instance_id_override: Option<String>,
+    pub shard: DevLane,
     pub identity: RuntimeIdentity,
     pub transport: TransportConfig,
     pub logging: LoggingConfig,
@@ -229,7 +304,21 @@ impl Default for PwmdConfig {
             snapshot_verify_chain: false,
             exit_on_fatal_snapshot: true,
             broke_trust_test: false,
-            shard: ShardId::A,
+            debug_stop_height: None,
+            debug_det_seal_time: false,
+            debug_align_mid: false,
+            debug_disable_seal_loop: false,
+            deployment_profile: DeploymentProfile::SingleSealer,
+            seal_role_override: None,
+            seal_lease_ttl_ms: 10_000,
+            seal_takeover_timeout_ms: 8_000,
+            seal_takeover_tip_lag: 1,
+            seal_lease_backend: LeaseBackendMode::File,
+            seal_lease_dir: PathBuf::from("state/leases"),
+            debug_dump: DebugDumpCfg::default(),
+            cluster: ClusterCfg::default(),
+            node_instance_id_override: None,
+            shard: DevLane::Lane0,
             identity: default_runtime_identity_neutral(),
             transport: TransportConfig::default(),
             logging: LoggingConfig::default(),
@@ -238,6 +327,62 @@ impl Default for PwmdConfig {
 }
 
 impl PwmdConfig {
+    pub fn validate_cluster_cfg(&self) -> Result<(), String> {
+        let cfg = &self.cluster;
+        if !cfg.enabled {
+            return Ok(());
+        }
+        if matches!(cfg.role, ClusterRole::None) {
+            return Err("cluster enabled requires cluster_role proposer|attester".to_string());
+        }
+        if matches!(cfg.role, ClusterRole::Attester)
+            && matches!(self.seal_role_override, Some(SealRole::Active))
+        {
+            return Err(
+                "RFC16 §8: cluster_role=attester cannot be combined with --seal-role active"
+                    .to_string(),
+            );
+        }
+        if cfg.quorum_n < 2 {
+            return Err("cluster enabled requires quorum_n >= 2".to_string());
+        }
+        if cfg.quorum_n > 3 {
+            return Err("cluster enabled requires quorum_n <= 3".to_string());
+        }
+        if cfg.quorum_k < 1 || cfg.quorum_k > cfg.quorum_n.saturating_sub(1) {
+            return Err(format!(
+                "cluster enabled requires quorum_k in [1..=quorum_n-1] (RFC16 §7 attester-only k), got k={} n={}",
+                cfg.quorum_k, cfg.quorum_n
+            ));
+        }
+        if cfg.tx_catchup_ms == 0 || cfg.attest_timeout_ms == 0 {
+            return Err("cluster enabled requires positive cluster timeout values".to_string());
+        }
+        if cfg.tx_catchup_ms > cfg.attest_timeout_ms {
+            return Err(format!(
+                "cluster_tx_catchup_ms={} must be <= cluster_attest_timeout_ms={}",
+                cfg.tx_catchup_ms, cfg.attest_timeout_ms
+            ));
+        }
+        if cfg.members.len() != cfg.quorum_n as usize {
+            return Err(format!(
+                "cluster enabled requires members count == quorum_n, got members={} quorum_n={}",
+                cfg.members.len(),
+                cfg.quorum_n
+            ));
+        }
+        if cfg.members.iter().any(|v| v.trim().is_empty()) {
+            return Err("cluster members must be non-empty".to_string());
+        }
+        let mut uniq = std::collections::HashSet::with_capacity(cfg.members.len());
+        for member in &cfg.members {
+            if !uniq.insert(member.trim()) {
+                return Err(format!("duplicate cluster member id: {}", member.trim()));
+            }
+        }
+        Ok(())
+    }
+
     /// Cross-field checks for snapshot routing (genesis-independent).
     pub fn validate_persist_snap(&self) -> Result<(), String> {
         #[cfg(feature = "clickhouse-snapshot")]
@@ -364,7 +509,10 @@ impl PwmdConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{ConsoleColorMode, LogFileMode, LoggingConfig};
+    use super::{ClusterCfg, ConsoleColorMode, LogFileMode, LoggingConfig, PwmdConfig};
+    use crate::handshake::ClusterRole;
+    use crate::handshake::DeploymentProfile;
+    use crate::handshake::SealRole;
 
     #[test]
     fn parse_log_file_mode_values() {
@@ -421,5 +569,117 @@ mod tests {
             cfg.peer_file_template,
             "{date}/pwmd-peer-{node_id}-{time}.log"
         );
+    }
+
+    #[test]
+    fn det_seal_time_default_off() {
+        let cfg = PwmdConfig::default();
+        assert!(!cfg.debug_det_seal_time);
+    }
+
+    #[test]
+    fn disable_seal_loop_default_off() {
+        let cfg = PwmdConfig::default();
+        assert!(!cfg.debug_disable_seal_loop);
+    }
+
+    #[test]
+    fn profile_default_single_sealer() {
+        let cfg = PwmdConfig::default();
+        assert_eq!(cfg.deployment_profile, DeploymentProfile::SingleSealer);
+    }
+
+    #[test]
+    fn lease_backend_default_file() {
+        let cfg = PwmdConfig::default();
+        assert_eq!(cfg.seal_lease_backend, crate::lease::LeaseBackendMode::File);
+    }
+
+    #[test]
+    fn dump_on_div_default_off() {
+        let cfg = PwmdConfig::default();
+        assert!(!cfg.debug_dump.on_divergence);
+        assert_eq!(cfg.debug_dump.max_files, 16);
+        assert_eq!(cfg.debug_dump.trigger_streak, 2);
+    }
+
+    #[test]
+    fn cluster_default_off() {
+        let cfg = PwmdConfig::default();
+        assert!(!cfg.cluster.enabled);
+        assert_eq!(cfg.cluster.role, ClusterRole::None);
+    }
+
+    #[test]
+    fn cluster_cfg_rejects_bad_bounds() {
+        let mut cfg = PwmdConfig::default();
+        cfg.cluster = ClusterCfg {
+            enabled: true,
+            role: ClusterRole::Proposer,
+            members: vec![
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string(),
+                "d".to_string(),
+            ],
+            quorum_k: 3,
+            quorum_n: 4,
+            tx_catchup_ms: 200,
+            attest_timeout_ms: 300,
+        };
+        assert!(cfg.validate_cluster_cfg().is_err());
+    }
+
+    #[test]
+    fn cluster_cfg_accepts_2of2() {
+        let mut cfg = PwmdConfig::default();
+        cfg.cluster = ClusterCfg {
+            enabled: true,
+            role: ClusterRole::Attester,
+            members: vec!["node-a".to_string(), "node-b".to_string()],
+            quorum_k: 1,
+            quorum_n: 2,
+            tx_catchup_ms: 200,
+            attest_timeout_ms: 300,
+        };
+        assert!(cfg.validate_cluster_cfg().is_ok());
+    }
+
+    #[test]
+    fn cluster_cfg_accepts_2of3() {
+        let mut cfg = PwmdConfig::default();
+        cfg.cluster = ClusterCfg {
+            enabled: true,
+            role: ClusterRole::Attester,
+            members: vec![
+                "node-a".to_string(),
+                "node-b".to_string(),
+                "node-c".to_string(),
+            ],
+            quorum_k: 1,
+            quorum_n: 3,
+            tx_catchup_ms: 200,
+            attest_timeout_ms: 300,
+        };
+        assert!(cfg.validate_cluster_cfg().is_ok());
+    }
+
+    #[test]
+    fn cluster_attester_rejects_active_override() {
+        let mut cfg = PwmdConfig::default();
+        cfg.cluster = ClusterCfg {
+            enabled: true,
+            role: ClusterRole::Attester,
+            members: vec!["node-a".to_string(), "node-b".to_string()],
+            quorum_k: 1,
+            quorum_n: 2,
+            tx_catchup_ms: 200,
+            attest_timeout_ms: 300,
+        };
+        cfg.seal_role_override = Some(SealRole::Active);
+        let err = cfg
+            .validate_cluster_cfg()
+            .expect_err("active override must fail");
+        assert!(err.contains("RFC16 §8"), "unexpected err: {err}");
     }
 }

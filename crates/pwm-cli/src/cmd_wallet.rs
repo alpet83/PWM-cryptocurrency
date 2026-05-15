@@ -5,7 +5,7 @@ use crate::bruteforce::{
 };
 use crate::cli_config::resolve_wallet_out_path;
 use crate::cli_parse::master_seed;
-use crate::rpc_helpers::format_wallet_account_list_line;
+use crate::rpc_helpers::fmt_wallet_acct_line;
 use crate::wallet::{
     backup_wallet_file, build_wallet_yaml, load_wallet_yaml_upgrade, recover_wallet_file,
     save_wallet_v3_new, wallet_account_add, wallet_account_list, wallet_account_remove,
@@ -14,7 +14,7 @@ use crate::wallet::{
 use crate::wallet_shell::{
     derive_user_profile_hit, parse_domain_label_only, resolve_explicit_derivation_index,
     resolve_wallet_protection, validate_explicit_derivation_account, validate_user_profile_flags,
-    wallet_regulatory_label_for_hit, wallet_show_lines,
+    wallet_reg_label, wallet_show_lines,
 };
 use crate::{exit_user_error, WalletAccountCmd, WalletCmd};
 use pwm_core::domain_index::DomainCategory;
@@ -63,7 +63,7 @@ pub(crate) fn run_wallet_non_book(
             let (hit, country_label_for_wallet) = if let Some(index) = explicit_index {
                 let hit = derive_user_profile_hit(&seed, index);
                 validate_explicit_derivation_account(&hit).unwrap_or_else(|e| exit_user_error(&e));
-                let label = wallet_regulatory_label_for_hit(&hit).unwrap_or_else(|| {
+                let label = wallet_reg_label(&hit).unwrap_or_else(|| {
                     exit_user_error(
                         "derived domain has no display label after policy check (internal)",
                     )
@@ -182,7 +182,7 @@ pub(crate) fn run_wallet_non_book(
             let (hit, country_label_for_wallet) = if let Some(index) = explicit_index {
                 let hit = derive_user_profile_hit(&seed, index);
                 validate_explicit_derivation_account(&hit).unwrap_or_else(|e| exit_user_error(&e));
-                let label = wallet_regulatory_label_for_hit(&hit).unwrap_or_else(|| {
+                let label = wallet_reg_label(&hit).unwrap_or_else(|| {
                     exit_user_error(
                         "derived domain has no display label after policy check (internal)",
                     )
@@ -329,7 +329,7 @@ pub(crate) fn run_wallet_non_book(
                     exit_user_error(&format!("wallet account list failed: {e}"))
                 });
                 for account in accounts {
-                    println!("{}", format_wallet_account_list_line(&account));
+                    println!("{}", fmt_wallet_acct_line(&account));
                 }
             }
             WalletAccountCmd::Add {

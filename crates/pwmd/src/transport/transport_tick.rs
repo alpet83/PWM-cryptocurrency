@@ -73,7 +73,8 @@ fn rotate_seed_order(peer_seeds: &[SocketAddr], cursor: u64) -> (Vec<SocketAddr>
     (ordered, ((start + 1) % seed_count) as u64)
 }
 
-fn update_seed_peer_after_attempt(
+/// Updates the seed peer state after a dial/connect attempt.
+fn update_seed_peer(
     peer_state: &mut TransportPeerState,
     node_id: Option<String>,
     result: DialAttemptResult,
@@ -89,7 +90,8 @@ fn update_seed_peer_after_attempt(
     (peer_state.attempts, peer_state.last_node_id.clone())
 }
 
-pub(super) fn set_seed_peer_next_due(hs: &mut HandshakeState, seed_key: &str, next_due_ms: u64) {
+/// Sets the next-due timestamp for a seed peer retry.
+pub(super) fn set_seed_due(hs: &mut HandshakeState, seed_key: &str, next_due_ms: u64) {
     let peer_state = seed_peer_state_mut(hs, seed_key);
     peer_state.next_due_ms = next_due_ms;
 }
@@ -119,7 +121,7 @@ fn refresh_real_tick_state(hs: &mut HandshakeState, cfg: &TransportConfig, now_m
         hs.transport.snapshot.soak_health_last_tick = hs.transport.snapshot.ticks_total;
     }
     if hs.transport.snapshot.reconnect_runaway_guard_active
-        && now_ms >= hs.transport.reconnect_runaway_guard_until_ms
+        && now_ms >= hs.transport.reconnect_guard_until_ms
     {
         hs.transport.snapshot.reconnect_runaway_guard_active = false;
     }
@@ -219,18 +221,18 @@ fn apply_seed_attempt_result(
     class_key: &str,
     node_id: Option<String>,
 ) -> (bool, bool) {
-    const MAX_RETRY_ATTEMPTS_PER_SEED: u32 = 6;
+    const MAX_RETRY_PER_SEED: u32 = 6;
     let jitter_window = cfg.retry_base_ms.max(50) / 4;
     let jitter = deterministic_seed_jitter_ms(seed_key, now_ms, jitter_window);
     record_transport_attempt(&mut hs.transport.snapshot, class_key, result, now_ms);
     record_churn_attempt(&mut hs.churn, result);
     let (attempts_after, last_node_id) = {
         let peer_state = seed_peer_state_mut(hs, seed_key);
-        update_seed_peer_after_attempt(peer_state, node_id, result)
+        update_seed_peer(peer_state, node_id, result)
     };
     match result {
         DialAttemptResult::Success => {
-            set_seed_peer_next_due(
+            set_seed_due(
                 hs,
                 seed_key,
                 now_ms.saturating_add(cfg.retry_base_ms + jitter),
@@ -240,7 +242,7 @@ fn apply_seed_attempt_result(
         }
         DialAttemptResult::RetryableFail => {
             update_known_peer_status(hs, &last_node_id, &PeerStatus::Retrying, None);
-            if attempts_after >= MAX_RETRY_ATTEMPTS_PER_SEED {
+            if attempts_after >= MAX_RETRY_PER_SEED {
                 hs.churn.bounded_retry_cooldowns_total =
                     hs.churn.bounded_retry_cooldowns_total.saturating_add(1);
                 hs.churn.disconnected_total = hs.churn.disconnected_total.saturating_add(1);
@@ -249,7 +251,7 @@ fn apply_seed_attempt_result(
                     let peer_state = seed_peer_state_mut(hs, seed_key);
                     peer_state.attempts = 0;
                 }
-                set_seed_peer_next_due(
+                set_seed_due(
                     hs,
                     seed_key,
                     now_ms.saturating_add(cfg.retry_max_ms + jitter),
@@ -257,7 +259,7 @@ fn apply_seed_attempt_result(
             } else {
                 hs.churn.retrying_total = hs.churn.retrying_total.saturating_add(1);
                 let delay = retry_delay_ms(cfg.retry_base_ms, cfg.retry_max_ms, attempts_after);
-                set_seed_peer_next_due(hs, seed_key, now_ms.saturating_add(delay + jitter));
+                set_seed_due(hs, seed_key, now_ms.saturating_add(delay + jitter));
             }
             (true, false)
         }
@@ -278,7 +280,7 @@ fn finalize_real_tick(
         hs.transport.reconnect_runaway_streak = 0;
         hs.churn.reconnect_streak_current = 0;
         hs.transport.snapshot.reconnect_runaway_guard_active = true;
-        hs.transport.reconnect_runaway_guard_until_ms =
+        hs.transport.reconnect_guard_until_ms =
             now_ms.saturating_add(cfg.reconnect_runaway_cooldown_ms.max(cfg.retry_base_ms));
         warn!(
             target: "pwmd::peer",

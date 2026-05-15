@@ -155,9 +155,9 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
         genesis_mismatch_total,
         genesis_mismatch_expected_hash,
         genesis_mismatch_received_hash,
-        genesis_mismatch_peer_node_id,
+        genesis_mismatch_peer_id,
         genesis_mismatch_peer_hint,
-        genesis_mismatch_at_unix_ms,
+        genesis_mismatch_unix_ms,
     ) = {
         let hs = a.handshake.read().await;
         (
@@ -199,6 +199,44 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
     let genesis_guard_recovery_hint = (genesis_guard == "blocked").then_some(
         "Genesis mismatch detected: stop node, fix genesis bundle/hash alignment, then restart to re-verify before user tx.",
     );
+    let (
+        lease_state,
+        seal_gate_allowed,
+        lease_owner_id,
+        lease_term,
+        lease_expires_at_ms,
+        lease_last_tip,
+        lease_fence,
+        lease_last_reason,
+    ) = match a.lease_runtime.lock() {
+        Ok(v) => (
+            match v.state {
+                crate::lease::LeaseState::ActiveSealing => "active_sealing".to_string(),
+                crate::lease::LeaseState::StandbySyncing => "standby_syncing".to_string(),
+                crate::lease::LeaseState::SuspectActiveLost => "suspect_active_lost".to_string(),
+                crate::lease::LeaseState::FencedStandby => "fenced_standby".to_string(),
+            },
+            v.allow_seal,
+            v.owner_id.clone(),
+            v.term,
+            v.expires_at_ms,
+            v.last_tip,
+            v.fence,
+            v.last_reason.clone(),
+        ),
+        Err(_) => (
+            "fenced_standby".to_string(),
+            false,
+            "unknown".to_string(),
+            0,
+            0,
+            0,
+            0,
+            "lease_runtime_poisoned".to_string(),
+        ),
+    };
+    let lease_stats = a.lease_stats.snapshot();
+    let lease_last_backend_error = a.lease_last_err.lock().ok().and_then(|v| (*v).clone());
     Json(StatusOut {
         phase,
         ready,
@@ -245,11 +283,66 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
         genesis_mismatch_total,
         genesis_mismatch_expected_hash,
         genesis_mismatch_received_hash,
-        genesis_mismatch_peer_node_id,
+        genesis_mismatch_peer_id,
         genesis_mismatch_peer_hint,
-        genesis_mismatch_at_unix_ms,
+        genesis_mismatch_unix_ms,
         genesis_guard_recovery_hint,
         cluster_id: a.identity.cluster_id.clone(),
         node_id: a.identity.node_id.clone(),
+        deployment_profile: match a.deployment_profile {
+            crate::handshake::DeploymentProfile::SingleSealer => "single_sealer",
+            crate::handshake::DeploymentProfile::MultiSealerExperimental => {
+                "multi_sealer_experimental"
+            }
+        }
+        .to_string(),
+        seal_role: match a.seal_role {
+            crate::handshake::SealRole::Active => "active",
+            crate::handshake::SealRole::Standby => "standby",
+        }
+        .to_string(),
+        lease_backend_mode: match a.lease_mode {
+            crate::lease::LeaseBackendMode::File => "file",
+            crate::lease::LeaseBackendMode::ProcessLocal => "process_local",
+        }
+        .to_string(),
+        lease_backend_path: a.lease_path.as_ref().map(|v| v.display().to_string()),
+        lease_last_backend_error,
+        validator_identity_hash: a.validator_identity_hash.clone(),
+        node_instance_id: a.node_instance_id.clone(),
+        lease_state,
+        seal_gate_allowed,
+        lease_owner_id,
+        lease_term,
+        lease_expires_at_ms,
+        lease_last_tip,
+        lease_fence,
+        lease_last_reason,
+        lease_acquire_ok: lease_stats.acquire_ok,
+        lease_renew_ok: lease_stats.renew_ok,
+        lease_loss_total: lease_stats.loss_total,
+        lease_reject_total: lease_stats.reject_total,
+        lease_takeover_ok: lease_stats.takeover_ok,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::v1_status;
+    use axum::extract::State;
+
+    #[tokio::test]
+    async fn status_exposes_identity_signals() {
+        let mut app = crate::bootstrap::app_from_dev_net();
+        app.deployment_profile = crate::handshake::DeploymentProfile::SingleSealer;
+        app.seal_role = crate::handshake::SealRole::Standby;
+        app.validator_identity_hash = "vh-status".to_string();
+        app.node_instance_id = "inst-status".to_string();
+        let out = v1_status(State(app)).await.0;
+        assert_eq!(out.deployment_profile, "single_sealer");
+        assert_eq!(out.seal_role, "standby");
+        assert_eq!(out.lease_backend_mode, "process_local");
+        assert_eq!(out.validator_identity_hash, "vh-status");
+        assert_eq!(out.node_instance_id, "inst-status");
+    }
 }

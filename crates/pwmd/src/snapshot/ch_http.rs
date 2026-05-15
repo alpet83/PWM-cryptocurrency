@@ -62,7 +62,7 @@ pub struct SnapChCfg {
     pub json_fallback: Option<std::path::PathBuf>,
 }
 
-fn is_safe_snap_key_seg(s: &str) -> bool {
+fn is_safe_snap_seg(s: &str) -> bool {
     let max = 512usize;
     if s.is_empty() || s.len() > max {
         return false;
@@ -80,7 +80,7 @@ pub fn pwmd_snap_row_key(
     if let Some(raw) = override_ {
         let t = raw.trim();
         if !t.is_empty() {
-            return if is_safe_snap_key_seg(t) {
+            return if is_safe_snap_seg(t) {
                 Ok(t.to_string())
             } else {
                 Err(
@@ -91,18 +91,18 @@ pub fn pwmd_snap_row_key(
         }
     }
     let d = genesis_st0_digest_hex.trim();
-    if d.is_empty() || !is_safe_snap_key_seg(d) {
+    if d.is_empty() || !is_safe_snap_seg(d) {
         return Err("genesis digest hex for snapshot row key is empty or invalid".into());
     }
     let nid = id.network_id.as_str();
-    if !is_safe_snap_key_seg(nid) {
+    if !is_safe_snap_seg(nid) {
         return Err("identity fields contain disallowed chars for snapshot row key".into());
     }
     Ok(format!("{}|0x{:02x}|{}", nid, id.cluster_domain_hi, d))
 }
 
 /// Database identifier derived from `network_id` (ascii alnum + underscore).
-pub fn snap_ch_db_from_net_id(network_id: &str) -> String {
+pub fn snap_ch_db_net(network_id: &str) -> String {
     let t: String = network_id
         .trim()
         .chars()
@@ -115,11 +115,11 @@ pub fn snap_ch_db_from_net_id(network_id: &str) -> String {
     }
 }
 
-/// `clickhouse_database == ""` or default `pwm_snapshots` resolves to [`snap_ch_db_from_net_id`].
+/// `clickhouse_database == ""` or default `pwm_snapshots` resolves to [`snap_ch_db_net`].
 pub fn resolve_ch_database(clickhouse_database: &str, network_id: &str) -> Result<String, String> {
     let t = clickhouse_database.trim();
     if t.is_empty() || t == "pwm_snapshots" {
-        let d = snap_ch_db_from_net_id(network_id);
+        let d = snap_ch_db_net(network_id);
         snap_ch_sql_id(&d)?;
         return Ok(d);
     }
@@ -254,10 +254,10 @@ impl SnapChCfg {
             self.database.replace('`', ""),
             self.legacy_snapshot_table.replace('`', "")
         );
-        self.ch_post_json_each_row(&q, &(line + "\n"))
+        self.ch_post_json_row(&q, &(line + "\n"))
     }
 
-    fn ch_post_json_each_row(&self, insert_query: &str, body: &str) -> Result<(), String> {
+    fn ch_post_json_row(&self, insert_query: &str, body: &str) -> Result<(), String> {
         let mut api = Url::parse(&format!("{}/", self.http_base.trim_end_matches('/')))
             .map_err(|e| format!("snap ch url parse: {e}"))?;
         api.query_pairs_mut()
@@ -396,7 +396,7 @@ impl SnapChCfg {
             self.database.replace('`', ""),
             self.table_blocks.replace('`', "")
         );
-        self.ch_post_json_each_row(&q, &(line + "\n"))
+        self.ch_post_json_row(&q, &(line + "\n"))
     }
 
     fn ch_insert_checkpoint_row(
@@ -443,7 +443,7 @@ impl SnapChCfg {
             self.database.replace('`', ""),
             self.table_checkpoints.replace('`', "")
         );
-        self.ch_post_json_each_row(&q, &(line + "\n"))?;
+        self.ch_post_json_row(&q, &(line + "\n"))?;
         warn_validators_accept_deferred();
         Ok(())
     }
@@ -520,7 +520,7 @@ impl SnapChCfg {
         if !body.trim().is_empty() {
             t.branch = "blocks_table";
             let t_parse = Instant::now();
-            let out = self.ch_load_from_block_lines(gcfg, &body).map_err(|e| {
+            let out = self.ch_load_blk_lines(gcfg, &body).map_err(|e| {
                 warn!(
                     target: SNAP_STARTUP_TARGET,
                     stage = "ch_parse",
@@ -566,11 +566,7 @@ impl SnapChCfg {
         Ok((out, t))
     }
 
-    fn ch_load_from_block_lines(
-        &self,
-        gcfg: &GenCfg,
-        body: &str,
-    ) -> Result<Option<SnapshotData>, String> {
+    fn ch_load_blk_lines(&self, gcfg: &GenCfg, body: &str) -> Result<Option<SnapshotData>, String> {
         let mut blocks: Vec<Block> = Vec::new();
         for line in body.lines() {
             let t = line.trim();
@@ -635,12 +631,23 @@ fn replay_state_at(gcfg: &GenCfg, blocks: &[Block], up_to_h: u64) -> Result<Stat
             break;
         }
         for tx in &blk.txs {
-            st.apply_tx(tx)
+            st.apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts)
                 .map_err(|e| format!("replay checkpoint state at {up_to_h}: {e}"))?;
         }
-        st.accrue_marks(gcfg.marks_coeff);
         let prod_acct = gcfg.prod_acct(blk.hdr.prod_idx);
-        st.reward_producer(&prod_acct, gcfg.block_reward);
+        if gcfg.is_legacy_policy() {
+            st.accrue_marks(gcfg.marks_coeff);
+            st.reward_producer(&prod_acct, gcfg.block_reward);
+        } else {
+            let season_ppm = gcfg.season_ppm(blk.hdr.ts);
+            st.accrue_marks_v2(gcfg.marks_coeff, gcfg.marks_stake_min, season_ppm);
+            st.reward_producer_v2(
+                &prod_acct,
+                gcfg.block_reward,
+                gcfg.pwm_stake_min,
+                season_ppm,
+            );
+        }
     }
     Ok(st)
 }
@@ -648,8 +655,12 @@ fn replay_state_at(gcfg: &GenCfg, blocks: &[Block], up_to_h: u64) -> Result<Stat
 #[cfg(test)]
 mod tests {
     use super::{norm_ch_http_base, pwmd_snap_row_key};
-    use crate::identity::{RuntimeIdentity, RuntimeIdentityMode, ShardId};
+    use crate::identity::{DevLane, RuntimeIdentity, RuntimeIdentityMode};
 
+    #[cfg(all(test, feature = "clickhouse-snapshot"))]
+    use pwm_core::hd::domain_of_account_id;
+    #[cfg(all(test, feature = "clickhouse-snapshot"))]
+    use pwm_core::tx::{SignedTx, TxBody};
     #[cfg(all(test, feature = "clickhouse-snapshot"))]
     use url::Url;
 
@@ -702,13 +713,13 @@ mod tests {
     }
 
     #[test]
-    fn row_key_default_alias_node_ok() {
+    fn row_key_explicit_node_ok() {
         let id = RuntimeIdentity {
             network_id: "devnet".into(),
             cluster_domain_hi: 0x10,
-            cluster_id: "compat-shard-a".into(),
-            node_id: "compat-node-a".into(),
-            mode: RuntimeIdentityMode::Alias { shard: ShardId::A },
+            cluster_id: "dev-cluster-0x10".into(),
+            node_id: "dev-node-0x10".into(),
+            mode: RuntimeIdentityMode::Explicit,
         };
         let k = pwmd_snap_row_key(None, "deadbeef", &id).unwrap();
         assert!(k.ends_with("deadbeef"));
@@ -737,6 +748,26 @@ mod tests {
     fn shard_bal_json_empty() {
         let st = pwm_core::State::default();
         assert_eq!(super::encode_shard_balance_json(&st).unwrap(), "{}");
+    }
+
+    #[cfg(feature = "clickhouse-snapshot")]
+    #[test]
+    fn replay_state_uses_blk_ctx() {
+        let (cfg, sks) = pwm_core::dev_net();
+        let mut chain = pwm_core::Chain::boot(cfg.clone(), sks.clone());
+        let signer = cfg.accounts[0].acct;
+        let tx = SignedTx::sign_body(
+            &sks[0],
+            domain_of_account_id(&signer),
+            cfg.accounts[0].der_idx,
+            0,
+            TxBody::Stake { amount: 1 },
+        );
+        chain.seal(vec![tx]).expect("seal");
+        let blocks = chain.blocks.iter().cloned().collect::<Vec<_>>();
+        let st = super::replay_state_at(&cfg, &blocks, 1).expect("replay");
+        let acc = st.get(&signer).expect("signer account");
+        assert_eq!(acc.last_stake_change_height, 1);
     }
 
     /// No-op unless `PWM_CLICKHOUSE_TEST_URL` is set (`clickhouse-snapshot` only).

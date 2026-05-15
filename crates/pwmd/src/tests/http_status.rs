@@ -47,28 +47,28 @@ fn resolve_id_partial_explicit() {
         cluster_id: Some("cluster-a".to_string()),
         node_id: Some("node-a".to_string()),
     };
-    let err = resolve_runtime_identity(ShardId::A, input).unwrap_err();
+    let err = resolve_runtime_identity(DevLane::Lane0, input).unwrap_err();
     assert!(err.contains("partial identity configuration is not allowed"));
     assert!(err.contains("cluster_domain_hi"));
 }
 
-/// Default RuntimeIdentity resolves compat shard aliases plus Alias { shard } mode tagging.
+/// Default RuntimeIdentity resolves to explicit domain-first dev-lane presets.
 #[test]
-fn resolve_id_shard_alias_ok() {
-    let a = resolve_runtime_identity(ShardId::A, RuntimeIdentityInput::default()).unwrap();
+fn resolve_dev_lane_defaults_ok() {
+    let a = resolve_runtime_identity(DevLane::Lane0, RuntimeIdentityInput::default()).unwrap();
     assert_eq!(a.network_id, "devnet");
     assert_eq!(a.cluster_domain_hi, 0x10);
-    assert_eq!(a.cluster_id, "compat-shard-a");
-    assert_eq!(a.node_id, "compat-node-a");
-    assert_eq!(a.mode, RuntimeIdentityMode::Alias { shard: ShardId::A });
-    assert!(!a.mode.is_shard_enforced());
+    assert_eq!(a.cluster_id, "dev-cluster-0x10");
+    assert_eq!(a.node_id, "dev-node-0x10");
+    assert_eq!(a.mode, RuntimeIdentityMode::Explicit);
+    assert!(a.mode.is_shard_enforced());
 
-    let b = resolve_runtime_identity(ShardId::B, RuntimeIdentityInput::default()).unwrap();
+    let b = resolve_runtime_identity(DevLane::Lane1, RuntimeIdentityInput::default()).unwrap();
     assert_eq!(b.cluster_domain_hi, 0x20);
-    assert_eq!(b.cluster_id, "compat-shard-b");
-    assert_eq!(b.node_id, "compat-node-b");
-    assert_eq!(b.mode, RuntimeIdentityMode::Alias { shard: ShardId::B });
-    assert!(!b.mode.is_shard_enforced());
+    assert_eq!(b.cluster_id, "dev-cluster-0x20");
+    assert_eq!(b.node_id, "dev-node-0x20");
+    assert_eq!(b.mode, RuntimeIdentityMode::Explicit);
+    assert!(b.mode.is_shard_enforced());
 }
 
 /// Neutral runtime identities map to relay-neutral node metadata and neutral storage namespaces.
@@ -95,7 +95,7 @@ fn neutral_listen_tag_ok() {
 #[test]
 fn resolve_id_explicit_enforced() {
     let identity = resolve_runtime_identity(
-        ShardId::A,
+        DevLane::Lane0,
         RuntimeIdentityInput {
             network_id: Some("devnet".to_string()),
             cluster_domain_hi: Some(0x10),
@@ -108,14 +108,14 @@ fn resolve_id_explicit_enforced() {
     assert!(identity.mode.is_shard_enforced());
 }
 
-/// storage_namespace maps alias shards to shard-* namespaces and explicit domains to domain-hi-* keys.
+/// storage_namespace maps both explicit presets and explicit inputs to domain-hi-* keys.
 #[test]
-fn storage_ns_shard_domain_ok() {
-    let alias = resolve_runtime_identity(ShardId::A, RuntimeIdentityInput::default()).unwrap();
-    assert_eq!(storage_namespace(&alias), "shard-a");
+fn storage_ns_domain_ok() {
+    let lane0 = resolve_runtime_identity(DevLane::Lane0, RuntimeIdentityInput::default()).unwrap();
+    assert_eq!(storage_namespace(&lane0), "domain-hi-0x10");
 
     let explicit = resolve_runtime_identity(
-        ShardId::B,
+        DevLane::Lane1,
         RuntimeIdentityInput {
             network_id: Some("devnet".to_string()),
             cluster_domain_hi: Some(0x20),
@@ -127,10 +127,10 @@ fn storage_ns_shard_domain_ok() {
     assert_eq!(storage_namespace(&explicit), "domain-hi-0x20");
 }
 
-/// /v1/status reports compat shard-a namespace identifiers for alias-mode bootstraps.
+/// /v1/status reports explicit dev-lane namespace identifiers for default bootstraps.
 #[tokio::test]
-async fn v1_stat_alias_shard_ns() {
-    let svc = router_dev(app_from_dev_net_shard(ShardId::A)).into_service();
+async fn v1_stat_default_lane_ns() {
+    let svc = router_dev(app_from_devnet(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
         .await
@@ -138,8 +138,11 @@ async fn v1_stat_alias_shard_ns() {
     assert_eq!(res.status(), StatusCode::OK);
     let bytes = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(v["state_namespace"], "shard-a");
-    assert_eq!(v["shard"], "A");
+    assert_eq!(v["state_namespace"], "domain-hi-0x10");
+    let expected = pwm_core::domain_index::lookup_regulatory_by_hi(0x10)
+        .map(|entry| entry.label)
+        .unwrap_or("0x10");
+    assert_eq!(v["shard"], expected);
     assert_eq!(v["cluster_domain_hi"], 0x10);
     assert_eq!(v["bridge_exported_registry_size"], 0);
     assert_eq!(v["bridge_imported_set_size"], 0);
@@ -154,7 +157,7 @@ async fn v1_stat_alias_shard_ns() {
 /// /v1/status cross_shard_summary reflects CrossShardLedger handoff bookkeeping fields.
 #[tokio::test]
 async fn v1_stat_cross_shard_sum() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     {
         let mut g = app.inner.write().await;
         let source = fake_account_id_with_domain(0x1001);
@@ -179,12 +182,12 @@ async fn v1_stat_cross_shard_sum() {
     assert_eq!(v["cross_shard_summary"]["pending_count"], 1);
 }
 
-/// Neutral-runtime apps publish neutral shards/namespaces even when ShardId defaults to dev A.
+/// Neutral-runtime apps publish neutral shards/namespaces even when DevLane defaults to dev A.
 #[tokio::test]
 async fn v1_stat_neutral_relay() {
     let (cfg, sks) = dev_net();
     let identity = default_runtime_identity_neutral();
-    let app = crate::bootstrap::app_from_chain_boot(cfg, sks, None, ShardId::A, Some(identity));
+    let app = crate::bootstrap::app_from_chain_boot(cfg, sks, None, DevLane::Lane0, Some(identity));
     let svc = router_dev(app.clone()).into_service();
     let res = svc
         .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
@@ -200,7 +203,7 @@ async fn v1_stat_neutral_relay() {
 /// Explicit cluster_domain_hi shards surface domain-hi storage namespaces alongside /v1/head.
 #[tokio::test]
 async fn v1_stat_expl_domain_ns() {
-    let svc = router_dev(mk_app_explicit_shard(ShardId::B)).into_service();
+    let svc = router_dev(mk_app_explicit_shard(DevLane::Lane1)).into_service();
     let status = svc
         .clone()
         .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
@@ -225,7 +228,7 @@ async fn v1_stat_expl_domain_ns() {
 /// /v1/status advertises split balance semantics for local vs authoritative home balances.
 #[tokio::test]
 async fn v1_stat_bal_sem_contract() {
-    let svc = router_dev(app_from_dev_net_shard(ShardId::A)).into_service();
+    let svc = router_dev(app_from_devnet(DevLane::Lane0)).into_service();
     let res = svc
         .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
         .await
@@ -242,7 +245,7 @@ async fn v1_stat_bal_sem_contract() {
 /// /v1/account labels foreign-domain accounts as local_view_only with zero spendable_pwm.
 #[tokio::test]
 async fn v1_acct_foreign_view_only() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let foreign_id = fake_account_id_with_domain(0x2001);
     let local_id = fake_account_id_with_domain(0x1001);
     {
@@ -308,7 +311,7 @@ async fn v1_acct_foreign_view_only() {
 /// /v1/accounts preserves the same split semantics for inserted local vs foreign-domain accounts.
 #[tokio::test]
 async fn v1_accts_foreign_split_ls() {
-    let app = app_from_dev_net_shard(ShardId::A);
+    let app = app_from_devnet(DevLane::Lane0);
     let foreign_id = fake_account_id_with_domain(0x2001);
     let local_id = fake_account_id_with_domain(0x1001);
     {
@@ -525,26 +528,45 @@ async fn v1_stat_deg_snap_err() {
 /// Concurrent snapshot persistence alongside /v1/status and signed /v1/tx callers must not deadlock.
 #[tokio::test]
 async fn v1_stat_snap_tx_nl() {
-    let seed = [99u8; 32];
-    let sk0_bytes = derive_ed25519_private_key(&seed, &[0, 0]);
-    let sk1_bytes = derive_ed25519_private_key(&seed, &[0, 1]);
-    let sk0 = SigningKey::from_bytes(&sk0_bytes);
-    let sk1 = SigningKey::from_bytes(&sk1_bytes);
-    let aid0 = account_id_from_parts(&sk0.verifying_key().to_bytes(), 0);
-    let aid1 = account_id_from_parts(&sk1.verifying_key().to_bytes(), 1);
+    let mut app = app_for_devnet_sender(DevLane::Lane0);
+    let (sk0, i0, aid0) = routable_user_sk_for_app([99u8; 32], &app);
+    let (sk1, i1, aid1) = routable_user_sk_for_app([100u8; 32], &app);
     let dom0 = domain_of_account_id(&aid0);
     let dom1 = domain_of_account_id(&aid1);
-
-    let mut app = app_from_dev_net();
     {
         let mut g = app.inner.write().await;
-        let init_peer = SignedTx::sign_body(&sk1, dom1, 1, 0, TxBody::Init { index: 1, flags: 0 });
+        if !g.chain.st.accounts.contains_key(&aid0) {
+            let init_sender = SignedTx::sign_body(
+                &sk0,
+                dom0,
+                i0,
+                0,
+                TxBody::Init {
+                    index: i0,
+                    flags: 0,
+                },
+            );
+            g.chain
+                .st
+                .apply_tx(&init_sender)
+                .expect("init sender account");
+        }
+        let init_peer = SignedTx::sign_body(
+            &sk1,
+            dom1,
+            i1,
+            0,
+            TxBody::Init {
+                index: i1,
+                flags: 0,
+            },
+        );
         g.chain.st.apply_tx(&init_peer).expect("init peer account");
     }
     let tx = SignedTx::sign_body(
         &sk0,
         dom0,
-        0,
+        i0,
         0,
         TxBody::Transfer {
             to: aid1,
@@ -588,10 +610,7 @@ async fn v1_tx_rejects_domain_mismatch() {
     let d_ok = domain_of_account_id(&aid);
     let d_bad = if d_ok == u16::MAX { 0 } else { d_ok + 1 };
     let tx = SignedTx::sign_body(&sk, d_bad, i, 0, TxBody::Init { index: 0, flags: 0 });
-    let svc = router_dev(app_from_dev_net_shard(
-        shard_for_phase1_account(&aid).expect("routable"),
-    ))
-    .into_service();
+    let svc = router_dev(app_for_sender(&aid)).into_service();
     let res = svc
         .oneshot(
             Request::post("/v1/tx")
@@ -606,21 +625,40 @@ async fn v1_tx_rejects_domain_mismatch() {
 
 /// Underfunded transfer must not enter the mempool (conflict), avoiding seal-loop spam on the node.
 #[tokio::test]
-async fn v1_tx_rejects_underfunded_transfer_mempool() {
-    let seed = [99u8; 32];
-    let sk0_bytes = derive_ed25519_private_key(&seed, &[0, 0]);
-    let sk1_bytes = derive_ed25519_private_key(&seed, &[0, 1]);
-    let sk0 = SigningKey::from_bytes(&sk0_bytes);
-    let sk1 = SigningKey::from_bytes(&sk1_bytes);
-    let aid0 = account_id_from_parts(&sk0.verifying_key().to_bytes(), 0);
-    let aid1 = account_id_from_parts(&sk1.verifying_key().to_bytes(), 1);
+async fn v1_tx_underfunded_xfer_mempool() {
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let (sk0, i0, aid0) = routable_user_sk_for_app([99u8; 32], &app);
+    let (sk1, i1, aid1) = routable_user_sk_for_app([100u8; 32], &app);
     let dom0 = domain_of_account_id(&aid0);
     let dom1 = domain_of_account_id(&aid1);
-
-    let app = app_from_dev_net();
     {
         let mut g = app.inner.write().await;
-        let init_peer = SignedTx::sign_body(&sk1, dom1, 1, 0, TxBody::Init { index: 1, flags: 0 });
+        if !g.chain.st.accounts.contains_key(&aid0) {
+            let init_sender = SignedTx::sign_body(
+                &sk0,
+                dom0,
+                i0,
+                0,
+                TxBody::Init {
+                    index: i0,
+                    flags: 0,
+                },
+            );
+            g.chain
+                .st
+                .apply_tx(&init_sender)
+                .expect("init sender account");
+        }
+        let init_peer = SignedTx::sign_body(
+            &sk1,
+            dom1,
+            i1,
+            0,
+            TxBody::Init {
+                index: i1,
+                flags: 0,
+            },
+        );
         g.chain.st.apply_tx(&init_peer).expect("init peer account");
         g.chain
             .st
@@ -632,7 +670,7 @@ async fn v1_tx_rejects_underfunded_transfer_mempool() {
     let tx = SignedTx::sign_body(
         &sk0,
         dom0,
-        0,
+        i0,
         0,
         TxBody::Transfer {
             to: aid1,
@@ -654,10 +692,221 @@ async fn v1_tx_rejects_underfunded_transfer_mempool() {
     let body = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
     let text = String::from_utf8_lossy(&body);
     assert!(
-        text.to_ascii_lowercase().contains("insufficient")
-            || text.contains("insufficient balance"),
+        text.to_ascii_lowercase().contains("insufficient") || text.contains("insufficient balance"),
         "expected insufficient-balance hint, got: {text}"
     );
     let g = app.inner.read().await;
     assert_eq!(g.pool.len(), 0, "mempool must stay empty");
+}
+
+async fn assert_preflight_apply_parity(
+    app: &App,
+    tx: SignedTx,
+    expected_status: StatusCode,
+    expected_code: &str,
+    expected_class: &str,
+    expected_tx_kind: &str,
+) {
+    let svc = router_dev(app.clone()).into_service();
+    let res = svc
+        .oneshot(
+            Request::post("/v1/tx")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&tx).expect("serialize tx")))
+                .unwrap(),
+        )
+        .await
+        .expect("tx request");
+    assert_eq!(res.status(), expected_status);
+    let body = to_bytes(res.into_body(), 64 * 1024)
+        .await
+        .expect("reject body");
+    let preflight: serde_json::Value =
+        serde_json::from_slice(&body).expect("preflight reject json");
+    assert_eq!(preflight["ok"], false);
+    assert_eq!(preflight["phase"], "preflight");
+    assert_eq!(preflight["tx_kind"], expected_tx_kind);
+    assert_eq!(preflight["response_class"], expected_class);
+    assert_eq!(preflight["error"]["code"], expected_code);
+    let preflight_trace_id = preflight["error"]["trace_id"]
+        .as_str()
+        .expect("trace_id")
+        .to_string();
+    assert!(
+        !preflight_trace_id.is_empty(),
+        "trace_id must be present in preflight reject"
+    );
+
+    let apply_err = {
+        let g = app.inner.read().await;
+        let (next_h, next_ts) = g.chain.next_apply_ctx().expect("apply ctx");
+        g.chain
+            .st
+            .clone()
+            .apply_tx_with_ctx(&tx, next_h, next_ts)
+            .expect_err("tx must reject on apply")
+    };
+    let apply_json = crate::api::common::tx_reject_json(
+        &tx,
+        "apply",
+        &apply_err,
+        format!("tx apply rejected: {apply_err}"),
+    );
+    let apply: serde_json::Value = serde_json::from_str(&apply_json).expect("apply reject json");
+    assert_eq!(apply["phase"], "apply");
+    assert_eq!(apply["tx_kind"], expected_tx_kind);
+    assert_eq!(apply["error"]["code"], expected_code);
+    assert_eq!(apply["response_class"], expected_class);
+    let apply_trace_id = apply["error"]["trace_id"].as_str().expect("apply trace_id");
+    assert_eq!(preflight_trace_id, apply_trace_id);
+}
+
+/// Burn purpose invalid keeps stable wire fields and preflight/apply parity.
+#[tokio::test]
+async fn v1_tx_burn_purpose_bad() {
+    let (cfg, sks) = dev_net();
+    let sk = &sks[0];
+    let sender = cfg.accounts[0].acct;
+    let sender_dom = domain_of_account_id(&sender);
+    let mut tx = SignedTx::sign_body(
+        sk,
+        sender_dom,
+        0,
+        0,
+        TxBody::BurnMark {
+            mark_amount: 1,
+            beneficiary: None,
+        },
+    );
+    tx.set_burn_purpose_signed(sk, "   ".to_string());
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    assert_preflight_apply_parity(
+        &app,
+        tx,
+        StatusCode::BAD_REQUEST,
+        "E_BURN_SCHEMA_INVALID",
+        "VALIDATION_ERROR",
+        "burn",
+    )
+    .await;
+}
+
+/// Burn toward a foreign-domain beneficiary is accepted (V2-7 cross-domain burn policy).
+#[tokio::test]
+async fn v1_burn_cross_domain_ok() {
+    let (cfg, sks) = dev_net();
+    let sk = &sks[0];
+    let sender = cfg.accounts[0].acct;
+    let sender_dom = domain_of_account_id(&sender);
+    let ben = fake_account_id_with_domain(0x2001);
+    assert_ne!(
+        sender_dom.to_be_bytes()[0],
+        domain_of_account_id(&ben).to_be_bytes()[0],
+        "fixture must cross domain-hi boundary"
+    );
+    let tx = SignedTx::sign_body(
+        sk,
+        sender_dom,
+        0,
+        0,
+        TxBody::BurnMark {
+            mark_amount: 1,
+            beneficiary: Some(ben),
+        },
+    );
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let svc = router_dev(app).into_service();
+    let res = svc
+        .oneshot(
+            Request::post("/v1/tx")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&tx).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+}
+
+/// Free claim daily limit keeps stable `E_*` code/class parity between preflight and apply.
+#[tokio::test]
+async fn v1_tx_claim_daily_limit() {
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let (cfg, sks) = dev_net();
+    let sk = &sks[0];
+    let sender = cfg.accounts[0].acct;
+    let sender_dom = domain_of_account_id(&sender);
+    {
+        let mut g = app.inner.write().await;
+        let (_, next_ts) = g.chain.next_apply_ctx().expect("apply ctx");
+        let utc_day = next_ts / 86_400;
+        let acc = g
+            .chain
+            .st
+            .accounts
+            .get_mut(&sender)
+            .expect("sender account");
+        // 10 whole PWM → 10 marks/h matured; enough for claim_units=1 to pass amount check
+        acc.staked = 10 * pwm_core::display::PWM_RAW_SCALE;
+        acc.last_claim_unix_time = next_ts.saturating_sub(7_200);
+        acc.last_claim_anchor_ref = 0;
+        acc.last_stake_change_height = 0;
+        acc.free_claim_utc_day = Some(utc_day);
+    }
+    let tx = SignedTx::sign_body(
+        sk,
+        sender_dom,
+        0,
+        0,
+        TxBody::Claim {
+            mode: pwm_core::tx::ClaimMode::Free,
+            claim_units: 1,
+            anchor_ref: 0,
+            fee: 0,
+        },
+    );
+    assert_preflight_apply_parity(
+        &app,
+        tx,
+        StatusCode::BAD_REQUEST,
+        "E_FREE_CLAIM_DAILY_LIMIT",
+        "POLICY_REJECT",
+        "claim",
+    )
+    .await;
+}
+
+/// Import fee too low keeps policy reject parity and stable wire fields on submit.
+#[tokio::test]
+async fn v1_tx_import_fee_low() {
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let (import_sk, import_i, import_aid, export_id, import_provenance) =
+        seed_handoff_provenance_for_import(&app, 11).await;
+    let import_dom = domain_of_account_id(&import_aid);
+    let nonce = {
+        let g = app.inner.read().await;
+        g.chain.st.get(&import_aid).expect("import account").nonce
+    };
+    let mut tx = SignedTx::sign_body(
+        &import_sk,
+        import_dom,
+        import_i,
+        nonce,
+        TxBody::Import {
+            to: import_aid,
+            amount: 11,
+            export_id,
+        },
+    );
+    tx.set_import_provenance_signed(&import_sk, Some(import_provenance));
+    tx.set_import_fee_signed(&import_sk, pwm_core::tx::MIN_IMPORT_FEE_UNITS - 1);
+    assert_preflight_apply_parity(
+        &app,
+        tx,
+        StatusCode::BAD_REQUEST,
+        "E_IMPORT_FEE_TOO_LOW",
+        "POLICY_REJECT",
+        "import",
+    )
+    .await;
 }

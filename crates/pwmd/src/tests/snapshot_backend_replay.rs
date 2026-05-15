@@ -12,7 +12,7 @@ use crate::snapshot::{SnapshotBackend, SnapshotLoadOpts};
 
 #[test]
 fn snap_ch_wire_jsonfile_mock() {
-    let (cfg, json_txt) = crate::snap_bench_hlp::mk_dev_cfg_and_json();
+    let (cfg, json_txt) = crate::snap_bench_hlp::mk_dev_cfg_json();
     let p = temp_path("snap_replay_jsonfile");
     std::fs::write(&p, json_txt.as_bytes()).expect("write snap");
 

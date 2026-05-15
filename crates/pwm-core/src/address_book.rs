@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::domain_index::{self, DomainCategory};
 use crate::hd::domain_of_account_id;
 use crate::types::{
-    account_id_to_bech32dx, format_domain_for_display, parse_account_id_for_migration, AccountId,
+    account_id_to_bech32dx, format_domain_for_display, parse_acct_id_mig, AccountId,
 };
 
 /// One row in wallet `address_book`. Legacy wallets use a bare string; optional UI label uses a map.
@@ -38,7 +38,7 @@ impl AddressBookEntry {
     }
 
     pub fn account_id(&self) -> Result<AccountId, String> {
-        parse_account_id_for_migration(self.address_str().trim()).map_err(|e| e.to_string())
+        parse_acct_id_mig(self.address_str().trim()).map_err(|e| e.to_string())
     }
 }
 
@@ -103,23 +103,24 @@ pub fn address_book_contains(entries: &[AddressBookEntry], to: &AccountId) -> bo
 
 fn yaml_item_account_id(item: &Value) -> Option<AccountId> {
     match item {
-        Value::String(s) => parse_account_id_for_migration(s.trim()).ok(),
+        Value::String(s) => parse_acct_id_mig(s.trim()).ok(),
         Value::Mapping(map) => map
             .get(&Value::String("address".into()))
             .and_then(|v| v.as_str())
-            .and_then(|s| parse_account_id_for_migration(s.trim()).ok()),
+            .and_then(|s| parse_acct_id_mig(s.trim()).ok()),
         _ => None,
     }
 }
 
 /// Append one entry to `address_book` in a wallet YAML file without re-serializing the whole struct
 /// (keeps encrypted/plaintext fields intact). Stores canonical bech32dx only.
-pub fn append_wallet_yaml_address_book(
+/// Appends an entry to the wallet YAML address book section.
+pub fn append_addr_book(
     path: &Path,
     address_input: &str,
     label: Option<&str>,
 ) -> Result<(), String> {
-    let id = parse_account_id_for_migration(address_input.trim()).map_err(|e| e.to_string())?;
+    let id = parse_acct_id_mig(address_input.trim()).map_err(|e| e.to_string())?;
     validate_recipient_address_policy(&id)?;
     let canonical = account_id_to_bech32dx(&id);
 
@@ -201,8 +202,7 @@ mod tests {
             .expect("brute for dup test");
         let hex_id = hex::encode(id);
         std::fs::write(&path, format!("address_book:\n  - \"{hex_id}\"\n")).unwrap();
-        let err =
-            append_wallet_yaml_address_book(&path, hex_id.as_str(), None).expect_err("duplicate");
+        let err = append_addr_book(&path, hex_id.as_str(), None).expect_err("duplicate");
         assert!(err.contains("already in address_book"));
         let _ = std::fs::remove_file(&path);
     }

@@ -10,7 +10,7 @@ use std::path::Path;
 use crate::address_book::AddressBookEntry;
 use crate::hd::account_id_from_parts;
 use crate::types::{
-    account_id_to_bech32dx, account_id_to_human, parse_account_id, parse_account_id_for_migration,
+    account_id_to_bech32dx, account_id_to_human, parse_account_id, parse_acct_id_mig,
 };
 use ed25519_dalek::SigningKey;
 use slip10_ed25519::derive_ed25519_private_key;
@@ -124,7 +124,7 @@ pub fn normalize_wallet_header(
 }
 
 fn resolve_wallet_account_id(wallet: &WalletReadHeader) -> Result<[u8; 32], String> {
-    if let Some(id) = account_id_from_truth_source(wallet)? {
+    if let Some(id) = acct_id_from_source(wallet)? {
         ensure_domain_consistency(wallet.domain_u16, &id)?;
         return Ok(id);
     }
@@ -138,7 +138,7 @@ fn resolve_wallet_account_id(wallet: &WalletReadHeader) -> Result<[u8; 32], Stri
             parse_account_id(hex).map_err(|e| format!("wallet account_id_hex is invalid: {e}"))
         })
         .transpose()?;
-    let account_id_from_human = parse_account_id_for_migration(wallet.account_id_human.trim());
+    let account_id_from_human = parse_acct_id_mig(wallet.account_id_human.trim());
 
     if let Some(id) = account_id_from_hex {
         ensure_domain_consistency(wallet.domain_u16, &id)?;
@@ -156,7 +156,8 @@ fn resolve_wallet_account_id(wallet: &WalletReadHeader) -> Result<[u8; 32], Stri
     }
 }
 
-fn account_id_from_truth_source(wallet: &WalletReadHeader) -> Result<Option<[u8; 32]>, String> {
+/// Resolves account id from the authoritative source.
+fn acct_id_from_source(wallet: &WalletReadHeader) -> Result<Option<[u8; 32]>, String> {
     let index = parse_derivation_index(wallet)?;
     if let Some(seed_hex) = wallet
         .master_seed_hex
@@ -241,7 +242,7 @@ fn normalize_address_book_entries(
             changed = true;
             continue;
         }
-        let id = parse_account_id_for_migration(entry.address_str().trim())
+        let id = parse_acct_id_mig(entry.address_str().trim())
             .map_err(|e| format!("wallet address_book[{idx}] migration error: {e}"))?;
         let canonical = account_id_to_bech32dx(&id);
         match entry {
@@ -280,7 +281,7 @@ pub fn load_wallet_read_header(
     let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let schema_version = detect_schema_version(&raw)?;
     let parsed: WalletReadHeader = if schema_version == 3 {
-        parse_wallet_read_v3_header(&raw)?
+        parse_wallet_v3_hdr(&raw)?
     } else {
         serde_yaml::from_str(&raw).map_err(|e| e.to_string())?
     };
@@ -304,7 +305,8 @@ fn detect_schema_version(raw: &str) -> Result<u32, String> {
     Ok(parsed.schema_version.unwrap_or(2))
 }
 
-fn parse_der_idx_m0_path(path: &str) -> Result<u32, String> {
+/// Parses a BIP32 m/0 derivation path from a DER index string.
+fn parse_der_m0_path(path: &str) -> Result<u32, String> {
     let trimmed = path.trim();
     const PREFIX: &str = "m/0/";
     if !trimmed.starts_with(PREFIX) {
@@ -319,7 +321,7 @@ fn parse_der_idx_m0_path(path: &str) -> Result<u32, String> {
 
 fn validate_v3_derivation_paths(parsed: &WalletReadV3Header) -> Result<(), String> {
     for account in &parsed.accounts {
-        let path_idx = parse_der_idx_m0_path(&account.derivation_path)?;
+        let path_idx = parse_der_m0_path(&account.derivation_path)?;
         if path_idx != account.derivation_index {
             return Err(format!(
                 "wallet schema v3 derivation_path {:?} does not match derivation_index {}",
@@ -336,7 +338,8 @@ fn default_v3_account(accounts: &[WalletReadV3Account]) -> Option<&WalletReadV3A
         .min_by_key(|a| (a.derivation_index, a.id_hex.to_ascii_lowercase()))
 }
 
-fn parse_wallet_read_v3_header(raw: &str) -> Result<WalletReadHeader, String> {
+/// Parses the v3 wallet YAML header section.
+fn parse_wallet_v3_hdr(raw: &str) -> Result<WalletReadHeader, String> {
     let parsed: WalletReadV3Header = serde_yaml::from_str(raw).map_err(|e| e.to_string())?;
     validate_v3_derivation_paths(&parsed)?;
     if parsed.accounts.is_empty() {

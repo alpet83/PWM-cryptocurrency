@@ -163,7 +163,10 @@ fn replay_to(cfg: &GenCfg, blocks: &[Block], target_h: Option<u64>) -> Result<Re
         }
         let mut block_ok = true;
         for tx in &blk.txs {
-            if replay_state.apply_tx(tx).is_err() {
+            if replay_state
+                .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts)
+                .is_err()
+            {
                 block_ok = false;
                 break;
             }
@@ -171,9 +174,20 @@ fn replay_to(cfg: &GenCfg, blocks: &[Block], target_h: Option<u64>) -> Result<Re
         if !block_ok {
             break;
         }
-        replay_state.accrue_marks(cfg.marks_coeff);
         let prod_acct = cfg.prod_acct(blk.hdr.prod_idx);
-        replay_state.reward_producer(&prod_acct, cfg.block_reward);
+        if cfg.is_legacy_policy() {
+            replay_state.accrue_marks(cfg.marks_coeff);
+            replay_state.reward_producer(&prod_acct, cfg.block_reward);
+        } else {
+            let season_ppm = cfg.season_ppm(blk.hdr.ts);
+            replay_state.accrue_marks_v2(cfg.marks_coeff, cfg.marks_stake_min, season_ppm);
+            replay_state.reward_producer_v2(
+                &prod_acct,
+                cfg.block_reward,
+                cfg.pwm_stake_min,
+                season_ppm,
+            );
+        }
         if blk.hdr.state_root != digest(&replay_state) {
             break;
         }
@@ -415,6 +429,8 @@ mod tests {
     use crate::bootstrap::app_from_dev_net;
     use crate::snapshot::incremental::append_tip_block;
     use crate::snapshot::io::save_checkpoint_summary;
+    use pwm_core::hd::domain_of_account_id;
+    use pwm_core::tx::{SignedTx, TxBody};
 
     fn tmp_summary(name: &str) -> PathBuf {
         let sfx = SystemTime::now()
@@ -503,5 +519,25 @@ mod tests {
         let fixed = load_snapshot(&path, &cfg).expect("load").expect("snapshot");
         assert_eq!(fixed.blocks.len(), 5);
         let _ = fs::remove_dir_all(path.parent().expect("parent"));
+    }
+
+    #[test]
+    fn repair_replay_uses_block_ctx() {
+        let (cfg, sks) = pwm_core::dev_net();
+        let mut chain = pwm_core::Chain::boot(cfg.clone(), sks.clone());
+        let signer = cfg.accounts[0].acct;
+        let tx = SignedTx::sign_body(
+            &sks[0],
+            domain_of_account_id(&signer),
+            cfg.accounts[0].der_idx,
+            0,
+            TxBody::Stake { amount: 1 },
+        );
+        chain.seal(vec![tx]).expect("seal");
+        let blocks = chain.blocks.iter().cloned().collect::<Vec<_>>();
+        let rep = replay_to(&cfg, &blocks, Some(1)).expect("repair replay");
+        assert_eq!(rep.last_good_h, 1);
+        let acc = rep.state.get(&signer).expect("signer account");
+        assert_eq!(acc.last_stake_change_height, 1);
     }
 }

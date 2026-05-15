@@ -1,6 +1,6 @@
 //! CLI argument parsing helpers (addresses, domains, amounts).
 
-use pwm_core::{parse_acct_id_for_user, AccountId};
+use pwm_core::{parse_acct_id_ui, AccountId};
 
 pub(crate) const ADDRESS_FORMAT_HINT: &str =
     "pretty pwm1-<label_or_$hex!>-f<flags8hex>-t<tail52hex>, canonical pwm1..., legacy PWMv0-... / hex";
@@ -45,7 +45,7 @@ fn parse_amount_value(field: &str, value: &str) -> Result<u128, String> {
 }
 
 pub(crate) fn parse_address_arg(field: &str, value: &str) -> Result<AccountId, String> {
-    parse_acct_id_for_user(value).map_err(|e| {
+    parse_acct_id_ui(value).map_err(|e| {
         format!(
             "Invalid value for {field}: '{value}'. Accepted formats: {ADDRESS_FORMAT_HINT}. Parse details: {e}"
         )

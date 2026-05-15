@@ -97,7 +97,7 @@ pub fn brute_force_domain_flags(
     expected_flags: u32,
     max_try: u32,
 ) -> Option<BruteforceMatch> {
-    brute_force_domain_flags_with_progress(
+    brute_force_flags_progress(
         master_seed,
         domain,
         domain_mode,
@@ -109,7 +109,7 @@ pub fn brute_force_domain_flags(
     )
 }
 
-pub fn brute_force_domain_flags_with_progress<F: FnMut(BruteforceProgress)>(
+pub fn brute_force_flags_progress<F: FnMut(BruteforceProgress)>(
     master_seed: &[u8; 32],
     domain: u16,
     domain_mode: DomainMatchMode,
@@ -133,7 +133,7 @@ pub fn brute_force_domain_flags_with_progress<F: FnMut(BruteforceProgress)>(
     )
 }
 
-/// Same brute-force as `brute_force_domain_flags_with_progress`, but starts from `start_index`.
+/// Same brute-force as `brute_force_flags_progress`, but starts from `start_index`.
 pub fn brute_force_from_index<F: FnMut(BruteforceProgress)>(
     master_seed: &[u8; 32],
     domain: u16,

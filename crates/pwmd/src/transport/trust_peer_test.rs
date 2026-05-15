@@ -28,6 +28,7 @@ pub(crate) async fn trust_peer_for_test(target: &App, source: &App) {
         "test-configured-seed",
         true,
         Some(bridge_commitment.as_str()),
+        target.identity.cluster_id.as_str(),
     )
     .expect("trusted source hello");
     drop(hs);

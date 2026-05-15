@@ -1,6 +1,7 @@
 //! Account table rows, wallet YAML fragments, and loaded wallet identity.
 
-use pwm_core::{format_pwm, AccountId};
+use pwm_core::display::format_pwm;
+use pwm_core::AccountId;
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -14,6 +15,8 @@ pub struct AcctRow {
     pub balance_pwm: u128,
     pub initialized: bool,
     pub nonce: u64,
+    pub marks: u32,
+    pub staked: u128,
     /// From wallet `address_book` entry (optional).
     pub label: Option<String>,
 }
@@ -25,6 +28,14 @@ pub fn parse_u128(v: &Value) -> u128 {
     match v {
         Value::String(s) => s.parse().unwrap_or(0),
         Value::Number(n) => n.as_u64().map(|x| x as u128).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+pub fn parse_u32(v: &Value) -> u32 {
+    match v {
+        Value::String(s) => s.parse().unwrap_or(0),
+        Value::Number(n) => n.as_u64().and_then(|x| u32::try_from(x).ok()).unwrap_or(0),
         _ => 0,
     }
 }
@@ -41,10 +52,16 @@ pub fn parse_hex_account_id(hex: &str) -> Option<AccountId> {
 
 pub fn format_balance_cell(r: &AcctRow) -> String {
     if r.balance_pwm == UNKNOWN_BALANCE_SENTINEL {
-        "???".to_string()
-    } else {
-        format_pwm(r.balance_pwm)
+        return "???".to_string();
     }
+    if r.staked == 0 {
+        return format_pwm(r.balance_pwm);
+    }
+    let bal = format_pwm(r.balance_pwm)
+        .trim_end_matches(" PWM")
+        .to_string();
+    let staked = format_pwm(r.staked).trim_end_matches(" PWM").to_string();
+    format!("{bal}/{staked}PWM")
 }
 
 pub fn format_init_cell(r: &AcctRow) -> &'static str {
@@ -114,5 +131,29 @@ pub struct WalletIdentity {
 impl WalletIdentity {
     pub fn has_recipient(&self, id: &AccountId) -> bool {
         self.address_book.iter().any(|b| b.id == *id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_balance_cell, AcctRow};
+
+    fn mk_acct_row(balance_pwm: u128, staked: u128) -> AcctRow {
+        AcctRow {
+            id: [0u8; 32],
+            id_hex: String::new(),
+            balance_pwm,
+            initialized: false,
+            nonce: 0,
+            marks: 0,
+            staked,
+            label: None,
+        }
+    }
+
+    #[test]
+    fn bal_cell_keeps_rpc_balance() {
+        let row = mk_acct_row(500_000_000, 500_000_000);
+        assert_eq!(format_balance_cell(&row), "500/500PWM");
     }
 }

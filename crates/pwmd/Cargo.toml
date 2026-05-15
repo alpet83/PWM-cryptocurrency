@@ -1,6 +1,6 @@
 [package]
 name = "pwmd"
-version = "0.1.48"
+version = "0.1.53"
 edition.workspace = true
 license.workspace = true
 
@@ -19,6 +19,10 @@ required-features = ["clickhouse-snapshot"]
 [[bin]]
 name = "pwmd-snap-repair"
 path = "src/bin/pwmd_snap_repair.rs"
+
+[[bin]]
+name = "pwmd_lease_probe"
+path = "src/bin/pwmd_lease_probe.rs"
 
 [features]
 default = []
@@ -40,9 +44,12 @@ slip10_ed25519 = "0.1.3"
 ed25519-dalek.workspace = true
 rpassword = "7"
 url = "2"
+fs2 = "0.4.3"
+serde_yaml = "0.9"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+serde_json.workspace = true
 tower = { version = "0.5", features = ["util"] }
 reqwest = { workspace = true }
 

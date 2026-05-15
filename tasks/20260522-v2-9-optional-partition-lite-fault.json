@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "20260522-v2-9-optional-partition-lite-fault",
+  "title": "V2-9 optional: partition-lite fault harness (RFC §11 доп. к timeout/bind)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Чеклист V2-9 Slice B требовал минимум один fault; закрыты timeout (mute attest) и bind_mismatch. Остаток nit: явный partition-lite (например обрыв TCP / закрытие сессии между двумя attest-путями в 2-of-3 до кворорума, ожидание quorum_timeout или эквивалент). Scope узкий: crates/pwmd production harness production.rs + wave notes одна строка. Out of scope: полная матрица §11.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Added partition-lite 2-of-3 fault test with second attester handshake drop and quorum_timeout log assertion.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/tests/production.rs",
+        "docs/reviews/20260510-v2-9-slice-b-wave-notes.md",
+        "tasks/20260522-v2-9-optional-partition-lite-fault.json"
+      ],
+      "commands": [
+        "python scripts/check_entity_name_segments.py crates/pwmd/src/transport/tests/production.rs",
+        "cargo fmt",
+        "cargo check -p pwmd",
+        "cargo test -p pwmd cluster_partition (failed: pwmd.exe lock os error 5)",
+        "cargo test -p pwmd --lib cluster_partition"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 2600,
+        "total": 16600,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-14T18:30:00+03:00"
+    }
+  ],
+  "commits": ["e2b5022", "b6668ab", "a703c8c"],
+  "artifacts": { "review_md": null },
+  "notes": "Partition-lite fault slice закрыт в production harness; full non-lib cargo test filter requires stopping active pwmd processes because shared target locks pwmd.exe on Windows."
+}

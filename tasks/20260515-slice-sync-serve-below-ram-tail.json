@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "id": "20260515-slice-sync-serve-below-ram-tail",
+  "title": "pwmd: отдача sync (hdr/blk/catchup) с диска ниже нижней границы RAM-хвоста — CY lab proposer≫1000",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Симптом (cy-cluster-attester + proposer): Sync progress goal≈tip пропозера, mem=0 — пир видит tip, но не применяет блоки. RCA: pwm_core::TAIL_BLOCK_CAP=1000, on_hdr_req/on_blk_req/on_cup_req читают только g.chain.blocks; при tip>1000 первый блок в RAM > from_h=1 → headers_range NACK, цепочка не стартует. Приёмка: после фикса пересобрать и снова запустить cy-cluster-proposer.ps1 + cy-cluster-attester.ps1 — attester mem растёт, в tmp/state-cy-attester появляется persist. Реализация: читать последовательные блоки из JsonFile epochs (manifest + JSONL) когда RAM не покрывает from_h; для blk req добавить optional block_heights на wire (serde default) + в SyncPeerState хранить (height,hash) в pend_blk/wait_blk для заполнения; fallback без высот — preserve compat. Добавить интеграционный/юнит тест на сценарий «tip>tail, peer from_h ниже front». Делегации: pwm-debug (кратко подтвердить RCA) опционально; pwm-coding → pwm-testing → pwm-review.",
+  "references": [
+    "p:/opt/docker/PWM-cryptocurrency/cy-cluster-common.ps1",
+    "p:/opt/docker/PWM-cryptocurrency/cy-cluster-proposer.ps1",
+    "p:/opt/docker/PWM-cryptocurrency/cy-cluster-attester.ps1",
+    "crates/pwm-core/src/chain.rs (TAIL_BLOCK_CAP)",
+    "crates/pwmd/src/snapshot/incremental.rs (load_block_at_height, manifest)",
+    "tasks/20260514-slice-sync-disk-progress-standby-persist-debug.md"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implemented epoch-backed sync serving below RAM tail, block_heights wire/state plumbing, legacy hash-scan fallback, and regression for hdr-from-1 when tip exceeds tail cap.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "crates/pwmd/src/transport/peer_session/wire.rs",
+        "crates/pwmd/src/transport/handshake_state.rs",
+        "crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "CHANGELOG.md",
+        "tasks/20260515-slice-sync-serve-below-ram-tail.json"
+      ],
+      "commands": [
+        "cargo fmt --all",
+        "cargo check -p pwmd",
+        "cargo test -p pwmd",
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/snapshot/incremental.rs crates/pwmd/src/transport/peer_session/sync_live.rs crates/pwmd/src/transport/peer_session/wire.rs crates/pwmd/src/transport/handshake_state.rs crates/pwmd/src/transport/peer_session/mod.rs",
+        "cq_files_ctl rebuild_index (project_id=5, background=true)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 26000,
+        "output": 5400,
+        "total": 31400,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-13T08:44:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Formal gate for epoch disk sync slice: preflight_target_debug.ps1 (powershell.exe; target/debug ~216 MiB under 4096 MiB, removed=no), cargo fmt --check, cargo test -p pwmd — all PASS (336 lib + 6 main + 1 integration + 0 doc).",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260515-slice-sync-serve-below-ram-tail.json"
+      ],
+      "commands": [
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/dev/preflight_target_debug.ps1",
+        "cargo fmt --check",
+        "cargo test -p pwmd"
+      ],
+      "preflight_target_debug": {
+        "script": "tools/dev/preflight_target_debug.ps1",
+        "target_debug_bytes": 226464982,
+        "threshold_mib_default": 4096,
+        "removed": "no"
+      },
+      "tokens": {
+        "source": "estimate",
+        "input": 4200,
+        "output": 1100,
+        "total": 5300,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-13T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "PASS with nits: disk fallback hdr/blk/cup, block_heights wire, hdr_req_disk_below_tail test; nits blk/cup disk tests optional, deque clone perf.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260515-sync-serve-below-ram-tail-slice.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 18000,
+        "output": 3500,
+        "total": 21500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-13T12:45:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260515-sync-serve-below-ram-tail-slice.md" },
+  "notes": "Не поднимать TAIL_BLOCK_CAP бесконечно — сервировать историю с диска."
+}

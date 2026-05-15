@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "id": "20260513-slice-sync-console-progress",
+  "title": "pwmd: эпизодический прогресс синхронизации в консоль (lab)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Оператор CY-кластера не видит прогресса same-shard sync: почти все события используют target pwmd::peer, а logging.rs намеренно не пишет pwmd::peer на stdout/stderr. Нужны редкие INFO на консоль (и в main-лог) с оценкой догона: процент и остаток блоков до известного peer tip (например «sync progress local_h=X peer_tip=Y pct=ZZ% remaining=N» или краткий русскоязычный вариант по согласованию с остальными логами pwmd). Троттлинг обязателен (интервал и/или порог смены pct), чтобы не засорять консоль. Канонично вызывать из путей live sync / catch-up после обновления известного tip (on_tip, успешный apply batch, cup progress). Опционально: короткая pwm-debug нога если после первой реализации неясно, почему прогресс не срабатывает в lab.",
+  "references": [
+    "crates/pwmd/src/logging.rs",
+    "crates/pwmd/src/transport/peer_session/sync_live.rs",
+    "docs/rfc/15-same-shard-sync-v1.md",
+    "docs/plans/mvp_v2.md#sprint-v2-8",
+    "tasks/20260513-attester-sync-persist-investigation.json",
+    "docs/reviews/20260513-attester-sync-persistence-review.md"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Added throttled sync progress INFO line on target pwmd::sync for live and catch-up paths; included pure unit tests for helper.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/handshake_state.rs",
+        "crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "tasks/20260513-slice-sync-console-progress.json"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport/peer_session/sync_live.rs crates/pwmd/src/transport/handshake_state.rs",
+        "cargo fmt --all",
+        "cargo check -p pwmd",
+        "cargo test -p pwmd",
+        "cq_files_ctl rebuild_index (project_id=5, background=true)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 11000,
+        "output": 2800,
+        "total": 13800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12T22:55:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Post-slice verification: preflight (target/debug size under threshold), rustfmt --check, full pwmd test suite.",
+      "preflight_note": "tools/dev/preflight_target_debug.ps1: exit 0; target/debug ≈226464982 bytes (under 4096MiB threshold).",
+      "result": "PASS",
+      "commands": [
+        "powershell -File tools/dev/preflight_target_debug.ps1",
+        "cargo fmt --all -- --check",
+        "cargo test -p pwmd"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 3200,
+        "output": 900,
+        "total": 4100,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-12T23:45:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "PASS_WITH_NITS: консольная политика pwmd::sync, безопасность строки, троттлинг; nit — явный тест lag_resume.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260513-sync-console-progress-slice.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-13T00:20:00+03:00"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "nit auto-close: добавлен тест sync_prog_tick_lag_resume_after_peer_tip_grows в sync_live.rs",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/sync_live.rs"
+      ],
+      "commands": [
+        "cargo test -p pwmd sync_prog_tick_lag_resume_after_peer_tip_grows"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4000,
+        "output": 1200,
+        "total": 5200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-13T00:25:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260513-sync-console-progress-slice.md"
+  },
+  "notes": "Консоль: Layer with_filter !is_peer_target — target pwmd::sync не режется. Nit из ревью: отдельный тест lag_resume. Если в рабочем дереве смешаны несвязанные правки (например handshake_state), для атомарного коммита этого слайса используйте git add -p по файлам crates/pwmd."
+}

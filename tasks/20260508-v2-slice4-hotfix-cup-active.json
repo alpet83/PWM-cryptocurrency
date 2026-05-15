@@ -1,0 +1,85 @@
+{
+  "id": "20260508-v2-slice4-hotfix-cup-active",
+  "title": "Hotfix: reset catch-up state on SyncNack/write-fail (Slice 4 nit)",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "source": "docs/reviews/20260508-v2-8-slice4-review.md",
+    "issue": "Potential peer stuck when cup_active remains true after SyncNack to CatchupReq or send_cup_req write failure.",
+    "goal": "Fix state-reset path and add regression tests."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Hotfix catch-up state reset on SyncNack and CatchupReq write fail; add targeted regressions.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate 5925798: pwmd check, cup regressions, peer_session tests, fn-name script.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-v2-slice4-hotfix-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимое ревью hotfix 5925798: cup_active reset на nack/write-fail, минимальность scope.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-v2-slice4-hotfix-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-v2-slice4-hotfix-review.md",
+    "testing_md": "docs/reviews/20260508-v2-slice4-hotfix-testing.md",
+    "hotfix_commit": "5925798f3912aa6b030747a697178265b9211444",
+    "coding_hotfix_files": [
+      "crates/pwmd/src/transport/peer_session/sync_live.rs",
+      "crates/pwmd/src/transport/peer_session/mod.rs"
+    ],
+    "regression_tests": [
+      "transport::peer_session::tests::cup_nack_resets_state",
+      "transport::peer_session::tests::cup_send_fail_resets"
+    ],
+    "validation_commands": [
+      "cargo fmt",
+      "cargo check -p pwmd",
+      "cargo test -p pwmd cup_nack_resets_state",
+      "cargo test -p pwmd cup_send_fail_resets",
+      "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport"
+    ]
+  },
+  "review_verdict": "PASS",
+  "notes": "Hotfix 5925798: pwm-coding + pwm-testing + pwm-review PASS. Документы и тикет: см. artifacts.review_md, artifacts.testing_md (трассируемость в коммите документации поверх 5925798). Тикет закрыт."
+}

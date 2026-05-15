@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "id": "20260517-attester-sync-stall-at-4pct",
+  "title": "pwmd: аттестер CY lab — sync замирает около 4%, не продолжается после рестарта",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Round 3 RCA (peer log): после CUP сессия рвётся с wire_decode_failed u128 is not supported — JSON wire не умел plain u128 в Block.txs (SignedTx). Фикс: pwm-core ser_json_u128 (decimal string + u64 decode). Гонка LoadingSnapshot (round 2) остаётся отдельным улучшением. Смок: scripts/cy_cluster_two_node_smoke.ps1 + host cq_process_ctl, 120s — SMOKE_PASS, max Sync progress до 33% в прогоне 2026-05-13. Диагностика on_tip в sync_live (pwmd::peer) + скрипт хватает логов из logs/**/pwmd-peer-*.",
+  "references": [
+    "cy-cluster-attester.ps1",
+    "cy-cluster-proposer.ps1",
+    "cy-cluster-common.ps1",
+    "tasks/20260515-slice-sync-serve-below-ram-tail.json",
+    "docs/rfc/15-same-shard-sync-v1.md §14"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "Diagnosed likely CUP epoch-window retry loop at persisted attester tip_h=544; mapped logs/status counters and triage steps for CY PS1 repro.",
+      "result": "PARTIAL",
+      "verbosity_focus": "transport:sync",
+      "instrumentation": {
+        "files": [],
+        "hunks": 0,
+        "reverted": "yes"
+      },
+      "artifacts": [
+        "tasks/20260517-attester-sync-stall-at-4pct-debug.md"
+      ],
+      "commands": [
+        "cq_help + cq_files_ctl start_grep/read mapping: PASS",
+        "live pwmd run: NOT_RUN"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 26000,
+        "output": 6200,
+        "total": 32200,
+        "confidence": "medium"
+      }
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "cup_req_range clamps CUP to single epoch; on_nack catchup_epoch immediate retry + nack:catchup_epoch metric; cup_req_stays_in_epoch regression test",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/sync_live.rs"
+      ],
+      "commands": [
+        "cargo fmt + check -p pwmd: PASS",
+        "cargo test -p pwmd cup_req_stays_in_epoch: FAIL (pwmd.exe lock os 5)",
+        "cargo test -p pwmd --lib cup_req_stays_in_epoch: PASS"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 21000,
+        "output": 3500,
+        "total": 24500,
+        "confidence": "medium"
+      }
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "preflight_target_debug.ps1; cargo test -p pwmd blocked by pwmd.exe; --lib 337 + --bins 6 PASS; lease_two_proc blocked",
+      "result": "PARTIAL",
+      "artifacts": [],
+      "commands": [
+        "preflight_target_debug.ps1: exit 0",
+        "cargo test -p pwmd: exit 101 (access denied pwmd.exe)",
+        "cargo test -p pwmd --lib: exit 0, 337 passed",
+        "cargo test -p pwmd --bins: exit 0, 6 passed",
+        "cargo test -p pwmd --test lease_two_proc: exit 101"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "low"
+      }
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review: cup_req_range epoch clamp vs on_cup_req, NACK catchup_epoch path, metric nack:catchup_epoch, test cup_req_stays_in_epoch vs RCA.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260517-attester-cup-epoch-clamp-review.md"
+      ],
+      "verdict_summary": "PASS_WITH_NITS: logic aligns with epoch_idx/epoch_id; wire unchanged; nits optional tests for on_nack and responder cross-epoch NACK.",
+      "tokens": {
+        "source": "estimate",
+        "input": 8000,
+        "output": 3500,
+        "total": 11500,
+        "confidence": "low"
+      }
+    },
+    {
+      "agent": "pwm-debug",
+      "round": 2,
+      "prompt_summary": "Confirmed inbound vs LoadingSnapshot race from terminal ordering; code asymmetry spawn peer listener vs seed wait.",
+      "result": "PASS",
+      "verbosity_focus": "transport:sync",
+      "instrumentation": {
+        "files": [],
+        "hunks": 0,
+        "reverted": "yes"
+      },
+      "artifacts": [
+        "tasks/20260517-attester-sync-stall-at-4pct-debug-round2.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 4000,
+        "total": 18000,
+        "confidence": "low"
+      }
+    },
+    {
+      "agent": "pwm-coding",
+      "round": 2,
+      "prompt_summary": "Wait init.is_ready() before send_cross_shard_facts on inbound; same at start of run_seed_initial_exchange; one-shot info logs.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/inbound.rs",
+        "crates/pwmd/src/transport/peer_session/seed/session/initial_exchange.rs"
+      ],
+      "commands": [
+        "cargo fmt + name segments + check -p pwmd + cargo test -p pwmd --lib: PASS"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9800,
+        "confidence": "low"
+      }
+    },
+    {
+      "agent": "pwm-testing",
+      "round": 2,
+      "prompt_summary": "preflight + cargo test -p pwmd --lib + --bins after init-ready gate",
+      "result": "PASS",
+      "artifacts": [],
+      "commands": [
+        "preflight_target_debug.ps1: 0",
+        "cargo test -p pwmd --lib: 337 passed",
+        "cargo test -p pwmd --bins: 6 passed"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3500,
+        "confidence": "low"
+      }
+    },
+    {
+      "agent": "pwm-review",
+      "round": 2,
+      "prompt_summary": "Review init-ready wait loops: handshake/HelloAck ordering nit, unbounded poll, test gap.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260518-peer-wait-init-ready-review.md"
+      ],
+      "verdict_summary": "Approve with nits: gate matches slice; consider moving wait before HelloAck for tip truth; bounded wait + regression test wishlist.",
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 20000,
+        "confidence": "medium"
+      }
+    },
+    {
+      "agent": "pwm-debug",
+      "round": 3,
+      "prompt_summary": "Peer log + cq_process_ctl smoke: u128 wire_decode after CUP; pwmd::peer logs not on stdout (console filter).",
+      "result": "PASS",
+      "verbosity_focus": "transport:sync",
+      "artifacts": [],
+      "commands": [
+        "read logs/2026-05-13/pwmd-peer-cy-attester-101826.log: wire_decode u128",
+        "cq_process_ctl host spawn+wait smoke.ps1 120s: return 2 before fix"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4000,
+        "output": 2000,
+        "total": 6000,
+        "confidence": "low"
+      }
+    },
+    {
+      "agent": "pwm-coding",
+      "round": 3,
+      "prompt_summary": "pwm-core ser_json_u128 on TxBody/SignedTx/ExportProvenance; roundtrip test; on_tip logs round 2 retained",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/ser_json_u128.rs",
+        "crates/pwm-core/src/tx.rs",
+        "crates/pwm-core/src/state.rs",
+        "crates/pwm-core/src/lib.rs"
+      ],
+      "commands": [
+        "cargo test -p pwm-core: PASS",
+        "cargo check --workspace: PASS",
+        "cargo test -p pwmd --lib: peer_micro_idle_hb_ok flaky noted"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12800,
+        "confidence": "low"
+      }
+    },
+    {
+      "agent": "pwm-testing",
+      "round": 3,
+      "prompt_summary": "cq_process_ctl host: cy_cluster_two_node_smoke.ps1 SmokeSeconds=120; post-fix return 0, max% 33; tail peer log",
+      "result": "PASS",
+      "artifacts": [
+        "scripts/cy_cluster_two_node_smoke.ps1"
+      ],
+      "commands": [
+        "cq_process_ctl host spawn smoke + wait 220s + io: returncode 0 SMOKE_PASS"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 2000,
+        "output": 1000,
+        "total": 3000,
+        "confidence": "low"
+      }
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "debug_md": "tasks/20260517-attester-sync-stall-at-4pct-debug.md",
+    "debug_round2_md": "tasks/20260517-attester-sync-stall-at-4pct-debug-round2.md",
+    "review_md": "docs/reviews/20260517-attester-cup-epoch-clamp-review.md",
+    "review_round2_md": "docs/reviews/20260518-peer-wait-init-ready-review.md",
+    "smoke_ps1": "scripts/cy_cluster_two_node_smoke.ps1"
+  }
+}

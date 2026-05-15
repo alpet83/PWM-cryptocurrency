@@ -1,0 +1,27 @@
+{
+  "id": "20260508-mempool-mesh-anti-amplification-proposal",
+  "title": "Proposal: mempool anti-amplification for clustered+distributed shard mesh",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "topology": "Потенциальная mesh-сеть: плотные кластеры (общая L2, возможен local broadcast) + распределённые узлы за NAT в разных подсетях.",
+    "goal": "Сформировать практичный proposal gossip-политики с низкой амплификацией и устойчивостью на десятках нод."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "summary": "Подготовлен proposal docs/reviews/20260508-mempool-mesh-anti-amplification-proposal.md: зональная архитектура push/pull, рычаги fanout/budget/dedup/suppression/anti-entropy, миграция от Slice2 baseline, метрики+алерты, разделение RFC now/later. Вердикт: NEED-RFC.",
+      "inputs": [
+        "tasks/20260508-mempool-mesh-anti-amplification-proposal.json",
+        "docs/rfc/15-same-shard-sync-v1.md",
+        "docs/reviews/20260508-v2-8-slice2-review.md"
+      ]
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-mempool-mesh-anti-amplification-proposal.md",
+    "verdict": "NEED-RFC"
+  },
+  "notes": "pwm-review 2026-05-08: артефакт — дизайн-документ (не код-ревью коммита). Следующий шаг за владельцем: ревизия RFC 0015 / отдельный follow-up RFC для зон и pull на периферии."
+}

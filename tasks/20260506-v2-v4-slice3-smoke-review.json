@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "20260506-v2-v4-slice3-smoke-review",
+  "title": "Sprint V2-4 Slice 3: pwmd↔CLI smoke + pwm-review (reject/error UX)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v2.md Sprint V2-4 Slice 3",
+    "§4 pwm-cli",
+    "§5 pwm-tui"
+  ],
+  "brief": "Плановый слайс после E-3: сквозной smoke с pwmd и клиентскими бинарниками (или эквивалент cargo test slice20); затем независимое pwm-review на согласованность текстов ошибок / reject-hint с RFC Slice D и tester-guide. Slice 4 (полный pwm-review имён по репо) не входит в этот тикет.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Smoke V2-4 Slice 3: preflight (bash absent; ps1 failed parse); removed rust-target-shared debug incremental >2GiB; cargo build -p pwmd -p pwm-cli; cargo test -p pwmd slice20_e2e_tests::slice20_dual_flow_ok exact — FAIL: pwm tx-import HTTP 500 insufficient balance after roaming seal. cross_shard test skipped.",
+      "result": "FAIL",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": null, "output": null, "total": 12000, "confidence": "low" },
+      "done_at": "2026-05-06T05:20:05Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Reproduced slice20_e2e_tests::slice20_dual_flow_ok failure (HTTP 500 insufficient balance on tx-import), identified fixture drift after MIN_IMPORT_FEE_UNITS import fee floor, and updated slice20 fixture to seed import signer liquidity via genesis-only wallet while keeping tx wallets unchanged; rerun passed.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/slice20_e2e_tests.rs",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 18500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-06T05:35:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимое ревью slice20_e2e_tests после 4a3a678: genesis-only vs runtime wallets, MIN_IMPORT_FEE_UNITS, дрейф подписанта; check_rust_fn_name_segments; локальный cargo test --lib slice20_dual_flow_ok.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-v4-slice3-smoke-review-20260506.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-06T06:00:00Z"
+    }
+  ],
+  "commits": ["5c09510", "4a3a678", "8cb11da"],
+  "artifacts": {
+    "review_md": "docs/reviews/v2-v4-slice3-smoke-review-20260506.md"
+  },
+  "notes": "Оркестратор 2026-05-06: pwm-testing первый прогон FAIL (fixture vs MIN_IMPORT_FEE_UNITS). pwm-coding: фикстура slice20 + genesis-only wallet — slice20_e2e_tests::slice20_dual_flow_ok зелёный локально. pwm-review 2026-05-06: отчёт docs/reviews/v2-v4-slice3-smoke-review-20260506.md — approve with nits; локально подтверждён cargo test -p pwmd --lib slice20_dual_flow_ok. Рекомендация: повтор pwm-testing в delegations после мержа; коммит артефакта ревью: 8cb11da. preflight_target_debug.ps1: ASCII hyphen в коммите 5c09510."
+}

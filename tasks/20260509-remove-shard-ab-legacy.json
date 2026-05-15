@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "20260509-remove-shard-ab-legacy",
+  "title": "Удалить legacy shard-a/shard-b и compat-alias из pwmd",
+  "status": "done",
+  "mvp_checklist": ["RFC-8 alignment", "pwmd runtime identity"],
+  "brief": "Полностью убрать устаревшую модель: строки shard-a/shard-b, compat-shard-a|b, compat-node-a|b, RuntimeIdentityMode::Alias, namespace() на их основе, deprecated CLI --shard A|B. Девнет-две-ветки оставить через явные identity (Explicit) с domain_hi 0x10/0x20 и нейтральными идентификаторами без compat-. Переименовать ShardId→DevLane (Lane0/Lane1) или эквивалент; обновить tx_policy, тесты, snapshot/ch_http фикстуры. Контракт: rg по crates/ не находит shard-a|shard-b|compat-shard|compat-node|RuntimeIdentityMode::Alias|deprecated --shard. Доки: минимально синхронизировать docs/rfc/8, docs/pwmd.md при необходимости (делегировать pwm-review опционально).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Рефактор pwmd: удалить Alias/compat/--shard; explicit dev defaults; DevLane; обновить все вхождения",
+      "result": "PASS",
+      "artifacts": ["commit 6f7da18"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo test -p pwmd, при необходимости workspace check",
+      "result": "BLOCKED",
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Gate: нулевые следы grep; краткий docs/reviews запись",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    }
+  ],
+  "commits": ["6f7da18"],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "pwm-coding: выполнен рефактор legacy shard-a/shard-b -> DevLane Lane0/Lane1, удалены Alias/compat/--shard, defaults переведены на explicit domain-first; commit 6f7da18. pwm-testing (2026-05-09, после очистки incremental на диске): cargo test -p pwmd завершился за ~22 мин, линкер ОК; 42 FAILED — преобладает CONFLICT 409: sender domain_hi из routable_user_sk (напр. 0x32) не совпадает с identity.cluster_domain_hi дефолта (0x10/0x20). Нужен follow-up pwm-coding: выровнять тестовые ключи с cluster_domain_hi (user_sk_matching_domain_hi(..., app.identity.cluster_domain_hi)) и/или дефолтный cluster_domain_hi с dev_net validator / правилами enforce_local_tx_guards."
+}

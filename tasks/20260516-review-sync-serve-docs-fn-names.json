@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260516-review-sync-serve-docs-fn-names",
+  "title": "pwm-review: документация раздачи sync (ниже RAM-хвост) + стиль имён Rust",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "После слайса serve-below-RAM-tail и правок cy-cluster-follower.ps1: (1) актуализировать норматив/справку вокруг отдачи hdr/blk/catch-up с диска (epochs+jsonl), optional block_heights, лимит RAM TAIL_BLOCK_CAP=1000; кросс-ссылки RFC15, CY lab, tasks 20260515-slice. (2) Запустить python scripts/check_rust_fn_name_segments.py на затронутых pwmd путях (incremental.rs, sync_live.rs, wire.rs, handshake_state.rs, peer_session/mod.rs); нарушения → отчёт и при необходимости скрипт scripts/_review_sync_tail_symbols.ps1 если удобно. (3) GLOSSARY только если по правилам не финальное спринтовое — обычно без изменений с явной фразой. Разрешённые writes: docs/reviews/*, tasks/*.json, scripts/_review_*.",
+  "references": [
+    "tasks/20260515-slice-sync-serve-below-ram-tail.json",
+    "docs/rfc/15-same-shard-sync-v1.md",
+    "docs/reviews/20260515-sync-serve-below-ram-tail-slice.md",
+    "docs/reviews/20260512-cy-cluster-windows-peer-bind.md",
+    "cy-cluster-follower.ps1",
+    "cy-cluster-common.ps1"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "PARTIAL: check_rust_fn_name_segments PASS (empty violations); RFC15 subsection for disk-backed sync serve + CY follower lease cross-links missing; slice review covers implementation; git-handoff in report.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260516-sync-serve-docs-and-style-review.md"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/snapshot/incremental.rs crates/pwmd/src/transport/peer_session/sync_live.rs crates/pwmd/src/transport/peer_session/wire.rs crates/pwmd/src/transport/handshake_state.rs crates/pwmd/src/transport/peer_session/mod.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 4500,
+        "total": 18500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-13T23:59:59+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260516-sync-serve-docs-and-style-review.md" },
+  "notes": "pwm-review: PARTIAL по RFC15 (§14 не добавлялся субагентом). Оркестратор: добавлена информативная §14 в docs/rfc/15-same-shard-sync-v1.md; cy-cluster-follower.ps1 — process-local + комментарий 3-node mesh; cy-cluster-common — пояснение симметричного mesh."
+}

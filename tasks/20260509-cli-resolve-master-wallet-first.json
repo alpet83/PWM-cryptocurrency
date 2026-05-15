@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "id": "20260509-cli-resolve-master-wallet-first",
+  "title": "pwm-cli: приоритет master seed из кошелька при существующем --wallet-out",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Пользователь: текущий порядок (CLI --master / clap PWM_MASTER_SEED, затем MASTER_SEED, затем wallet) создаёт риск деривации от чужого сида при ошибке в env/CLI и сохранения в кошелёк с уже записанным master_seed; хуже — перезапись файла другим сидом и потерю базы для ранее добавленных путей. Нужно: (1) pwm-review — оценка рисков и нормативная политика; (2) pwm-coding+pwm-testing — реализация wallet-first при явном --wallet-out и существующем файле, исключение при --overwrite-wallet; согласование конфликта CLI/env vs wallet; обновить help и тесты.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Риски PRIORITY master seed vs wallet; политика wallet-first; шифрование wallet",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260509-cli-resolve-master-wallet-first.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-15",
+      "notes": "Append защищён baseline-check в wallet_account_add_seed; overwrite-wallet — реальный риск; рекомендован wallet-first без overwrite."
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "wallet-first resolve_master_seed; overwrite ветка; тесты конфликт/match/overwrite; help --master",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cmd_addr.rs",
+        "crates/pwm-cli/src/cli_cmd.rs",
+        "crates/pwm-cli/src/tests/mod.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-15T09:32:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "В том же цикле что coding: fmt, check_entity_name_segments, cargo test -p pwm-cli",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-15T09:35:00+03:00",
+      "notes": "В том же цикле, что pwm-coding: cargo test -p pwm-cli — PASS."
+    }
+  ],
+  "commits": [
+    "00294c5c1201a107dc9a813d476028851011ba7a",
+    "714a64859c4a3cfd05634d1eedb46bbfcd362a50",
+    "6988f6522d2bd866e11c92d7b04402186390751d",
+    "5d2ed600b00efb5f93e6ab79bac4b5f7cfa0a8b9",
+    "724f43f932af0afb48a28f5bc92a89d3eaef28ca"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260509-cli-resolve-master-wallet-first.md"
+  },
+  "notes": "Оркестратор: CHANGELOG после приёмки; финальное pwm-review на дифф 724f43f опционально."
+}

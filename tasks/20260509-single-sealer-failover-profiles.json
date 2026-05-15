@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "id": "20260509-single-sealer-failover-profiles",
+  "title": "Deployment profiles and failover coexistence for same validator clones",
+  "status": "done",
+  "created": "2026-05-09",
+  "context": {
+    "goal": "Спроектировать режимы single_sealer / multi_sealer_experimental и failover-координацию для узлов с одинаковым validator identity/key.",
+    "motivation": "Даже два одинаковых валидатора без cluster-mode должны согласованно решать co-existence/failover и не seal-ить параллельно."
+  },
+  "mvp_checklist": [
+    "docs/MVP-checklist.md §4 pwmd seal loop / same-shard runtime guardrails",
+    "docs/MVP-checklist.md §12 deferred consensus/backlog boundaries"
+  ],
+  "brief": "Design-only slice: freeze default single_sealer deployment profile, guard multi_sealer_experimental, define same-key detection/policy, and outline active/standby failover lease state machine without product-code edits.",
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "Design deployment profiles and same-key failover guardrails for single-sealer MVP; use CQDS-first and produce docs/tasks artifacts only.",
+      "verbosity_focus": "seal",
+      "instrumentation": {
+        "files": [],
+        "reverted": "yes",
+        "receiver_if_kept": null
+      },
+      "repro": {
+        "deterministic": null,
+        "flake_rate": null,
+        "command": null
+      },
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-single-sealer-failover-design.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T10:04:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement S1 runtime profiles, hello/status identity signals, strict same-validator guard, docs, and targeted tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/transport/incoming_hello.rs",
+        "docs/reviews/20260509-s1-single-sealer-guards.md",
+        "docs/runbook-same-shard-sync-v1.md"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py ... (touched files): PASS",
+        "cargo fmt: PASS",
+        "cargo test -p pwmd profile_default_single_sealer: PASS",
+        "cargo test -p pwmd reject_same_validator_active_active: PASS",
+        "cargo test -p pwmd allow_same_validator_active_standby: PASS",
+        "cargo test -p pwmd hello_propagates_identity_signals: PASS",
+        "cargo test -p pwmd status_exposes_identity_signals: PASS",
+        "cargo check -p pwmd: PASS"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 21000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T11:15:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate S1 single-sealer guards: default profile, active/active reject reason, active/standby allow, hello/status identity signals, cargo check pwmd.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-s1-single-sealer-guards-testing.md"
+      ],
+      "commands": [
+        "preflight_target_debug.ps1: PASS (~226MB)",
+        "cargo test -p pwmd profile_default_single_sealer: PASS",
+        "cargo test -p pwmd reject_same_validator_active_active: PASS",
+        "cargo test -p pwmd allow_same_validator_active_standby: PASS",
+        "cargo test -p pwmd hello_propagates_identity_signals: PASS",
+        "cargo test -p pwmd status_exposes_identity_signals: PASS",
+        "cargo check -p pwmd: PASS"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final gate S1: profile defaults, guard semantics, reason codes, hello/status identity, backward compatibility.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-s1-single-sealer-guards-final-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T14:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Operator/protocol report: one-sealer same-shard mempool ingress, inclusion signals, follower cache, failure cases, MVP limits.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-one-sealer-mempool-sync-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T16:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement S2 single-sealer lease/fencing failover gate, heartbeat/status lease signals, and targeted failover tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lease.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/transport/peer_session/wire.rs",
+        "crates/pwmd/src/api/handlers_status.rs",
+        "docs/reviews/20260509-s2-lease-fencing-failover.md",
+        "docs/runbook-same-shard-sync-v1.md"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py ... (touched files): PASS",
+        "cargo fmt: PASS",
+        "cargo test -p pwmd lease_renew_ok_same_owner: PASS",
+        "cargo test -p pwmd lease_takeover_after_timeout: PASS",
+        "cargo test -p pwmd old_active_blocked_without_lease: PASS",
+        "cargo check -p pwmd: PASS",
+        "CQDS cq_files_ctl rebuild_index project_id=5 background=true: duplicate (already queued)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 26000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T11:45:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate S2 lease gate, takeover/loss, old-active fence, status/heartbeat wiring; targeted pwmd tests + cargo check.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-s2-lease-fencing-failover-testing.md"
+      ],
+      "commands": [
+        "preflight_target_debug.ps1: PASS (~226MB)",
+        "cargo test -p pwmd lease_renew_ok_same_owner: PASS",
+        "cargo test -p pwmd lease_takeover_after_timeout: PASS",
+        "cargo test -p pwmd old_active_blocked_without_lease: PASS",
+        "cargo test -p pwmd status_exposes_identity_signals: PASS",
+        "cargo test -p pwmd prod_seed_idle_windows_ok: PASS",
+        "cargo test -p pwmd peer_micro_idle_hb_ok: PASS",
+        "cargo check -p pwmd: PASS"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 7000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T18:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final gate S2: lease-fencing correctness, split-brain scope, wire/status consistency, compat and ops risks.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260509-s2-lease-fencing-failover-final-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 7500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T19:15:00+03:00"
+    }
+  ],
+  "commits": [
+    "462c2fa",
+    "c9ecad6",
+    "67e050f",
+    "1703790",
+    "2e597d7",
+    "cfda7af",
+    "ef9f57f",
+    "d6645ec"
+  ],
+  "artifacts": {
+    "design_report": "docs/reviews/20260509-single-sealer-failover-design.md",
+    "recommended_slices": [
+      {
+        "id": "S0",
+        "title": "docs/profile freeze",
+        "priority": 0,
+        "summary": "Freeze default single_sealer, guarded multi_sealer_experimental, and same-key failover policy in docs/tasks only."
+      },
+      {
+        "id": "S1",
+        "title": "duplicate detection and guard policy",
+        "priority": 1,
+        "summary": "Add deployment profile config, node_instance_id, validator_identity_hash/status signals, same-key peer detection, and strict default policy."
+      },
+      {
+        "id": "S2",
+        "title": "lease/failover active-standby",
+        "priority": 2,
+        "summary": "Gate seal-loop on lightweight lease ownership; implement takeover timeout, fencing token, catch-up-before-seal, and old-active recovery."
+      },
+      {
+        "id": "S3",
+        "title": "optional cluster consensus",
+        "priority": 3,
+        "summary": "RFC-gated future work for real multi-sealer consensus or explicit chaos-only experimental profile."
+      }
+    ],
+    "mvp_default_profile": "single_sealer",
+    "review_md": "docs/reviews/20260509-single-sealer-failover-design.md",
+    "s1_coding_report": "docs/reviews/20260509-s1-single-sealer-guards.md",
+    "s1_coding_commit": "c9ecad6",
+    "s1_testing_result": "PASS",
+    "s1_testing_report": "docs/reviews/20260509-s1-single-sealer-guards-testing.md",
+    "s1_final_review": "docs/reviews/20260509-s1-single-sealer-guards-final-review.md",
+    "s1_final_verdict": "PASS",
+    "one_sealer_mempool_report": "docs/reviews/20260509-one-sealer-mempool-sync-report.md",
+    "s2_coding_report": "docs/reviews/20260509-s2-lease-fencing-failover.md",
+    "s2_coding_commit": "2e597d7",
+    "s2_testing_result": "PASS",
+    "s2_testing_report": "docs/reviews/20260509-s2-lease-fencing-failover-testing.md",
+    "s2_final_review": "docs/reviews/20260509-s2-lease-fencing-failover-final-review.md",
+    "s2_final_verdict": "PARTIAL"
+  },
+  "notes": "Owner intent accepted: start with single_sealer MVP, keep multi_sealer_experimental guarded, and require same-validator clones to coordinate active/standby even without explicit cluster-mode. Mid-second align is supportive only and must not be treated as a deterministic/single-proposer guarantee."
+}

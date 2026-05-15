@@ -1,0 +1,34 @@
+{
+  "id": "20260508-pretest-architecture-gate-p0-p2",
+  "title": "Pre-test architecture gate: P0 proposer rule and P2 network-zones scope",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "goal": "Проверить достаточность предложенной MVP-схемы выбора пропозера и определить границы реализации сетевых зон до запуска автоматических wave-тестов.",
+    "inputs": [
+      "docs/reviews/20260508-v2-8-nits-register.md",
+      "docs/rfc/15-same-shard-sync-v1.md",
+      "docs/plans/mvp_v2.md"
+    ],
+    "owner_proposal": {
+      "p0": "Источник пропозера: UTC timestamp % avg_peer_count; при рассинхроне/конкуренции предпочитать валидатора, первым вошедшего в чат.",
+      "p1": "Добавить предложенные улучшения.",
+      "p2": "Решить: сейчас декларируем полный дизайн или реализуем его целиком; кластерный режим с UDP broadcast как отдельный сетевой апгрейд, не full-mesh внутри кластера."
+    }
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "role": "architecture_gate",
+      "scope": "P0 proposer sufficiency, P2 declare-vs-implement, RFC 15 intent bullets, pre-test baseline",
+      "completed": "2026-05-08"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-pretest-architecture-gate-p0-p2.md",
+    "verdict": "NEED_RFC_PATCH"
+  },
+  "notes": {
+    "pwm-review": "P0 CONDITIONAL for canonical block proposer vs RFC 15 §7.1; NEED_RFC_PATCH or narrow P0 scope. Net-zone: operational local_segment_id per RFC §13, defer full UDP LAN listener."
+  }
+}

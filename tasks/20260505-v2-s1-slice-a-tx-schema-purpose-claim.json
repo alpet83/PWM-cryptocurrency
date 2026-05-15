@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-s1-slice-a-tx-schema-purpose-claim",
+  "title": "Sprint V2-1 Slice A: tx schema freeze for purpose and claim",
+  "status": "in_progress",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "Подготовить RFC-level freeze для tx-схем: расширение BurnMarkTx полем purpose (<=80), каркас ClaimTx (free vs paid), error taxonomy outline и требования к сериализации/валидации. Без правок crates/*.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить Slice A RFC delta doc с финализацией tx schema purpose/claim и acceptance для перехода к коду",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-a-tx-schema-freeze.md",
+        "tasks/20260505-v2-s1-slice-a-tx-schema-purpose-claim.json",
+        "tasks/20260505-v2-s1-s1-rfc-normative-freeze.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5100,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T11:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate для RFC Slice A (docs-only): тестопригодность purpose limit, free/paid claim baseline, legacy compat; отчёт PASS/PARTIAL/FAIL и test-gaps",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-a-test-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review-gate Slice A (docs-only): risks, Slice B readiness, review MD + task traceability",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-a-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T23:59:59+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-1-slice-a-review.md"
+  },
+  "notes": "Входы: docs/reviews/sprint-v2-1-slice-1-normative-freeze.md и docs/reviews/sprint-v2-1-slice-1-test-matrix.md. Итог Slice A: создан docs/reviews/sprint-v2-1-slice-a-tx-schema-freeze.md с freeze по BurnMarkTx v2 (`purpose`: обязательное, <=80 UTF-8 bytes после trim, запрет C0/C1 controls), ClaimTx draft (обязательные поля, mode free|paid, минимальная валидация), stable error taxonomy, deterministic serialization notes и backward-compat стратегией для legacy BurnMarkTx v1. pwm-testing (2026-05-05): testing-gate PARTIAL — см. docs/reviews/sprint-v2-1-slice-a-test-report.md; purpose/fee/legacy в A однозначны для будущих тестов; полная матрица free/paid/UTC/reorg и порог комиссии ждут B/C/D; дрейф: test-matrix P-PUR-01 всё ещё упоминает графемы/PURPOSE_MAX_CHARS — выровнять под Slice A. pwm-review (2026-05-05): verdict approve with nits (result PARTIAL) — docs/reviews/sprint-v2-1-slice-a-review.md; переход к Slice B разрешён при закрытии семантики anchor_ref/claim_units, канонического формата sig/payload; medium: уточнить wire-тип sig и привязку UTC-day free-claim к chain time в B/C; low: выровнять P-PUR-01 под §2.B; crates/* не менялись. Carry-over: Slice B запущен (docs-only) для фиксации state semantics maturity/free-claim без изменений crates/*."
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "20260509-standby-minimal-sync-log",
+  "title": "Ведомые (Standby): без Sync progress; чекпоинт на диск — лог раз в 100 блоков",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Для ведомых узлов не логировать консольный/прогресс same-shard sync (target pwmd::sync Sync progress и сопутствующий шум хвоста). Достаточно периодического INFO о сбросе чекпоинта на диск: интервал 100 блоков (вместо 10). SealRole::Standby — каноничный критерий ведомого в CY lab.",
+  "references": [
+    "crates/pwmd/src/transport/peer_session/sync_live.rs",
+    "crates/pwmd/src/lifecycle.rs",
+    "docs/blockchain-sync.md",
+    "scripts/cy_cluster_two_node_smoke.ps1"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Standby: early return в maybe_log_sync_prog; STANDBY_SYNC_FLUSH_BLK_IV=100; тест standby_batch_cross_iv_writes; cargo test -p pwmd PASS",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/transport/peer_session/sync_live.rs"
+      ],
+      "commands": [
+        "cargo fmt -p pwmd",
+        "cargo test -p pwmd"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 18000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T12:00:00Z"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Смок: PASS по snapshot ready + proposer listen; RequireQuietTail учитывает Standby maxPct=0; docs/blockchain-sync.md",
+      "result": "PASS",
+      "artifacts": [
+        "scripts/cy_cluster_two_node_smoke.ps1",
+        "docs/blockchain-sync.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4000,
+        "output": 1200,
+        "total": 5200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T12:30:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": null },
+  "notes": "Агент ID pwm-coding: 6819cb80-0e7a-4480-b75e-1c813945da61."
+}

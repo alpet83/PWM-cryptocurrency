@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "20260515-mvp-v2-public-docs-readiness",
+  "title": "MVP v2: подготовка публичной документации",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Подготовить MVP v2 к отправке в публичный репозиторий: независимое pwm-review должно проверить актуальность связанных с версией документов, включая README*. docs/CONCEPT_ROADMAP.md исключён из scope и не должен учитываться/публиковаться, так как в активной разработке. После актуализации: локальные коммиты и первичная отправка файлов через MCP git_safe_commit в цикле dry_run -> apply.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Обзор готовности публичной документации MVP v2: README vs CHANGELOG (marks), pwm-core seal path, сломанные p:/ ссылки в plans, YAML в mvp_v2. Исключён docs/CONCEPT_ROADMAP.md из scope.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260515-mvp-v2-public-docs-readiness.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-15"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Закрытие P0/P1 docs: README*, pwm-core seal path, relative links in MVP plans, checklist navigation, matrix wording, CHANGELOG.",
+      "result": "PASS",
+      "artifacts": [
+        "README.md",
+        "README-ru.md",
+        "docs/pwm-core.md",
+        "docs/plans/mvp_v2.md",
+        "docs/plans/mvp_v1_testnet_multi-sprint.md",
+        "docs/WHITEPAPER_COVERAGE_MATRIX.md",
+        "docs/MVP-checklist.md",
+        "CHANGELOG.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-15T13:45:00+03:00"
+    }
+  ],
+  "commits": [
+    "873b5ff",
+    "7bdd730",
+    "943041d",
+    "546d76c"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260515-mvp-v2-public-docs-readiness.md"
+  },
+  "notes": "Scope exclude: docs/CONCEPT_ROADMAP.md. Для синка в public mirror добавлен exclude в commit_prepare.toml; MCP git_safe_commit dry_run -> apply выполнен."
+}

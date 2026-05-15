@@ -1,0 +1,236 @@
+{
+  "id": "20260509-protocol-versioning-debug-controls",
+  "title": "Protocol semver guards, build control logs, block dump, time-align seal",
+  "status": "in_progress",
+  "created": "2026-05-09",
+  "context": {
+    "goal": "Добавить управляемые механизмы диагностики и совместимости: контроль сборки в логах, semver-guard для пиров, debug-dump блоков и time-align запечатывания.",
+    "motivation": "Снизить риск silent-divergence и ускорить root-cause при рассинхроне same-shard узлов."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "Design/debug gate: mapped existing code locations for build-control logs, peer protocol versioning, divergence block dumps, seal time controls, and same-validator-key divergence risk; no product Rust edits.",
+      "verbosity_focus": "transport:peers",
+      "instrumentation": {
+        "files": [],
+        "reverted": "yes",
+        "receiver_if_kept": null
+      },
+      "repro": {
+        "deterministic": "not_applicable",
+        "flake_rate": null,
+        "command": "No repro run requested; design gate used CQDS-first code mapping and static review."
+      },
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-debug-controls-design-gate.md"
+      ],
+      "notes": [
+        "CQDS-first followed: colloquium-cqds-mcp skill read, cq_help called before cq_files_ctl, project_id=5 used for code mapping.",
+        "Recommendation: split into Slice A (build log + protocol semver + workflow discipline) and Slice B (debug block dump + divergence controls + time-align seal).",
+        "Risk assessment: time-align can reduce boundary drift only; deterministic seal time remains the only MVP hash-parity mechanism."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T09:19:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice 1 implementation: startup build-control log marker, protocol semver guard in handshake path, semver bump discipline update in coding/review prompts, and targeted tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/handshake.rs",
+        "crates/pwmd/src/transport/incoming_hello.rs",
+        "crates/pwmd/src/transport/dial.rs",
+        "docs/AGENT_PROMPT_coding.md",
+        "docs/AGENT_PROMPT_review.md",
+        "docs/reviews/20260509-slice1-semver-build-control.md"
+      ],
+      "notes": [
+        "Semver rule applied: major mismatch rejects with explicit reason; minor/patch mismatch allowed with warn log.",
+        "Build control startup marker logs binary path + binary mtime (UTC unix ms marker) + lightweight build marker.",
+        "Task keeps Slice 2 open (debug dump/time-align controls not included in this coding leg)."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 34000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T10:05:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice 1 validation: semver handshake reject/warn-only, build-control log fields, targeted pwmd tests + cargo check.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-slice1-semver-build-control-testing.md"
+      ],
+      "notes": [
+        "Targeted cargo test filters: handshake compat + incoming_hello semver + main binary_meta; full incoming_hello module + dial trust test.",
+        "Patch fractional mismatch shares minor branch; no dedicated patch-only integration test.",
+        "cargo check -p pwmd ok.",
+        "Commits validated: 08cc97d, 223057f."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T14:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice 1 final gate: semver rules, build-control logs, reason/metrics, prompt discipline, merge readiness.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-slice1-semver-build-control-final-review.md"
+      ],
+      "notes": [
+        "Verdict: approve with nits; merge readiness: ready.",
+        "Must-fix for slice1 scope: none. Nits: reword commit 08cc97d message; document crate vs PWM_PROTOCOL_VERSION in ops/runbook; optional patch-only test."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T16:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice 2 implementation: persistent-divergence block dump controls, mid-second seal align mode with deterministic precedence, docs/runbook updates, and targeted tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/debug_dump.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/transport/handshake_state.rs",
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "docs/reviews/20260509-slice2-dump-timealign.md",
+        "docs/runbook-same-shard-sync-v1.md"
+      ],
+      "notes": [
+        "Divergence dump trigger is persistent by node: dump activates only when consecutive SyncTipDivergence streak reaches debug_dump_trigger_streak (default 2), with streak reset on clean tip announce.",
+        "Dump writes are bounded by debug_dump_cap (default 16) and default path resolves to <data_file_parent>/blocks/b{height}.json with fallback state/blocks.",
+        "Mid-second align is opt-in and deterministic seal-time remains authoritative (align is ignored with warning when deterministic mode is enabled).",
+        "Validation run: cargo fmt --all; scripts/check_rust_fn_name_segments.py on touched files; targeted dump/align tests; cargo check -p pwmd."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 42000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T09:35:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice 2 validation: divergence dump streak/cap, dump paths b{height}.json, time-align vs deterministic precedence, defaults OFF; targeted pwmd tests + cargo check.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-slice2-dump-timealign-testing.md"
+      ],
+      "notes": [
+        "Commits validated: ad0bee1 (coding), e3e0e24 (ticket ledger).",
+        "debug_dump::tests (4) + dump_on_div_default_off + handshake lib smoke (16); cargo check -p pwmd ok.",
+        "Integration gap: no harness for consecutive SyncTipDivergence streak nor CapReached after max_files."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice 2 final gate: divergence dump trigger/cap/path, time-align precedence, defaults OFF, merge readiness.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-slice2-dump-timealign-final-review.md"
+      ],
+      "notes": [
+        "Verdict: approve_with_nits; merge readiness: ready.",
+        "Must-fix: none. Naming checker clean on touched pwmd paths; wire unchanged in slice2.",
+        "Residual: integration gap on streak/CapReached; theoretical race widening dump cap under parallel peers."
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 16000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T18:30:00+03:00"
+    }
+  ],
+  "commits": [
+    "08cc97d",
+    "223057f",
+    "c4031c4",
+    "ad0bee1",
+    "e3e0e24",
+    "e2c1701"
+  ],
+  "artifacts": {
+    "design_gate_report": "docs/reviews/20260509-debug-controls-design-gate.md",
+    "review_md": "docs/reviews/20260509-slice1-semver-build-control-final-review.md",
+    "slice1_report": "docs/reviews/20260509-slice1-semver-build-control.md",
+    "slice1_testing_report": "docs/reviews/20260509-slice1-semver-build-control-testing.md",
+    "slice2_report": "docs/reviews/20260509-slice2-dump-timealign.md",
+    "slice2_testing_report": "docs/reviews/20260509-slice2-dump-timealign-testing.md",
+    "slice2_testing_commit": "e2c1701",
+    "slice2_final_review": "docs/reviews/20260509-slice2-dump-timealign-final-review.md",
+    "slice2_final_verdict": {
+      "gate": "PASS",
+      "merge_readiness": "ready",
+      "verdict": "approve_with_nits",
+      "must_fix": [],
+      "residual_risks": [
+        "No automated test for consecutive SyncTipDivergence streak before dump nor for CapReached after max_files.",
+        "Global dump_count check vs increment is not fully atomic across peers — cap may slightly overshoot under concurrency.",
+        "Full-block JSON dumps imply operator disk and confidentiality responsibility when debug dump is enabled."
+      ]
+    },
+    "slice2_testing_result": "PASS",
+    "slice1_testing_result": "PASS",
+    "slice1_coding_commit": "08cc97d",
+    "slice2_coding_commit": "ad0bee1",
+    "slice1_final_review": "docs/reviews/20260509-slice1-semver-build-control-final-review.md",
+    "slice1_final_verdict": {
+      "gate": "PASS",
+      "merge_readiness": "ready",
+      "verdict": "approve_with_nits",
+      "must_fix": [],
+      "residual_risks": [
+        "Log marker uses CARGO_PKG_VERSION; wire hello uses PWM_PROTOCOL_VERSION — operators need a clear distinction unless logs are extended.",
+        "No dedicated patch-only handshake test (same code path as minor warn).",
+        "Main implementation commit message is placeholder text."
+      ]
+    },
+    "slice_recommendation": "split_2_slices",
+    "slice_recommendation_detail": {
+      "slice_a": "Build control log + protocol semver guard + coding/review version bump discipline.",
+      "slice_b": "Controlled divergence block dump + persistent divergence trigger + debug-only time-align seal."
+    }
+  }
+}

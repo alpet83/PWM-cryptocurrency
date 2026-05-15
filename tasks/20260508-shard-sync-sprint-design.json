@@ -1,0 +1,32 @@
+{
+  "id": "20260508-shard-sync-sprint-design",
+  "title": "Проектирование спринта shard-sync (mempool/block-gossip/catch-up)",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "goal": "Подготовить архитектурный обзор и проект спринта для сетевой синхронизации истории и состояния между нодами одной шарды.",
+    "requested_scope": [
+      "mempool sharing",
+      "block propagation with validator signatures before chain include",
+      "history catch-up protocol (в т.ч. epochs/json path)"
+    ],
+    "note": "Сначала подробный архитектурный review предстоящего развития."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "at": "2026-05-08T05:40:00Z",
+      "note": "Context bundle prepared. Key finding: NO block sync protocol exists on wire (PeerWireMsg lacks Block/Header/Inv/GetHeaders). Chain sync for shard requires new wire protocol + apply path + fork choice rules. See info artifact for full file map and gaps."
+    },
+    {
+      "agent": "pwm-review",
+      "at": "2026-05-08T12:00:00Z",
+      "note": "Architecture + sprint design: docs/reviews/20260508-shard-sync-architecture-and-sprint.md. Variants A (wire header/block sync) vs B (epoch catch-up + live). Verdict NEED-RFC until Slice 0 frozen; recommended hybrid B as bootstrap + A for live. First code slice after RFC: Slice 1 wire schema + feature gates."
+    }
+  ],
+  "artifacts": {
+    "info_json": "tasks/20260508-shard-sync-sprint-design-info.json",
+    "review_md": "docs/reviews/20260508-shard-sync-architecture-and-sprint.md",
+    "verdict": "NEED-RFC"
+  }
+}

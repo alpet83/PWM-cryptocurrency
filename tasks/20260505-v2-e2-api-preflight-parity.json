@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-e2-api-preflight-parity",
+  "title": "MVP v2 E-2: API preflight/apply parity and stable reject wire (pwmd)",
+  "status": "done",
+  "mvp_checklist": [
+    "§4 Нода pwmd"
+  ],
+  "brief": "Слайс E-2 по docs/reviews/sprint-v2-1-slice-e-implementation-handoff.md §3: закрепить стабильный reject-wire (phase, tx_kind, response_class, error.code/message/trace_id), единый mapping E_* -> response_class для claim/burn/import/auto-claim путей, симметрию verdict preflight vs apply на одном и том же snapshot. Без расширения экономики и без полной CLI/TUI адаптации (это E-3). После coding: pwm-testing (parity/негативы), pwm-review.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "E-2: pwmd reject contract + E_* class mapping + preflight/apply parity",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/api/common.rs",
+        "crates/pwmd/src/api/handlers_tx.rs",
+        "crates/pwmd/src/tx_policy.rs",
+        "crates/pwmd/src/tests/http_status.rs",
+        "crates/pwmd/Cargo.toml"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 23000,
+        "output": 5000,
+        "total": 28000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T21:33:46.2139084+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "E-2: тесты parity preflight/apply и обязательные поля reject JSON",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-e2-testing-report-20260505.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 4000,
+        "total": 16000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T21:36:42.9622510+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "E-2: независимый gate по RFC 0013/0014 и handoff E-2",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-e2-review-20260505.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 4500,
+        "total": 18500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T22:00:00+03:00"
+    }
+  ],
+  "commits": [
+    "dedb965"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/v2-e2-review-20260505.md"
+  },
+  "notes": "Оркестратор: синхронный конвейер. Субагенты обязаны использовать skill colloquium-cqds-mcp перед CQDS; не парсить исходники MCP.\nБаза: E-1 закрыт (tasks/20260505-v2-e1-core-claim-autoclaim.json).\nЗакрытие E-2 (2026-05-05): pwm-coding → pwm-testing → pwm-review все PASS. Ниты review: при необходимости расширить reject JSON полем claim_mode для tx_kind=claim (RFC 0014); часть import-prefilter может отдавать plaintext; phase=mempool в HTTP не демонстрируется — вынести добивку в E-3 или отдельный микрослайс.\nСледующий шаг по handoff: Slice E-3 (pwm-cli/pwm-tui + deprecation guardrails)."
+}

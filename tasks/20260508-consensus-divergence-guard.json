@@ -1,0 +1,209 @@
+{
+  "id": "20260508-consensus-divergence-guard",
+  "title": "Divergence guard: disconnect/backoff on hash mismatch",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "goal": "Ввести временный safeguard на расхождение tip/hash между same-shard peers: разрыв соединения и cooldown перед reconnect.",
+    "motivation": "На фоне наблюдаемой tip_hash divergence уменьшить риск silent split и сделать сбой заметным оператору."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Политика классических сетей vs MVP; safe guard; рекомендация coding/testing",
+      "notes": [
+        "Отчёт политики: docs/reviews/20260508-divergence-guard-policy.md",
+        "Verdict: READY_FOR_HOTFIX при узком триггере same-height + same shard + full_v1; backoff per-peer ~60s; новые метрики/peer_close_by_reason",
+        "Связка: tasks/20260508-v2-slice6-hotfix-tip-hash-divergence.json (реальное расхождение заголовков до root-cause fix)"
+      ]
+    },
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "Реализовать guard в sync tip path по политике из review_md",
+      "notes": [
+        "Точка: on_tip / sync_tip_announce — при head_h == local_tip_h и mismatch head_hash → session close",
+        "PeerCloseReason + cooldown per remote id (конфиг ~60s), метрики sync_tip_divergence_disconnect_total или аналог",
+        "Не триггерить при разной высоте или legacy_observe",
+        "Реализовано: новый PeerCloseReason::SyncTipDivergence, disconnect в route_sync_stub, cooldown marker >=60s на seed, sync_tip_divergence_disconnect_total.",
+        "Тесты: cargo test -p pwmd tip_divergence (2 passed), cargo check -p pwmd, cargo fmt, scripts/check_rust_fn_name_segments.py."
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "Harness: same-height mismatch → disconnect + backoff counters; негативные кейсы высоты/режима",
+      "prompt_summary": "Validate divergence guard hotfix in pwmd transport; targeted tests + fmt + snapshot bench compile",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-divergence-guard-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08T12:00:00Z",
+      "notes": [
+        "preflight_target_debug.ps1: PASS (~216MiB target/debug)",
+        "cargo test -p pwmd tip_divergence: 2 passed",
+        "cargo test -p pwmd peer_session::tests: 17 passed",
+        "cargo fmt -p pwmd --check: PASS",
+        "cargo bench -p pwmd --bench snapshot_load --no-run: PASS",
+        "Verdict PASS for hotfix merge on automated pwmd transport slice; see artifacts.testing_report"
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Final gate: divergence condition, cooldown semantics, regressions, metrics, tests/docs traceability",
+      "prompt_summary": "Post coding+testing merge gate for divergence guard hotfix",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-divergence-guard-final-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08T16:00:00Z",
+      "notes": [
+        "Verdict PASS; must-fix для merge: нет",
+        "Nits: backoff set_seed_due только при Some(seed_key) (inbound без seed — без 60s маркера); сравнение hash без lower-case hex vs политика §2"
+      ]
+    },
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "Micro-slice follow-up: inbound cooldown symmetry + settled-anchor divergence criterion",
+      "notes": [
+        "Inbound path: divergence cooldown now resolves seed by node_id via transport.seed_peers[*].last_node_id when direct seed_key is absent.",
+        "SyncTipAnnounce extended with optional finalized_hash; on equal-height tips, divergence check prefers finalized anchor hash when available.",
+        "Fallback preserved: without finalized anchor data, same-height tip-hash mismatch remains the safety trigger; height lag and legacy/non-sync paths unchanged.",
+        "Tests extended: inbound cooldown mapping and settled-anchor preference.",
+        "Commit: 39b258a"
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "Re-validate microfix 39b258a: settled anchor, fallback without anchor, inbound cooldown symmetry, height-lag/legacy regressions",
+      "prompt_summary": "Targeted pwmd transport tests + wire_decode + fmt + snapshot_load bench --no-run; append testing doc microfix section",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-divergence-guard-testing.md § Microfix validation"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 22000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08T17:45:00Z",
+      "notes": [
+        "Commits under test: 39b258a (coding), 9328415 (ticket artifact only)",
+        "preflight_target_debug.ps1: PASS (~226MiB target/debug)",
+        "cargo test -p pwmd tip_divergence: 4 passed",
+        "cargo test -p pwmd peer_session::tests: 19 passed",
+        "cargo test -p pwmd wire_decode: 7 passed",
+        "cargo fmt -p pwmd --check: PASS",
+        "cargo bench -p pwmd --bench snapshot_load --no-run: PASS",
+        "See artifacts.testing_microfix_result / testing_microfix_report"
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Final gate after microfix 39b258a: settled anchor, inbound cooldown, regressions, metrics",
+      "prompt_summary": "Post-microfix merge gate: divergence guard 39b258a + docs 9328415 504b71a",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-divergence-guard-final-review.md §9"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08T18:30:00Z",
+      "notes": [
+        "Verdict PASS for microfix gate; must-fix: none; merge ready with 39b258a + pwm-testing 504b71a",
+        "Nits: conservative bypass if local anchor block missing; hex case; first seed match if duplicate last_node_id"
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Матрица покрытия MVP: handshake / reconnectBackoff / steady sync без нового поведения",
+      "prompt_summary": "Divergence self-vs-peer coverage matrix + ticket artifacts.trace",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260508-divergence-coverage-matrix.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08T21:30:00Z",
+      "notes": [
+        "Verdict см. coverage_matrix: PARTIAL покрытие; top gaps — cluster_id на hello, negotiation capabilities, header-level fork без симметричного disconnect как у tip divergence"
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "Повтор Wave A; peer-логи при дивергенции; B/C отсутствуют; tip_divergence unit",
+      "prompt_summary": "Rerun same-shard wave scripts; collect disconnect evidence; doc + ticket artifacts",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260508-divergence-waves-rerun.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 16000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-08T22:00:00Z",
+      "notes": [
+        "preflight_target_debug.ps1: PASS",
+        "python scripts/wave_a_same_shard_stop.py --keep-artifacts: exit 1 (tip_hash_equal=false); peer logs under logs/2026-05-08/pwmd-peer-wave-node-*-150657.log",
+        "sync_tip_divergence not seen in Wave A peer logs; continuity_break + catchup chunk_order backoff + protocol_error/eof on shutdown",
+        "Wave B/C: no scripts in repo",
+        "cargo test -p pwmd tip_divergence: 4 passed"
+      ]
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-divergence-guard-policy.md",
+    "verdict": "READY_FOR_HOTFIX",
+    "coding_commit": "4075ba4",
+    "testing_result": "PASS",
+    "testing_report": "docs/reviews/20260508-divergence-guard-testing.md",
+    "final_review": "docs/reviews/20260508-divergence-guard-final-review.md",
+    "final_review_verdict": "PASS",
+    "coding_commit_followup": "39b258a",
+    "implementation_notes_followup": "docs/reviews/20260508-divergence-guard-implementation-notes.md",
+    "testing_microfix_result": "PASS",
+    "testing_microfix_report": "docs/reviews/20260508-divergence-guard-testing.md",
+    "final_review_microfix": "docs/reviews/20260508-divergence-guard-final-review.md",
+    "final_review_microfix_verdict": "PASS",
+    "coverage_matrix": "docs/reviews/20260508-divergence-coverage-matrix.md",
+    "coverage_matrix_verdict": "PARTIAL",
+    "waves_rerun_report": "docs/reviews/20260508-divergence-waves-rerun.md",
+    "waves_rerun_result": "PARTIAL"
+  }
+}

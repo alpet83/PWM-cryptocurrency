@@ -1,0 +1,275 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-08T05:40:00Z",
+  "title": "Shard Sync Sprint: Chain Sync Architecture Info Bundle",
+  "research_question": "Собрать повторно используемую карту кода/документов для архитектурного спринта по chain sync внутри одной шарды: transport wire и handshake, текущий lifecycle seal/consensus, snapshot/epochs loading/sync, mempool интерфейсы, RFC/доки про peering, roaming, consensus.",
+  "parent_ticket": "20260508-shard-sync-sprint-design",
+  "scope": {
+    "topics": [
+      "transport_wire_handshake",
+      "seal_consensus_lifecycle",
+      "snapshot_epochs_sync",
+      "mempool_interfaces",
+      "rfc_peering_roaming_consensus"
+    ],
+    "goal": "Подготовить архитектурный обзор и проект спринта для сетевой синхронизации истории и состояния между нодами одной шарды"
+  },
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {
+        "pattern": "transport|handshake|peer|wire",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Transport layer: wire protocol, peer handshake, TCP sessions"
+      },
+      {
+        "pattern": "mempool|tx_pool",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Mempool: transaction pool interfaces and FIFO queue"
+      },
+      {
+        "pattern": "snapshot|epoch|sync|catch",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Snapshot/epochs: chain persistence, loading, catch-up mechanics"
+      },
+      {
+        "pattern": "seal|consensus|validator",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Seal/consensus: block sealing, PoA dev consensus, validators"
+      },
+      {
+        "pattern": "gossip|propagation|broadcast|federation",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Gossip/federation: cross-shard facts, account views, height gossip"
+      }
+    ],
+    "warnings": [
+      "CQDS index stale (scan_stale + index_stale) — searches returned 0 hits; used rg fallback",
+      "Project scan state outdated — recommendations for next agent: trigger index rebuild via cq_files_ctl#rebuild_index if deep search needed"
+    ]
+  },
+  "files": [
+    {
+      "path": "crates/pwmd/src/transport/peer_session/wire.rs",
+      "why": "spec",
+      "note": "PeerWireMsg enum — wire protocol message types (Hello, Heartbeat, CrossShardFacts, AccountViews). NO block/header/inv/getheaders messages present."
+    },
+    {
+      "path": "crates/pwmd/src/transport/peer_session/mod.rs",
+      "why": "match",
+      "note": "Peer session core: heartbeat construction with chain_tip_height and federation_gossip, cross-shard facts and account views exchange."
+    },
+    {
+      "path": "crates/pwmd/src/transport/peer_session/inbound.rs",
+      "why": "match",
+      "note": "Inbound peer acceptor: process_inbound_socket, hello handling, peer classification."
+    },
+    {
+      "path": "crates/pwmd/src/transport/dial.rs",
+      "why": "match",
+      "note": "Outbound seed dialing: build_local_node_hello, attempt_seed_connect. Services advertised include 'mempool' and 'sync' but sync is not implemented on wire."
+    },
+    {
+      "path": "crates/pwmd/src/handshake.rs",
+      "why": "match",
+      "note": "NodeHello struct and validation: identity envelope with network_id, genesis_hash, cluster (domain_hi), node, capabilities, signature. ReplayNonceCache."
+    },
+    {
+      "path": "crates/pwmd/src/transport/handshake_state.rs",
+      "why": "match",
+      "note": "Handshake state tracking: peer classification (native/foreign), trusted peers, genesis guard."
+    },
+    {
+      "path": "crates/pwmd/src/transport/incoming_hello.rs",
+      "why": "match",
+      "note": "Process incoming peer hello: validation, classification, policy enforcement."
+    },
+    {
+      "path": "crates/pwmd/src/transport/policy.rs",
+      "why": "match",
+      "note": "Peer classification policy: classify_peer_for_hs native vs foreign by domain_hi equality."
+    },
+    {
+      "path": "crates/pwmd/src/transport/transport_tick.rs",
+      "why": "match",
+      "note": "Transport main loop: peer liveness, dial queue priority, native-first budgeting, gossip weighting (partial)."
+    },
+    {
+      "path": "crates/pwmd/src/transport/spawn.rs",
+      "why": "import",
+      "note": "Transport loop spawning: stateful transport with seeds, peer listener."
+    },
+    {
+      "path": "crates/pwmd/src/lifecycle.rs",
+      "why": "match",
+      "note": "Node lifecycle: spawn_seal_loop (local PoA block sealing), spawn_snapshot_loader (bootstrap from snapshot), run_with initialization."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/mod.rs",
+      "why": "import",
+      "note": "Snapshot module exports: io, store, incremental, repair, epoch, genesis, types."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/io.rs",
+      "why": "match",
+      "note": "Snapshot I/O: json_file_seal_persist (periodic), json_file_runtime_persist (full flush), load_snapshot, checkpoint summary vs manifest lag handling."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/incremental.rs",
+      "why": "match",
+      "note": "Incremental epoch storage: append_tip_block, sync_epoch_to_tip, EpochManifest with canonical_h, JSONL blocks per epoch."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/epoch.rs",
+      "why": "spec",
+      "note": "Epoch constants: SNAP_CHK_BLK_IV=100 (checkpoint interval), epoch file naming, block-to-epoch mapping."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/store.rs",
+      "why": "match",
+      "note": "SnapshotBackend abstraction: JsonFile and ClickHouse backends, save_seal_persist vs save."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/repair.rs",
+      "why": "match",
+      "note": "Snapshot repair: repair_json_epochs for consistency recovery after crashes."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/genesis.rs",
+      "why": "import",
+      "note": "Genesis loading: from json, creating initial state."
+    },
+    {
+      "path": "crates/pwmd/src/federation.rs",
+      "why": "match",
+      "note": "Federation table: FedShardRow gossip, merge_remote_hello/hb, height dictionary for cross-shard awareness. Gossip relay for shard heights, NOT block sync."
+    },
+    {
+      "path": "crates/pwm-core/src/mempool.rs",
+      "why": "match",
+      "note": "Mempool: bounded FIFO queue (Mpool), push/take/prepend_block for block sealing."
+    },
+    {
+      "path": "crates/pwm-core/src/chain.rs",
+      "why": "import",
+      "note": "Chain: seal operation (PoA), apply_tx, block storage, tip management."
+    },
+    {
+      "path": "crates/pwm-core/src/state.rs",
+      "why": "import",
+      "note": "State: account balances, nonces, stake/unstake, claim maturity, import/export tracking."
+    },
+    {
+      "path": "docs/rfc/8-shard-runtime-identity-and-peering.md",
+      "why": "spec",
+      "note": "RFC 8: Shard identity, NodeHello handshake, native/foreign peer classification, priority policy, gossip weighting, acceptance criteria §11."
+    },
+    {
+      "path": "docs/adr/0001-consensus-and-node-stack.md",
+      "why": "spec",
+      "note": "ADR 0001: PoA dev consensus decision, built-in devnet consensus (not BFT), future path to CometBFT."
+    },
+    {
+      "path": "docs/reviews/20260507-peer-transport-capabilities.md",
+      "why": "spec",
+      "note": "Review verdict: NO block/header/inv/getheaders wire messages. NO chain sync P2P protocol. Chain tip height in heartbeat is for federation observation only."
+    },
+    {
+      "path": "docs/reviews/20260507-snapshot-summary-manifest-lag.md",
+      "why": "spec",
+      "note": "Snapshot lag analysis: checkpoint_height vs canonical_h mismatch root causes, seal persist policy (every 100 blocks)."
+    },
+    {
+      "path": "docs/pwmd.md",
+      "why": "spec",
+      "note": "PWMD documentation: transport config, identity launch rules, storage namespace, peer relay health semantics."
+    },
+    {
+      "path": "docs/DOMAINS.md",
+      "why": "spec",
+      "note": "Domain clusters reference: supported domain_hi values, shard routing."
+    },
+    {
+      "path": "docs/GEO-SHARDING-EXPLANATION.md",
+      "why": "spec",
+      "note": "Geo-sharding concepts: domain_hi semantics, cross-shard operations."
+    },
+    {
+      "path": "docs/MATRIXCHAIN_SPEC_v0.md",
+      "why": "spec",
+      "note": "MatrixChain spec: block format, transaction types, consensus fundamentals."
+    },
+    {
+      "path": "docs/rfc/4-validators-and-finality.md",
+      "why": "spec",
+      "note": "RFC 4: Validator set and finality mechanics (future)."
+    },
+    {
+      "path": "docs/rfc/3-cross-domain-roaming.md",
+      "why": "spec",
+      "note": "RFC 3: Cross-domain roaming protocol (exports/imports)."
+    },
+    {
+      "path": "docs/ROAMING_COMPLETION.md",
+      "why": "spec",
+      "note": "Roaming implementation notes: relay, handoff_register, import flows."
+    },
+    {
+      "path": "crates/pwmd/src/api/handlers_peer.rs",
+      "why": "match",
+      "note": "HTTP peer handlers: /v1/peer/hello, status for federation observation."
+    },
+    {
+      "path": "crates/pwmd/src/api/handlers_status.rs",
+      "why": "match",
+      "note": "HTTP status handler: chain tip height, genesis hash, federation view."
+    },
+    {
+      "path": "crates/pwmd/src/api/types.rs",
+      "why": "import",
+      "note": "API types for peer communication and status responses."
+    }
+  ],
+  "digest": "## Архитектура chain sync: текущее состояние и пробелы\n\n### Transport Wire и Handshake\n\nРеализован в `crates/pwmd/src/transport/`. PeerWireMsg (wire.rs) поддерживает:\n- Hello / HelloAck — идентификация через NodeHello (network_id, genesis_hash, cluster с domain_hi, node, capabilities, подпись)\n- Heartbeat / HeartbeatAck — поддержание сессии, поле chain_tip_height\n- CrossShardFacts — кросс-шард факты (экспорты/импорты)\n- AccountViews — обзоры счетов для roaming\n\n**Критический пробел:** PeerWireMsg НЕ содержит сообщений для block sync (нет Block, Header, Inv, GetHeaders, GetBlocks). В heartbeat chain_tip_height используется только для federation-таблицы наблюдаемых высот, а не для инициации докачки блоков (см. обзор 20260507-peer-transport-capabilities.md).\n\n### Seal/Consensus Lifecycle\n\n`lifecycle.rs` spawn_seal_loop — локальный PoA-контур: каждая нода сама формирует блоки через `chain.seal()` при готовности InitState. Нет сетевого консенсуса между нодами одной шарды. Консенсус devnet описан в ADR 0001 (встроенный PoA, не BFT).\n\n### Snapshot/Epochs Loading\n\n`crates/pwmd/src/snapshot/` — загрузка истории с диска при старте:\n- JsonFile backend: pwm-data.json (summary) + epochs/ (JSONL блоки) + pwm-epochs-manifest.json\n- io.rs: load_snapshot, json_file_seal_persist (редкий checkpoint каждые SNAP_CHK_BLK_IV=100 блоков), json_file_runtime_persist (полный flush)\n- incremental.rs: append_tip_block, sync_epoch_to_tip\n- repair.rs: repair_json_epochs для восстановления после сбоев\n\nПроблема: summary.checkpoint_height отстаёт от manifest.canonical_h до 99 блоков в нормальном режиме (см. обзор 20260507-snapshot-summary-manifest-lag.md).\n\n### Mempool Интерфейсы\n\n`crates/pwm-core/src/mempool.rs` — простой FIFO Mpool с capacity, push/take/prepend_block. Используется seal-циклом для взятия транзакций в блок. Нет сетевого sharing'а мемпула между пирами (только локальный pool).\n\n### Federation/Gossip\n\n`federation.rs` — FedShardRow таблица высот шардов. Gossip relay через heartbeat federation_gossip для вторичных шардов. НЕ реализует gossip блоков или sync цепочки.\n\n### RFC/Документация\n\n- RFC 8 (8-shard-runtime-identity-and-peering.md): спецификация handshake, native/foreign классификация, приоритизация native, acceptance criteria §11 (частично реализовано — нет полного gossip/sync блоков)\n- ADR 0001: PoA dev консенсус, roadmap к CometBFT\n\n### Ключевые пробелы для Chain Sync спринта\n\n1. **Wire протокол:** Нет типов сообщений для передачи блоков/заголовков/инвентаризации\n2. **Apply с сети:** Нет безопасного применения входящих блоков (валидация подписи валидатора, высота, связность, выбор канонической цепи при форках)\n3. **Request/Response:** Нет протокола запроса диапазона блоков от пира\n4. **Mempool sharing:** Нет сетевого обмена транзакциями между пирами до включения в блок\n5. **Семантика services: sync:** В capabilities объявлено, но не реализовано\n",
+  "gaps": [
+    "PeerWireMsg lacks block/header/inv/getheaders message types — need new wire protocol for block sync",
+    "No network protocol for requesting block ranges from peers (GetBlocks/Blocks) or headers (GetHeaders/Headers)",
+    "No safe apply path for incoming blocks from network: validator signature verification, height validation, fork choice rules not implemented in transport",
+    "Mempool is local-only: no tx propagation/gossip between peers before block inclusion",
+    "chain_tip_height in heartbeat only updates federation observation table, doesn't trigger block download",
+    "Services capability 'sync' is advertised but not implemented — need to either implement or narrow capabilities",
+    "PoA dev consensus is local per-node: no distributed consensus for block ordering across native peers",
+    "Snapshot catch-up exists for local disk loading only, not for network P2P sync"
+  ],
+  "log_digest": [
+    {
+      "source": "CQDS project_status",
+      "snippet_lines_or_summary": "Project PWM-cryptocurrency (id=5): scan_stale, index_stale — index cache outdated (cache_mtime < latest_file_ts). Recommendation: rebuild index before deep CQDS searches.",
+      "severity": "warning"
+    }
+  ],
+  "open_questions": [
+    "Should new chain-sync protocol reuse PeerWireMsg enum or be a separate subprotocol?",
+    "What is the fork choice rule for chain sync — longest chain or GHOST-like weighting?",
+    "How to handle validator set changes during sync — need epoch-based validator snapshots?",
+    "Should mempool tx gossip be pull-based (inv/getdata) or push-based (flooding)?",
+    "What anti-DoS limits apply to block sync — rate limiting, max block batch size?",
+    "Do we need backward compatibility with current wire protocol during transition?"
+  ],
+  "warnings": [
+    "CQDS index stale — searches via start_grep returned 0 hits; used rg fallback for file discovery",
+    "This info bundle is based on code inspection and existing reviews — no runtime tests performed",
+    "Chain sync protocol design will need new RFC or RFC 8 extension"
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "estimate",
+      "input": null,
+      "output": null,
+      "total": 4500,
+      "confidence": "low"
+    }
+  }
+}

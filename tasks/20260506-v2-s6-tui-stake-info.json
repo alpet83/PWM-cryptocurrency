@@ -1,0 +1,132 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-06T17:48:00Z",
+  "title": "TUI Stake/Unstake Forms (F7/Shift+F7) - Sprint V2-6 Handoff Digest",
+  "research_question": "Research TUI codebase to prepare for adding Stake/Unstake forms (F7/Shift+F7). Need key handler map, F5 current flow, F6 pattern as reference, tx_submit functions, marks_modal removal list, lib.rs app state, TxBody Stake/Unstake variants, and AcctRow fields.",
+  "parent_ticket": "v2-s6-tui-stake",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {"pattern": "KeyCode::", "paths_glob_optional": "crates/pwm-tui/src/tui_loop.rs", "summary": "Found all key bindings in tui_loop.rs main event loop"},
+      {"pattern": "pub fn", "paths_glob_optional": "crates/pwm-tui/src/tx_submit.rs", "summary": "Listed all public functions for transaction submission"},
+      {"pattern": "Stake|Unstake", "paths_glob_optional": "crates/pwm-core/src/tx.rs", "summary": "Found TxBody::Stake and TxBody::Unstake variants with fields"},
+      {"pattern": "struct AcctRow|AcctRow", "paths_glob_optional": "crates/pwm-tui/src/models.rs", "summary": "Found AcctRow struct fields"}
+    ]
+  },
+  "files": [
+    {"path": "crates/pwm-tui/src/tui_loop.rs", "why": "match", "note": "Main TUI event loop with all key handlers (F1-F6, letters, Esc, Enter)"},
+    {"path": "crates/pwm-tui/src/lib.rs", "why": "match", "note": "App state struct definitions and form builders (f5_build_burn_form, f6_build_send_form)"},
+    {"path": "crates/pwm-tui/src/send_form.rs", "why": "match", "note": "F6 Send form - reference implementation pattern for F7 Stake form"},
+    {"path": "crates/pwm-tui/src/burn_form.rs", "why": "match", "note": "F5 Burn form - form pattern with fields and validation"},
+    {"path": "crates/pwm-tui/src/marks_modal.rs", "why": "match", "note": "Current F5 marks modal - to be removed/replaced"},
+    {"path": "crates/pwm-tui/src/tx_submit.rs", "why": "match", "note": "Transaction submission functions (claim, burn, transfer)"},
+    {"path": "crates/pwm-tui/src/models.rs", "why": "match", "note": "AcctRow struct with balance_pwm and marks fields"},
+    {"path": "crates/pwm-core/src/tx.rs", "why": "match", "note": "TxBody enum with Stake and Unstake variants"}
+  ],
+  "digest": "## Summary\n\nThis handoff digest prepares for Sprint V2-6: adding Stake/Unstake forms to TUI via F7 (Stake) and Shift+F7 (Unstake).\n\n### Key Findings\n\n**Current TUI Key Map:** F1-F2 unused, F3=unlock/lock wallet, F4=encrypt/re-key, F5=marks modal (to refactor), F6=send form, F7-F9 unused. Letters: 'q'/F10=quit, Tab=switch panel, 'h'=history, 'c'/'b' in marks modal for claim/burn.\n\n**F5 Current Flow:** F5 press → opens MarksModal (marks, last_claim_wall) → 'c' triggers submit_claim RPC → 'b' transitions to BurnForm. BurnForm has fields: marks_available, mark_amount, beneficiary, purpose, confirm. On submit calls submit_burn_mark().\n\n**F6 Pattern (Template for F7):** Key press → f6_build_send_form() → SendForm {from, to, amount, fee, confirm} → render_send_modal() → validate_send_form() → submit_transfer().\n\n**TxBody Variants:** Stake { amount: u128 }, Unstake { amount: u128 }. Both have zero fee. Created via SignedTx::sign_body() then submitted to /v1/tx endpoint.\n\n**Required New Functions in tx_submit.rs:** submit_stake(), submit_unstake() - following submit_transfer pattern (fetch nonce, sign body, POST to /v1/tx).\n\n**Removal List:** marks_modal.rs module, MarksModal struct imports in lib.rs, last_claim_wall field from AcctRow, marks_modal Option in tui_loop.rs app state, render_marks_modal() function.\n\n**AcctRow Fields:** id, id_hex, balance_pwm (u128), initialized (bool), nonce (u64), marks (u32), last_claim_wall (Option<Instant>), label (Option<String>). Note: NO 'staked' field exists - may need to add for stake form header display or use balance field.",
+  "key_bindings": [
+    {"key": "F1-F2", "action": "unused", "location": "tui_loop.rs:512-617"},
+    {"key": "F3", "action": "wallet unlock/lock", "location": "tui_loop.rs:524-549"},
+    {"key": "F4", "action": "wallet encrypt/re-key", "location": "tui_loop.rs:550-566"},
+    {"key": "F5", "action": "open marks modal (to be refactored)", "location": "tui_loop.rs:568-574"},
+    {"key": "F6", "action": "open send form", "location": "tui_loop.rs:576-598"},
+    {"key": "F7-F9", "action": "unused (reserved for Stake/Unstake)", "location": "tui_loop.rs"},
+    {"key": "q / F10", "action": "quit", "location": "tui_loop.rs:516"},
+    {"key": "Tab", "action": "switch panel (Owner/Receivers)", "location": "tui_loop.rs:517-522"},
+    {"key": "h / H", "action": "toggle history overlay", "location": "tui_loop.rs:600-601"},
+    {"key": "c / C (in marks modal)", "action": "claim all marks", "location": "tui_loop.rs:298-318"},
+    {"key": "b / B (in marks modal)", "action": "burn marks (transition to BurnForm)", "location": "tui_loop.rs:320-342"},
+    {"key": "Esc", "action": "close modal/form", "location": "multiple"},
+    {"key": "Enter", "action": "submit/confirm", "location": "multiple"},
+    {"key": "Up/Down/Left/Right/Home/End", "action": "navigation/editing", "location": "form handlers"},
+    {"key": "Backspace/Delete", "action": "text editing", "location": "form handlers"}
+  ],
+  "f5_flow": {
+    "trigger": "KeyCode::F(5) pressed in main loop",
+    "step_1": "Check owner_rows.get(owner_sel) - if None, show 'F5 marks blocked: no selected Owner row'",
+    "step_2": "Create MarksModal::new(owner.marks, owner.last_claim_wall)",
+    "step_3": "Render via render_marks_modal() - shows marks count, [C] Claim option (with cooldown), [B] Burn marks, [Esc] Cancel",
+    "step_4a_claim": "On 'c' key: check modal.can_claim() (3600s wall-clock guard), pick_claim_anchor(), send RpcTask::SubmitClaim",
+    "step_4b_burn": "On 'b' key: call f5_build_burn_form(), set marks_available, transition burn_form = Some(form), marks_modal = None",
+    "step_5_burn_form": "BurnForm fields: from (fixed), mark_amount, beneficiary, purpose, confirm. On Enter/confirm: validate_burn_form() → submit_burn_mark()",
+    "files_involved": ["tui_loop.rs", "marks_modal.rs", "burn_form.rs", "lib.rs", "tx_submit.rs"]
+  },
+  "f6_pattern": {
+    "description": "Template pattern for implementing F7 Stake form",
+    "step_1": "KeyCode::F(6) pressed → preflight_sel_init_auto() check (init status)",
+    "step_2": "Call f6_build_send_form(identity, owner_rows, owner_sel, receiver_rows, recv_sel)",
+    "step_3": "f6_build_send_form validates: wallet not locked, owner selected, signing material available",
+    "step_4": "SendForm::new(from, to, to_editable) creates form with fields: from, to, amount, fee, confirm",
+    "step_5": "Key handling in send_form branch: Esc, Up/Down/Tab, Left/Right, Enter for navigation/submit",
+    "step_6": "On confirm Enter: validate_send_form() parses from/to AccountId, amount/fee as u128, confirm='yes'",
+    "step_7": "preflight_xfer_dst() checks recipient is known in rows or cross-domain route allowed",
+    "step_8": "submit_transfer() creates SignedTx::sign_body() with TxBody::Transfer, POST to /v1/tx",
+    "form_struct": "SendForm { from: String, to: TextInput, to_editable: bool, amount: TextInput, fee: TextInput, confirm: TextInput, active: SendField, status: String, status_is_error: bool, flow: Option<SendStepFlow>, pending_book_prompt_to: Option<String> }",
+    "field_enum": "SendField { To, Amount, Fee, Confirm }",
+    "validation_fn": "validate_send_form() -> Result<(AccountId, AccountId, u128, u128), String>",
+    "render_fn": "render_send_modal() in tui_loop.rs"
+  },
+  "tx_submit_fns": [
+    {"name": "is_cross_domain_route", "line": 12, "purpose": "Check if transfer crosses domain boundary"},
+    {"name": "submit_init", "line": 16, "purpose": "Submit Init transaction for account initialization"},
+    {"name": "submit_burn_mark", "line": 57, "purpose": "Submit BurnMark transaction with optional purpose"},
+    {"name": "submit_claim", "line": 111, "purpose": "Submit Claim transaction with CLAIM_ALL sentinel"},
+    {"name": "submit_transfer", "line": 197, "purpose": "Submit Transfer transaction (same-domain or cross-domain)"},
+    {"name": "format_submit_transfer_error", "line": 250, "purpose": "Format error message for transfer failures"}
+  ],
+  "stake_tx_body": {
+    "stake_variant": "TxBody::Stake { amount: u128 }",
+    "unstake_variant": "TxBody::Unstake { amount: u128 }",
+    "fee": "0 (both have zero fee per fee_amount() match arm)",
+    "signing_message_tag": "Stake=3, Unstake=4 (per signing_message() in tx.rs:125-131)",
+    "creation": "SignedTx::sign_body(sk, dom, idx, nonce, TxBody::Stake { amount })"
+  },
+  "acctrow_fields": [
+    {"name": "id", "type": "AccountId", "note": "32-byte account identifier"},
+    {"name": "id_hex", "type": "String", "note": "Hex encoding for display"},
+    {"name": "balance_pwm", "type": "u128", "note": "Liquid PWM balance (not staked)"},
+    {"name": "initialized", "type": "bool", "note": "Account init status"},
+    {"name": "nonce", "type": "u64", "note": "Account nonce for tx ordering"},
+    {"name": "marks", "type": "u32", "note": "Accumulated marks for claiming"},
+    {"name": "last_claim_wall", "type": "Option<Instant>", "note": "Wall-clock guard for claim throttling - TO BE REMOVED"},
+    {"name": "label", "type": "Option<String>", "note": "Address book label from wallet"}
+  ],
+  "removal_list": [
+    {"path": "crates/pwm-tui/src/marks_modal.rs", "what": "Entire file/module"},
+    {"path": "crates/pwm-tui/src/lib.rs", "what": "marks_modal module declaration and MarksModal import"},
+    {"path": "crates/pwm-tui/src/tui_loop.rs", "what": "marks_modal Option in app state (line 57)"},
+    {"path": "crates/pwm-tui/src/tui_loop.rs", "what": "marks_modal match branch in key handler (lines 295-344)"},
+    {"path": "crates/pwm-tui/src/tui_loop.rs", "what": "render_marks_modal() call (line 709-710)"},
+    {"path": "crates/pwm-tui/src/tui_loop.rs", "what": "render_marks_modal() function definition (lines 1036-1063)"},
+    {"path": "crates/pwm-tui/src/tui_loop.rs", "what": "merge_poll_rows() and last_claim_wall handling (lines 1013-1018, 146-152)"},
+    {"path": "crates/pwm-tui/src/models.rs", "what": "last_claim_wall field from AcctRow struct (line 18)"}
+  ],
+  "new_files_needed": [
+    {"path": "crates/pwm-tui/src/stake_form.rs", "purpose": "StakeForm struct, StakeField enum, validation, replay guard"},
+    {"path": "crates/pwm-tui/src/unstake_form.rs", "purpose": "UnstakeForm struct (or reuse StakeForm with mode flag)"}
+  ],
+  "lib_rs_changes": {
+    "current_form_fields": ["send_form: Option<SendForm>", "burn_form: Option<BurnForm>", "marks_modal: Option<MarksModal>"],
+    "new_form_fields": ["stake_form: Option<StakeForm>", "unstake_form: Option<UnstakeForm>"],
+    "new_builder_fns": ["f7_build_stake_form()", "f7_build_unstake_form() (or shift+F7)"],
+    "new_submit_fns": ["submit_stake()", "submit_unstake() in tx_submit.rs"]
+  },
+  "warnings": [
+    "AcctRow does NOT have a 'staked' field - need to verify if RPC provides staked balance or if stake form should only show liquid balance",
+    "F5 refactoring needs to auto-claim before opening BurnForm - this changes current UX where user manually presses 'c'",
+    "Wall-clock guard (last_claim_wall) is being removed - ensure backend enforces claim throttling",
+    "Need to decide: separate StakeForm/UnstakeForm files or single form with mode flag (Stake vs Unstake)"
+  ],
+  "open_questions": [
+    "Does RPC GET /v1/accounts return staked balance field? If yes, need to add to AcctRow.",
+    "Should F7 and Shift+F7 be separate forms or one form with stake/unstake toggle?",
+    "Stake/Unstake transactions have zero fee - confirm this is handled correctly in validation.",
+    "Does backend need any additional parameters for StakeTx/UnstakeTx beyond amount?"
+  ],
+  "participation": {
+    "token_usage": " approximately ~8K tokens for file reads and analysis",
+    "confidence": "high - all target files successfully analyzed"
+  }
+}

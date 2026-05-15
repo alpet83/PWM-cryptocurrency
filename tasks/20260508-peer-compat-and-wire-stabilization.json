@@ -1,0 +1,91 @@
+{
+  "id": "20260508-peer-compat-and-wire-stabilization",
+  "title": "Peer compatibility matrix hardening and wire stabilization",
+  "status": "in_progress",
+  "created": "2026-05-08",
+  "commits": [
+    "be89b30",
+    "5dbdc49",
+    "1719627"
+  ],
+  "context": {
+    "goal": "Стабилизировать peer-соединения для wave-прогонов: убрать wire decode ошибки по большим числам и формализовать раннее разделение intra-shard/inter-shard с соответствующими guard.",
+    "motivation": "В Wave A наблюдается protocol_error (u128 decode) до срабатывания целевого divergence guard; покрытие совместимости PARTIAL."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "Wire u128 stabilization + peer compatibility hardening in handshake/sync routing",
+      "notes": [
+        "Wire canonicalization: peer payload u128 fields now serialize as hex strings (0x...) while keeping backward-compatible decode for legacy decimal/u64 inputs.",
+        "Handshake classification hardening: early same-shard vs inter-shard branch with explicit guards.",
+        "Same-shard strictness: cluster_id mismatch now rejected explicitly.",
+        "Capability negotiation hardening: malformed/incompatible sync_profile now rejected with class-specific reasons.",
+        "Sync route lane reasons split: inter_shard_sync_forbidden vs same_shard_profile_mismatch.",
+        "Inbound HelloAck now propagates concrete reject reason instead of generic hello_rejected.",
+        "Docs updated: divergence implementation notes + dedicated peer compat/wire stabilization review note."
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "prompt_summary": "Re-run preflight, Wave A with keep-artifacts, pwmd wire_decode/peer_session/tip_divergence; document wire u128 absence vs wave hash divergence",
+      "done_at": "2026-05-08",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260508-peer-compat-wire-stabilization-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 18000,
+        "confidence": "low"
+      },
+      "notes": [
+        "testing_result: PARTIAL",
+        "testing_report: docs/reviews/20260508-peer-compat-wire-stabilization-testing.md",
+        "wave_a_after_stabilization: exit=1 hash divergence; logs F:\\Temp\\pwm_wave_a_v7tsmppw\\logs\\; no wire_decode/u128/protocol_error lines in node1.log/node2.log; cargo wire_decode/peer_session/tip_divergence PASS"
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "prompt_summary": "Final gate review: u128 hex wire safety, handshake/inter-shard classification, Wave A residual risk, merge verdict",
+      "done_at": "2026-05-08",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260508-peer-compat-wire-stabilization-final-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "low"
+      },
+      "notes": [
+        "final_review: docs/reviews/20260508-peer-compat-wire-stabilization-final-review.md",
+        "final_verdict: Approve with nits; merge coding slice; overall PARTIAL until Wave A hash parity follow-up",
+        "followups: Wave A tip/epoch hash parity harness; optional raised peer log level in wave runs; document u128 string interop; future protocol_version/tx_features matrix"
+      ]
+    }
+  ],
+  "artifacts": {
+    "coding_commit": "be89b30",
+    "testing_result": "PARTIAL",
+    "testing_report": "docs/reviews/20260508-peer-compat-wire-stabilization-testing.md",
+    "wave_a_after_stabilization": "exit=1 tip/epoch hash mismatch; artifact dir F:\\Temp\\pwm_wave_a_v7tsmppw; wire_decode_failed/u128 absent in captured logs",
+    "implementation_notes": "docs/reviews/20260508-divergence-guard-implementation-notes.md",
+    "review_md": "docs/reviews/20260508-peer-compat-wire-stabilization.md",
+    "final_review": "docs/reviews/20260508-peer-compat-wire-stabilization-final-review.md",
+    "final_verdict": "Approve with nits; merge be89b30; slice PARTIAL (Wave A hash divergence follow-up)",
+    "followups": [
+      "Wave A: deterministic same-shard tip / last-epoch hash parity (harness or node sync semantics)",
+      "Optional: higher RUST_LOG / peer trace in Wave A to assert HelloAck reasons and new drop labels",
+      "Interop: large u128 on JSON wire requires string form; document for operators",
+      "Future: expand protocol_version / tx_features negotiation matrix if rollout needs it"
+    ]
+  }
+}

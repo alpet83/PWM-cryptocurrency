@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "id": "20260510-v2-9-cluster-seal-e2e",
+  "title": "V2-9 follow-up: E2E cluster seal (propose wire + attests) + lease lab stability",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v2.md Sprint V2-9",
+    "docs/rfc/16-validator-clone-attestation.md",
+    "docs/reviews/20260509-v2-9-rfc16-sprint-checklist.md"
+  ],
+  "brief": "Оператору нужен рабочий 2-of-2 (k=1, n=2) сценарий: пропоузер реально печатает блоки при включённом cluster gate. Сейчас: seal_suppressed_by_cluster (missing round state) — нет связи Chain::seal с ClusterPropose/Attest на wire; record_cluster_propose_originated остаётся тестовым зеркалом. Дополнительно: seal_lease_cas_failed у пропоузера в лабе. Нужно: end-to-end от кандидата блока до кворума и seal; поправить/задокументировать lease для пары процессов (file vs process-local, каталоги). После кода — обновить cy-cluster-*.ps1 при необходимости; pwm-testing; оркестратор держит pwm-review.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Продовый RFC16 2-of-2 e2e: proposer auto-ClusterPropose + local mirror + attester auto-ClusterAttest по TCP, плюс lab lease workaround в cy-cluster scripts",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "crates/pwmd/src/transport/peer_session/inbound.rs",
+        "crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs",
+        "crates/pwmd/src/transport/peer_session/seed/session/initial_exchange.rs",
+        "crates/pwmd/src/transport/tests/production.rs",
+        "cy-cluster-common.ps1",
+        "cy-cluster-proposer.ps1",
+        "cy-cluster-attester.ps1",
+        "issues-report.md"
+      ],
+      "commands": [
+        "cargo fmt --check",
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport/peer_session/mod.rs crates/pwmd/src/transport/peer_session/inbound.rs crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs crates/pwmd/src/transport/peer_session/seed/session/initial_exchange.rs",
+        "cargo check --workspace",
+        "cargo test -p pwmd"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 24000,
+        "output": 4200,
+        "total": 28200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-11"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing gate: preflight, fmt, workspace check, fn-segment lint on cluster/peer_session paths, full pwmd tests, snapshot_load bench compile-only",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260510-v2-9-cluster-seal-e2e.json"
+      ],
+      "preflight_target_debug": {
+        "script": "tools/dev/preflight_target_debug.ps1",
+        "note": "pwsh not on PATH; used powershell.exe -NoProfile -ExecutionPolicy Bypass -File",
+        "target_debug_bytes": 226464982,
+        "threshold_mib": 4096,
+        "removed": "no",
+        "pass": true
+      },
+      "snapshot_benches": {
+        "mode": "compiled_only",
+        "command": "cargo bench -p pwmd --bench snapshot_load --no-run",
+        "result": "PASS",
+        "features": "default"
+      },
+      "commands": [
+        {
+          "cmd": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/dev/preflight_target_debug.ps1",
+          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "result": "PASS",
+          "hang_watchdog": false,
+          "notes": "exit 0; reported target/debug 226464982 bytes vs 4096 MiB cap"
+        },
+        {
+          "cmd": "cargo fmt --check",
+          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "result": "PASS",
+          "hang_watchdog": false
+        },
+        {
+          "cmd": "cargo check --workspace",
+          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "result": "PASS",
+          "hang_watchdog": false
+        },
+        {
+          "cmd": "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport/peer_session/mod.rs crates/pwmd/src/transport/peer_session/inbound.rs crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs crates/pwmd/src/transport/peer_session/seed/session/initial_exchange.rs crates/pwmd/src/transport/tests/production.rs",
+          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "result": "PASS",
+          "hang_watchdog": false,
+          "notes": "violations: [] on all listed files"
+        },
+        {
+          "cmd": "cargo test -p pwmd",
+          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "result": "PASS",
+          "hang_watchdog": false,
+          "notes": "327 lib + 6 main + 1 integration; 0 failed; ~35s lib phase"
+        },
+        {
+          "cmd": "cargo bench -p pwmd --bench snapshot_load --no-run",
+          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "result": "PASS",
+          "hang_watchdog": false,
+          "notes": "bench profile compile ~34s"
+        }
+      ],
+      "cleanup": {
+        "cleaned": true,
+        "killed": [],
+        "note": "no long-lived pwmd/tui processes started"
+      },
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 3200,
+        "total": 17200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent gate post-pwm-testing PASS: cluster propose/attest wire, transport loops, CY lease lab, RFC16 8.1 orthogonality",
+      "result": "PASS",
+      "artifacts": {
+        "review_md": "docs/reviews/20260510-v2-9-cluster-seal-e2e-review.md"
+      },
+      "tokens": {
+        "source": "estimate",
+        "input": 9500,
+        "output": 4200,
+        "total": 13700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "sprint_ticket": "tasks/20260513-v2-sprint9-rfc16-cluster-attestation.json"
+  },
+  "notes": "Opened 2026-05-09 by orchestrator after operator report: lab proposer seal_lease_cas_failed + требование печати с кворумом. Closed 2026-05-11: proposer now emits ClusterPropose on live peer wire, mirrors originated round locally for tip_h+1, attester auto-signs/sends ClusterAttest, and cluster gate can open for real seal progression; lab scripts switched to process-local lease backend to avoid stale file-CAS contention in local two-process setup."
+}

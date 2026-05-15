@@ -1,0 +1,259 @@
+{
+  "id": "20260508-wave-a-hash-parity-followup",
+  "title": "Wave A hash parity follow-up (deterministic canonical tip)",
+  "status": "in_progress",
+  "created": "2026-05-08",
+  "commits": [
+    "8d971cb",
+    "286e582",
+    "d048bbecd33b74da2373cc413f15a62e03f1bd74",
+    "c4c4b7b",
+    "07817cae1b1ca2d68de5299c6d2c8f5888d5a945",
+    "01ffc62d55e6889b289080f52b8991bdd15abf91",
+    "4f0ef1a2f9b5c440114efd37cf4ad6db1fee2a0e"
+  ],
+  "context": {
+    "goal": "Устранить расхождение tip_hash/last_epoch_hash в Wave A после стабилизации wire/compat.",
+    "motivation": "Wave A остаётся PARTIAL: wire decode стабилизирован, но hash parity между same-shard peers расходится."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "MVP hotfix: test/dev deterministic seal-time toggle wired to pwmd + Wave A harness, default OFF",
+      "notes": [
+        "Добавлен `SealTimeMode` в pwm-core и wiring через `PwmdConfig.debug_det_seal_time`",
+        "Wave A harness включает `--debug-deterministic-seal-time` на обеих нодах",
+        "Добавлены тесты: deterministic hash parity across apps + default toggle OFF"
+      ],
+      "prompt_summary": "Implement deterministic seal-time mode for Wave A parity without changing default prod semantics",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "scripts/wave_a_same_shard_stop.py",
+        "docs/reviews/20260508-wave-a-hash-parity-hotfix.md",
+        "docs/reviews/20260508-wave-a-hash-parity-root-cause.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 18000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Root-cause tip_hash/last_epoch_hash post wire-stabilization; report + ticket artifacts",
+      "notes": [
+        "Отчёт: docs/reviews/20260508-wave-a-hash-parity-root-cause.md",
+        "Вердикт: REQUEST_CHANGES — детерминированный ts/seal или single-proposer+replay; wire не первопричина"
+      ],
+      "prompt_summary": "Wave A hash parity root cause after wire compat; deliver report + ticket update + docs-only commit",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-wave-a-hash-parity-root-cause.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "Re-run Wave A on d048bbe; deterministic mode tests; tip_divergence; cargo check pwmd",
+      "notes": [
+        "wave_a: tip_hash_equal=false, last_epoch_hash_equal=false (hashes in testing_report)",
+        "preflight: PS1 OK; bash preflight unavailable on host",
+        "Unit: det_mode_stable_hdr_hash, det_mode_stable_hash_apps, det_seal_time_default_off — OK",
+        "tip_divergence x4 — OK; cargo check -p pwmd — OK"
+      ],
+      "prompt_summary": "Validate hotfix d048bbe Wave A parity + targeted tests + docs/tasks commit",
+      "result": "FAIL",
+      "artifacts": [
+        "docs/reviews/20260508-wave-a-hash-parity-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "Residual fix: follower debug toggle disables periodic seal-loop; Wave A harness follower-only",
+      "notes": [
+        "Добавлен toggle disable periodic seal-loop: CLI `--debug-disable-seal-loop`, ENV `PWM_DEBUG_DISABLE_SEAL_LOOP`, config `debug_disable_seal_loop` (default false)",
+        "В `spawn_seal_loop` добавлен runtime gate: при флаге нода не локально seal'ит, но продолжает transport/sync/catch-up",
+        "Harness `wave_a_same_shard_stop.py`: новый флаг включён только на node2 (follower), leader без изменений",
+        "Добавлены тесты: `disable_seal_loop_default_off`, `seal_loop_disable_no_seal`"
+      ],
+      "prompt_summary": "Implement minimal residual fix: follower seal-loop disable toggle and Wave A harness wiring",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "scripts/wave_a_same_shard_stop.py",
+        "docs/reviews/20260508-wave-a-hash-parity-hotfix.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 17000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "Re-validate 07817cae/01ffc62: Wave A + seal-loop toggle tests + tip_divergence + pwmd check",
+      "notes": [
+        "preflight_target_debug.ps1 — OK",
+        "Wave A — FAIL до parity: второй tx-send (--rpc node2 3231) recipient not found; follower без seal отстаёт от leader к round-robin",
+        "Подтверждено: --debug-disable-seal-loop только в argv node2 в wave_a_same_shard_stop.py",
+        "Tests: disable_seal_loop_default_off, seal_loop_disable_no_seal, det_seal_time_default_off, det_mode_stable_hash_apps, tip_divergence x4, pwm-core det_mode_stable_hdr_hash — OK; cargo check -p pwmd — OK"
+      ],
+      "prompt_summary": "Post-fix2 Wave A parity + targeted tests; docs/tasks only commit",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260508-wave-a-hash-parity-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "Wave A harness stabilization: leader-only tx routing before parity checks",
+      "notes": [
+        "В `scripts/wave_a_same_shard_stop.py` зафиксирован leader-only маршрут для tx-send (base1, base1, base1)",
+        "Добавлены явные stderr логи плана отправок и каждого tx-send шага",
+        "Цель: устранить pre-parity фейл recipient visibility на follower RPC при --debug-disable-seal-loop"
+      ],
+      "prompt_summary": "Stabilize Wave A harness with minimal drift so run reaches parity gates",
+      "result": "PASS",
+      "artifacts": [
+        "scripts/wave_a_same_shard_stop.py",
+        "docs/reviews/20260508-wave-a-hash-parity-hotfix.md",
+        "tasks/20260508-wave-a-hash-parity-followup.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 7000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "Validate 4f0ef1a2: Wave A leader-only harness, parity lines, no recipient-not-found regression",
+      "notes": [
+        "HEAD 4f0ef1a2f9b5c440114efd37cf4ad6db1fee2a0e — preflight_target_debug.ps1 OK",
+        "Wave A ×2 (--keep-artifacts; второй прогон --max-wait-sec 2700): после трёх tx-send (leader-only) нет recipient-not-found; оба упали до parity: timeout waiting both nodes to stop by debug-stop-height",
+        "tip_hash_equal / last_epoch_hash_equal: не наблюдались в stdout/stderr (ожидание завершения pwmd не выполнено в рамках 900 s и 2700 s)",
+        "Smoke: cargo test -p pwmd disable_seal_loop_default_off — OK"
+      ],
+      "prompt_summary": "Wave A parity follow-up harness commit validation; docs/tasks commit only",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260508-wave-a-hash-parity-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-08"
+    }
+  ],
+  "artifacts": {
+    "root_cause_report": "docs/reviews/20260508-wave-a-hash-parity-root-cause.md",
+    "root_cause_verdict": "REQUEST_CHANGES",
+    "hotfix_report": "docs/reviews/20260508-wave-a-hash-parity-hotfix.md",
+    "coding_commit": "HEAD",
+    "coding_commit_2": "07817cae1b1ca2d68de5299c6d2c8f5888d5a945",
+    "testing_result": "FAIL",
+    "testing_report": "docs/reviews/20260508-wave-a-hash-parity-testing.md",
+    "wave_a_parity": {
+      "tip_hash_equal": false,
+      "last_epoch_hash_equal": false,
+      "node1_tip_hash": "ef74992a8376aac0865d272534facccadced2533f8fc87b7f36b259329a0feb9",
+      "node2_tip_hash": "afae1cf39f58ed05ccb3deaa7cd4df78f247453f553f4a9e6e63517aabc690d6",
+      "head_height_both": 200,
+      "checkpoint_both": 200,
+      "run_at": "2026-05-08",
+      "commit": "d048bbecd33b74da2373cc413f15a62e03f1bd74"
+    },
+    "testing_result_2": "PARTIAL",
+    "testing_report_2": "docs/reviews/20260508-wave-a-hash-parity-testing.md",
+    "coding_commit_3": "HEAD",
+    "wave_a_parity_after_fix2": {
+      "tip_hash_equal": null,
+      "last_epoch_hash_equal": null,
+      "note": "Wave A не завершён: tx-send на node2 (3231), recipient preflight 404 до проверки parity",
+      "harness_error": "tx-send: recipient account not found on current RPC; recipient must run `tx-init` on the target shard first",
+      "run_at": "2026-05-08",
+      "commit": "01ffc62d55e6889b289080f52b8991bdd15abf91"
+    },
+    "testing_result_3": "PARTIAL",
+    "testing_report_3": "docs/reviews/20260508-wave-a-hash-parity-testing.md",
+    "wave_a_parity_after_fix3": {
+      "tip_hash_equal": null,
+      "last_epoch_hash_equal": null,
+      "note": "Финальная диагностика parity не построена: harness не вышел из wait_children_exit до таймаута (нет exit обоих pwmd по debug-stop-height в окне наблюдения)",
+      "harness_error": "timeout waiting both nodes to stop by debug-stop-height",
+      "runs": [
+        {
+          "max_wait_sec": 900,
+          "elapsed_sec_approx": 909,
+          "recipient_not_found": false
+        },
+        {
+          "max_wait_sec": 2700,
+          "elapsed_sec_approx": 2707,
+          "recipient_not_found": false
+        }
+      ],
+      "run_at": "2026-05-08",
+      "commit": "4f0ef1a2f9b5c440114efd37cf4ad6db1fee2a0e"
+    },
+    "residual_root_cause": "После детерминированного seal-time оба узла продолжают независимый periodic seal (lifecycle.rs) на разных мемпулах/тиках; возможны разные tx_root/state_root/sig при том же height. Sync фиксирует TipDivergence при совпадении высоты и разном tip_hash, без reorg. Проверки Wave A по sender/receiver не эквивалентны полному state_root.",
+    "residual_fix_plan": "MVP: dev/test флаг отключения seal-loop на follower-ноде + только apply через sync; в wave_a_same_shard_stop.py включить на второй ноде. Acceptance: tip_hash_equal и last_epoch_hash_equal true, default prod behavior без флагов неизменен. Альтернатива шире: reorg/canonical при divergence.",
+    "orchestrator_followup_2026_05_08": {
+      "lifecycle_follower_stop_height": "pwmd: в ветке debug_disable_seal_loop проверяется debug-stop-height по tip_h без локального seal (см. lifecycle.rs)",
+      "harness": "wave_a_same_shard_stop.py: динамические RPC-порта, wait_tcp_accept на peer rpc+100, старт node2 после готовности peer лидера, leader-only tx-send",
+      "open_blocker": "На тестовом прогоне follower может не применять цепь (пустой states/node2) — отдельная диагностика P2P/sync; см. docs/reviews/20260508-wave-a-hash-parity-hotfix.md §10",
+      "build_note": "При блокировке pwmd.exe использовать отдельный CARGO_TARGET_DIR + PWM_WORKSPACE_TARGET_ROOT (см. hotfix doc §8)"
+    }
+  }
+}

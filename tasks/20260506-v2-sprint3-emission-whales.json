@@ -1,0 +1,211 @@
+﻿{
+  "schema_version": 1,
+  "id": "20260506-v2-sprint3-emission-whales",
+  "title": "MVP v2 Sprint V2-3: эмиссия валидаторам (киты + сезонность)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v2.md Sprint V2-3"
+  ],
+  "brief": "Спринт V2-3 по плану v2: дизайн+реализация детерминированной эмиссии PWM/marks по stake-порогам и сезонному множителю, с сохранением replay/snapshot корректности и без незапланированных изменений межшардовой семантики.",
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "result": "completed",
+      "artifacts": ["tasks/20260506-v2-sprint3-emission-whales-info.json"],
+      "tokens_est": 19500,
+      "done_at": "2026-05-06T07:30:00Z",
+      "notes": "Карта файлов для V2-3: genesis/chain/block/state/types, snapshot replay логика, риски, slices 0-3, test plan, review focus"
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "completed",
+      "artifacts": [
+        "docs/reviews/sprint-v2-3-slice0-design-freeze.md",
+        "crates/pwm-core/src/genesis.rs",
+        "crates/pwmd/src/snapshot/genesis.rs",
+        "crates/pwm-cli/src/cmd_genesis.rs"
+      ],
+      "tokens_est": 21000,
+      "done_at": "2026-05-06T10:45:00Z",
+      "notes": "Slice 0: design freeze + schema prep. Added V2-3 GenCfg fields with backward defaults, pwmd genesis parser supports schema_version 4/5, reward runtime path remains legacy (policy_ver=1 default)."
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "partial",
+      "artifacts": [],
+      "tokens_est": 9000,
+      "done_at": "2026-05-06T14:30:00Z",
+      "notes": "Verification: preflight_target_debug.ps1 OK (~216 MiB / 4 GiB, removed=no); cargo fmt --check PASS; cargo check -p pwm-core -p pwmd -p pwm-cli PASS; cargo test -p pwmd snapshot 43 PASS ~35s; cargo test -p pwmd genes_ 6 PASS (genesis bundle load, schema unsupported); cargo bench -p pwmd --bench snapshot_load --no-run PASS; cargo test -p pwm-core full 99 PASS ~26s. Gap: no dedicated unit test for schema_version=5 JSON fixture in pwmd (parser accepts 4/5 in code; fixtures are v4). FAIL: cargo test -p pwm-cli gen_build — tests::gen_build_v4_bundle expects schema_version 4 but build emits 5 (stale assertion vs GENESIS_SCHEMA_VERSION). Handoff: PARTIAL until pwm-cli test expectations updated."
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "completed",
+      "artifacts": [
+        "crates/pwm-cli/src/cmd_genesis.rs",
+        "crates/pwm-cli/src/tests/mod.rs",
+        "tasks/20260506-v2-sprint3-emission-whales.json"
+      ],
+      "tokens_est": 4800,
+      "done_at": "2026-05-06T07:43:56Z",
+      "notes": "Hotfix after pwm-testing PARTIAL: updated genesis-build test to assert GENESIS_SCHEMA_VERSION (schema v5), renamed case to gen_build_schema5_bundle, added note about Slice 0 schema prep, and re-ran focused checks/tests."
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens_est": 2800,
+      "done_at": "2026-05-06T10:47:11Z",
+      "notes": "retest (post hotfix / dab0f5a lineage): cargo fmt --check PASS; cargo test -p pwm-cli gen_build PASS (3 tests); cargo test -p pwm-cli PASS (145 unit + 3 integration); cargo test -p pwmd genes_ PASS (6 tests). Closes prior PARTIAL gap on gen_build vs schema v5."
+    },
+    {
+      "agent": "pwm-review",
+      "result": "completed",
+      "artifacts": ["docs/reviews/sprint-v2-3-slice0-review-20260506.md"],
+      "tokens_est": 12000,
+      "done_at": "2026-05-06T14:15:00Z",
+      "notes": "Independent review Slice 0: design-freeze vs d34e64a+dab0f5a; GenCfg defaults and pwmd 4/5 loader align; pwm-cli schema const + gen_build_schema5_bundle; Chain::seal reward path unchanged (no policy_ver branch). Verdict approve with nits (V4 naming in pwmd loader, optional v5 fixture later)."
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "completed",
+      "artifacts": [
+        "crates/pwm-core/src/genesis.rs",
+        "crates/pwm-core/src/state.rs",
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/ch_http.rs",
+        "crates/pwmd/src/snapshot/repair.rs",
+        "tasks/20260506-v2-sprint3-emission-whales.json"
+      ],
+      "tokens_est": 16500,
+      "done_at": "2026-05-06T08:00:00Z",
+      "notes": "Slice 1 runtime emission logic: added policy_ver branching with full legacy fallback for policy_ver=1; v2 path now applies pwm_stake_min and marks_stake_min gates plus deterministic season_coeff_ppm scaling from block/header ts in seal and all replay paths. Added pwm-core unit/regression tests for legacy vs v2 gates/season. Ran fn-name segment check, cargo fmt, cargo test -p pwm-core, cargo check -p pwmd; queued CQDS rebuild_index project_id=5 (duplicate enqueue accepted). One focused code commit: 7d9b6cb."
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens_est": 6500,
+      "done_at": "2026-05-06T07:59:30Z",
+      "notes": "Slice 1 post-7d9b6cb test gate: preflight_target_debug.ps1 OK (~216 MiB vs 4096 MiB, removed=no); cargo fmt --check PASS; cargo test -p pwm-core 104 PASS ~25s; cargo check -p pwmd PASS; cargo test -p pwmd snapshot 43 PASS ~40s (incl snap_replay_uses_blk_ctx, repair_replay_uses_block_ctx); cargo test -p pwmd genes_ 6 PASS; cargo bench -p pwmd --bench snapshot_load --no-run PASS. Legacy vs v2 determinism smoke: exercised by existing pwm-core tests legacy_keeps_reward_path, policy_v2_gates_with_season, reward_v2_gate_stake_min, marks_v2_gate_stake_min, marks_v2_scale_season_ppm (no prod code changes)."
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-v2-3-slice1-review-20260506.md"],
+      "tokens_est": 15000,
+      "done_at": "2026-05-06T16:40:00Z",
+      "notes": "Slice 1 review vs 7d9b6cb + freeze: legacy vs v2 branch, stake gates, season ppm from GenCfg (block_ts unused in season_ppm); pwmd replay paths io/repair/ch_http match seal semantics; hdr.ts for apply_tx_with_ctx; fn-segment check clean on touched paths. Verdict approve with nits (four-way branch duplication, future calendar season). Review bundle commit short: e363684 (see commits[])."
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "completed",
+      "artifacts": [
+        "docs/reviews/sprint-v2-3-slice2-snapshot-replay-closeout.md",
+        "tasks/20260506-v2-sprint3-emission-whales.json"
+      ],
+      "tokens_est": 5600,
+      "done_at": "2026-05-06T08:40:00Z",
+      "notes": "Slice 2 closeout (docs-only): зафиксирована совместимость snapshot/replay wiring для V2-3 policy (io/ch_http/repair + Chain::seal alignment), инварианты determinism/schema v4-v5/legacy/policy_v2 block context, acceptance matrix для pwm-testing и open risks (future calendar season, duplicated branch, old snapshots with different GenCfg)."
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "verif": {
+        "preflight_target_debug": "PASS (~226 MiB vs 4096 MiB threshold)",
+        "cargo_fmt_check": "PASS",
+        "cargo_test_pwm_core": "PASS (104 tests; A1: legacy_keeps_reward_path, policy_v2_gates_with_season, marks_v2_*, reward_v2_* present)",
+        "cargo_test_pwmd_snapshot": "PASS (43 tests; A2: snap_replay_uses_blk_ctx, repair_replay_uses_block_ctx)",
+        "cargo_test_pwmd_genes_": "PASS (6 tests)",
+        "cargo_bench_snapshot_load_no_run": "PASS",
+        "cargo_check_pwmd": "PASS (A6)",
+        "A4_seal_vs_replay_state_root": "No extra standalone replay/root test name in closeout; covered by pwmd snapshot blk_ctx tests (snap_replay_uses_blk_ctx, repair_replay_uses_block_ctx) and validate_snapshot state_root checks on sealed blocks.",
+        "A5_legacy_guardrail": "Covered by pwm-core legacy_keeps_reward_path and seal reward determinism tests (no separate CLI run)."
+      },
+      "artifacts": [],
+      "tokens_est": 5200,
+      "done_at": "2026-05-06T16:25:00Z",
+      "notes": "Slice 2 formal gate vs docs/reviews/sprint-v2-3-slice2-snapshot-replay-closeout.md matrix A1–A6: preflight tools/dev/preflight_target_debug.ps1 OK; tooling A6 satisfied (fmt --check + check -p pwmd); core/snapshot/genesis/bench gates as in verif; replay/state-root parity per closeout exercised via blk_ctx replay tests (snap_replay_uses_blk_ctx, repair_replay_uses_block_ctx) and validate_snapshot checks (no additional targeted test names specified in closeout)."
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-v2-3-slice2-review-20260506.md"],
+      "tokens_est": 12000,
+      "done_at": "2026-05-06T18:45:00Z",
+      "notes": "Slice 2 closeout: doc claims match chain/io/ch_http/repair branching; pwm-testing PASS on A1–A6; open risks correctly non-blocking; nits: closeout checkboxes still unchecked vs PASS, testing verif cites snapshot_roundtrip_blocks_and_state (name not in tree—use snap_replay_uses_blk_ctx / validate_snapshot)."
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "completed",
+      "artifacts": [
+        "docs/reviews/sprint-v2-3-slice2-snapshot-replay-closeout.md",
+        "tasks/20260506-v2-sprint3-emission-whales.json"
+      ],
+      "tokens_est": 1600,
+      "done_at": "2026-05-06T08:55:00Z",
+      "notes": "Docs-nits follow-up after Slice 2 PASS: synced closeout A1–A6 checkboxes to PASS, replaced stale snapshot_roundtrip_blocks_and_state mention with snap_replay_uses_blk_ctx / repair_replay_uses_block_ctx + validate_snapshot wording; traceability hash appended in commits[]."
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "completed",
+      "artifacts": [
+        "docs/reviews/sprint-v2-3-slice3-demo-guide-20260506.md",
+        "tasks/20260506-v2-sprint3-emission-whales.json"
+      ],
+      "tokens_est": 6200,
+      "done_at": "2026-05-06T08:43:00Z",
+      "notes": "Slice 3 (docs/demo): added operator runbook for schema_version=5 genesis generation, policy_v2 enablement via guarded JSON edit, legacy-safe dev_net defaults note, and expected reward-case matrix (legacy / below threshold / at threshold / season coeff) with before/after account snapshot template for N blocks."
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "completed",
+      "artifacts": [
+        ".cursorrules",
+        "tasks/20260506-v2-sprint3-emission-whales.json"
+      ],
+      "tokens_est": 900,
+      "done_at": "2026-05-06T11:55:00Z",
+      "notes": "Guardrail-fix: normalized .cursorrules frontmatter, restored clear orchestrator delegation wording, preserved CQDS/grep warning, and added AGENTS.md boundary pointer."
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/sprint-v2-3-slice3-review-20260506.md"],
+      "tokens_est": 9500,
+      "done_at": "2026-05-06T12:10:00Z",
+      "notes": "Slice 3 review vs c84a40a+b12d322: demo guide aligns with schema v5/legacy defaults/policy_v2 JSON path and reward-case matrix; wire string u128 fields match pwmd genesis parser; AGENTS/.cursorrules match orchestrator delegation (main chat orchestrator, pwm-* subagents, CQDS search). Verdict approve with nits (height vs sleep timer, optional preflight note)."
+    }
+  ],
+  "commits": [
+    "d34e64a",
+    "dab0f5a",
+    "e130fae",
+    "3dc8cc5",
+    "f6fe037",
+    "7d9b6cb",
+    "7683068",
+    "e363684",
+    "58a5c84",
+    "391d7ab",
+    "52dc412",
+    "7df9f9d",
+    "2b3f604",
+    "7068c8e",
+    "c84a40a",
+    "b12d322",
+    "9e2065e",
+    "1c73267",
+    "9865ee5"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-3-slice1-review-20260506.md",
+    "info_json": "tasks/20260506-v2-sprint3-emission-whales-info.json",
+    "slice0_freeze_md": "docs/reviews/sprint-v2-3-slice0-design-freeze.md",
+    "slice2_closeout_md": "docs/reviews/sprint-v2-3-slice2-snapshot-replay-closeout.md",
+    "slice2_review_md": "docs/reviews/sprint-v2-3-slice2-review-20260506.md",
+    "slice3_demo_md": "docs/reviews/sprint-v2-3-slice3-demo-guide-20260506.md",
+    "slice3_review_md": "docs/reviews/sprint-v2-3-slice3-review-20260506.md"
+  },
+  "notes": "CLOSURE 2026-05-06: V2-3 закрыт. Slice 0 schema/design freeze PASS; Slice 1 runtime policy_ver + stake thresholds + season ppm PASS; Slice 2 snapshot/replay closeout PASS; Slice 3 demo guide + AGENTS/.cursorrules guardrails PASS. Остаточные nits: future calendar season semantics, branch duplication cleanup, demo guide height-vs-sleep note."
+}

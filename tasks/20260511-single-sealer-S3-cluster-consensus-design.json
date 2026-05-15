@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "20260511-single-sealer-S3-cluster-consensus-design",
+  "title": "S3: design cluster consensus vs failover (MVP варианты)",
+  "status": "done",
+  "mvp_checklist": ["docs/MVP-checklist.md §4 seal / §12 deferred consensus boundaries"],
+  "brief": "Родитель: tasks/20260509-single-sealer-failover-profiles.json — срез S3 (optional cluster consensus). Уже реализован failover: одна активная нода валидатора + одна или более запасных (active/standby, lease). S3 — отдельный режим: несколько нод одного валидатора коллегиально согласуют блок (в упрощённом MVP: ведущая генерирует блок, остальные подтверждают пригодность, затем seal и включение в цепочку шарды). Нужен design-review с матрицей вариантов (не только leader+quorum), явными non-goals, границей с single_sealer и S2/S2.1, и рекомендацией что кодировать в следующем слайсе vs RFC-only. Код не писать — только артефакт в docs/reviews/.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Документ: варианты S3 cluster consensus для MVP (leader+attest, ротация, минимальный кворум, chaos-only profile); сравнение с уже реализованным failover; риски; критерии приёмки следующего implementation slice",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260511-single-sealer-S3-cluster-consensus-design.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-11T12:00:00+03:00"
+    }
+  ],
+  "commits": [
+    "1d64d44"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260511-single-sealer-S3-cluster-consensus-design.md"
+  },
+  "notes": "Владелец: failover ≠ consensus cluster; S3 стартует с design-only. При необходимости глубины — привлечь pwm-architecture отдельным тикетом."
+}

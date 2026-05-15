@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-s1-slice-c-policy-matrix",
+  "title": "Sprint V2-1 Slice C: policy validation matrix for claim and burn",
+  "status": "in_progress",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "RFC Slice C: формализовать policy-validation matrix (mempool/apply/preflight), закрыть N-MAT-5 (округление), уточнить P-REO-04 и предикаты anchor incompatibility из Slice B review. Без правок crates/*.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить RFC Slice C policy matrix doc и обновить тикеты перехода B->C",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-c-policy-matrix-freeze.md",
+        "tasks/20260505-v2-s1-slice-c-policy-matrix.json",
+        "tasks/20260505-v2-s1-slice-b-state-maturity-freeclaim.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6900,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T11:37:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate Slice C (docs-only): отчёт verdict + test-gaps, без правок crates/*",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-c-test-report.md",
+        "tasks/20260505-v2-s1-slice-c-policy-matrix.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3600,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T12:10:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимый review-gate Slice C (docs-only): freeze policy matrix, findings, verdict",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-c-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T12:25:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-1-slice-c-review.md"
+  },
+  "notes": "Входы: Slice A/B freeze + Slice B testing/review reports. Выполнено docs-only наполнение Slice C: создан policy-matrix freeze с фазами mempool/preflight/apply; зафиксировано единое правило округления N-MAT-5 (floor/усечение в пользу сети); формализованы anchor incompatibility predicates (закрытие M1 из Slice B review); уточнён P-REO-04 для canonical rollback/replay; добавлена таблица decision -> expected error code class без финализации API формата. pwm-testing (docs-only gate): sprint-v2-1-slice-c-test-report.md — verdict PARTIAL (ClaimTx + матрица + C-MAT/C-ANC/C-REO тестопригодны; пробел BurnMarkTx в теле RFC vs заголовок тикета; wire E_* в D; нет исполняемых тестов). pwm-review: docs/reviews/sprint-v2-1-slice-c-review.md — Approve with nits (усилить трассируемость C-ANC-C к B-STATE; явно закрыть/расширить burn scope). Carry-over: стартован Slice D (API error contract freeze) с явным burn coverage и стабильным mapping E_* -> response_class в docs/reviews/sprint-v2-1-slice-d-api-contract-freeze.md. Статус тикета in_progress до Slice D/API и финальной редакции связанных документов при необходимости."
+}

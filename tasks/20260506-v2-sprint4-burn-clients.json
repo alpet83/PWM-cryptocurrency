@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "id": "20260506-v2-sprint4-burn-clients",
+  "title": "MVP v2 Sprint V2-4: BURN_MARK end-to-end и адаптация клиентов",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v2.md Sprint V2-4",
+    "§4 pwm-cli",
+    "§5 pwm-tui"
+  ],
+  "brief": "Полный операторский путь BURN_MARK: CLI (tx-burn-mark с --purpose, marks-display, ошибки), TUI (F5 burn modal), согласование сообщений ошибок с pwmd, негативные e2e. Slices: 0 UX freeze, 1 pwm-cli, 2 pwm-tui, 3 smoke+docs. Slice 4 (naming audit) по решению владельца.",
+  "slices": {
+    "0": "UX freeze: список команд/флагов/экранов, acceptance criteria",
+    "1": "pwm-cli: burn path + tests",
+    "2": "pwm-tui: burn modal + tests",
+    "3": "smoke + docs + pwm-review согласованность ошибок",
+    "4": "reserved: full workspace naming audit (pwm-review + pwm-coding)"
+  },
+  "delegations": [
+    {
+      "role": "pwm-coding",
+      "slice": 1,
+      "status": "done",
+      "commit": "HEAD",
+      "notes": "Added marks visibility in TUI (rows/detail/F5 modal), CLI marks pre-submit UX for tx-burn-mark, and InsufficientMarks coverage."
+    },
+    {
+      "role": "pwm-testing",
+      "slice": 1,
+      "status": "pass",
+      "notes": "cargo fmt/check + test pwm-tui/pwm-cli/pwm-core PASS on 1ffb840; naming checker violations: [] for touched files; report docs/reviews/v2-4-slice1-testing-20260506.md"
+    },
+    {
+      "role": "pwm-review",
+      "slice": 1,
+      "status": "fail",
+      "notes": "FAIL: fetch_marks uses non-routed GET /v1/accounts/{id} (pwmd has /v1/account/:id); run_tx_burn_mark lacks pre-submit marks; changes landed on run_tx_unstake with wrong eprintln copy. TUI F5 + detail OK; table column missing. Report: docs/reviews/v2-4-slice1-review-20260506.md"
+    },
+    {
+      "role": "pwm-coding",
+      "slice": "1-fix",
+      "status": "done",
+      "commit": "<hash>",
+      "notes": "fixed 3 review blockers"
+    },
+    {
+      "role": "pwm-testing",
+      "slice": "1-retest",
+      "status": "pass",
+      "notes": "Smoke retest after 8e0161a: fmt/check + test pwm-cli/pwm-tui/pwm-core PASS; naming checker violations: [] on listed files; report docs/reviews/v2-4-slice1-testing-20260506.md § Retest"
+    },
+    {
+      "role": "pwm-review",
+      "slice": "1-final",
+      "status": "pass-with-nits",
+      "notes": "Re-review 8e0161a: fetch_marks→/v1/account/{hex}; run_tx_burn_mark pre-print marks; run_tx_unstake clean; TUI Marks column; F5 Current marks OK; naming checker []. Nits: no post-tx marks refetch; AC-1 still open for sprint. Report: docs/reviews/v2-4-slice1-review-20260506.md § Re-review after fix commit 8e0161a"
+    },
+    {
+      "role": "pwm-coding",
+      "slice": 3,
+      "status": "done",
+      "commit": "4c7a34a",
+      "notes": "Added tester-guide runbook fragment for stake→accrue→burn marks flow and documented InsufficientMarks rejection string near tx-burn-mark path."
+    },
+    {
+      "role": "pwm-review",
+      "slice": 3,
+      "status": "pass-with-nits",
+      "notes": "Final sprint review: docs/reviews/v2-4-slice3-final-review-20260506.md — PASS-WITH-NITS; AC-1 FAIL, AC-2/5/6/7 PARTIAL, AC-3/4 PASS; pwmd reject uses E_BURN_OVER_BALANCE + Display msg, not PascalCase InsufficientMarks string; cmd_tx comment inaccurate."
+    },
+    {
+      "role": "pwm-coding",
+      "slice": "3-fix",
+      "status": "done",
+      "commit": "5ee4f68",
+      "notes": "fix InsufficientMarks comment accuracy"
+    },
+    {
+      "role": "pwm-review",
+      "slice": "4-naming",
+      "status": "done",
+      "notes": "Workspace naming audit triage: docs/reviews/v2-4-naming-audit-20260506.md — 67 rows M/D/R, ~20-symbol MUST-FIX wave for pwm-coding; script heuristic gap documented (cfg(test) mod not named tests)"
+    },
+    {
+      "role": "pwm-coding",
+      "slice": "4-naming-fix",
+      "status": "done",
+      "commit": "<hash>",
+      "notes": "Applied wave M 20 MUST-FIX renames from docs/reviews/v2-4-naming-audit-20260506.md with call-site updates and keep-in-sync naming script comments."
+    },
+    {
+      "role": "pwm-coding",
+      "slice": "4-naming-fix2",
+      "status": "done",
+      "commit": "<hash>",
+      "notes": "Shortened import provenance helper names in pwm-tui roaming flow to satisfy <=4 segment prod naming policy."
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/v2-4-slice3-final-review-20260506.md",
+    "naming_audit_md": "docs/reviews/v2-4-naming-audit-20260506.md",
+    "slice0_freeze_md": "docs/reviews/v2-4-slice0-ux-freeze-20260506.md"
+  },
+  "notes": "Оркестратор 2026-05-06: старт V2-4. E-3 (tx-burn-mark в CLI/TUI) уже реализован в sprint E-3; задача - согласовать с V2-2 single-marks RPC, добавить недостающее, закрыть acceptance criteria плана."
+}

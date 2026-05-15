@@ -1,0 +1,102 @@
+{
+  "pwm_info_schema": 1,
+  "project_id": 5,
+  "id": "20260513-v2-sprint9-rfc16-cluster-attestation-info",
+  "parent_ticket": "tasks/20260513-v2-sprint9-rfc16-cluster-attestation.json",
+  "research_question": "PWM Slice A: RFC 16 Variant A cluster attestation core — peer wire + capability extension for propose/attest/seal with ≤3 nodes",
+  "created_at": "2026-05-10",
+  "brief_digest": "Reusable digest for implementing RFC 16 Variant A cluster attestation (Slice A of Sprint V2-9). Transport is LOCKED to peer wire + capability negotiation (§10); cluster traffic only flows over established peering sessions. Key integration points: (1) wire.rs PeerWireMsg enum needs Propose/Attest variants; (2) handshake.rs NodeHelloCapabilities needs cluster attestation capability bits; (3) lifecycle.rs spawn_seal_loop needs quorum-aware seal path with S2 orthogonality (§8.1); (4) config.rs and main.rs need cluster role/membership/quorum placeholders; (5) pwm-core Chain::seal needs quorum-gated variant. MVP scope: 2-of-2 and 2-of-3 k-of-n semantics, bounded tx catchup (§6.1), structured deferred-tx logging.",
+  "files": [
+    {
+      "path": "crates/pwmd/src/transport/peer_session/wire.rs",
+      "why": "Peer wire protocol. PeerWireMsg enum (lines 50-153) needs extension with Propose{height,round,vote_object,candidate} and Attest{height,round,vote_object,signature} variants per RFC §5 (VO1/VO2 vote objects). Wire framing already supports JSON serde with 4-byte length prefix."
+    },
+    {
+      "path": "crates/pwmd/src/handshake.rs",
+      "why": "NodeHello and NodeHelloCapabilities (lines 26-83). Needs new cluster attestation capability fields: cluster_role (proposer/attester/none), cluster_member_ids vector, quorum_k/quorum_n. Protocol version negotiation at PWM_PROTOCOL_VERSION constant (line 19)."
+    },
+    {
+      "path": "crates/pwmd/src/lifecycle.rs",
+      "why": "Seal loop integration point. spawn_seal_loop (lines 292-430) calls Chain::seal at line 337. Needs quorum-aware seal gate: check attestation quorum before sealing, integrate with existing run_lease_gate (lines 226-290) per RFC §8.1 S2 orthogonality. Key: lease decides WHO may seal; quorum decides WHETHER candidate is attested."
+    },
+    {
+      "path": "crates/pwmd/src/config.rs",
+      "why": "PwmdConfig struct (lines 54-104) is central configuration. Needs cluster config placeholders: cluster_enabled, cluster_membership list, quorum_k/quorum_n, tx_catchup_ms (RFC §6.1 T_tx_catchup), attestation_timeout_ms. DeploymentProfile (lines 85, 103-108) needs new ClusterAttestation variant or feature flag."
+    },
+    {
+      "path": "crates/pwmd/src/main.rs",
+      "why": "CLI argument definitions (lines 15-250+). Needs new flags: --cluster-role (proposer/attester), --cluster-membership (comma-separated node_instance_ids), --quorum-k, --quorum-n, --cluster-tx-catchup-ms, --cluster-attest-timeout-ms. Reference patterns: seal_role (lines 219-220), seal_lease_ttl_ms (lines 222-226)."
+    },
+    {
+      "path": "crates/pwmd/src/state.rs",
+      "why": "App state container. App struct (lines 21-63) holds all runtime state. May need new cluster attestation state fields: attestation_round_state, pending_proposals, received_attestations map. Also validator_identity_hash and node_instance_id already present (lifecycle.rs uses these)."
+    },
+    {
+      "path": "crates/pwmd/src/lease.rs",
+      "why": "S2 lease/fencing implementation. LeaseRuntime (lines 44-53) and step_lease (lines 144+) handle seal exclusivity. Per RFC §8.1, S2 lease and quorum membership are orthogonal — lease WHO, quorum WHETHER. Code must not conflate these. run_lease_gate in lifecycle.rs (lines 226-290) shows integration pattern."
+    },
+    {
+      "path": "crates/pwmd/src/transport/peer_session/mod.rs",
+      "why": "Peer session management. process_inbound_socket and run_seed_session handle established sessions. Cluster attest/propose messages flow here after NodeHello handshake. Session loops need dispatch for new PeerWireMsg variants."
+    },
+    {
+      "path": "crates/pwm-core/src/chain.rs",
+      "why": "Core chain sealing. Chain::seal (lines 106-165) is the current seal implementation. May need: (a) quorum-gated variant, or (b) external quorum check before calling seal. TAIL_BLOCK_CAP (line 14), SealAbort type (line 11) are relevant."
+    },
+    {
+      "path": "crates/pwm-core/src/lib.rs",
+      "why": "Core exports. Chain, Mpool, State are key types. SealTimeMode for deterministic testing. Understand exports to see pwmd→pwm-core boundary."
+    },
+    {
+      "path": "crates/pwmd/src/bootstrap.rs",
+      "why": "App initialization. app_from_genesis_id creates App with HandshakeState (lines 90, 212, 273). New cluster config needs to flow through bootstrap into App state."
+    },
+    {
+      "path": "docs/rfc/16-validator-clone-attestation.md",
+      "why": "Normative spec reference. Key sections: §5 Vote Object (VO1/VO2), §6.1 bounded tx catchup with attest_tx_lag logging, §7 quorum policy k-of-n, §8.1 S2 orthogonality, §10 wire + capability, §9 timeouts and disagreement table."
+    },
+    {
+      "path": "docs/reviews/20260509-v2-9-rfc16-sprint-checklist.md",
+      "why": "Sprint checklist with decision rows. Transport locked to wire+capability (section 2, row 1). Slice A checklist (section 3): roles/config, quorum sizes, seal path + S2, §6.1 catchup + observability."
+    }
+  ],
+  "risks_gaps": [
+    {
+      "risk": "Capability negotiation: Need to decide if cluster attestation uses new PWM_PROTOCOL_VERSION bump or capability bits in NodeHelloCapabilities. RFC §10 allows both; decision affects backward compat."
+    },
+    {
+      "risk": "Seal path refactoring: Chain::seal is synchronous; quorum attestation is async (waiting for peer attestations). May need new async seal path with round state machine (propose → collect attest → seal)."
+    },
+    {
+      "risk": "Config/CLI naming: Placeholder names (--cluster-role, --cluster-membership, etc.) need owner confirmation per sprint-checklist row 3 (OPEN status)."
+    },
+    {
+      "risk": "§6.1 deferred tx material: Implementation needs mempool integration to catchup missing tx within T_tx_catchup window before attest. Structured logging key attest_tx_lag needs log schema update."
+    },
+    {
+      "risk": "S2 orthogonality edge cases: What happens when lease says 'seal allowed' but quorum incomplete? RFC §8 says 'no seal' — this interaction needs explicit test coverage."
+    },
+    {
+      "risk": "Attestation state persistence: If node restarts mid-round, attestation state is lost (acceptable for MVP per RFC §11). Document this limitation."
+    },
+    {
+      "risk": "Membership configuration: Closed membership set needs validation at startup (reject if k > n, n > 3 for MVP)."
+    }
+  ],
+  "search_summary": {
+    "method": "CQDS cq_help + local Glob/Grep",
+    "key_patterns": {
+      "wire.rs": "Single file at crates/pwmd/src/transport/peer_session/wire.rs - PeerWireMsg enum",
+      "handshake": "NodeHello, NodeHelloCapabilities in handshake.rs with protocol version and services",
+      "seal": "Chain::seal in pwm-core, spawn_seal_loop in lifecycle.rs with lease gate",
+      "config": "PwmdConfig in config.rs, CLI in main.rs with seal_role and lease flags as patterns",
+      "lease": "S2 lease module in lease.rs, orthogonal per RFC §8.1"
+    },
+    "files_count": 13
+  },
+  "anchors": {
+    "rfc16_sections": ["§5 Vote Object", "§6.1 bounded catchup", "§7 quorum policy", "§8.1 S2 orthogonality", "§10 wire + capability", "§11 MVP checklist"],
+    "sprint_checklist_locked_rows": ["Transport attest/propose = peer wire + capability", "Cluster membership only in peering connections", "Committer after quorum = designated committer", "S2/quorum orthogonality", "≤3 nodes limit"],
+    "slice_a_scope": ["Roles proposer/attester config", "Quorum 2-of-2 and 2-of-3", "Seal without quorum blocked", "§6.1 T_tx_catchup + attest_tx_lag logging", "Wire capability extension"]
+  }
+}

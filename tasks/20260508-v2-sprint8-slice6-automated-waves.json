@@ -1,0 +1,73 @@
+{
+  "id": "20260508-v2-sprint8-slice6-automated-waves",
+  "title": "V2-8 Slice 6: automated post-sprint sync waves",
+  "status": "blocked",
+  "created": "2026-05-08",
+  "context": {
+    "sprint": "V2-8",
+    "transfer_note": "Приёмка Wave A/B/C на legacy multi-sealer-пути не доведена до PASS: одна identity на нескольких нодах давала расходящиеся цепочки / недетерминизм заголовков; стратегический пивот — single proposer + attest (RFC 16). Функциональные цели волн перенесены на Sprint V2-9 и tasks/20260513-v2-sprint9-rfc16-cluster-attestation.json; см. docs/plans/mvp_v2.md Sprint V2-8 «Статус и перенос приёмки».",
+    "goal": "Автоматизировать минимальный набор wave-тестов для синхронности мемпула/блокчейна и догонки нод.",
+    "required_minimum": [
+      "Wave A: 2 ноды одной шарды, тестовые tx до 2 checkpoint windows, синхронность мемпула/цепочки, сравнение epoch/block файлов после одновременной остановки",
+      "Wave B: подключение третьей ноды к двум работающим, проверка догонки, затем повтор инвариантов Wave A для 3 нод",
+      "Wave C: negative/chaos в том же духе (drop/reconnect/profile mismatch/malformed frames)"
+    ],
+    "note": "Рекомендуемый test-only параметр: --debug-stop-height для детерминированной остановки нод."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "scope": "Phase A / Wave A",
+      "status": "done",
+      "notes": [
+        "Добавлен test-only флаг --debug-stop-height в pwmd CLI/config/runtime.",
+        "Добавлен Wave A harness scripts/wave_a_same_shard_stop.py (2 same-shard ноды, tx flow, детерминированный stop, проверки snapshot/epoch consistency).",
+        "Добавлена операторская заметка по запуску/ожиданиям Wave A в docs/runbook-same-shard-sync-v1.md.",
+        "Коммит кодинга: e74dbf3."
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "scope": "Validate commit e74dbf3 (Slice 6): check, debug-stop-height, Wave A×2+, naming, invariants",
+      "status": "done",
+      "notes": [
+        "Отчёт: docs/reviews/20260508-v2-8-slice6-testing.md",
+        "result: PARTIAL — Wave A exit 0; логи подтверждают stop-height=200; enforced invariants (canonical/checkpoint/accounts/manifest structure) стабильны; last_epoch byte-hash и tip_hash расходятся без fail-path harness (см. отчёт)."
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "scope": "Финальное ревью Phase A / Wave A после артефакта pwm-testing",
+      "status": "cancelled",
+      "notes": [
+        "Отменено вместе с blocked: приёмка перенесена на V2-9 (см. context.transfer_note).",
+        "Исторически: docs/reviews/20260508-v2-8-slice6-testing.md (PARTIAL), docs/reviews/20260508-v2-8-slice6-review.md."
+      ]
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-v2-8-slice6-review.md",
+    "testing_md": "docs/reviews/20260508-v2-8-slice6-testing.md",
+    "code_commit_wave_a": "e74dbf3",
+    "code": [
+      "crates/pwmd/src/main.rs",
+      "crates/pwmd/src/config.rs",
+      "crates/pwmd/src/state.rs",
+      "crates/pwmd/src/bootstrap.rs",
+      "crates/pwmd/src/lifecycle.rs",
+      "scripts/wave_a_same_shard_stop.py"
+    ],
+    "docs": [
+      "docs/runbook-same-shard-sync-v1.md"
+    ],
+    "wave_a": {
+      "entrypoint": "python scripts/wave_a_same_shard_stop.py",
+      "stop_rule": "max(--stop-height, 2 * SNAP_CHK_BLK_IV)",
+      "checks": [
+        "head/canonical convergence",
+        "key account tx effects equality",
+        "manifest/epoch file consistency by hash/height"
+      ]
+    }
+  }
+}

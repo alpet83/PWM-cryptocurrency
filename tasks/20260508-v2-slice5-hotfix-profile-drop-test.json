@@ -1,0 +1,63 @@
+{
+  "id": "20260508-v2-slice5-hotfix-profile-drop-test",
+  "title": "Hotfix: align tx_batch_profile_drop expectation with normalized reason",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "source": "docs/reviews/20260508-v2-8-slice5-review.md",
+    "issue": "peer_session::tests::tx_batch_profile_drop expects stale reason key shard_mismatch; runtime now emits profile_mismatch for legacy full_v1=false path.",
+    "goal": "Fix test expectation (and related assertions if any) without changing product behavior."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "`cargo check -p pwmd`, `tx_batch_profile_drop`, `peer_session::tests`; отчёт hotfix validation",
+      "notes": [
+        "HEAD 53fab53432fee5f1d037b237a0b7c79c5e0fcfca — правка ожиданий в mod.rs не обнаружена; assert всё ещё shard_mismatch.",
+        "`cargo check -p pwmd` PASS.",
+        "`cargo test -p pwmd tx_batch_profile_drop` FAIL (None vs Some(1) на sync_tx_drop_reason_total).",
+        "`cargo test -p pwmd peer_session::tests` — 14 PASS / 1 FAIL (тот же тест).",
+        "Preflight: tools/dev/preflight_target_debug.ps1; под порогом; bash preflight в сессии недоступен.",
+        "Отчёт: docs/reviews/20260508-v2-slice5-hotfix-testing.md.",
+        "Rerun 2026-05-08 HEAD `23a183fafc761822aae8feed72e3673c88de7456` (`23a183f`): `cargo check -p pwmd` PASS; `cargo test -p pwmd tx_batch_profile_drop` PASS (1); `cargo test -p pwmd peer_session::tests` PASS (15/15). Отчёт: `docs/reviews/20260508-v2-slice5-hotfix-testing-rerun.md`.",
+        "PWM-testing (субагент, повтор на 2026-05-08): те же три команды на указанном FULL HEAD — PASS; см. § Подтверждение в `docs/reviews/20260508-v2-slice5-hotfix-testing-rerun.md`."
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Re-gate после хотфикса (верификация деревом и прогонами)",
+      "notes": [
+        "FAIL: правка ожиданий в mod.rs не появилась; независимый прогон совпадает с docs/reviews/20260508-v2-slice5-hotfix-testing.md (14/1, tx_batch_profile_drop).",
+        "Отчёт re-gate: docs/reviews/20260508-v2-8-slice5-rereview.md."
+      ]
+    },
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "Точечный hotfix ожидания tx_batch_profile_drop к profile_mismatch + локальная валидация",
+      "notes": [
+        "Обновлён assert в transport::peer_session::tests::tx_batch_profile_drop: sync_tx_drop_reason_total.get(\"profile_mismatch\") == Some(1).",
+        "Проверен соседний stale key в этом модуле: sync_shard_drop_noop использует shard mismatch по реальному shard-path и не менялся.",
+        "Validation: cargo fmt; cargo check -p pwmd; cargo test -p pwmd tx_batch_profile_drop; python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport/peer_session/mod.rs — PASS."
+      ]
+    }
+  ],
+  "artifacts": {
+    "testing_rerun_md": "docs/reviews/20260508-v2-slice5-hotfix-testing-rerun.md",
+    "testing_md": "docs/reviews/20260508-v2-slice5-hotfix-testing.md",
+    "coding_hotfix_files": [
+      "crates/pwmd/src/transport/peer_session/mod.rs"
+    ],
+    "regression_tests": [
+      "transport::peer_session::tests::tx_batch_profile_drop"
+    ],
+    "validation_commands": [
+      "cargo fmt",
+      "cargo check -p pwmd",
+      "cargo test -p pwmd tx_batch_profile_drop",
+      "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport/peer_session/mod.rs"
+    ]
+  }
+}

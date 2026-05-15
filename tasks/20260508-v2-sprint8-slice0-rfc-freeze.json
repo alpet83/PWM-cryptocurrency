@@ -1,0 +1,52 @@
+{
+  "id": "20260508-v2-sprint8-slice0-rfc-freeze",
+  "title": "V2-8 Slice 0: RFC/contract freeze for same-shard sync v1",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "sprint": "V2-8",
+    "goal": "Зафиксировать протокольный контракт sync v1 до кодовой реализации wire/apply.",
+    "inputs": [
+      "docs/reviews/20260508-shard-sync-architecture-and-sprint.md",
+      "tasks/20260508-shard-sync-sprint-design-info.json"
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Freeze normative same-shard sync v1 contract in RFC docs and link shard peering service sync to RFC 0015",
+      "result": "PASS",
+      "artifacts": [
+        "docs/rfc/15-same-shard-sync-v1.md",
+        "docs/rfc/8-shard-runtime-identity-and-peering.md",
+        "tasks/20260508-v2-sprint8-slice0-rfc-freeze.json"
+      ],
+      "done_at": "2026-05-08T09:15:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Docs gate: RFC8→RFC15 links, mvp_v2 V2-8 + RFC path, services:sync vs implementation wording, Slice 0 acceptance testability",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260508-v2-8-slice0-testing.md"
+      ],
+      "done_at": "2026-05-08T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Quality gate Slice 0 RFC freeze: classify testing nits, PASS-WITH-NITS, docs/reviews + traceability fixes",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260508-v2-8-slice0-review.md"
+      ],
+      "done_at": "2026-05-08T18:00:00+03:00"
+    }
+  ],
+  "artifacts": {
+    "rfc_sync_v1": "docs/rfc/15-same-shard-sync-v1.md",
+    "rfc_peering_link_update": "docs/rfc/8-shard-runtime-identity-and-peering.md",
+    "testing_md": "docs/reviews/20260508-v2-8-slice0-testing.md",
+    "review_md": "docs/reviews/20260508-v2-8-slice0-review.md"
+  },
+  "notes": "pwm-review: PASS (Slice 0 RFC freeze). pwm-testing nits were non-blocking; closed via docs edits in review commit (mvp_v2 RFC15 path; RFC15 §5.1/§5.2 mapping; §11 Slice 0 gate bullets). Follow-ups: Slice 1 wire skeleton, handshake sync_profile, metrics stub, RFC8 status alignment later."
+}

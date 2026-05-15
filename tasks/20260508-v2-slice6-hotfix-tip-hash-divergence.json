@@ -1,0 +1,69 @@
+{
+  "id": "20260508-v2-slice6-hotfix-tip-hash-divergence",
+  "title": "Mini-hotfix: tip_hash divergence on same canonical chain",
+  "status": "blocked",
+  "created": "2026-05-08",
+  "context": {
+    "source": "docs/reviews/20260508-v2-8-slice6-review.md",
+    "issue": "Wave A observed tip_hash mismatch despite aligned canonical/checkpoint/account invariants.",
+    "goal": "Identify root cause and remove false divergence for same-chain nodes.",
+    "closure": "Корневая причина соотнесена с конкурирующими seal при одной validator identity и недетерминизмом заголовка; «починить» без смены модели печати нецелесообразно. Harness усилен диагностикой (коммит 36823f3). Дальнейшая приёмка wave и детерминизм tip — в рамках V2-9 / RFC 16, не продолжение hotfix-only линии. См. docs/plans/mvp_v2.md Sprint V2-8 «Статус и перенос приёмки»."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Root-cause Wave A tip_hash vs manifest/head/hdr_hash; harness criteria gap",
+      "notes": [
+        "Отчёт: docs/reviews/20260508-v2-slice6-tip-hash-divergence-diagnosis.md",
+        "Вывод: не false-positive; разные tip headers (hdr_hash включает ts+sig); wall-clock в Chain::next_apply_ctx; усилить gate last_epoch_hash_equal + детерминизм ts / proposer gating в pwm-coding"
+      ]
+    },
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "Mini-hotfix Wave A gate: fail-fast on chain identity hash divergence with explicit diagnostics",
+      "notes": [
+        "Коммит 36823f3: scripts/wave_a_same_shard_stop.py — FAIL при tip_hash_equal=false и last_epoch_hash_equal=false; stderr diagnostics.",
+        "Runbook: docs/runbook-same-shard-sync-v1.md §6.",
+        "Runtime PoA в этом slice не менялся."
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "Post-hotfix Wave A smoke; отчёт hotfix-testing",
+      "notes": [
+        "2026-05-08: python scripts/wave_a_same_shard_stop.py — exit 1 ~404s; stderr block + wave-a failed: tip_hash_equal=false, last_epoch_hash_equal=false",
+        "python scripts/wave_a_same_shard_stop.py --help — exit 0",
+        "Артефакт: docs/reviews/20260508-v2-slice6-hotfix-testing.md"
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "cancelled",
+      "scope": "Re-verify ticket after pwm-testing artifact; close or extend nits",
+      "notes": [
+        "Отменено: тикет закрыт переносом приёмки на V2-9 (архитектурный пивот); финальное ревью hotfix-линии не требуется.",
+        "Предыдущий отчёт: docs/reviews/20260508-v2-slice6-hotfix-review.md (до приложения testing_md)"
+      ]
+    }
+  ],
+  "artifacts": {
+    "diagnosis_md": "docs/reviews/20260508-v2-slice6-tip-hash-divergence-diagnosis.md",
+    "review_md": "docs/reviews/20260508-v2-slice6-hotfix-review.md",
+    "testing_md": "docs/reviews/20260508-v2-slice6-hotfix-testing.md",
+    "verdict": "PASS_WITH_NITS_PENDING_RETEST"
+  },
+  "commits": [
+    {
+      "role": "pwm-coding",
+      "hash": "36823f3",
+      "message": "fix(testing): make Wave A fail on tip/epoch hash divergence"
+    },
+    {
+      "role": "pwm-testing",
+      "message": "docs/reviews/20260508-v2-slice6-hotfix-testing.md + ticket status in_progress"
+    }
+  ]
+}

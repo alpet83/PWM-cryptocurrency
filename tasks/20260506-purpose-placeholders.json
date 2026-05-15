@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260506-purpose-placeholders",
+  "title": "Placeholder expansion in burn --purpose (CLI + TUI)",
+  "status": "done",
+  "brief": "Expand {utc_time} => 'DD-MM-YY HH:MM:SSZ' and {utc_timestamp} => u64 text in the purpose string before signing, in both pwm-cli and pwm-tui burn paths.",
+  "delegations": [
+    {
+      "role": "pwm-coding",
+      "status": "done",
+      "commit": "d2d51a2"
+    },
+    {
+      "role": "pwm-testing",
+      "status": "pass"
+    },
+    {
+      "role": "pwm-review",
+      "status": "pass-with-nits"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/purpose-expand-review-20260506.md"
+  },
+  "commits": [
+    "d2d51a2"
+  ],
+  "notes": "Orchestrator 2026-05-06: small UX feature. No new dependencies (std only). Shared helper in pwm-core or as a tiny module in each crate. CLI: expand before set_burn_purpose_signed. TUI: expand in burn_form submit path. pwm-coding: implemented placeholder expansion for {utc_time}/{utc_timestamp} in CLI and TUI before burn purpose signing; added unit tests in pwm-cli."
+}

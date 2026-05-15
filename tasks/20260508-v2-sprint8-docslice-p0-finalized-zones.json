@@ -1,0 +1,38 @@
+{
+  "id": "20260508-v2-sprint8-docslice-p0-finalized-zones",
+  "title": "Docs-slice: RFC patch for P0 proposer rule, finalized_height semantics, and P2 zone scope",
+  "status": "in_progress",
+  "created": "2026-05-08",
+  "context": {
+    "goal": "Внести узкий RFC-патч перед automated waves: детерминированный P0 baseline, finalized_height semantics, и границы реализации сетевых зон.",
+    "inputs": [
+      "docs/reviews/20260508-pretest-architecture-gate-p0-p2.md",
+      "docs/rfc/15-same-shard-sync-v1.md",
+      "docs/plans/mvp_v2.md"
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "role": "docs_patch",
+      "scope": "NEED_RFC_PATCH closure for deterministic P0 baseline, stale/late handling, and finalized_height semantics",
+      "result": "PASS",
+      "artifacts": [
+        "docs/rfc/15-same-shard-sync-v1.md",
+        "docs/plans/mvp_v2.md"
+      ],
+      "done_at": "2026-05-08T12:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "role": "doc_slice_review",
+      "scope": "Verify normative wording and gate closure evidence",
+      "result": "pending",
+      "artifacts": []
+    }
+  ],
+  "artifacts": {
+    "rfc_patch": "docs/rfc/15-same-shard-sync-v1.md",
+    "v2_plan_note": "docs/plans/mvp_v2.md"
+  }
+}

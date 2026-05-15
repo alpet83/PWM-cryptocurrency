@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-s1-s0-spec-impl-audit",
+  "title": "Sprint V2-1 Slice 0: spec↔impl audit (single marks balance)",
+  "status": "done",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "Старт Sprint V2-1 / Slice 0. Провести аудит расхождений между docs/plans/mvp_v2.md и текущей реализацией crates/* по новой установке владельца: единый баланс marks, marks_quota как legacy-заглушка, ориентиры эмиссии (PWM от крупного стейка ~100k, marks от ~1). На выходе: sprint-checklist + карта расхождений + предложения по узким слайсам V2-1.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сформировать sprint-checklist и audit report для V2-1/Slice-0: spec vs impl по marks/marks_quota/emission thresholds, без код-изменений",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-0-checklist.md",
+        "docs/reviews/sprint-v2-1-slice-0-spec-impl-audit.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 21000,
+        "output": 5800,
+        "total": 26800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T10:20:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate Slice 0 (docs): полнота артефактов, сверка с state/chain/genesis/API, test-report, без cargo test",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-0-test-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 3200,
+        "total": 15200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review-gate Slice 0 (docs/ticket): полнота аудита vs mvp_v2, CQDS spot-check, отчёт review.md, обновление тикета",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-0-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 26000,
+        "output": 4200,
+        "total": 30200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T18:30:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-1-slice-0-review.md"
+  },
+  "notes": "Slice 0 audit выполнен pwm-coding: sprint-checklist и spec-impl audit (без изменений crates/*). Вывод: burn списывает marks_quota, API — только marks; нужен migration path к единому marks и RFC-first пороги эмиссии.\n\npwm-testing gate: вердикт PARTIAL — audit согласован с кодом по выборочной сверке, автотесты не гонялись. Пробел: docs/reviews/sprint-v2-1-slice-0-checklist.md остаётся с пустыми [ ] при готовом отчёте; нет табличной матрицы негативных тестов на следующий код. Добавлен docs/reviews/sprint-v2-1-slice-0-test-report.md с минимальным test-plan (policy thresholds, seal, BurnMark, AcctOut, регрессия quota-тестов).\n\npwm-review gate: PARTIAL — содержательно вход в Slice 1 разрешён (решения владельца и gaps отражены корректно; CQDS grep подтверждает burn↔marks_quota_of). Условие к старту Slice 1: синхронизировать sprint-v2-1-slice-0-checklist.md с audit acceptance или явно зафиксировать deprecation чеклиста в пользу audit. Тикет закрыт как scope Slice 0 (status done); Sprint V2-1 в целом продолжается отдельными задачами.\n\nCarry-over Slice 1: основной вход для RFC freeze зафиксирован в docs/reviews/sprint-v2-1-rfc-inputs-20260505.md."
+}

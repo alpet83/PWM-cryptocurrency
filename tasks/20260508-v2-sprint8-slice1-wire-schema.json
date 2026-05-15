@@ -1,0 +1,99 @@
+{
+  "id": "20260508-v2-sprint8-slice1-wire-schema",
+  "title": "V2-8 Slice 1: wire schema + message types + feature gates",
+  "status": "done",
+  "verdict": "PASS_WITH_NITS",
+  "created": "2026-05-08",
+  "context": {
+    "sprint": "V2-8",
+    "goal": "Реализовать каркас wire-протокола same-shard sync v1: типы сообщений, feature gates и базовую совместимость legacy peer.",
+    "inputs": [
+      "docs/rfc/15-same-shard-sync-v1.md",
+      "docs/reviews/20260508-v2-8-slice0-review.md"
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "summary": "Добавлены wire-схема same-shard sync v1, capability gating и безопасный stub-роутинг без apply-логики.",
+      "inputs": [
+        "docs/rfc/15-same-shard-sync-v1.md",
+        "docs/reviews/20260508-v2-8-slice0-review.md"
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "summary": "cargo check pwmd PASS; decode_/handshake/transport:: фильтры PASS; preflight target/debug без очистки; отчёт в docs/reviews/20260508-v2-8-slice1-testing.md.",
+      "inputs": [
+        "tasks/20260508-v2-sprint8-slice1-wire-schema.json",
+        "git:eb5fc5a"
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "summary": "PASS_WITH_NITS: каркас и shard gate ок; литеральный RFC §11 §6 taxonomy не замкнут; зафиксировать traceability. Отчёт docs/reviews/20260508-v2-8-slice1-review.md.",
+      "inputs": [
+        "git:eb5fc5a",
+        "docs/reviews/20260508-v2-8-slice1-testing.md",
+        "docs/rfc/15-same-shard-sync-v1.md",
+        "docs/reviews/20260508-v2-8-slice1-review.md"
+      ]
+    },
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "summary": "Docs-only follow-up: в RFC 15 закрыт traceability nit Slice 1 через явный Required-now vs Deferred subset для §6; уточнена нормативная связь sync_capabilities/sync_profile и добавлен proposer/fork semantics блок.",
+      "inputs": [
+        "docs/reviews/20260508-v2-8-slice1-review.md",
+        "docs/rfc/15-same-shard-sync-v1.md",
+        "docs/plans/mvp_v2.md"
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "summary": "Rereview после git:3d1422c: traceability §11 и §5.1 закрыты; RFC §7 покрывает пропозер/ветки; тикет Slice 1 → done (PASS_WITH_NITS). Отчёт docs/reviews/20260508-v2-8-slice1-rereview.md.",
+      "inputs": [
+        "git:3d1422c",
+        "docs/rfc/15-same-shard-sync-v1.md",
+        "docs/plans/mvp_v2.md",
+        "docs/reviews/20260508-v2-8-slice1-rereview.md"
+      ]
+    }
+  ],
+  "artifacts": {
+    "code": [
+      "crates/pwmd/src/handshake.rs",
+      "crates/pwmd/src/transport/dial.rs",
+      "crates/pwmd/src/transport/metrics.rs",
+      "crates/pwmd/src/transport/peer_session/wire.rs",
+      "crates/pwmd/src/transport/peer_session/mod.rs",
+      "crates/pwmd/src/transport/peer_session/inbound.rs",
+      "crates/pwmd/src/transport/peer_session/seed/session/initial_exchange.rs",
+      "crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs",
+      "crates/pwmd/src/transport/tests/wire_decode.rs",
+      "crates/pwmd/src/transport/tests/harness.rs",
+      "crates/pwmd/src/federation.rs",
+      "crates/pwmd/src/tests/helpers.rs"
+    ],
+    "ticket": [
+      "tasks/20260508-v2-sprint8-slice1-wire-schema.json"
+    ],
+    "docs": [
+      "docs/rfc/15-same-shard-sync-v1.md",
+      "docs/reviews/20260508-v2-8-slice1-review.md",
+      "docs/reviews/20260508-v2-8-slice1-rereview.md",
+      "docs/reviews/20260508-validator-competition-in-shard.md",
+      "docs/plans/mvp_v2.md"
+    ],
+    "testing_md": "docs/reviews/20260508-v2-8-slice1-testing.md",
+    "review_md": "docs/reviews/20260508-v2-8-slice1-rereview.md"
+  },
+  "notes": {
+    "pwm-coding": "Slice 1 acceptance в RFC 15 теперь явно ограничен подмножеством §6 (Headers*/Blocks*/SyncNack + envelope), а mempool/TipAnnounce/catch-up формы помечены как deferred в Slice 2/3/4; добавлен pointer в mvp_v2 Sprint V2-8 Slice 1.",
+    "pwm-review": "Повторное ревью 2026-05-08: коммит 3d1422c закрывает документальные ниты; Slice 1 статус done при PASS_WITH_NITS (остаточные код-ниты первого ревью — в backlog следующих слайсов)."
+  }
+}

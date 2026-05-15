@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "id": "20260513-slice-cluster-attester-seal-derive",
+  "title": "pwmd: SealRole standby для cluster Attester без обязательного --debug-disable-seal-loop",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "RFC16 §8.2 (docs/rfc/16-validator-clone-attestation.md): при cluster.enabled + ClusterRole::Attester локальный competing seal недопустим; флаг --debug-disable-seal-loop — наследие вне-кластерных тests/replay, не должен быть единственным предохранителем. Цель: derive_seal_role (или эквивалент) выставляет SealRole::Standby для attester после проверки override; конфликт seal-role active + cluster attester — fail-fast в config.validate. Обновить cy-cluster-attester.ps1: убрать --debug-disable-seal-loop если поведение покрыто кодом (follower script оставить с флагом — non-cluster replay). CLI help (main.rs) кратко сослаться на RFC §8.2. Регрессионные тесты: attester config без флага → standby; запрет active override.",
+  "references": [
+    "docs/reviews/20260513-cluster-role-rfc-alignment-review.md",
+    "docs/rfc/16-validator-clone-attestation.md §8.2"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implemented RFC16 §8.2 alignment: derive standby for cluster attester, reject active override, updated CLI/script help, and added regression tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/main.rs",
+        "cy-cluster-attester.ps1",
+        "tasks/20260513-slice-cluster-attester-seal-derive.json"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/lifecycle.rs crates/pwmd/src/config.rs crates/pwmd/src/main.rs",
+        "cargo fmt --all",
+        "cargo check -p pwmd",
+        "cargo test -p pwmd"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 10000,
+        "output": 3000,
+        "total": 13000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12T21:35:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Verified fmt/tests for pwmd; attester standby without debug flag covered by existing unit tests.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260513-slice-cluster-attester-seal-derive.json"
+      ],
+      "commands": [
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/dev/preflight_target_debug.ps1",
+        "cargo fmt --all -- --check",
+        "cargo test -p pwmd",
+        "cargo bench -p pwmd --bench snapshot_load --no-run"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 2800,
+        "total": 16800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12T22:45:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "RFC16 §8.2 alignment: derive_seal_role order, validate active override, scripts/CLI/tests; nit: stale attester note in cy-cluster-common.ps1.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260513-cluster-attester-seal-derive-slice.md"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/lifecycle.rs crates/pwmd/src/config.rs crates/pwmd/src/main.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-12T23:59:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260513-cluster-attester-seal-derive-slice.md"
+  },
+  "notes": "Пропозер не трогать по флагу в этом слайсе (отдельный follow-up). mk_cluster_attest без полной §6 — задокументировано в RFC."
+}

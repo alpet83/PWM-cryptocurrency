@@ -1,0 +1,28 @@
+{
+  "id": "20260507-node1-stake-balance-investigation",
+  "title": "Расследование: стейк/баланс после рестарта ноды (node-1.ps1)",
+  "status": "done",
+  "created": "2026-05-07",
+  "context": {
+    "symptom": "После перезапуска нод стейк как будто пропал, на баланс вернулось ~1000 PWM. Повторный стейк 500 обнулил баланс, но в стейке не отображается ожидаемая сумма (1000).",
+    "runtime": "node-1.ps1: pwmd --listen 127.0.0.1:3030 --state-root ./tmp/state-testnet --genesis-file ./tmp/genesis-custom.json",
+    "notes": "Пользователь просит привязать расследование к фактически запущенной ноде и логам. Вердикт ревью: NEED-FIX (pwm-tui двойное вычитание staked в format_balance_cell); частично OPERATOR (ожидание 1000 «в стейке» vs модель balance_pwm+staked); исторический «пропажа стейка» при том же state — UNCLEAR без воспроизведения."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "at": "2026-05-07",
+      "notes": "RPC GET /v1/account для 2cfb…: balance_pwm=500M staked=500M сырых (500+500 PWM). Лог stake commit согласуется. pwm-tui format_balance_cell: spendable=balance_pwm-staked конфликтует с семантикой AcctOut (balance уже без стейка). Отчёт: docs/reviews/20260507-node1-stake-balance-investigation.md"
+    },
+    {
+      "agent": "pwm-coding",
+      "at": "2026-05-07",
+      "notes": "fix(tui) format_balance_cell: не вычитать staked из balance_pwm; unit-тест. Коммит 5f0dc18. cargo test -p pwm-tui: падение wallet_roaming::footer_rpc_online_one (несвязано, вынести в pwm-testing)."
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260507-node1-stake-balance-investigation.md",
+    "verdict": "NEED-FIX",
+    "fix_commit": "5f0dc18"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "20260506-claim-all-sentinel",
+  "title": "CLAIM_ALL sentinel + TUI F5 marks modal + timing guard",
+  "status": "done",
+  "brief": "Protocol: CLAIM_ALL = u64::MAX as u128 sentinel in TxBody::Claim handled by node as 'claim all matured'. TUI: F5 becomes combined Marks modal ([C] Claim / [B] Burn) with 1-hour wall-clock guard. CLI: --all flag for tx-claim.",
+  "delegations": [
+    {
+      "role": "pwm-coding",
+      "status": "done"
+    },
+    {
+      "role": "pwm-testing",
+      "status": "pass"
+    },
+    {
+      "role": "pwm-review",
+      "slice": "final",
+      "status": "pass-with-nits",
+      "commit": "ae15b70"
+    },
+    {
+      "role": "pwm-coding",
+      "slice": "fix",
+      "status": "done",
+      "commit": "ae15b70"
+    }
+  ],
+  "commits": [
+    {
+      "hash": "35f02e8",
+      "message": "feat(claim): CLAIM_ALL sentinel + TUI F5 marks modal + 1-hour guard"
+    },
+    {
+      "hash": "ae15b70",
+      "message": "fix(claim): preserve last_claim_wall across polls + anchor_ref from head"
+    }
+  ],
+  "commit": "35f02e8",
+  "artifacts": {
+    "review_md": "docs/reviews/claim-all-review-20260506.md"
+  },
+  "notes": "Orchestrator 2026-05-06: user design. Sentinel removes maturity calc from all clients. Guard is wall-clock 3600s (conservative floor since maturity formula needs >=1h). pwm-review 2026-05-06: initial FAIL — poll replaced ui.rows and reset last_claim_wall. Fix ae15b70: merge_poll_rows by id, head_height fallback for anchor, anchor error hint. pwm-review re-review 2026-05-06: PASS-WITH-NITS — AC3 PASS; residual nits from round 1 (ClaimOverMatured zero semantics, UTC-day vs 1h wall) unchanged/out of fix scope. See docs/reviews/claim-all-review-20260506.md."
+}

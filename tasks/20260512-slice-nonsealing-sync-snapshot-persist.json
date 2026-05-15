@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "20260512-slice-nonsealing-sync-snapshot-persist",
+  "title": "pwmd: периодический снимок цепи после peer-sync для негенерирующих узлов",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Сейчас `autosnapshot` / `save_seal_persist(Periodic)` вызывается из цикла seal при `autosnap_hit(tip_h)` (интервал `AUTOSNAPSHOT_BLOCK_INTERVAL`, 100 блоков). Узлы с `--debug-disable-seal-loop` (CY follower, CY cluster attester) и любые standby по цепи растут через `apply_blk`/`apply_blk_batch` в sync, но после успешного apply снимок на диск не делается → `pwm-data.json` отстаёт от RAM до graceful shutdown или до мутаций API (`snap_save_locked`). Нужно выровнять поведение: при том же `data_file`/backend что и у сейлера — периодический persist после sync-apply на границах, с теми же инвариантами отката/деградации что и при seal.",
+  "design_notes": [
+    "Точка интеграции: `crates/pwmd/src/transport/peer_session/sync_live.rs` — `apply_blk_batch` (и косвенно catch-up chunk path, который уже зовёт `apply_blk_batch`).",
+    "Условие: `app.autosnapshot_backend.is_some()` и `autosnap_hit(tip_h)` после успешного применения батча (`tip_h` = высота последнего применённого блока). Использовать `SealPersistMode::Periodic` и ту же связку с `apply_snapshot_init_state`, что в `lifecycle.rs` после seal, либо вынести общий helper в `lifecycle`/`snapshot` чтобы не дублировать rollback при ошибке записи.",
+    "При ошибке persist: поведение как у seal — откат применённого коммита (`take_bak`/`rollback_commit`) если это уже принятая семантика для seal; иначе явно зафиксировать в тикете осознанное отличие.",
+    "Не смешивать с `--debug-disable-seal-loop`: флаг лишь отключает локальный seal; persist после sync не должен требовать отдельного «включателя», кроме уже существующего наличия backend (`data_file` / persist_snap). Опциональный будущий флаг «не писать после sync» — только если появится операторский запрос (вне MVP слайса).",
+    "Логи: одно `info!` на checkpoint (как `autosnapshot checkpoint hit`) с указанием источника `sync_apply` для отличия от seal; не спамить каждый блок.",
+    "Риск: двойная запись на одной высоте, если узел и seal’ит, и получает те же блоки по sync — должно быть идемпотентно по содержимому; при необходимости гард «persist только если SealRole::Standby» или если локальный seal не продвинул tip с последней итерации — обсудить в ревью; минимальный вариант — всегда вызывать checkpoint на границе после sync (избыточный fsync редок)."
+  ],
+  "acceptance_criteria": [
+    "Follower/attester с `--data-file` и включённым json-file (или эквивалентным backend): после догона сети на высоту кратную 100 на диске появляется актуальный снимок (проверка: tip_h в файле / повторный старт с тем же `pwm-data.json`).",
+    "`cargo test` / интеграционный тест: сценарий apply через sync path + checkpoint (минимум — изолированный тест с `apply_blk_batch` и временным файлом).",
+    "Документация: краткая строка в `docs/` или комментарий к `debug-disable-seal-loop`, что периодический persist идёт через sync-checkpoint; при желании — строка в CHANGELOG после merge."
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "sync_live apply_blk_batch: periodic save_seal_persist на autosnap_hit; общий helper с lifecycle; rollback при ошибке как seal",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/transport/peer_session/sync_live.rs"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/lifecycle.rs crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "cargo fmt --all",
+        "cargo check -p pwmd",
+        "cargo test -p pwmd"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "total": 23000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12T16:25:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Регрессия: non-sealing узел + sync apply + checkpoint height 100; при отсутствии полного harness — unit на вызов persist при моке backend",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/sync_live.rs (#[cfg(test)] mod tests: tokio::test batch_cross_ckpt_writes_snap)"
+      ],
+      "commands": [
+        "tools/dev/preflight_target_debug.ps1 (target/debug under 4096 MiB)",
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "cargo fmt --all -- --check",
+        "cargo test -p pwmd (~49s, PASS, 335 tests total incl. integration)",
+        "cargo bench -p pwmd --bench snapshot_load --no-run (PASS, compiled_only)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12T20:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Сверка семантики с seal-path и RFC/lab scripts; нет ли двойных откатов / гонок с CH backend",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260512-sync-snapshot-persist-slice.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "total": 4500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-12T22:30:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260512-sync-snapshot-persist-slice.md"
+  },
+  "notes": "Репро: cy-cluster-follower.ps1 / cy-cluster-attester.ps1 — оба с `--debug-disable-seal-loop` и `--data-file`; сравнить mtime/size pwm-data.json с пропозером после длительного прогона. pwm-testing: покрыт синхронный вызов apply_blk_batch до h=100 с JsonFile autosnapshot (manifest canonical_h=100); полный peer live E2E на TCP не добавлялся."
+}

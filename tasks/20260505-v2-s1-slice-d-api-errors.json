@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-s1-slice-d-api-errors",
+  "title": "Sprint V2-1 Slice D: API error and preflight contract freeze",
+  "status": "done",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "RFC Slice D: закрепить API/preflight контракты и стабильные коды ошибок для claim/burn/purpose/free-day, синхронизировать с policy matrix Slice C. Без правок crates/*.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить Slice D RFC freeze doc по API-контрактам ошибок и preflight/consensus симметрии",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-d-api-contract-freeze.md",
+        "tasks/20260505-v2-s1-slice-d-api-errors.json",
+        "tasks/20260505-v2-s1-slice-c-policy-matrix.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5400,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T11:32:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate Slice D (docs-only): verdict + test-gaps в отчёте, без правок crates/*",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-d-test-report.md",
+        "tasks/20260505-v2-s1-slice-d-api-errors.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T14:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимый review-gate Slice D (docs-only): freeze API ошибок и reject JSON",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-d-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T15:30:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-1-slice-d-review.md"
+  },
+  "notes": "Входы: Slice C policy matrix + testing/review reports. Выполнено docs-only наполнение Slice D: создан docs/reviews/sprint-v2-1-slice-d-api-contract-freeze.md со стабильным mapping (семантика -> E_* -> response_class), контрактом консистентности preflight/mempool/apply, минимальными JSON reject-shapes и примерами. Добавлена трассируемость к decision classes Slice C (C-POL/C-MAT/C-ANC/C-REO) и явно покрыты burn-related reject cases для закрытия замечания по scope. pwm-testing (2026-05-05): docs-only testing-gate PASS; docs/reviews/sprint-v2-1-slice-d-test-report.md. pwm-review (2026-05-05): docs/reviews/sprint-v2-1-slice-d-review.md — verdict approve with nits, result PASS; M1 purpose vs нормативный tx_kind закрыт уточнением в Slice D: ошибки/валидация purpose относятся к tx_kind=burn. L1/L2 по trace_id и E_BURN_POLICY_REJECT оставлены как low-priority carry-over. Carry-over: стартован Slice E implementation handoff (docs-only) для перехода к первой кодовой волне V2-1 (consensus -> API -> clients). Slice D закрыт."
+}

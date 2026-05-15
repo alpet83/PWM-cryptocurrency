@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "20260519-attester-sync-progress-99-debug",
+  "title": "RCA: attester Standby, эпизодический Sync progress 99%",
+  "status": "done",
+  "brief": "Оператор: после недавнего peers-list для CY lab аттестер снова ведёт себя как постоянная синхронизация, редко печатает #INFO Sync progress 99%. Нужен pwm-debug по журналам + контекст редкой воспроизводимости.",
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "verbosity_focus": "transport:peers",
+      "instrumentation": { "reverted": "yes" },
+      "repro": { "deterministic": "no" },
+      "result": "PASS",
+      "artifacts": ["docs/debug/20260519-attester-sync-progress-99-rca.md"],
+      "done_at": "2026-05-19"
+    }
+  ],
+  "artifacts": {
+    "rca_md": "docs/debug/20260519-attester-sync-progress-99-rca.md"
+  },
+  "notes": "pwm-debug PASS: по свежей паре логов 155753 причина не CUP/NACK, а Standby live-following progress policy: suppress работает только при rem<=1, поэтому редкие rem=2/3 печатаются как Sync progress 99%. --peers-list добавил reconnect noise к отсутствующему cy-follower 127.0.0.3:13030, но sync/progress идут по cy-proposer. instrumentation.reverted=yes; repro.deterministic=no."
+}

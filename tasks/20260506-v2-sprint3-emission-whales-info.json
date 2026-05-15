@@ -1,0 +1,228 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-06T07:30:00Z",
+  "title": "V2-3 Sprint: Emission to Validators (Whales + Seasonality) - Context Map",
+  "research_question": "Map codebase for V2-3 implementation: stake-threshold based PWM emission, seasonal multipliers, marks accrual with minimum stake, and replay/snapshot compatibility.",
+  "parent_ticket": "20260506-v2-sprint3-emission-whales",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {"pattern": "block_reward|marks_coeff|RewPol", "summary": "Found 15+ files with reward configuration and emission logic"},
+      {"pattern": "accrue_marks|reward_producer", "summary": "Found core emission functions in state.rs, chain.rs, and snapshot replay"},
+      {"pattern": "seal.*block|Chain::seal", "summary": "Found seal implementation in chain.rs with reward/marks hooks"}
+    ]
+  },
+  "files": [
+    {"path": "crates/pwm-core/src/genesis.rs", "why": "match", "note": "GenCfg with block_reward, marks_coeff; RewPol enum for reward policy"},
+    {"path": "crates/pwm-core/src/chain.rs", "why": "match", "note": "Chain::seal calls accrue_marks and reward_producer; prod_idx rotation"},
+    {"path": "crates/pwm-core/src/block.rs", "why": "match", "note": "BlockHdr with ts (unix time) for seasonality calculations"},
+    {"path": "crates/pwm-core/src/state.rs", "why": "match", "note": "accrue_marks(coeff) and reward_producer() implementations"},
+    {"path": "crates/pwm-core/src/types.rs", "why": "match", "note": "Account struct: balance_pwm, staked, marks for threshold checks"},
+    {"path": "crates/pwmd/src/snapshot/genesis.rs", "why": "match", "note": "Genesis JSON parsing: block_reward, marks_coeff, reward_policy"},
+    {"path": "crates/pwmd/src/snapshot/io.rs", "why": "match", "note": "Replay logic: accrue_marks + reward_producer during validation"},
+    {"path": "crates/pwmd/src/snapshot/ch_http.rs", "why": "match", "note": "Checkpoint replay with marks_coeff and block_reward"},
+    {"path": "crates/pwmd/src/snapshot/repair.rs", "why": "match", "note": "Repair replay: accrue_marks + reward_producer"},
+    {"path": "crates/pwm-cli/src/cli_cmd.rs", "why": "match", "note": "Genesis build: block_reward and marks_coeff CLI args"},
+    {"path": "crates/pwm-cli/src/cli_dispatch.rs", "why": "import", "note": "Dispatches genesis build command"},
+    {"path": "crates/pwm-cli/src/cmd_genesis.rs", "why": "import", "note": "Genesis construction implementation"},
+    {"path": "crates/pwmd/src/tests/snapshot_roaming.rs", "why": "match", "note": "Tests replay mismatch detection (block_reward drift)"},
+    {"path": "crates/pwmd/src/tests/http_status.rs", "why": "match", "note": "HTTP tests with genesis bundle"},
+    {"path": "crates/pwmd/src/tests/helpers.rs", "why": "import", "note": "Test helper with block_reward/marks_coeff in genesis JSON"},
+    {"path": "docs/plans/mvp_v2.md", "why": "spec", "note": "V2-3 scope: whales + seasonality, threshold ~100k PWM for emission"},
+    {"path": "docs/reviews/sprint-15-s3-16-do-snapshot-root-cause.md", "why": "spec", "note": "Replay mismatch root cause analysis - critical for V2-3"},
+    {"path": "docs/reviews/sprint-v2-1-slice-0-spec-impl-audit.md", "why": "spec", "note": "Current emission audit: fixed block_reward without stake threshold"},
+    {"path": "docs/pwm-core.md", "why": "spec", "note": "Seal documentation: accrue_marks then reward_producer"}
+  ],
+  "digest": "## V2-3 Emission Architecture Summary\n\n### Current Behavior (Baseline)\n1. **PWM Emission**: `Chain::seal` → `st.reward_producer(&prod_acct, cfg.block_reward)`\n   - Fixed amount per block, no stake threshold\n   - Producer determined by round-robin: `(height-1) % validator_count`\n   - Path: `crates/pwm-core/src/chain.rs:109`\n\n2. **Marks Accrual**: `Chain::seal` → `st.accrue_marks(cfg.marks_coeff)`\n   - Formula: `staked * coeff / 1_000_000`\n   - Only for initialized accounts\n   - Path: `crates/pwm-core/src/state.rs:353-361`\n\n3. **Configuration**: `GenCfg` in `crates/pwm-core/src/genesis.rs`\n   - `block_reward: u128` - fixed PWM emission amount\n   - `marks_coeff: u128` - coefficient for marks calculation\n   - `rew: RewPol` - reward policy enum (currently only `ToProducerAccount`)\n\n### V2-3 Target Changes\n1. **Stake-Threshold PWM Emission**\n   - Add `pwm_emission_threshold: u128` to GenCfg (default ~100_000)\n   - Add `min_stake_for_marks: u128` to GenCfg (default ~1)\n   - Modify `reward_producer` to check producer's staked >= threshold\n   - Path: `crates/pwm-core/src/state.rs:363-367`\n\n2. **Whale-Weighted Distribution**\n   - Option A: Top-N validators by stake get emission\n   - Option B: Proportional distribution by stake share\n   - Requires: snapshot of validator stakes at block height\n   - New field in GenCfg: `emission_whale_policy: WhalePolicy`\n\n3. **Seasonal Multiplier**\n   - Add `seasonality_enabled: bool` to GenCfg\n   - Add `summer_months: (u8, u8)` to GenCfg (e.g., 6-8 for June-August)\n   - Add `summer_multiplier: u128` (e.g., 500_000 for 50%, fixed-point 1M)\n   - Use `BlockHdr.ts` (unix time) to determine season\n   - Apply multiplier in `accrue_marks` and/or `reward_producer`\n   - Path: `crates/pwm-core/src/chain.rs:98-109`\n\n4. **Replay/Snapshot Compatibility**\n   - Schema version bump for genesis JSON (v4 -> v5)\n   - Store emission params in snapshot metadata\n   - Validate genesis bundle hash during snapshot load\n   - Paths: `crates/pwmd/src/snapshot/genesis.rs`, `crates/pwmd/src/snapshot/io.rs`\n\n### Key Risks\n1. **Replay Mismatch**: Changing emission formula breaks old snapshot replay\n2. **Genesis Drift**: V2-3 genesis with new fields won't load in old nodes\n3. **Threshold Edge Cases**: Exactly at threshold, zero stake, max u128 stake\n4. **Season Boundary**: Unix time calculation at month boundaries\n5. **Overflow**: u128 multiplication in `staked * coeff` - use saturating math\n6. **PoA Regression**: Ensure round-robin still works with whale policy\n\n### Proposed Slices\n**Slice 0: Design Freeze**\n- Acceptance: RFC with exact formulas, threshold values, seasonality rules\n- Test hooks: None (design only)\n\n**Slice 1: GenCfg Extension**\n- Add fields: `pwm_threshold`, `min_stake_marks`, `seasonality`, `whale_policy`\n- Update `dev_net()` with sensible defaults\n- Update genesis JSON schema (v5)\n- Update CLI genesis build command\n- Acceptance: `cargo test -p pwm-core` passes, genesis roundtrips\n\n**Slice 2: Emission Logic**\n- Implement `WhalePolicy` enum and stake-weighted selection\n- Implement `season_multiplier(ts)` helper\n- Modify `Chain::seal` to use new emission logic\n- Modify `accrue_marks` to check `min_stake_for_marks`\n- Acceptance: Unit tests for emission calculations\n\n**Slice 3: Replay/Snapshot**\n- Add emission params to snapshot metadata\n- Implement genesis bundle hash validation\n- Update `load_snapshot` to check bundle hash\n- Acceptance: Old snapshots fail gracefully, new snapshots validate\n\n### Test Plan for pwm-testing\n1. **Unit Tests**:\n   - `test_emission_threshold_exact` - at threshold boundary\n   - `test_emission_below_threshold_no_pwm` - zero emission below threshold\n   - `test_whale_weighted_distribution` - proportional by stake\n   - `test_season_multiplier_summer` - reduced emission in summer months\n   - `test_season_multiplier_winter` - normal emission outside summer\n   - `test_min_stake_for_marks` - marks only when staked >= 1\n\n2. **Integration Tests**:\n   - `test_v2_3_genesis_roundtrip` - new genesis fields serialize/deserialize\n   - `test_snapshot_v2_3_replay` - snapshot with new params replays correctly\n   - `test_old_snapshot_fails_on_new_genesis` - graceful degradation\n\n3. **E2E Tests**:\n   - Devnet with multiple validators, varying stakes\n   - Table: height, timestamp, validator stake, expected PWM delta, expected marks delta\n   - Season simulation: set system time to July, verify reduced emission\n\n### Review Focus for pwm-review\n1. **Spec Compliance**: Check formulas against RFC/whitepaper\n2. **Determinism**: Verify no RNG, all calculations from (height, ts, stakes)\n3. **Safety**: All u128 math uses saturating ops\n4. **Migration**: Old genesis/snapshots handled gracefully\n5. **PoA**: Round-robin not broken by whale policy\n6. **Snapshot**: Bundle hash validation implemented\n7. **Logging**: Emission decisions logged for audit\n",
+  "log_digest": [],
+  "open_questions": [
+    "Exact whale policy formula: top-N vs proportional vs hybrid?",
+    "Summer multiplier value: 50% or different? Fixed-point precision?",
+    "Should seasonality affect marks accrual or only PWM emission?",
+    "Genesis schema v5: bump version or add optional fields with defaults?",
+    "How to handle timezone in season calculation (UTC vs local)?"
+  ],
+  "warnings": [
+    "CQDS MCP not invoked due to single-file scope; used rg for local search",
+    "No RFC document found in repo for exact V2-3 formulas - defer to V2-1 output",
+    "Snapshot genesis.rs currently parses v4 schema only - v5 needed for new fields"
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "estimation",
+      "confidence": "medium",
+      "input_tokens": 15000,
+      "output_tokens": 4500,
+      "notes": "File reads: 8 core files + grep results + schema analysis"
+    }
+  },
+  "v2_3_scope": {
+    "in_scope": [
+      "Stake-threshold based PWM emission (~100k threshold)",
+      "Minimum stake for marks accrual (~1 threshold)",
+      "Whale-weighted validator rewards",
+      "Seasonal multiplier (summer slowdown)",
+      "Genesis schema extension",
+      "Snapshot/replay compatibility"
+    ],
+    "out_of_scope": [
+      "Cross-shard emission logic",
+      "Dynamic threshold adjustment",
+      "Governance for parameter changes",
+      "UTXO model migration",
+      "Wallet UX for showing emission stats"
+    ]
+  },
+  "current_behavior": {
+    "pwm_emission": {
+      "location": "crates/pwm-core/src/chain.rs:109",
+      "formula": "Fixed: cfg.block_reward to producer",
+      "threshold": "None - all producers get reward"
+    },
+    "marks_accrual": {
+      "location": "crates/pwm-core/src/state.rs:353-361",
+      "formula": "staked * coeff / 1_000_000 per block",
+      "threshold": "None - any initialized account with stake accrues"
+    },
+    "producer_selection": {
+      "location": "crates/pwm-core/src/chain.rs:90",
+      "formula": "Round-robin: (height-1) % validator_count"
+    }
+  },
+  "risk_matrix": [
+    {
+      "id": 1,
+      "risk": "Replay mismatch on old snapshots",
+      "severity": "High",
+      "mitigation": "Genesis bundle hash validation in load_snapshot"
+    },
+    {
+      "id": 2,
+      "risk": "Genesis drift between versions",
+      "severity": "High",
+      "mitigation": "Schema v5 with mandatory new fields"
+    },
+    {
+      "id": 3,
+      "risk": "Threshold edge cases (exact, zero, max)",
+      "severity": "Medium",
+      "mitigation": "Unit tests for boundary values, saturating_cmp"
+    },
+    {
+      "id": 4,
+      "risk": "Season boundary calculation errors",
+      "severity": "Medium",
+      "mitigation": "Helper function with unit tests, UTC only"
+    },
+    {
+      "id": 5,
+      "risk": "u128 overflow in stake * coeff",
+      "severity": "Medium",
+      "mitigation": "Use saturating_mul throughout"
+    },
+    {
+      "id": 6,
+      "risk": "PoA round-robin regression",
+      "severity": "Medium",
+      "mitigation": "Existing tests must pass, add multi-validator tests"
+    },
+    {
+      "id": 7,
+      "risk": "Whale policy centralization",
+      "severity": "Low",
+      "mitigation": "Document in whitepaper, parameter configurable"
+    }
+  ],
+  "proposed_slices": [
+    {
+      "id": 0,
+      "name": "Design Freeze + GenCfg Extension",
+      "acceptance": [
+        "RFC with exact formulas approved",
+        "GenCfg has new fields: pwm_threshold, min_stake_marks, seasonality config, whale_policy",
+        "Genesis JSON schema v5 defined",
+        "dev_net() updated with sensible defaults"
+      ],
+      "test_hooks": [
+        "GenCfg roundtrip test",
+        "Genesis JSON v5 parse test"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "Emission Logic Implementation",
+      "acceptance": [
+        "WhalePolicy enum with stake-weighted selection",
+        "Season multiplier helper from BlockHdr.ts",
+        "reward_producer checks pwm_threshold",
+        "accrue_marks checks min_stake_for_marks",
+        "All u128 ops are saturating"
+      ],
+      "test_hooks": [
+        "Unit tests: threshold_exact, threshold_zero, threshold_max",
+        "Unit tests: summer_multiplier, winter_multiplier",
+        "Unit tests: whale_distribution_proportional"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Snapshot/Replay Compatibility",
+      "acceptance": [
+        "Snapshot stores genesis bundle hash",
+        "load_snapshot validates bundle hash",
+        "Old snapshots fail gracefully with clear error",
+        "New snapshots replay correctly"
+      ],
+      "test_hooks": [
+        "Test: old genesis + new node = error",
+        "Test: new genesis + new snapshot = replay OK"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Devnet Factory + Documentation",
+      "acceptance": [
+        "dev_net_multi_val() with 3+ validators, varying stakes",
+        "CLI genesis build supports new flags",
+        "docs/pwm-core.md updated",
+        "Demo script: table of height/ts/stake/reward/marks"
+      ],
+      "test_hooks": [
+        "E2E test: 10 blocks, 3 validators, verify rewards",
+        "E2E test: set mock time to July, verify reduced emission"
+      ]
+    }
+  ],
+  "test_plan": {
+    "unit_tests": [
+      "emission_threshold_boundary: staked == threshold, staked + 1, staked - 1",
+      "marks_threshold: min_stake == 1, min_stake == 0, min_stake > 1",
+      "season_multiplier: Jan vs Jul vs Dec timestamps",
+      "whale_policy: single validator, equal stakes, skewed stakes",
+      "u128_safety: max_stake * max_coeff, max_reward addition"
+    ],
+    "integration_tests": [
+      "genesis_v5_roundtrip: serialize, deserialize, fields match",
+      "snapshot_with_emission_params: save, load, replay matches",
+      "old_snapshot_rejection: v4 genesis fails to load with v5 code"
+    ],
+    "e2e_tests": [
+      "multi_validator_devnet: 3 validators, stakes [50k, 100k, 200k], threshold 100k",
+      "expected: validator 0 gets no PWM, validators 1-2 get rewards proportional to stake",
+      "season_simulation: mock timestamp to July, expect 50% rewards",
+      "marks_accrual: validators with stake < 1 get no marks"
+    ]
+  },
+  "review_focus": [
+    "FORMULA_RFC: Check all emission formulas against RFC/whitepaper",
+    "DETERMINISM: Verify no randomness, all outputs from (height, ts, stakes)",
+    "SAFETY: All u128 arithmetic uses saturating ops (mul, add)",
+    "MIGRATION: Graceful handling of old genesis (clear error message)",
+    "POA_STABILITY: Round-robin selection unchanged for whale policy",
+    "SNAPSHOT_VALIDATION: Genesis bundle hash stored and checked",
+    "LOGGING: Emission decisions auditable in logs",
+    "TEST_COVERAGE: All boundary cases covered in unit tests"
+  ]
+}

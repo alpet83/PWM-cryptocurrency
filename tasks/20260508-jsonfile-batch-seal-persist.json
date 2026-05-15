@@ -1,0 +1,40 @@
+{
+  "id": "20260508-jsonfile-batch-seal-persist",
+  "title": "JsonFile: пакетный seal-persist с чекпоинтом + документация (demo-only)",
+  "status": "done",
+  "created": "2026-05-07",
+  "context": {
+    "goal": "Снизить I/O на типичном SSD: не писать epoch/manifest на каждый seal; сбрасывать хвост пакетно на SNAP_CHK_BLK_IV вместе с pwm-data.json; graceful shutdown — полный flush. Дисклеймер: схема не для production durability.",
+    "finding": "В lifecycle save_seal_persist вызывается на КАЖДОМ seal при наличии autosnapshot_backend; periodic_hit только для лога."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Strategy B for JsonFile demo durability: persist only on autosnapshot boundary, full flush on shutdown/fallback, docs + tests + task closeout.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/api/handlers_shutdown.rs",
+        "crates/pwmd/src/snapshot/store.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/mod.rs",
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "docs/rfc/13-jsonfile-demo-durability.md",
+        "docs/reviews/20260507-snapshot-summary-manifest-lag.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": "low"
+      },
+      "done_at": null
+    }
+  ],
+  "artifacts": {
+    "rfc_md": "docs/rfc/13-jsonfile-demo-durability.md",
+    "review_md": "docs/reviews/20260507-snapshot-summary-manifest-lag.md"
+  },
+  "notes": "Checks: cargo fmt; cargo check -p pwmd; cargo test -p pwmd; python scripts/check_rust_fn_name_segments.py on touched pwmd paths. CQDS background index rebuild enqueued for project_id=5 (duplicate accepted)."
+}

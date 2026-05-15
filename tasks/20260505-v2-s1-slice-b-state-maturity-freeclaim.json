@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-s1-slice-b-state-maturity-freeclaim",
+  "title": "Sprint V2-1 Slice B: state model for maturity and free-claim",
+  "status": "done",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "RFC Slice B: зафиксировать state-модель для claim-механики (релевантный баланс, anchor_ref/claim_units, события сброса непрерывности, UTC-day free-claim marker, reorg/rollback baseline) без изменений crates/*.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить Slice B RFC freeze документ по state/policy semantics для maturity + free-claim/day",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-b-state-freeze.md",
+        "tasks/20260505-v2-s1-slice-b-state-maturity-freeclaim.json",
+        "tasks/20260505-v2-s1-slice-a-tx-schema-purpose-claim.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5600,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T11:03:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate Slice B: тестопригодность state-freeze, отчёт, делегация без crates",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-b-test-report.md",
+        "tasks/20260505-v2-s1-slice-b-state-maturity-freeclaim.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3100,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review-gate Sprint V2-1 Slice B: качество/риски, готовность к Slice C",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-b-review.md",
+        "tasks/20260505-v2-s1-slice-b-state-maturity-freeclaim.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4300,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T13:00:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-1-slice-b-review.md"
+  },
+  "notes": "Slice B стартовал как docs-only carry-over от Slice A. Добавлен docs/reviews/sprint-v2-1-slice-b-state-freeze.md: зафиксированы релевантный баланс (`staked_pwm_units`), semantics `anchor_ref`/`claim_units`, reset непрерывности при любых (в т.ч. частичных) изменениях баланса, canonical UTC-day marker от chain time, reorg/rollback replay baseline и инварианты state machine. Итог pwm-testing (2026-05-05): verdict PARTIAL — шесть осей freeze тестопригодны; в C перенесены P-MAT-06/округление N-MAT-5, политическая матрица исполнения, уточнение P-REO-04; в D — коды/trace отклонений claim/free. Артефакт: docs/reviews/sprint-v2-1-slice-b-test-report.md. Итог pwm-review (2026-05-05): verdict Approve with nits; gate PASS для перехода к Slice C; findings: L1 тип free-day маркера (u32|u64 vs u64), L2 трассируемость P-*; M1 формализация предиката «несовместимости» anchor; M2 bootstrap/genesis для B(h)!=B(h-1). Отчёт: docs/reviews/sprint-v2-1-slice-b-review.md. Slice B закрыт; переход в Slice C. Carry-over (2026-05-05): Slice C запущен docs-only, опубликован freeze policy matrix: docs/reviews/sprint-v2-1-slice-c-policy-matrix-freeze.md."
+}

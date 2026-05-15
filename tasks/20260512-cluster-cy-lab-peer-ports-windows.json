@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "20260512-cluster-cy-lab-peer-ports-windows",
+  "title": "CY cluster lab: peer-порты и консоль при bind-failure",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "missing_round_state из-за того, что на Windows peer listener не биндился (10013) на 3130/3131 → нет TCP → не было ClusterPropose. Исправление: cy-cluster-common.ps1 использует 33430–33432; spawn.rs дублирует WARN на консоль при ошибке bind.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Диагностика по pwmd-peer логам; порты в cy-cluster-common; warn без target в spawn.rs",
+      "result": "PASS",
+      "artifacts": ["cy-cluster-common.ps1", "crates/pwmd/src/transport/spawn.rs"],
+      "tokens": { "source": "estimate", "total": 0, "confidence": "low" },
+      "done_at": "2026-05-12"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo test -p pwmd; ручной двухпроцессный прогон с новыми портами",
+      "result": "PASS",
+      "artifacts": ["logs/2026-05-12/pwmd-peer-cy-proposer-062929.log", "tmp/lab2-prop.log"],
+      "tokens": { "source": "estimate", "total": 0, "confidence": "low" },
+      "done_at": "2026-05-12"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "docs/reviews/20260512-cy-cluster-windows-peer-bind.md",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/20260512-cy-cluster-windows-peer-bind.md"],
+      "tokens": { "source": "estimate", "total": 0, "confidence": "low" },
+      "done_at": "2026-05-12"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260512-cy-cluster-windows-peer-bind.md"
+  },
+  "commits": []
+}

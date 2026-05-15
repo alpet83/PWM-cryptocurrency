@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260509-cy-relay-burn-via-standby-cli",
+  "title": "CY lab: релей tx через ведомую ноду (pwm-cli burn marks)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Оператор подтвердил sync после правок. Нужна проверка: транзакция (burn marks), отправленная в RPC ведомой ноды (attester :3031 и/или follower :3032), попадает в цепочку (видна с proposer или на всех узлах). Топология peer: треугольник при трёх процессах; кворум seal только proposer+attester.",
+  "references": [
+    "cy-cluster-common.ps1",
+    "cy-cluster-attester.ps1",
+    "cy-cluster-follower.ps1",
+    "cy-cluster-proposer.ps1",
+    "docs/tester-guide-cli-tui-scenarios.md",
+    "crates/pwm-cli/src/cmd_tx.rs",
+    "docs/GLOSSARY.md"
+  ],
+  "commits": [],
+  "artifacts": {
+    "test_report_md": "tasks/20260509-cy-relay-burn-via-standby-cli-manual.md"
+  },
+  "notes": "Корректный passphrase лаб-кошелька tmp/cy-wallet.yaml: 1234 (не 12345). Оркестратор: tx-burn-mark через :3031 PASS; marks 13000→12999, nonce 9→10; head 18352 на 3030/3031/3032.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "result": "PARTIAL",
+      "summary": "Preflight PASS; RPC/head/account parity OK on 3030–3032; tx-burn-mark blocked without valid wallet passphrase for tmp/cy-wallet.yaml.",
+      "updated": "2026-05-13"
+    },
+    {
+      "agent": "orchestrator",
+      "result": "PASS",
+      "summary": "Повтор с --wallet-passphrase 1234: wallet show OK; burn via 3031 → marks/nonce/head согласованы.",
+      "updated": "2026-05-09"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "20260512-tui-wt-border-debug",
+  "title": "TUI: жёлтая рамка активной панели не видна в Windows Terminal (PowerShell из Пуска)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "После фикса чёрного фона и TerminalGuard оператор подтверждает: фон везде чёрный, но border_style активной панели (Owner/Receivers) по-прежнему не даёт жёлтого контура при запуске из выделенного PowerShell (типично Windows Terminal). Статический fg(Color::Yellow) в других виджетах работает. Нужна диагностика pwm-debug (без правок продукта), затем pwm-coding по отчёту.",
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "Корневая причина: border активной панели не жёлтый в WT+PS при том что ячейки/статический жёлтый OK; область tui_loop render_owner/recv",
+      "verbosity_focus": "tui:border",
+      "instrumentation": {
+        "files": [
+          "crates/pwm-tui/tests/tui_border_debug.rs"
+        ],
+        "reverted": true,
+        "receiver_if_kept": null
+      },
+      "repro": {
+        "deterministic": true,
+        "flake_rate": null,
+        "command": "Ручной: Windows Terminal → профиль PowerShell → pwm-tui; плюс временный buffer-level repro cargo test -p pwm-tui --test tui_border_debug -- --nocapture"
+      },
+      "result": "PASS",
+      "artifacts": [
+        "docs/debug/20260512-tui-border-root-cause.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 22000,
+        "output": 4500,
+        "total": 26500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12T12:02:04+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Визуальный фикс активной Owner/Receivers рамки для WT: bright yellow + bold на border и title, без ломки Block+Table(inner).",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-tui/src/tui_loop.rs"
+      ],
+      "commands": [
+        "python scripts/check_rust_fn_name_segments.py crates/pwm-tui/src/tui_loop.rs",
+        "cargo fmt --all",
+        "cargo check -p pwm-tui",
+        "cargo test -p pwm-tui --lib",
+        "cargo test -p pwm-tui",
+        "cargo test -p pwm-tui --test wallet_roaming footer_rpc_online_one -- --exact"
+      ],
+      "notes": "Optional buffer-level border regression test deferred: add Block+Table(inner) buffer assertion in crates/pwm-tui/tests/ (owner/receivers active border/title style) via pwm-testing.",
+      "tokens": {
+        "source": "estimate",
+        "input": 18000,
+        "output": 3200,
+        "total": 21200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-12T12:26:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260512-tui-active-panel-border-regression.md"
+  },
+  "notes": "Оператор: чёрный фон OK во всех вариантах; рамка активной панели — только регресс в WT dedicated PS."
+}

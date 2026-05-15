@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "id": "20260506-v2-sprint2-double-balance",
+  "title": "MVP v2 Sprint V2-2: единый marks (ядро + RPC), вывод marks_quota",
+  "status": "done",
+  "mvp_checklist": ["docs/plans/mvp_v2.md Sprint V2-2", "WHITE_SPEC/RFC согласованность marks"],
+  "brief": "План: docs/plans/mvp_v2.md §Sprint V2-2. Цель: PWM + один счётчик marks в consensus и ответах pwmd; миграция/удаление зеркала state.marks_quota и согласование snapshot/replay. Слайсы: 0 freeze API account → 1 pwm-core → 2 pwmd → 3 snapshot smoke. Межшардовую семантику не менять без отдельного тикета.",
+  "slices": {
+    "0": "freeze AcctOut / account JSON (docs/reviews/)",
+    "1": "pwm-core + pwmd snapshot: убрать State.marks_quota; legacy validate в loader",
+    "2": "N/A: REST уже single marks (Slice 0); handlers не менялись",
+    "3": "покрыто в Slice 1 (snapshot_roaming + полный pwm-testing)"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "V2-2 Slice 0: sprint-v2-2-slice0-account-api-freeze.md + AcctOut doc link",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-2-slice0-account-api-freeze.md",
+        "crates/pwmd/src/api/types.rs",
+        "tasks/20260506-v2-sprint2-double-balance.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-06T08:52:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice 0 freeze vs mvp_v2 §V2-2; AcctOut vs sprint-v2-2-slice0-account-api-freeze.md; append Review gate",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-2-slice0-account-api-freeze.md",
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/src/api/common.rs",
+        "tasks/20260506-v2-sprint2-double-balance.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-06T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "V2-2 Slice 1: remove State.marks_quota mirror, keep snapshots backward-compatible with strict legacy marks_quota validation",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/snapshot/types.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/tests/snapshot_roaming.rs",
+        "crates/pwm-cli/src/cli_cmd.rs",
+        "docs/pwm-core.md",
+        "issues-report.md",
+        "tasks/20260506-v2-sprint2-double-balance.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 17000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-06T09:20:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Post-6c52b71: preflight target/debug; fmt; pwm-core + full pwmd + pwm-cli tests; snapshot_load bench --no-run",
+      "result": "PASS",
+      "verification_summary": "preflight_target_debug.ps1: target/debug ~216 MiB / 4096 MiB, removed no. cargo fmt --check PASS. cargo test -p pwm-core: 99 tests PASS (~30s). cargo test -p pwmd: full 240 tests PASS incl. snapshot_roaming, slice20_dual_flow_ok, cross_shard_bridge_ok (~36s), nothing subset-skipped. cargo test -p pwm-cli: 148 tests PASS (~73s). cargo bench -p pwmd --bench snapshot_load --no-run PASS (compile-only). No production Rust edits. Cleanup: no pwmd/tui daemons spawned.",
+      "artifacts": ["tasks/20260506-v2-sprint2-double-balance.json"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-06T15:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice 1: 6c52b71 marks_quota removal, snapshot legacy validation, cross-check Slice 0 REST marks; fn segment check on touched paths",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-2-slice1-review-20260506.md",
+        "tasks/20260506-v2-sprint2-double-balance.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-06T16:30:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Docs nits post Slice1 review: mvp_v2 ориентиры + slice0 freeze текст про legacy marks_quota только в snapshot JSON",
+      "result": "PASS",
+      "artifacts": ["docs/plans/mvp_v2.md", "docs/reviews/sprint-v2-2-slice0-account-api-freeze.md"],
+      "tokens": { "source": "estimate", "total": 3200, "confidence": "low" },
+      "done_at": "2026-05-06T17:00:00+03:00"
+    }
+  ],
+  "commits": ["e46d3ac", "fe7aa70", "83eac56", "6c52b71", "d6930f7", "7422a5e", "87e54d0", "1047d5c", "3ccaaf9"],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-2-slice0-account-api-freeze.md",
+    "slice0_freeze_md": "docs/reviews/sprint-v2-2-slice0-account-api-freeze.md",
+    "slice1_review_md": "docs/reviews/sprint-v2-2-slice1-review-20260506.md"
+  },
+  "notes": "CLOSURE 2026-05-06: V2-2 sprint тикет закрыт. Slice 0–1 + тесты + ревью + doc-align 3ccaaf9. Слайсы 2–3 помечены N/A/поглощены. Следующий спринт по mvp_v2: V2-3 или V2-4 по приоритету владельца."
+}

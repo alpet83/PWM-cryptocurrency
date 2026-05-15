@@ -1,0 +1,26 @@
+{
+  "id": "20260507-peer-capabilities-review",
+  "title": "Ревью: возможности пиринговой связи (код + RFC), синк блоков same-shard",
+  "status": "done",
+  "created": "2026-05-07",
+  "context": {
+    "questions": [
+      "Две ноды одной шарды ведут синхронную историю блоков?",
+      "Ведомая нода догоняет отстающие блоки по P2P?"
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "scope": "transport wire, spawn_seal_loop, RFC 8 vs реализация; отчёт docs/reviews, verdict INFO",
+      "completed": "2026-05-08"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260507-peer-transport-capabilities.md"
+  },
+  "notes": {
+    "pwm-review": "PeerWireMsg без блоков/headers; seal только локальный PoA; sync в hello — декларативно; catch-up — snapshot, не P2P. Verdict INFO."
+  },
+  "verdict": "INFO"
+}

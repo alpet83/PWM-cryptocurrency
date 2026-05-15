@@ -1,0 +1,25 @@
+{
+  "id": "20260508-rfc15-cluster-l2-storm-guard",
+  "title": "RFC 15 addendum: intra-cluster L2 storm guard and egress-only forwarding",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "request": "Analyze cluster broadcast storm concern and, if valid, codify in RFC.",
+    "user_concern": "Node aware of cluster should not rebroadcast inside same cluster after L2 broadcast hit; should forward to external links only."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "role": "RFC addendum + review artifact + traceability",
+      "status": "done"
+    }
+  ],
+  "artifacts": {
+    "rfc_md": "docs/rfc/15-same-shard-sync-v1.md",
+    "review_md": "docs/reviews/20260508-rfc15-l2-storm-guard-review.md"
+  },
+  "notes": {
+    "verdict": "READY-FOR-IMPLEMENTATION",
+    "summary": "Normative §13 documents intra-cluster push suppression after local_broadcast ingress, egress-first relay to external/bridge peers, anti-entropy exceptions, metrics/alerts, default knob table. Cross-links slice 5 acceptance."
+  }
+}

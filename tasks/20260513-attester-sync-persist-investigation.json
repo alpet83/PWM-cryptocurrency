@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "20260513-attester-sync-persist-investigation",
+  "title": "Расследование: cluster attester не «скачивает» и не сохраняет цепь (оператор)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Оператор: attester CY ведёт себя так, будто только помогает с генерацией новых блоков (RFC16 attest), без ожидаемого догона истории и сохранения pwm-data.json. Нужен независимый разбор pwm-review: соответствие фактического поведения коду (sync v1, seal loop off, peer-логи vs консоль, autosnapshot после sync), гипотезы и рекомендации следующему шагу (pwm-coding/pwm-debug) при обнаружении разрыва.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Обзор дизайна/кода: attester + debug-disable-seal-loop, ожидаемый sync/persist vs наблюдаемая тишина",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260513-attester-sync-persistence-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-12T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260513-attester-sync-persistence-review.md"
+  },
+  "notes": "Лаунчер: cy-cluster-attester.ps1; сравнить с cy-cluster-follower.ps1 и пропозером. Контекст: pwm::peer не на консоль по logging.rs."
+}

@@ -1,0 +1,28 @@
+{
+  "id": "20260507-snapshot-verify-progress-and-lag-root-cause",
+  "title": "Прогресс full chain verify при старте + анализ snapshot summary vs manifest",
+  "status": "done",
+  "created": "2026-05-07",
+  "context": {
+    "symptom": "Частый WARN snapshot summary lags epoch manifest; forcing full chain verification, затем долгое молчание при сканировании.",
+    "ask_coding": "Лог прогресса полной верификации хотя бы раз в 10 с.",
+    "ask_review": "Что кроме аварийного завершения нод приводит к деградации/рассинхрону summary и manifest."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "at": "2026-05-07",
+      "note": "Разбор рассинхрона: доминирует разная частота записи manifest (каждый блок на seal-пути) vs checkpoint_height в pwm-data.json (каждые SNAP_CHK_BLK_IV=100); см. docs/reviews/20260507-snapshot-summary-manifest-lag.md. Вторично — разные пути save_seal vs save, отсутствие сквозной транзакции, ручной перенос state, repair/гонки. Verdict артефакта: RFC-CHANGE."
+    },
+    {
+      "agent": "pwm-coding",
+      "at": "2026-05-07",
+      "note": "В validate_snapshot добавлены логи chain_verify started/progress (не чаще 1 раза в 10s) и финальный chain_verify done с total_blocks/elapsed_ms; проверки cargo fmt, cargo check -p pwmd и check_rust_fn_name_segments для io.rs пройдены."
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260507-snapshot-summary-manifest-lag.md",
+    "verdict": "RFC-CHANGE",
+    "fix_commit": "c2ca9be9809f3c8347935ba6341bd17d865d6b8b"
+  }
+}

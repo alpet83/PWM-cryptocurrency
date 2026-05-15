@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "20260515-backlog-sync-tail-poll-block-age",
+  "title": "backlog: опрос соседей по «свежести» хвоста (ts последнего блока vs целевой интервал)",
+  "status": "open",
+  "mvp_checklist": [],
+  "brief": "Функциональная оптимизация трафика: нода оценивает возраст последнего канонического блока по его hdr.ts (или аналог), сравнивает с ожидаемым интервалом блока (лаб ~1 с, позже конфиг); при «пора обновляться» инициирует короткий опрос доверенных same-shard пиров «есть ли height > local» / ускоренный sync tick, при получении нового tip — выход из опроса. Не ломать текущий heartbeat-driven steady_session; добавить capability/профиль или флаг. Зависит от стабильного same-shard sync (в т.ч.Serve ниже RAM-хвоста). RFC черновик: расширение docs/rfc/15 или отдельный § в peering.",
+  "references": [
+    "docs/rfc/15-same-shard-sync-v1.md",
+    "crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs",
+    "tasks/20260515-slice-sync-serve-below-ram-tail.json"
+  ],
+  "delegations": [],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Backlog до закрытия базового сценария CY lab catch-up."
+}

@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "id": "20260509-s21-external-lease-backend",
+  "title": "S2.1 external lease backend for same-key failover",
+  "status": "done",
+  "created": "2026-05-09",
+  "context": {
+    "goal": "Убрать process-local ограничение S2 и ввести внешний lease backend для two-process same-key HA без split-brain.",
+    "motivation": "S2 final review = PARTIAL: для независимых процессов с тем же validator key нужен внешний координатор аренды."
+  },
+  "brief": "Design an external lease backend that closes the S2 process-local split-brain gap for same-key multi-process failover. Done for this slice when the design report, backend recommendation, atomic operation contract, failure semantics, migration path, and two-process acceptance plan are documented.",
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "Design gate for S2.1 external lease backend; no product Rust edits. Scope: file-lock vs lightweight KV recommendation, lease schema, CAS operations, failure/security semantics, migration from process-local S2, and two-process same-key acceptance plan.",
+      "verbosity_focus": "seal:lease",
+      "instrumentation": {
+        "files": [],
+        "reverted": "yes",
+        "receiver_if_kept": null
+      },
+      "repro": {
+        "deterministic": null,
+        "flake_rate": null,
+        "command": "design-only; no runtime repro"
+      },
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260509-s21-external-lease-design.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 13000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T12:10:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement S2.1 external LeaseBackend MVP: file-lock JSON backend with CAS acquire/renew/release/takeover, fail-closed single_sealer gate integration, status/log observability, backend/unit tests and two-node takeover simulation, plus runbook/review doc updates.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lease_backend.rs",
+        "crates/pwmd/src/lease.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/src/api/handlers_status.rs",
+        "docs/reviews/20260509-s21-external-lease-impl.md",
+        "docs/runbook-same-shard-sync-v1.md",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T12:55:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "S2.1 lease: targeted cargo test (filter lease), cargo check -p pwmd, report + ticket artifacts; commit hash validation note.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260509-s21-external-lease-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T18:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final gate S2.1 external lease: CAS/fail-closed/split-brain/obs/tests; deliver final review md + ticket final_verdict.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260509-s21-external-lease-final-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09T20:45:00+03:00"
+    }
+  ],
+  "commits": [
+    "62538c2e96db09bce049fb45adf3296be92d885e",
+    "0977e8c03a487695ab2b6a7334f9680fc2928276"
+  ],
+  "artifacts": {
+    "design_report": "docs/reviews/20260509-s21-external-lease-design.md",
+    "impl_report": "docs/reviews/20260509-s21-external-lease-impl.md",
+    "coding_commit": "0977e8c03a487695ab2b6a7334f9680fc2928276",
+    "testing_report": "docs/reviews/20260509-s21-external-lease-testing.md",
+    "testing_result": "PARTIAL",
+    "backend_recommendation": {
+      "mvp_choice": "file-lock JSON lease backend on local/shared volume",
+      "rationale": "Matches current local/Docker testnet workflow, closes same-host/shared-volume multi-process split-brain without adding etcd/Consul operational dependency, and can be hidden behind a LeaseBackend trait for a later KV backend.",
+      "boundary": "Not a full multi-host HA coordinator unless the shared volume provides reliable POSIX-like locking; independent multi-host testnet should move to a lightweight KV backend with server-side CAS/revision and TTL."
+    },
+    "review_md": "docs/reviews/20260509-s21-external-lease-final-review.md",
+    "final_review": "docs/reviews/20260509-s21-external-lease-final-review.md",
+    "final_verdict": "PARTIAL",
+    "acceptance_plan": [
+      "Unit-test file backend acquire, renew, release, conditional takeover, corrupt record, IO failure, and concurrent same-record winner uniqueness.",
+      "Run two separate pwmd processes with same validator key, same single_sealer profile, shared seal_lease_dir, distinct data dirs/ports; assert exactly one local sealer.",
+      "Kill the active process without graceful release; assert standby takes over only after expiry + takeover timeout and increments term/fence.",
+      "Restart the old active process; assert stale owner cannot renew/release over the newer owner and does not produce blocks.",
+      "Induce backend unavailable/permission errors; assert both active and standby fail closed instead of sealing on cached ownership."
+    ]
+  },
+  "notes": "Design gate complete. pwm-testing PARTIAL documented. Final pwm-review PARTIAL (2026-05-09): CAS+fail-closed и file-coord MVP одобрены с nits — follow-up mock Err через gate и двухпроцессный pwmd-harness/manual runbook по acceptance_plan. Коммиты-якоря: 0977e8c03… (feat lease), последующие e53767b/7266d96 для testing/ticket churn."
+}

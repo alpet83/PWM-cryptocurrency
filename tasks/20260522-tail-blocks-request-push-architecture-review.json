@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "20260522-tail-blocks-request-push-architecture-review",
+  "title": "Архитектура: дистрибуция хвостовых блоков, request vs push (MVP v2)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Независимый обзор (pwm-review): как сейчас устроена дистрибуция tail-блоков (same-shard sync), плюсы/минусы запросной модели (hdr/blk pull), целесообразность push-режима от sealing-ноды для снижения трафика в текущей версии MVP v2. Артефакт: docs/reviews/*.md на русском, прагматичный тон.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Архитектурная записка: tail distribution, request model, push от sealer для MVP v2",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260522-tail-blocks-request-vs-push-architecture.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-22T00:00:00Z"
+    }
+  ],
+  "commits": [
+    "e35387e5e2948e44bfc042239a0731bc3bd19f42",
+    "58798ec8d3539482b4eb4d6c6edf6c9cb28d9769",
+    "0298765dd62b881d5a03964f1927b2f6d02bc809"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260522-tail-blocks-request-vs-push-architecture.md"
+  },
+  "notes": "Опоры: docs/blockchain-sync.md, docs/rfc/15-same-shard-sync-v1.md, crates/pwmd/src/transport/peer_session/sync_live.rs, docs/plans/mvp_v2.md. Production Rust не менялся."
+}

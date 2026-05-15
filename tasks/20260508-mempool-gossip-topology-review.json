@@ -1,0 +1,24 @@
+{
+  "id": "20260508-mempool-gossip-topology-review",
+  "title": "Ревью: фактическая топология синхронизации мемпула и риск трафика",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "question": "После получения транзакции нода активно пушит её соседям (broadcast/fanout) или ждёт pull-запросы к своей копии мемпула?",
+    "concern": "Повторная ретрансляция каждой нодой может создать избыточный трафик до насыщения сети."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "scope": "Код SyncTx* transport + metrics + RFC 15 §4.1 §6.1; отчёт docs/reviews/20260508-mempool-gossip-topology.md",
+      "completed": "2026-05-08"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-mempool-gossip-topology.md",
+    "verdict": "INFO"
+  },
+  "notes": {
+    "pwm-review": "Push-batch на heartbeat; SyncTxAnnounce/Req вход — unsupported; dedup per-peer 30s + приём по tx_seen_ms; риск при плотной топологии — см. отчёт."
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "20260509-pwmd-domain-hi-test-align",
+  "title": "pwmd: выровнять тесты с cluster_domain_hi после DevLane/Explicit",
+  "status": "done",
+  "mvp_checklist": ["pwmd regression tests green"],
+  "brief": "После рефактора remove-shard-ab (commit 6f7da18) cargo test -p pwmd даёт ~42 FAIL: enforce_local_tx_guards требует sender_hi == identity.cluster_domain_hi, а routable_user_sk даёт аккаунты с другим hi-byte (409 CONFLICT). Оркестратор: правки только pwm-coding; прогон pwm-testing после merge фикса. Поиск по репо для аудита — только crates/ (не target/, не бинарники).",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Выровнять helpers/тесты и при необходимости default_dev_lane_identity под guards",
+      "result": "PASS",
+      "artifacts": ["0770b4e", "a784c49"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 11800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo test -p pwmd; PowerShell: Set-Location '...'; cargo ... (без &&)",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": "2026-05-09"
+    }
+  ],
+  "commits": ["0770b4e", "a784c49"],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Контекст оркестратора: родительский тикет 20260509-remove-shard-ab-legacy.json; grep legacy в crates/ — только crates/, без target/артефактов — чистый по shard-a|compat|ShardId. pwm-coding: app-aware helpers (routable_user_sk_for_app и др.), http_export/http_status; cargo test -p pwmd PASS 303/303. pwm-testing: итог принят из coding-сессии; при необходимости независимый повторный прогон."
+}

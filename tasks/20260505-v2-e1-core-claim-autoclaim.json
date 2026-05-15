@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-e1-core-claim-autoclaim",
+  "title": "MVP v2 E-1: core claim/autoclaim and marks migration",
+  "status": "done",
+  "mvp_checklist": [
+    "§1 Спецификация и решения",
+    "§3 Ядро pwm-core",
+    "§4 Нода pwmd"
+  ],
+  "brief": "Первый кодовый слайс v2: внедрить core-изменения по RFC 0011-0014 и WHITE_SPEC v2 extension. Scope E-1: единый marks (сворачивание marks_quota из критического пути), BurnMark purpose, ClaimTx baseline и auto-claim в релевантных stake-management транзакциях, минимальный import fee 0.01 PWM -> fee_pool target-shard. После coding: testing gate и независимый review gate.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Реализация E-1 в crates/pwm-core и минимально в pwmd API contracts; без CLI/TUI фич",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/tx.rs",
+        "crates/pwm-core/src/state.rs",
+        "crates/pwm-core/src/types.rs",
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwmd/src/api/handlers_tx.rs",
+        "crates/pwmd/src/tx_policy.rs",
+        "crates/pwmd/src/api/common.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/snapshot/types.rs",
+        "crates/pwmd/Cargo.toml",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 118000,
+        "output": 22000,
+        "total": 140000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T20:56:56.6259095+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Тест-гейт E-1: unit/regression + targeted negatives по claim/autoclaim/import-fee",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-e1-testing-report-20260505.md",
+        "crates/pwmd/src/tests/helpers.rs",
+        "crates/pwmd/src/tests/http_export.rs",
+        "crates/pwmd/src/tests/snapshot_roaming.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 11000,
+        "total": 39000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T22:15:00.0000000+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимый review gate E-1 на интегрированном диффе",
+      "result": "FAIL",
+      "artifacts": [
+        "docs/reviews/v2-e1-review-20260505.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T23:59:00.0000000+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix-итерация по review blockers E-1: tip-aware apply context в precheck/replay/repair/CH/lifecycle + safe JSON message + regression tests",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwm-core/src/state.rs",
+        "crates/pwmd/src/api/handlers_tx.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/repair.rs",
+        "crates/pwmd/src/snapshot/ch_http.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "tasks/20260505-v2-e1-core-claim-autoclaim.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 42000,
+        "output": 9000,
+        "total": 51000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T21:15:00.0000000+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Re-test gate E-1 после fix-итерации: ctx precheck/replay/repair/CH/lifecycle + регрессия claim/autoclaim",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-e1-testing-report-20260505.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 5500,
+        "total": 19500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T23:30:00.0000000+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final independent review gate E-1 после fix-итерации и pwm-testing retest",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-e1-review-20260505.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 4200,
+        "total": 18200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T23:45:00.0000000+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/v2-e1-review-20260505.md"
+  },
+  "notes": "Синхронный конвейер по запросу владельца: без фоновых запусков субагентов, кроме явно оговоренного параллелизма.\n[pwm-coding] E-1 выполнен в минимальном scope: ClaimTx baseline (mode free|paid + anchor/maturity/free-day checks), auto-claim для STAKE/UNSTAKE при matured_units>0, единый marks в burn critical path (marks_quota оставлен как legacy mirror), BurnMark purpose в signed-contract с trim/1..80/C0-C1 validation, import fee floor 0.01 PWM с зачислением в fee_pool только при success, минимальный pwmd API error-code mapping/json для claim/burn/import-fee. Проверки: cargo check (core/pwmd/cli/tui), cargo test -p pwm-core (95 passed).\n[pwm-testing 2026-05-05] Gate PASS — см. docs/reviews/v2-e1-testing-report-20260505.md. cargo test -p pwm-core 95/95; cargo test -p pwmd 233/233; cargo fmt --check; cargo bench -p pwmd --bench snapshot_load --no-run. Preflight target-debug на этом хосте не выполнен (ошибка парсера tools/dev/preflight_target_debug.ps1 под PS 5.1 / pwsh отсутствует). Обновлены только pwmd-тестовые фикстуры под новые поля Account и import fee floor (replay-safe Transfer в snapshot roaming).\n[pwm-review 2026-05-05] Независимый gate: Request changes. Блокеры: (1) precheck_apply_tip/apply_tx симулируют высоту 0 — Claim и пр. согласованы с seal только при apply_tx_with_ctx(tip+1, ts); (2) replay/repair/clickhouse replay и seal-skip диагностика в lifecycle всё ещё вызывают apply_tx без hdr.height/ts — риск расхождения state_root и ошибочного eviction. Средние: JSON message без экранирования; грубый fallback кодов ошибок.\n[pwm-coding-fix 2026-05-05] Закрыта fix-итерация по review-блокерам: precheck/mempool admission теперь используют tip-aware context через Chain::next_apply_ctx (height=tip+1, wall-clock ts как в seal) и State::precheck_apply_with_ctx; replay/repair/ClickHouse checkpoint replay и seal-skip диагностика в lifecycle переведены на apply_tx_with_ctx(..., blk.hdr.height, blk.hdr.ts/next ctx). В handlers_tx убрана ручная сборка JSON для error.message (serde_json::json! с безопасным escaping). Добавлены regression-тесты: pwm-core (precheck tip ctx), pwmd snapshot/io, snapshot/repair, snapshot/ch_http (feature clickhouse-snapshot), lifecycle (seal-skip ctx).\n[pwm-testing retest 2026-05-05] После fix-итерации: PASS. cargo fmt --check; pwm-core 96/96; pwmd 233 lib + 3 bin; pwmd +clickhouse-snapshot 237 lib + 3 bin; bench snapshot_load --no-run OK. Продуктовый код не трогали. Отчёт: docs/reviews/v2-e1-testing-report-20260505.md (секции Re-test, Final verdict). Preflight PS5.1 по-прежнему FAIL на парсинге скрипта.\n[pwm-review final 2026-05-05] После retest: Approve with nits — блокеры закрыты, новых критичных рисков нет; ниты: долгосрочный контракт кодов ошибок, preflight на Windows-хосте. Обновлён docs/reviews/v2-e1-review-20260505.md; ticket status done."
+}

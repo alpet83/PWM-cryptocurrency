@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260506-v2-5-backlog",
+  "title": "V2-5 backlog: bincode snapshot + accrue_marks doc",
+  "status": "open",
+  "sprint": "post-V2-5",
+  "brief": "Two nits from Sprint V2-5 review that do not block functionality but should be addressed.",
+  "items": [
+    {
+      "id": "bincode-snapshot-marks",
+      "priority": "medium",
+      "description": "snap_keep_imp_replay_guard is marked #[ignore] in pwm-core/src/state.rs because the new serde deserialize_with on Account.marks is incompatible with bincode serialization (used in some internal snapshot paths). Fix: either replace bincode round-trip in that test with JSON, or add a bincode-compatible migration shim. Until fixed, bincode-based snapshot paths may not correctly migrate legacy marks values.",
+      "files": ["crates/pwm-core/src/state.rs"],
+      "delegate": "pwm-coding"
+    },
+    {
+      "id": "accrue-marks-doc-drift",
+      "priority": "low",
+      "description": "The doc comment on accrue_marks() and accrue_marks_v2() in state.rs still describes the old formula. Update to reflect: matured = (staked / PWM_RAW_SCALE) * hours.",
+      "files": ["crates/pwm-core/src/state.rs"],
+      "delegate": "pwm-coding"
+    }
+  ],
+  "commits": [],
+  "delegations": []
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "20260506-v2-sprint6-tui-stake",
+  "title": "Sprint V2-6: TUI Stake/Unstake + F5 auto-claim UX",
+  "sprint": "V2-6",
+  "brief": "Add Stake (F7) and Unstake (Shift+F7) forms to TUI. Refactor F5: silent auto-claim CLAIM_ALL before opening Burn form. Show hint when staked==0 AND marks==0. Remove MarksModal.",
+  "decisions": {
+    "F5_flow": "On F5: submit ClaimTx(CLAIM_ALL) synchronously, wait response, refresh marks, then open BurnForm. If claim fails (no matured / daily limit), open BurnForm with current marks anyway.",
+    "hint": "If staked==0 AND marks==0: show infobox 'No marks and no stake — use F7 to stake PWM first' instead of BurnForm.",
+    "F7": "Stake form — amount input + current PWM balance header. Enter submits StakeTx. Esc closes.",
+    "ShiftF7": "Unstake form — same pattern, shows current staked balance. Try Shift+F7; fallback to F8 if crossterm doesn't deliver Shift+F7 in integration tests.",
+    "MarksModal": "Remove marks_modal.rs and all references. F5 claim+burn combined modal is no longer needed.",
+    "wall_clock_guard": "Remove 1-hour wall-clock guard from TUI — node enforces FreeClaimDailyLimit natively.",
+    "accrue_marks_note": "Per-block accrue_marks (legacy path) and explicit ClaimTx are additive parallel paths — not a V2-6 scope item; document in issues-report.md as architecture note."
+  },
+  "acceptance_criteria": [
+    "F7 opens stake form; submits StakeTx; account staked balance updates in TUI after poll.",
+    "Shift+F7 (or F8 fallback) opens unstake form; submits UnstakeTx.",
+    "F5: if staked==0 AND marks==0, shows hint infobox (no BurnForm opened).",
+    "F5: if marks>0 or staked>0, auto-claims synchronously then opens BurnForm with updated marks.",
+    "marks_modal.rs removed; no compile errors.",
+    "cargo check --workspace green.",
+    "Help line in TUI footer updated to show F7/Shift+F7."
+  ],
+  "commits": ["71b2bb0", "b9d74d7", "6277789", "7940068"],
+  "artifacts": {
+    "review_md": "docs/reviews/v2-6-review-20260506.md"
+  },
+  "status": "done",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Независимое ревью V2-6: AcctRow.staked, stake_form + F7/Shift+F7, F5 auto-claim + hint, marks_modal removal, tx_submit stake/unstake, fn segments, cargo check/test pwm-tui",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/v2-6-review-20260506.md"],
+      "notes": "AC выполнены; cargo check --workspace и pwm-tui tests — ok; 0 violations check_rust_fn_name_segments на pwm-tui/src. Нит: F8 fallback из decisions не реализован; F5 ветка в tui_loop длинная.",
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-06"
+    }
+  ]
+}

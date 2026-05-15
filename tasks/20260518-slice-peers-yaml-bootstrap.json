@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "20260518-slice-peers-yaml-bootstrap",
+  "title": "pwmd: peers.yaml / --peers-list загрузка и сохранение, исключение self",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Оператор подтвердил CY lab на трёх узлах с peer-портом >10000 (напр. 13030). Нужна поддержка статического списка пиров: файл peers.yaml и/или флаг --peers-list <path>. При чтении из списка автоматически исключать адрес текущей ноды (совпадение с эффективным --transport-peer-listen / peer_listen). Объединить с существующими --transport-peer-seed (дедуп). Сохранение: персист эффективного bootstrap-множества в тот же файл при корректном завершении (или отдельный явный режим — согласовать в ревью при необходимости). Документировать формат YAML в help/--help или кратко в issues-report при сюрпризах.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "CLI + конфиг + загрузка/merge/filter self + save; тесты в crates/pwmd",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/peer_list.rs",
+        "crates/pwmd/src/main.rs",
+        "crates/pwmd/src/lib.rs",
+        "crates/pwmd/Cargo.toml",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 16000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-18",
+      "notes": "Реализация peer_list + --peers-list. Полный cargo test -p pwmd: pwm-testing с CARGO_TARGET_DIR=.tmp-peers-test-target — 351 passed; при lock pwmd.exe на общем target — отдельный CARGO_TARGET_DIR."
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Расширить/добавить тесты pwmd, preflight, cargo test -p pwmd",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-18",
+      "notes": "preflight: tools/dev/preflight_target_debug.ps1 exit 0. Полный cargo test -p pwmd с CARGO_TARGET_DIR=.tmp-peers-test-target: 344 lib + 6 main + 1 integration + 0 doc = 351 passed, 0 failed. Smoke: cargo run -p pwmd --bin pwmd -- --help — строка --peers-list <PATH> присутствует. Правки кода/тестов не потребовались."
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Ревью слайса peers list; PASS gate",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260518-peers-list-yaml-slice.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 3200,
+        "total": 15200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-18",
+      "notes": "Verdict PASS_WITH_NITS: см. отчёт. Ниты: (1) без активного пути peer-файла персиста нет при только CLI seeds; (2) self-filter — строгое равенство SocketAddr. check_rust_fn_name_segments: нарушений нет на peer_list.rs/main.rs."
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260518-peers-list-yaml-slice.md"
+  },
+  "notes": "Конвейер синхронный (оркестратор ждёт каждую ногу)."
+}

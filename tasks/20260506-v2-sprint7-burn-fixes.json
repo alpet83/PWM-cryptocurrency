@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "id": "20260506-v2-sprint7-burn-fixes",
+  "title": "Sprint V2-7: burn UX fixes + remove accrue_marks + genesis marks",
+  "status": "done",
+  "sprint": "V2-7",
+  "brief": "Fix 6 issues found during live TUI testing: auto-fill beneficiary, remove cross-domain burn restriction, wallet-lock error message, spendable/staked display, dynamic F7 label, remove per-block accrue_marks and add genesis premint marks.",
+  "decisions": {
+    "fix1_beneficiary": "Auto-fill BurnForm.beneficiary from selected receiver row (right panel) when opening F5. If no receiver selected, leave empty.",
+    "fix2_cross_domain_burn": "Remove burn_ctx_source_dom check from crates/pwmd/src/tx_policy.rs. Burn is unilateral: sender's marks are debited from local shard; beneficiary is metadata only. Remove the 409 error block. Also remove the unused burn_ctx_source_dom fn from tx.rs and its tests.",
+    "fix3_wallet_lock_error": "In submit_burn_mark (tx_submit.rs), when signing_key is None, return Err('Wallet is locked — press F3 to unlock') instead of a generic error.",
+    "fix4_balance_display": "In TUI main account table, add a 'Staked' column or show 'spendable / staked' in the Balance cell. AcctRow.staked already exists. Format: '950.00 / 50.00 staked' or two separate columns.",
+    "fix5_f7_label": "In footer/status line, replace two entries with one: 'F7/⇧F7 Stake/Unstake' (compact, no real-time Shift detection needed).",
+    "fix6_accrue_marks": "Remove accrue_marks() and accrue_marks_v2() call sites from crates/pwm-core/src/chain.rs (both branches of is_legacy_policy). Keep the pub fn definitions in state.rs (they are pub and tested — no dead-code warning for pub items). At genesis init in State (wherever accounts are initialized from GRow), set marks = (row.bal / PWM_RAW_SCALE).min(u32::MAX as u128) as u32 so each preminted account starts with marks proportional to their premint balance."
+  },
+  "acceptance_criteria": [
+    "F5 burn form pre-fills beneficiary from selected receiver row.",
+    "BurnMark with cross-domain beneficiary is accepted by node (no 409).",
+    "Burn attempt with locked wallet shows 'Wallet is locked — press F3 to unlock'.",
+    "TUI account display shows both spendable and staked balance.",
+    "Footer shows 'F7/⇧F7 Stake/Unstake' compactly.",
+    "accrue_marks / accrue_marks_v2 NOT called in Chain::seal().",
+    "Genesis accounts receive marks = bal / 1_000_000 at init.",
+    "cargo check --workspace green.",
+    "Naming script 0 violations on touched paths."
+  ],
+  "files": {
+    "node": ["crates/pwmd/src/tx_policy.rs", "crates/pwm-core/src/tx.rs", "crates/pwm-core/src/chain.rs", "crates/pwm-core/src/state.rs"],
+    "tui": ["crates/pwm-tui/src/tui_loop.rs", "crates/pwm-tui/src/lib.rs", "crates/pwm-tui/src/tx_submit.rs", "crates/pwm-tui/src/status.rs", "crates/pwm-tui/src/burn_form.rs"]
+  },
+  "commits": ["706cde2", "f28fe33", "0cd3e95", "7d93ed5"],
+  "artifacts": {
+    "review_md": "docs/reviews/v2-7-review-20260506.md"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Sprint V2-7: cross-domain burn policy, genesis marks seed, Chain::seal без accrue_marks, TUI burn/stake UX, bump pwmd 0.1.52 — коммиты 706cde2..7d93ed5.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwm-core/src/genesis.rs",
+        "crates/pwm-core/src/tx.rs",
+        "crates/pwmd/src/tx_policy.rs",
+        "crates/pwm-tui/src/lib.rs",
+        "crates/pwm-tui/src/burn_form.rs",
+        "crates/pwm-tui/src/models.rs",
+        "crates/pwm-tui/src/status.rs",
+        "crates/pwm-tui/src/tui_loop.rs",
+        "crates/pwm-tui/src/tx_submit.rs",
+        "crates/pwmd/Cargo.toml"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": "low"
+      },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Прогон в рамках pwm-review: cargo test -p pwm-core; cargo test -p pwmd; cargo check --workspace; check_rust_fn_name_segments.py на pwmd/pwm-core/pwm-tui src.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-06T18:31:13Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Ревью 780d8c5..HEAD: критерии V2-7, spot-check tx_policy/tx/genesis/chain/TUI/strings, версия pwmd, отчёт docs/reviews/v2-7-review-20260506.md.",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/v2-7-review-20260506.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 11000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-06T18:35:00Z"
+    }
+  ],
+  "notes": "pwm-review 2026-05-06: отчёт docs/reviews/v2-7-review-20260506.md — approve with nits (doc-comment burn_ctx_source_dom в tx_policy; единообразие текста locked wallet). cargo check --workspace OK; pwm-core 110 passed; pwmd 238+ passed (lib). Naming 0 violations. Коммит артефакта ревью: 2f4bfd4."
+}

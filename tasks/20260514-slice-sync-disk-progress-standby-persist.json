@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "id": "20260514-slice-sync-disk-progress-standby-persist",
+  "title": "pwmd: прогресс по диску + периодический persist для standby/attester при sync",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Приёмка (lab): в tmp/state-cy-attester появляется pwm-data.json/epochs; в логах виден прогресс загрузки/флаша. RCA: прогресс сравнивал память с peer tip (и peer_tip=0 давал ложное 100%), autosnap после sync только mod 100 — attester мог долго не писать диск. Требования: 1) отслеживать last_snapshot_height (Atomic после успешного save и после load); логировать цель+память+диск без ложного 100% при genesis; 2) для SealRole::Standby (attester/follower) после sync_apply дополнительный checkpoint: высота 1 и каждые 10 блоков (константа рядом с AUTOSNAPSHOT), лог INFO target pwmd::sync; 3) тесты: throttle/progress + регресс что standby sync triggers save до 100. Делегации: pwm-debug → pwm-coding → pwm-testing → pwm-review.",
+  "references": [
+    "tasks/20260513-slice-sync-console-progress.json",
+    "crates/pwmd/src/lifecycle.rs",
+    "crates/pwmd/src/transport/peer_session/sync_live.rs",
+    "crates/pwmd/src/state.rs",
+    "cy-cluster-attester.ps1"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "RCA: sync batch skip mod-100, peer_tip=0 false 100%, max 32 blocks batch — artifact debug md.",
+      "result": "PASS",
+      "verbosity_focus": "transport:sync",
+      "instrumentation": { "reverted": "yes" },
+      "artifacts": [
+        "tasks/20260514-slice-sync-disk-progress-standby-persist-debug.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 24000,
+        "output": 4500,
+        "total": 28500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-13T06:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implemented sync batch boundary persist, standby periodic flush checkpoints, disk-aware sync progress, and last_snapshot_height wiring with regression tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "CHANGELOG.md",
+        "issues-report.md",
+        "tasks/20260514-slice-sync-disk-progress-standby-persist.json"
+      ],
+      "commands": [
+        "cargo fmt --all",
+        "cargo check -p pwmd",
+        "cargo test -p pwmd",
+        "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/state.rs crates/pwmd/src/bootstrap.rs crates/pwmd/src/lifecycle.rs crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "cq_files_ctl rebuild_index (project_id=5, background=true)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 18000,
+        "output": 4200,
+        "total": 22200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-13T08:35:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Ran tools/dev/preflight_target_debug.ps1 (powershell.exe), cargo fmt --all -- --check, cargo test -p pwmd; all green.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260514-slice-sync-disk-progress-standby-persist.json"
+      ],
+      "commands": [
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/dev/preflight_target_debug.ps1",
+        "cargo fmt --all -- --check",
+        "cargo test -p pwmd"
+      ],
+      "preflight_target_debug": {
+        "script": "tools/dev/preflight_target_debug.ps1",
+        "target_debug_bytes": 226464982,
+        "threshold_mib_default": 4096,
+        "removed": "no",
+        "status": "ok"
+      },
+      "tokens": {
+        "source": "estimate",
+        "input": 9200,
+        "output": 2100,
+        "total": 11300,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-13T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "PASS: batch crossing persist, standby 1/10, last_snapshot_height, rollback; nit goal heuristic when peer_tip=0.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260514-sync-disk-progress-standby-persist-slice.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 4200,
+        "total": 32200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-13T12:30:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260514-sync-disk-progress-standby-persist-slice.md",
+    "debug_md": "tasks/20260514-slice-sync-disk-progress-standby-persist-debug.md"
+  },
+  "notes": "Proposer остаётся на mod-100 seal path; меняется только sync_apply + операторские метрики."
+}

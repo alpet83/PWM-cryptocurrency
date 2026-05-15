@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "20260506-orchestrator-mvp-checklist-closure",
+  "title": "Оркестратор: синхронизация MVP-checklist (§2 gitattributes, §12 defer)",
+  "status": "done",
+  "mvp_checklist": ["docs/MVP-checklist.md §2", "§12", "легенда defer"],
+  "brief": "Закрыть пробелы MVP-checklist без пропусков: явные паттерны .gitattributes; §12 для intentionally deferred §1 EXPORT-lock; легенда объясняет [ ] со ссылкой на §12.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": ".gitattributes *.rs/*.toml/docs; MVP §2 [x]; новый §12; правка текста §1 строки",
+      "result": "PASS",
+      "artifacts": [".gitattributes", "docs/MVP-checklist.md"],
+      "tokens": { "source": "estimate", "total": 5200, "confidence": "low" },
+      "done_at": "2026-05-06T08:00:00Z"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Легенда checklist + коммит 92564f3",
+      "result": "PASS",
+      "artifacts": ["docs/MVP-checklist.md"],
+      "tokens": { "source": "estimate", "total": 800, "confidence": "low" },
+      "done_at": "2026-05-06T08:05:00Z"
+    }
+  ],
+  "commits": ["92564f3"],
+  "artifacts": {},
+  "notes": "pwm-review для чисто документного коммита не обязателен. Следующая очередь по плану v2 — см. docs/plans/mvp_v2.md todos (pending до sprint-close владельцем): V2-2 core/RPC marks vs Slice V2-4 naming/review."
+}

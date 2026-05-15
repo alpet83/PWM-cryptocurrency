@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260520-slice-entity-name-segments",
+  "title": "Линтер имён: сущности (поля, const, mod) + исправления в коде",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Добавлен scripts/check_entity_name_segments.py (fn + field + const/static + mod + type alias snake + macro_rules; JSON с полем entity). scripts/check_rust_fn_name_segments.py — shim с deprecation. Обновлены docs/AGENT_PROMPT_{coding,testing,review}.md и AGENT_PROMPTS.md. pwm-coding: устранены все violations по полному прогону (~42→0); serde(rename) для стабильных ключей где нужно.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Phase A оркестратор; Phase B массовое переименование + serde",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": "2026-05-20T00:00:00Z"
+      "prompt_summary": "После Phase B: проверить согласованность промптов и отсутствие регрессий имён",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    }
+  ],
+  "commits": ["cc50bd4"],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Доп. коммиты по тикету: 0affb82, ff991a5, 7385083, 661cfd4. Скилл colloquium-cqds-mcp при CQDS."
+}

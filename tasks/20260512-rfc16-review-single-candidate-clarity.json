@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "20260512-rfc16-review-single-candidate-clarity",
+  "title": "pwm-review: RFC 16 — точки над i (лидер vs mempool коллон)",
+  "status": "done",
+  "mvp_checklist": ["RFC 16 adoption readiness"],
+  "brief": "Владелец: в Variant A союзники проверяют версию блока лидера, а не сравнивают со своими сборками из расходящихся mempool. В RFC добавлено §2.1 и правки §3.2/§6/§12. Нужно ревью: противоречий нет, статус Draft ок или правки, freeze-критерии.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "RFC 16 v0.2: утвердить single-leader candidate model; nits; вердикт",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260512-rfc16-validator-clone-attestation-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-12T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260512-rfc16-validator-clone-attestation-review.md"
+  },
+  "notes": "pwm-review: PASS — §2.1 отражает intent владельца; согласовано с S3/failover; nit заголовок §12."
+}

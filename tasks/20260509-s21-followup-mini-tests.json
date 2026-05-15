@@ -1,0 +1,36 @@
+{
+  "id": "20260509-s21-followup-mini-tests",
+  "title": "S2.1 follow-up: mock backend Err gate + two-process lease harness",
+  "status": "done",
+  "created": "2026-05-09",
+  "parent_ticket": "tasks/20260509-s21-external-lease-backend.json",
+  "context": {
+    "goal": "Закрыть пробелы pwm-testing/review: fail-closed при ошибке backend в gate; E2E два процесса pwmd с общим lease dir.",
+    "motivation": "Довести S2.1 acceptance до PASS где возможно без ручных прогонов."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Run targeted pwmd tests for S2.1 follow-up (backend_err_closed, lease_two_proc), cargo check, optional full pwmd; write testing report; update ticket",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260509-s21-followup-mini-testing-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    }
+  ],
+  "artifacts": {
+    "coding_commit": "6a33cb9b484934fc386129243229942cfe655f51",
+    "review_md": "docs/reviews/20260509-s21-followup-mini-testing.md",
+    "testing_result": "PARTIAL",
+    "testing_report": "docs/reviews/20260509-s21-followup-mini-testing-report.md"
+  },
+  "notes": "Fail-closed: ErrLeaseBackend + step_lease + run_lease_gate test. Two-process: pwmd_lease_probe binary + tests/lease_two_proc.rs. Targeted tests PASS; full cargo test -p pwmd fails on transport_peer v1_hi_accepts_native_cls + v1_hi_mx_sig (see testing-report). Полный прогон при необходимости отдельно (см. issues-report 2026-05-09)."
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "20260512-rfc16-validator-clone-attestation",
+  "title": "RFC 16: Variant A (leader + attest) normative draft",
+  "status": "done",
+  "mvp_checklist": ["docs/MVP-checklist.md §4 / §12"],
+  "brief": "Развить вариант A из S3 design review до черновика RFC: членство клонов (не любые пиры), обязательные подписанные аттестации, vote object, кворум, таймауты и таблица расхождений, ортогональность lease/S2, non-goals, wire/versioning. Артефакт: docs/rfc/16-validator-clone-attestation.md.",
+  "delegations": [],
+  "commits": [],
+  "artifacts": {
+    "review_md": null,
+    "rfc_path": "docs/rfc/16-validator-clone-attestation.md"
+  },
+  "notes": "v0.4.6: §10.1 — UDP/connectionless плоскость: обязательные подписи кадров (нет доверия TCP-сессии). v0.4.5: §16 — wire + capability, кластер только в пиринге. v0.4.4: §16 — перенос приёмки V2-8 Slice 6. v0.4.3: §16 — multi-slice V2-9. v0.4.2: §6.1 MVP; §16 implementation readiness. Реализация: tasks/20260513-v2-sprint9-rfc16-cluster-attestation.json. v0.4.1: B.2 нейтрально."
+}

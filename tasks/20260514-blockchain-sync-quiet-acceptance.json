@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "id": "20260514-blockchain-sync-quiet-acceptance",
+  "title": "Same-shard sync: приёмка «тишины» после догона (CY lab 120s)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Фиксы short-tail/CUP не дали ожидаемой операторской «остановки синхронизации». Цикл до приёмки: pwm-debug (логи+гипотеза) → pwm-coding (фикс по RCA) → scripts/cy_cluster_two_node_smoke.ps1 120s (оба узла) → проверка логов; повторять. Критерий: устойчивый tip + тихий хвост (см. docs/blockchain-sync.md). Тикет ведёт оркестратор; crates/ только через субагентов.",
+  "references": [
+    "docs/blockchain-sync.md",
+    "docs/debug/20260513-sync-mode-zones-rca.md",
+    "docs/rfc/15-same-shard-sync-v1.md",
+    "crates/pwmd/src/transport/peer_session/sync_live.rs",
+    "scripts/cy_cluster_two_node_smoke.ps1",
+    "cy-cluster-proposer.ps1",
+    "cy-cluster-attester.ps1"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "RCA: симптом не CUP, а live short-tail lag=1 + шум Sync progress на каждый новый tip; дубликаты live_hdr (H2). Smoke -RequireQuietTail: ParserError из-за >= в строках PS — исправлено оркестратором в scripts/.",
+      "verbosity_focus": "transport:peer-sync",
+      "instrumentation": { "files": [], "reverted": "yes", "receiver_if_kept": null },
+      "repro": {
+        "deterministic": "partial",
+        "flake_rate": null,
+        "command": "powershell -File scripts/cy_cluster_two_node_smoke.ps1 -SmokeSeconds 120 -RequireQuietTail"
+      },
+      "result": "PASS",
+      "artifacts": [
+        "docs/debug/20260514-blockchain-sync-quiet-rca.md",
+        "logs/2026-05-13/pwmd-peer-cy-attester-114115.log"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 52000,
+        "output": 9000,
+        "total": 61000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-13T15:00:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Live-tail quiet: SYNC_PROG_LIVE_TAIL_MS + quiet_goal_bump; ask_hdr dedup if wait_hdr_from matches and in_hdr>0; cargo test -p pwmd PASS.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "issues-report.md"
+      ],
+      "commands": [
+        "cargo fmt -p pwmd",
+        "cargo test -p pwmd"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 24000,
+        "output": 4500,
+        "total": 28500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-13T16:30:00+03:00"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Смок 120s -RequireQuietTail: SMOKE_PASS, logDir tmp/cy-smoke-20260513_145933, maxPct=100, quiet tail count=1",
+      "result": "PASS",
+      "artifacts": [
+        "tmp/cy-smoke-20260513_145933"
+      ],
+      "commands": [
+        "powershell -File scripts/cy_cluster_two_node_smoke.ps1 -SmokeSeconds 120 -RequireQuietTail"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 8000,
+        "output": 2000,
+        "total": 10000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09T12:05:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null,
+    "debug_md": null
+  },
+  "notes": "Handoff pwm-debug: skill colloquium-cqds-mcp; verbosity-focus transport:peer-sync (при необходимости transport:peer-sync:catchup). Артефакты: docs/debug/20260514-blockchain-sync-quiet-*.md. После фикса: pwm-testing; при изменении контракта — pwm-review."
+}

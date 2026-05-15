@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-s1-slice-e-implementation-handoff",
+  "title": "Sprint V2-1 Slice E: implementation handoff package",
+  "status": "done",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "Собрать финальный handoff-пакет после RFC Slice A-D для перехода к первому кодовому слайсу (единый marks, BurnMark purpose, ClaimTx, maturity/free-day). Без правок crates/*.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Сформировать implementation handoff doc по итогам RFC Slice A-D",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-e-implementation-handoff.md",
+        "tasks/20260505-v2-s1-slice-e-implementation-handoff.json",
+        "tasks/20260505-v2-s1-slice-d-api-errors.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 7600,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T11:56:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate Slice E (docs-only): test-report + test-readiness E-1/E-2/E-3 + gaps",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-e-test-report.md",
+        "tasks/20260505-v2-s1-slice-e-implementation-handoff.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T16:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review-gate Slice E: handoff + test-report + тикет",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-e-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T18:30:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-1-slice-e-review.md"
+  },
+  "notes": "Входы: docs/reviews/sprint-v2-1-rfc-inputs-20260505.md + Slice A/B/C/D freeze and gates. Выполнено docs-only: handoff docs/reviews/sprint-v2-1-slice-e-implementation-handoff.md (lock A-D, file map, E-1/E-2/E-3, риски marks_quota -> marks, test plan §5, done criteria §6). pwm-testing (2026-05-05): PASS; docs/reviews/sprint-v2-1-slice-e-test-report.md — E-1/E-2 READY, E-3 PARTIAL; cargo не запускался. pwm-review (2026-05-05): docs/reviews/sprint-v2-1-slice-e-review.md — approve with nits (в т.ч. E-3/trace_id gaps из test-report). Конвейер coding→testing→review по docs-handoff Slice E завершён; полный V2-1 product-gate по §6 handoff — после кодовых ног и исполняемых тестов."
+}

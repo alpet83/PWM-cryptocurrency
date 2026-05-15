@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-rfc-publication-pack",
+  "title": "MVP v2: publish formal RFC documents before coding",
+  "status": "done",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "Опубликовать формальные RFC-документы в docs/rfc на базе Slice A-E freeze документов, чтобы зафиксировать спецификацию перед стартом кодовых слайсов E-1/E-2/E-3.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Собрать formal RFC pack в docs/rfc из Slice A-E",
+      "result": "PASS",
+      "artifacts": [
+        "docs/rfc/11-burn-purpose-and-claim-tx.md",
+        "docs/rfc/12-claim-maturity-and-state-model.md",
+        "docs/rfc/13-claim-policy-matrix.md",
+        "docs/rfc/14-claim-burn-api-error-contract.md",
+        "docs/rfc/README-v2-claims-pack.md",
+        "docs/plans/mvp_v2.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 21000,
+        "output": 4900,
+        "total": 25900,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T11:58:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Testing-gate для RFC publication pack: consistency + testability report (docs-only)",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-rfc-publication-test-report-20260505.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9500,
+        "output": 2200,
+        "total": 11700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T12:30:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review-gate RFC publication pack (docs-only)",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/v2-rfc-publication-review-20260505.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 3200,
+        "total": 17200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T18:30:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/v2-rfc-publication-review-20260505.md"
+  },
+  "notes": "Режим: docs-only, синхронный конвейер субагентов. RFC publication pack выпущен в docs/rfc (RFC 0011-0014 + README), решения нормализованы из Slice A-D freeze, план mvp_v2 обновлён короткой ссылкой на пакет; crates/* не изменялись. pwm-testing: гейт PASS — docs/reviews/v2-rfc-publication-test-report-20260505.md. pwm-review 2026-05-05: approve with nits, PASS gate — см. artifacts.review_md; ниты: CLAIM_DELTA vs claim_units; нет единой таблицы mapping слоёв ошибок (см. также test report § testability). Доп. кросс-ревью 2026-05-05 (WHITE_SPEC§9 ↔ RFC0011–14, auto-claim): docs/reviews/v2-white-spec-rfc-autoclaim-consistency-20260505.md — approve with nits, High зазоры: maturity arithmetic только в WHITE_SPEC; preflight/apply vs auto-claim only apply."
+}

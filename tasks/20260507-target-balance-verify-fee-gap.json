@@ -1,0 +1,28 @@
+{
+  "id": "20260507-target-balance-verify-fee-gap",
+  "title": "Расследование FAIL balance verify target (delta vs expected)",
+  "status": "done",
+  "created": "2026-05-07",
+  "context": {
+    "symptom": "balance verify (target): FAIL — delta=990000 raw, expected 1000000 (pre=1000000000 post=1000990000).",
+    "hypothesis": "Ожидаемая дельта в TUI не учитывает минимальную комиссию межшардового пути.",
+    "goal": "Подтвердить источник расхождения и предложить узкий фикс UX/verify."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "at": "2026-05-07",
+      "note": "Подтверждено: delta = amount − import_fee при signer==recipient (Import в state.rs). TUI сравнивает post−pre с полным amount; fee_note путает export fee на source с import fee на target. Константа pwm_core::tx::MIN_IMPORT_FEE_UNITS = 10_000 объясняет зазор 10_000. Классификация: ложный FAIL UX, фикс — ожидаемый нетто-кредит и текст в roaming.rs + тесты. Детали: docs/reviews/20260507-target-balance-verify-fee-gap.md"
+    },
+    {
+      "agent": "pwm-coding",
+      "at": "2026-05-07",
+      "note": "Исправлен step5 verify на target: expected рассчитывается как amount.saturating_sub(import_fee), import_fee берется из сформированной import tx (fallback MIN_IMPORT_FEE_UNITS), текст явно разделяет export fee (source) и import fee (target); добавлены unit-тесты для net-delta и текста отчета."
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260507-target-balance-verify-fee-gap.md",
+    "verdict": "PASS",
+    "fix_commit": "HEAD"
+  }
+}

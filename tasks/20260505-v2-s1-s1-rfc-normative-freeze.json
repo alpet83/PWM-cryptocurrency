@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "id": "20260505-v2-s1-s1-rfc-normative-freeze",
+  "title": "Sprint V2-1 Slice 1: RFC normative freeze inputs",
+  "status": "in_progress",
+  "mvp_checklist": [
+    "§1 Спецификация и решения"
+  ],
+  "brief": "Slice 1 (in_progress): зафиксировать и заморозить нормативные RFC-решения по owner-inputs V2-1. Основной вход: docs/reviews/sprint-v2-1-rfc-inputs-20260505.md. В этом слайсе без product-code правок (не менять crates/*), фокус только на RFC/spec alignment.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Подготовить RFC-input документ для Slice 1 и зафиксировать carry-over в tasks без изменений crates/*",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-rfc-inputs-20260505.md",
+        "tasks/20260505-v2-s1-s0-spec-impl-audit.json",
+        "tasks/20260505-v2-s1-s1-rfc-normative-freeze.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9000,
+        "output": 2600,
+        "total": 11600,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-05T10:55:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Normative freeze doc + task update: purpose, maturity/claim, free-claim/day, acceptance criteria",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-1-normative-freeze.md",
+        "tasks/20260505-v2-s1-s1-rfc-normative-freeze.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T12:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice 1 test matrix intents: purpose, maturity/claim, balance reset placeholders, free/paid claim, reorg — для RFC A–D",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/sprint-v2-1-slice-1-test-matrix.md",
+        "tasks/20260505-v2-s1-s1-rfc-normative-freeze.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3200,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-05T14:00:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/sprint-v2-1-slice-1-normative-freeze.md",
+    "test_matrix_md": "docs/reviews/sprint-v2-1-slice-1-test-matrix.md"
+  },
+  "notes": "pwm-review PARTIAL: нормативный черновик sprint-v2-1-slice-1-normative-freeze.md. pwm-testing (этот шаг): добавлена черновая матрица сценариев sprint-v2-1-slice-1-test-matrix.md (positive/negative intents, привязка к Slice A–D и N-PURPOSE/N-MAT/N-FREE), закрывает черновик строк для acceptance критерия §5 п.5 (негативы/reorg/free-limit и др. как намерения). Carry-over по Slice 1: закрыт как входной пакет и продолжен в Slice A; стартовал RFC Slice A с артефактом docs/reviews/sprint-v2-1-slice-a-tx-schema-freeze.md (tx schema freeze для purpose/claim, taxonomy, serialization, backward-compat). Закрыто документами: RFC inputs, normative freeze, test matrix. Остаётся открытым до B/C/D: правило reorg для claim/free-marker, частичный vs полный сброс непрерывности баланса, таксономия ошибок API в финальном API-формате, off-chain hashing guide; перенос в реальные `cargo` тесты — после кодовых слайсов. Статус тикета: in_progress до sign-off владельца/следующих RFC."
+}

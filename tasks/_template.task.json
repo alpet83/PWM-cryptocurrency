@@ -21,6 +21,31 @@
       "done_at": null
     },
     {
+      "agent": "pwm-debug",
+      "prompt_summary": "Опционально: диагностика дефекта/флака; включать при PARTIAL/FAIL от pwm-testing с недостаточным сигналом",
+      "verbosity_focus": "area-or-area:sub (e.g. mempool, seal:loop, rpc:router, wallet:passphrase, transport:peers, roaming:handoff)",
+      "instrumentation": {
+        "files": [],
+        "reverted": null,
+        "receiver_if_kept": null
+      },
+      "repro": {
+        "deterministic": null,
+        "flake_rate": null,
+        "command": null
+      },
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    },
+    {
       "agent": "pwm-review",
       "prompt_summary": "Объём ревью (дифф / последний коммит)",
       "result": null,

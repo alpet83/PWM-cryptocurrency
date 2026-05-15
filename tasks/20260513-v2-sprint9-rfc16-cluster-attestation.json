@@ -1,0 +1,459 @@
+{
+  "schema_version": 1,
+  "id": "20260513-v2-sprint9-rfc16-cluster-attestation",
+  "title": "V2-9: RFC 16 cluster attestation — multi-slice + 2/3-node waves + non-cluster followers",
+  "status": "done",
+  "mvp_checklist": ["docs/plans/mvp_v2.md Sprint V2-9", "docs/rfc/16-validator-clone-attestation.md"],
+  "brief": "Несколько слайсов: (A) ядро propose/attest/seal ≤3 узлов за флагами, §6.1, S2 ортогонально кворуму; (B) волна 2 узлов; (C) волна 3 узлов + ведомая same-shard вне кластера. Транспорт: peer wire + capability (LOCKED в checklist). Вне scope: dynamic join, k из большого pool, header quorum proof. Конвейер: pwm-info → pwm-coding → pwm-testing → pwm-review.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Создать docs/reviews/20260509-v2-9-rfc16-sprint-checklist.md для Sprint V2-9 (slices A/B/C, decision rows, наследование V2-8 Slice 6)",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/20260509-v2-9-rfc16-sprint-checklist.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "Дайджест Slice A: tasks/20260513-v2-sprint9-rfc16-cluster-attestation-info.json (wire, handshake, lifecycle, seal, config)",
+      "result": "PASS",
+      "artifacts": ["tasks/20260513-v2-sprint9-rfc16-cluster-attestation-info.json"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice A leg 1: ClusterCfg/CLI default-off, ClusterPropose/Attest wire, NodeHello caps, peer_session dispatch, run_cluster_gate в lifecycle",
+      "result": "PASS",
+      "artifacts": ["crates/pwmd/src/config.rs", "crates/pwmd/src/main.rs", "crates/pwmd/src/handshake.rs", "crates/pwmd/src/lifecycle.rs", "crates/pwmd/src/transport/peer_session/wire.rs", "crates/pwmd/src/transport/peer_session/mod.rs"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 17000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Регрессия: preflight, cargo fmt --check, cargo check --workspace, cargo test -p pwmd",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice A leg 1 independent review: RFC16 checklist, cluster gate, wire/capability",
+      "result": "FAIL",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-a-leg1-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice A leg 2: k-of-n attester-only quorum, crypto verify attest, hello gate, §6.1 reason codes, tests",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/config.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "crates/pwmd/src/transport/peer_types.rs",
+        "crates/pwmd/src/transport/incoming_hello.rs",
+        "crates/pwmd/src/tests/transport_peer.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 22000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "После leg2: cargo fmt --check, cargo check --workspace, cargo test -p pwmd",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 10000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice A leg 2 re-review vs RFC16 §7 follow-ups (k attester-only, sig verify, hello gate, logs, tests)",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-a-leg2-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice B: 2-node wave tests production.rs, run_cluster_gate pub(crate), wave notes md",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/tests/production.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "docs/reviews/20260510-v2-9-slice-b-wave-notes.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 24000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Slice B verify: fmt, check --workspace, test -p pwmd (cluster_* production)",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice B gate vs checklist §3, RFC §9–11",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-b-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-10"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice B nit: зеркало исходящего propose (record_cluster_propose_originated); Slice C starter: cluster_2of3_gate_wire + cluster_2of3_one_ack_stuck; slice-c-wave-notes",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "crates/pwmd/src/transport/tests/production.rs",
+        "docs/reviews/20260510-v2-9-slice-b-wave-notes.md",
+        "docs/reviews/20260510-v2-9-slice-c-wave-notes.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 20000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "После B nit + C starter: preflight, cargo fmt --check, cargo check --workspace, cargo test -p pwmd",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Объединённое ревью Slice B (закрытие нита wire) + Slice C starter",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-bc-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 11000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "P0 (slice_bc nit): топология cluster_timeout_no_seal / cluster_bind_mismatch_no_seal как cluster_2of2_gate_ok — propose A→B + record_cluster_propose_originated; bind-mismatch attest на отдельной B→A + trust_attester",
+      "result": "PASS",
+      "artifacts": ["crates/pwmd/src/transport/tests/production.rs"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Полный прогон: cargo fmt --check, cargo check --workspace, cargo test -p pwmd (после P0 топологии + RFC 16 v0.4.7)",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Повторное ревью slice_bc: снятие P0 топологии, RFC §9.5 согласован; addendum в 20260510-v2-9-slice-bc-review.md",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260510-v2-9-slice-bc-review.md",
+        "docs/rfc/16-validator-clone-attestation.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 13000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Auto-nits + Slice C partial: WARN capture quorum_timeout/binding_mismatch; cluster_2of2 seal tip_h/tip_hash; blk_fetch_apply_ok tip_hash non-cluster; wave-notes",
+      "result": "PARTIAL",
+      "artifacts": [
+        "crates/pwmd/src/transport/tests/production.rs",
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "docs/reviews/20260510-v2-9-slice-c-wave-notes.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 26000,
+        "output": 4800,
+        "total": 30800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Верификация после auto-nits + partial Slice C: fmt --check, check --workspace, test -p pwmd",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 11000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Delta review: second addendum slice_bc (P1 soft снят, seal 2-of-2, partial Slice C)",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-bc-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Очередь шаг 1: cluster_2of3_gate_wire — post-gate seal + tip_h/tip_hash как в cluster_2of2_gate_ok",
+      "result": "PASS",
+      "artifacts": ["crates/pwmd/src/transport/tests/production.rs"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "После 2-of-3 seal parity: fmt --check, cargo test -p pwmd",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Обновление slice_bc_review: снят P1 nit по 2-of-3 seal parity",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-bc-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-09"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Шаг 2 очереди: on_tip peer-behind (head_h < local_h) — убрать false sync_tip_divergence; тест tip_behind_no_divergence; wave-notes",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "crates/pwmd/src/transport/peer_session/mod.rs",
+        "docs/reviews/20260510-v2-9-slice-c-wave-notes.md",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9500,
+        "output": 2100,
+        "total": 11600,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-11"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "После on_tip fix: полный cargo test -p pwmd",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 10000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-11"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Slice C peer-behind + slice_bc_review table/§6/nit 4",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-bc-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-11"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Slice C TCP soak: same_shard_follower_tcp_tip (cluster source + non-cluster follower, bidirectional TCP, tip converge, no divergence growth)",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/tests/transport_peer.rs",
+        "docs/reviews/20260510-v2-9-slice-c-wave-notes.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9300,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-11"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "После TCP soak: cargo test -p pwmd same_shard_follower_tcp_tip --lib; полный -p pwmd по субагенту",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 10000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-11"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Финальный gate slice_bc: TCP soak landed, вердикт PASS",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/20260510-v2-9-slice-bc-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 14000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-11"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260510-v2-9-slice-bc-review.md",
+    "slice_a_review_md": "docs/reviews/20260510-v2-9-slice-a-leg2-review.md",
+    "slice_b_wave_notes": "docs/reviews/20260510-v2-9-slice-b-wave-notes.md",
+    "slice_b_review_md": "docs/reviews/20260510-v2-9-slice-b-review.md",
+    "slice_c_wave_notes": "docs/reviews/20260510-v2-9-slice-c-wave-notes.md",
+    "slice_bc_review_md": "docs/reviews/20260510-v2-9-slice-bc-review.md",
+    "rfc16_md": "docs/rfc/16-validator-clone-attestation.md",
+    "sprint_checklist": "docs/reviews/20260509-v2-9-rfc16-sprint-checklist.md"
+  },
+  "notes": "V2-9 Slice B/C: топология негативов, WARN asserts, 2-of-2/3 seal+tip, on_tip peer-behind fix, tip_behind_no_divergence, blk_fetch_apply_ok. TCP soak **landed**: `same_shard_follower_tcp_tip` в transport_peer.rs (оркестратор: `cargo test -p pwmd same_shard_follower_tcp_tip --lib` ok). pwm-coding/review: финальный slice_bc **PASS** (2026-05-11). Источник в soak — cluster-enabled proposer + прямой `seal` для tip (не полный wire-кворум в этом тесте); при желании усилить — отдельный nit. Трёхузловый кластер+follower в одном тесте — опционально. UDP RFC §10.1 DEFERRED."
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "20260509-mvp-v2-tail-automated-smoke",
+  "title": "Автоматический смок хвоста MVP v2 / V2-9 (CY cluster, head, relay burn)",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Скрипт scripts/cy_cluster_mvp_v2_tail_smoke.ps1: preflight, 2–3 CY-ноды, сверка /v1/head, опционально RelayBurn; --Attach. Runbook: docs/runbooks/cy-lab-multi-ip-same-ports.md. Ссылка в docs/plans/mvp_v2.md.",
+  "references": [
+    "scripts/cy_cluster_mvp_v2_tail_smoke.ps1",
+    "scripts/cy_cluster_two_node_smoke.ps1",
+    "docs/plans/mvp_v2.md",
+    "docs/reviews/20260509-v2-9-rfc16-sprint-checklist.md",
+    "docs/runbooks/cy-lab-multi-ip-same-ports.md",
+    "tasks/20260509-cy-relay-burn-via-standby-cli-manual.md"
+  ],
+  "delegations": [
+    {
+      "agent": "orchestrator",
+      "result": "PASS",
+      "summary": "cy_cluster_mvp_v2_tail_smoke.ps1 + runbook + mvp_v2 link + CHANGELOG",
+      "updated": "2026-05-09"
+    }
+  ],
+  "commits": [],
+  "artifacts": {},
+  "notes": "Примеры: без burn powershell -File scripts/cy_cluster_mvp_v2_tail_smoke.ps1 -NodeCount 3 -SmokeSeconds 90; attach-only powershell -File scripts/cy_cluster_mvp_v2_tail_smoke.ps1 -Attach -NodeCount 3; burn $env:PWM_WALLET_PASSPHRASE='1234'; ... -RelayBurn. cargo fmt не требуется (только ps1/md/json)."
+}

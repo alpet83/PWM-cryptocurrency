@@ -1,0 +1,28 @@
+{
+  "id": "20260507-claim-burn-status-desync-investigation",
+  "title": "Расследование рассинхрона статуса Claim/Burn в TUI",
+  "status": "done",
+  "created": "2026-05-07",
+  "context": {
+    "symptom": "В TUI: до F5 было 996 marks; после F5 статус 'Claimed 0 marks' и баланс не менялся; после burn 1 mark и закрытия формы баланс внезапно стал 2495 при старом статусе 'Claimed 0 marks (none matured)'.",
+    "runtime": "живые ноды node-1.ps1/node-2.ps1, запрос фокуса на node-1",
+    "goal": "Проверить всю цепочку авто-клейма F5 -> обновление стейта -> burn -> обновление статуса/баланса и найти источник UX-рассинхрона."
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "at": "2026-05-07",
+      "notes": "Подтверждены три слоя: (1) submit_claim всегда Ok(0) при HTTP success → ложный footer «Claimed 0 marks»; (2) Claim/Burn идут в mempool → немедленный poll_snapshot может не показать новые marks до seal; (3) action_note от F5 не сбрасывается. Логи node-1: claim commit ~08:39:45, burn_mark ~08:39:59 (nonce 8→9). Core semantics marks для Claim/Burn согласованы с «поздним» ростом marks — это UX/state-sync, не арифметическая ошибка chain по имеющимся данным. Отчёт: docs/reviews/20260507-claim-burn-status-desync-review.md. Verdict: NEED-FIX."
+    },
+    {
+      "agent": "pwm-coding",
+      "at": "2026-05-07",
+      "notes": "Внесён фикс UX/state-sync для F5 auto-claim и footer note: submit_claim переведён на Result<(), String>; добавлен pending claim-note (baseline marks + wait deadline) с подтверждением по poll: Claim confirmed (+N marks) или Claim accepted; no new marks yet; стартовый статус Claim submitted; waiting for confirmation.... После SubmitDone для burn stale claim-note очищается. Добавлены unit-тесты claim_note_confirms_delta и claim_note_wait_timeout в tui_loop.rs. Гейты: cargo fmt, cargo check -p pwm-tui, python scripts/check_rust_fn_name_segments.py crates/pwm-tui/src — PASS. Дополнительно запускался cargo test -p pwm-tui: известный несвязанный red test wallet_roaming::footer_rpc_online_one."
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260507-claim-burn-status-desync-review.md",
+    "verdict": "FIXED",
+    "fix_commit": "see latest local commit"
+  }
+}

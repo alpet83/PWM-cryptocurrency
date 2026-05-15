@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "id": "20260509-cli-wallet-out-master-seed-fallback",
+  "title": "pwm-cli: MASTER_SEED из --wallet-out при отсутствии --master и env",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Улучшить pwm-cli для операций с master seed (addr-derive, addr-bruteforce; при необходимости выровнять wallet import-seed если логика общая): если задан явный --wallet-out и нет источника seed из --master и из env, пробовать загрузить master_seed из существующего файла wallet-out (v3 YAML, с учётом encrypt + глобального --wallet-passphrase / PWM_WALLET_PASSPHRASE). Приоритет: явный --master > env PWM_MASTER_SEED (добавить в clap) > чтение из wallet при явном --wallet-out и существующем файле. Без --wallet-out для stateless addr-derive по-прежнему обязателен master|env. Обновить/добавить unit-тесты парсера и при необходимости интеграционные вызовы. issues-report.md при ловушках для операторов.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "pwm-cli: fallback master из wallet-out + PWM_MASTER_SEED env",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-cli/src/cli_cmd.rs",
+        "crates/pwm-cli/src/cli_dispatch.rs",
+        "crates/pwm-cli/src/cmd_addr.rs",
+        "crates/pwm-cli/src/tests/mod.rs",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 20000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-14T12:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Тесты pwm-cli / fmt / check после coding",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 50000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-14T12:30:00Z",
+      "notes": "Полный cargo fmt --check workspace после rustfmt pwmd — PASS; cargo test -p pwm-cli — PASS."
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Ревью слайса: безопасность seed, приоритеты источников",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260514-cli-wallet-out-master-seed.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 15000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-14"
+    }
+  ],
+  "commits": [
+    "e56175d37ae2d69ef3e93a70a2ec845808c1cc28",
+    "9f66545e425881e0a7d3dc3d52f5f62095251c92",
+    "a0aa375",
+    "76cfe35",
+    "f572c5b",
+    "0b3a831",
+    "ecda462",
+    "658e31b"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260514-cli-wallet-out-master-seed.md"
+  },
+  "notes": "Nits (review): опционально help по третьему источнику, тест env-vs-wallet; отдельить в backlog. pwmd: rustfmt в том же батче что и PWM_CLI для зелёного cargo fmt --check."
+}

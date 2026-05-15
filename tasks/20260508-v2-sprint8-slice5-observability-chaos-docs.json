@@ -1,0 +1,69 @@
+{
+  "id": "20260508-v2-sprint8-slice5-observability-chaos-docs",
+  "title": "V2-8 Slice 5: observability, chaos validation, operator docs",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "sprint": "V2-8",
+    "goal": "Закрыть эксплуатационный слой same-shard sync v1: метрики/алерты, деградационные проверки, runbook.",
+    "inputs": [
+      "docs/rfc/15-same-shard-sync-v1.md",
+      "docs/reviews/20260508-v2-8-slice4-review.md",
+      "docs/reviews/20260508-rfc15-l2-storm-guard-review.md"
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "status": "done",
+      "scope": "pwmd transport observability hooks, chaos-oriented tests, operator runbook",
+      "notes": [
+        "Нормализованы reason-коды drop/suppression в sync и mempool путях.",
+        "Добавлены storm-guard event hooks: suppression/egress + ingress kind counters.",
+        "Расширены тесты на reconnect without deadlock, malformed frame drop counters, catch-up fallback/live return, egress non-blackhole."
+      ]
+    },
+    {
+      "agent": "pwm-testing",
+      "status": "done",
+      "scope": "`cargo check -p pwmd`, таргетные `prod_*` и `peer_session::tests`, сверка runbook↔RFC §10/§13, `check_rust_fn_name_segments.py` по `transport/`",
+      "notes": [
+        "`cargo check -p pwmd` PASS.",
+        "`cargo test -p pwmd prod_` — 4/4 PASS.",
+        "`cargo test -p pwmd peer_session::tests` — FAIL: `tx_batch_profile_drop` ожидает `shard_mismatch`, код пишет `profile_mismatch` для legacy/non-full_v1 (нужен тривиальный фикс ожиданий у pwm-coding).",
+        "Скрипт имён по `crates/pwmd/src/transport/` — без нарушений.",
+        "Runbook согласован с RFC после абзаца о snapshot-mapping; см. дробь same_segment vs `same_shard_peer` в отчёте.",
+        "Отчёт: `docs/reviews/20260508-v2-8-slice5-testing.md`.",
+        "Rerun 2026-05-08 HEAD `23a183f`: `cargo check -p pwmd` PASS; `cargo test -p pwmd tx_batch_profile_drop` PASS; `cargo test -p pwmd peer_session::tests` — 15/15 PASS. Отчёт: `docs/reviews/20260508-v2-slice5-hotfix-testing-rerun.md`.",
+        "PWM-testing (субагент, повтор на 2026-05-08): те же три команды на `23a183fafc761822aae8feed72e3673c88de7456` — PASS; см. § Подтверждение в `docs/reviews/20260508-v2-slice5-hotfix-testing-rerun.md`."
+      ]
+    },
+    {
+      "agent": "pwm-review",
+      "status": "done",
+      "scope": "Независимое ревью `9029fb0`; RFC 15; runbook; chaos/obs tests; re-gate post-hotfix",
+      "notes": [
+        "FAIL: падение `tx_batch_profile_drop` — ожидание `shard_mismatch` против фактической ветки `profile_mismatch` для legacy/full_v1=false; см. docs/reviews/20260508-v2-8-slice5-review.md.",
+        "Наблюдаемость/runbook без overreach Slice 5; nit: дубликат add_bucket vs add_str_u64_bucket; давнее рассогласование count в add_sync_tx_drop vs reason-бакет +1.",
+        "Политика имён по transport-диффу — без нарушений (check_rust_fn_name_segments.py).",
+        "Re-gate 2026-05-08: FAIL — hotfix pwm-coding не интегрирован (assert всё ещё shard_mismatch в tx_batch_profile_drop); pwm-testing/docs/reviews/20260508-v2-slice5-hotfix-testing.md согласуется; независимо cargo test peer_session::tests — 14 PASS / 1 FAIL. См. docs/reviews/20260508-v2-8-slice5-rereview.md."
+      ]
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-v2-8-slice5-rereview.md",
+    "code": [
+      "crates/pwmd/src/transport/metrics.rs",
+      "crates/pwmd/src/transport/peer_session/mod.rs",
+      "crates/pwmd/src/transport/peer_session/inbound.rs",
+      "crates/pwmd/src/transport/peer_session/sync_live.rs",
+      "crates/pwmd/src/transport/tests/production.rs"
+    ],
+    "docs": [
+      "docs/runbook-same-shard-sync-v1.md",
+      "docs/rfc/15-same-shard-sync-v1.md"
+    ],
+    "testing_md": "docs/reviews/20260508-v2-8-slice5-testing.md",
+    "testing_rerun_md": "docs/reviews/20260508-v2-slice5-hotfix-testing-rerun.md"
+  }
+}

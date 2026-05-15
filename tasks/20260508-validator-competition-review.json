@@ -1,0 +1,37 @@
+{
+  "id": "20260508-validator-competition-review",
+  "title": "Архитектурный обзор: конкуренция валидаторов и отбор блока в same-shard sync",
+  "status": "done",
+  "created": "2026-05-08",
+  "context": {
+    "question": "Как в целевой схеме отрабатывается конкуренция валидаторов при десятках нод в шарде, если все способны продуцировать блоки после синхронизации?",
+    "inputs": [
+      "docs/plans/mvp_v2.md",
+      "docs/rfc/15-same-shard-sync-v1.md",
+      "docs/rfc/8-shard-runtime-identity-and-peering.md"
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "scope": "architecture summary PoA vs fork-choice RFC15; interim policy V2-8 Slice 1-3; gaps finalized_height; docs/reviews + ticket closure",
+      "completed": "2026-05-08"
+    },
+    {
+      "agent": "pwm-coding",
+      "scope": "docs-only RFC polish: explicit v1 proposer model, concurrent candidate handling, deterministic branch semantics, finalization boundary assumptions, and deferred consensus scope",
+      "completed": "2026-05-08"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260508-validator-competition-in-shard.md",
+    "rfc_md": "docs/rfc/15-same-shard-sync-v1.md",
+    "verdict": "PASS_WITH_NITS"
+  },
+  "notes": {
+    "pwm-review": "Первичный обзор 2026-05-08: см. docs/reviews/20260508-validator-competition-in-shard.md; выявлены пробелы finalized_height и prod_idx↔height; рекомендован узкий патч RFC.",
+    "pwm-coding": "RFC 15 обновлён нормативно: добавлены interim proposer model v1, правила обработки concurrent candidates at same height, branch selection semantics с boundary по finalized_height, и явный deferred scope для consensus-upgrade.",
+    "pwm-review-rereview": "2026-05-08 после git:3d1422c: узкий патч RFC §7 по пропозеру/веткам считается закрытым для спецификации v1; артефакты.verdict → PASS_WITH_NITS. Остаток: операционная семантика finalized_height в TipAnnounce для PoA-devnet и явное выравнивание height→prod_idx с WHITE/ядром — для Slice 3 / операторской доки, не блокировка текста RFC §7."
+  },
+  "verdict": "PASS_WITH_NITS"
+}

@@ -18,4 +18,9 @@ pwm-data.json
 /crates/pwmd/logs
 /commit_prepare_report.json
 /.tmp-test/
+/.tmp-peers-test-target/
+/.tmp-peers-shard-target/
+/.tmp-target/
+/.wave-build-target/
+**/__pycache__/
 /*.code-workspace

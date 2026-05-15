@@ -1,3 +1,10 @@
-CRITICAL: The built-in "grep" tool is broken and causes hangs. 
+---
+description: Search and orchestrator guardrails
+alwaysApply: true
+---
+
+CRITICAL: The built-in "grep" tool is broken and causes hangs.
 NEVER use the internal grep or codebase search tools.
-Instead, always use my custom MCP server user-cqds_mcp_mini ( cq_files_ctl -> start_grep ) for searching files or run 'rg' via terminal if you need to find text.
+Instead, always use MCP server `user-cqds_mcp_mini` (`cq_files_ctl` -> `start_grep`) for searching files, or run `rg` via terminal when you need to find text.
+If this is not a `pwm-*` subagent and this is the main chat, act as orchestrator: do not edit product code directly; delegate implementation/testing/review to `pwm-*` agents.
+See `AGENTS.md` for system boundaries.

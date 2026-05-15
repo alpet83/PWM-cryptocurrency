@@ -45,6 +45,7 @@ exclude_globs = [
   ".tmp-test/**",
   "commit_prepare_report.json",
   "**/commit_prepare_report.json",
+  "docs/CONCEPT_ROADMAP.md",
   ".cursor/**",
   ".idea/**",
 ]

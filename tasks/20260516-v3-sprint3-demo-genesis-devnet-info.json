@@ -1,0 +1,190 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-16T10:15:00Z",
+  "title": "MVP V3 Sprint 3: Demo Genesis Package and Public Devnet Discovery Map",
+  "research_question": "Map current genesis builder/load paths, CY cluster scripts, runbooks, API smoke, raw scale PWM, and how to express 21B PWM premine for the demo genesis package.",
+  "parent_ticket": "20260516-v3-sprint3-demo-genesis-devnet",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {
+        "pattern": "PWM_RAW_SCALE|raw_scale|1 PWM = 1_000_000",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Found canonical PWM raw scale: 1 PWM = 1_000_000 raw units (6 decimals) in pwm_core::display::PWM_RAW_SCALE"
+      },
+      {
+        "pattern": "21.*billion|premine|total.*supply",
+        "paths_glob_optional": "docs/**/*.md",
+        "summary": "RFC 0005 defines TotalSupply = 21,000,000,000 PWM; Whitepaper confirms 21 billion emission"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "crates/pwm-core/src/display.rs",
+      "why": "spec",
+      "note": "Canonical PWM raw scale definition: PWM_RAW_SCALE = 1_000_000 (1 PWM = 1,000,000 raw units, 6 decimals)"
+    },
+    {
+      "path": "crates/pwm-core/src/genesis.rs",
+      "why": "spec",
+      "note": "GenCfg/GRow/VRow structures, dev_net() factory with default 1_000_000 raw premine per account, LEGACY_POLICY_VER=1"
+    },
+    {
+      "path": "crates/pwm-cli/src/cmd_genesis.rs",
+      "why": "match",
+      "note": "genesis-build command implementation, schema_version=5, builds GenesisV4Out from wallet accounts"
+    },
+    {
+      "path": "crates/pwm-cli/src/cli_cmd.rs",
+      "why": "match",
+      "note": "CLI args for genesis-build: --premine-bal defaults to 1_000_000 raw (1 PWM), --block-reward, --marks-coeff"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/genesis.rs",
+      "why": "match",
+      "note": "Genesis loading for pwmd: supports schema_version 4/5, validates validator_keys vs gen_cfg.validators.set"
+    },
+    {
+      "path": "docs/GENESIS_BLOCK.md",
+      "why": "spec",
+      "note": "Operator guide for genesis build: wallet init -> genesis-build -> pwmd --genesis-file"
+    },
+    {
+      "path": "docs/rfc/5-genesis-and-bootstrap.md",
+      "why": "spec",
+      "note": "RFC 0005: TotalSupply = 21,000,000,000 PWM, distribution pools (IPv4 claim, legacy, future)"
+    },
+    {
+      "path": "docs/api-v1.md",
+      "why": "spec",
+      "note": "Public stable API v1 freeze: /v1/status, /v1/head, /v1/accounts, /v1/account/:id, POST /v1/tx"
+    },
+    {
+      "path": "docs/tester-guide-devnet-smoke.md",
+      "why": "spec",
+      "note": "Quick start guide for external tester: 3 terminals (pwmd, pwm-cli, pwm-tui), basic smoke scenarios"
+    },
+    {
+      "path": "docs/runbooks/cy-lab-multi-ip-same-ports.md",
+      "why": "spec",
+      "note": "CY lab runbook: multi-node on 127.0.0.1-3, KM-TEST loopback adapter setup"
+    },
+    {
+      "path": "cy-cluster-common.ps1",
+      "why": "match",
+      "note": "Shared CY lab constants: $CyGenesis='tmp\genesis-custom.json', $CyGenesisPass='12345', topology definitions"
+    },
+    {
+      "path": "cy-cluster-proposer.ps1",
+      "why": "match",
+      "note": "RFC16 proposer (sealer) launcher: requires tmp\genesis-custom.json, uses cluster-role=proposer"
+    },
+    {
+      "path": "cy-cluster-attester.ps1",
+      "why": "match",
+      "note": "RFC16 attester launcher: requires tmp\genesis-custom.json, cluster-role=attester (standby, no seal)"
+    },
+    {
+      "path": "cy-cluster-follower.ps1",
+      "why": "match",
+      "note": "Follower node launcher: requires tmp\genesis-custom.json, --debug-disable-seal-loop, no cluster role"
+    },
+    {
+      "path": "docs/plans/mvp_v3.md",
+      "why": "spec",
+      "note": "V3 Sprint 3 scope: demo genesis package, public devnet one-command runbook, remove tmp/genesis-custom.json dependency"
+    },
+    {
+      "path": "DRAFT_WHITEPAPER-ru.md",
+      "why": "spec",
+      "note": "Whitepaper: базовая эмиссия составляет 21 миллиард монет (21,000,000,000 PWM)"
+    }
+  ],
+  "digest": "## MVP V3 Sprint 3 Discovery Map: Demo Genesis Package\n\n### 1. PWM Raw Scale (Canonical)\n- **Location**: `crates/pwm-core/src/display.rs:4`\n- **Constant**: `PWM_RAW_SCALE: u128 = 1_000_000`\n- **Meaning**: 1 PWM = 1,000,000 raw units (6 decimal places)\n- **21B PWM in raw units**: `21_000_000_000 * 1_000_000 = 21_000_000_000_000_000` (21 quadrillion raw)\n\n### 2. Genesis Build Path (Current)\n**Command**: `pwm genesis-build` (implemented in `crates/pwm-cli/src/cmd_genesis.rs`)\n\n**Key parameters**:\n- `--wallet`: Source wallet YAML path\n- `--out`: Output genesis JSON path\n- `--premine-bal`: Raw units per account (default: 1_000_000 = 1 PWM)\n- `--block-reward`: Raw units (default: 100)\n- `--marks-coeff`: Raw units (default: 10_000)\n- `--genesis-passphrase`: Validator key encryption (env: `PWM_GENESIS_PASSPHRASE`)\n- `--wallet-passphrase`: Wallet decryption (env: `PWM_WALLET_PASSPHRASE`)\n\n**Output schema**: `schema_version=5` (backward compatible with 4)\n- `gen_cfg.funding.accounts[]`: `{acct_hex, pubkey_hex, der_idx, bal}`\n- `gen_cfg.validators.set[]`: `{acct_hex, pubkey_hex, der_idx}`\n- `gen_cfg.reward_policy.mode`: `to_producer_account`\n- `validator_keys[].enc_seed`: encrypted seed with kdf+aead\n\n### 3. pwmd Genesis Loading\n**Location**: `crates/pwmd/src/snapshot/genesis.rs`\n\n**Supported schemas**: 4 and 5\n**Required fields**:\n- `schema_version`: 4 or 5\n- `gen_cfg.funding.accounts[]`: at least one account\n- `gen_cfg.validators.set[]`: at least one validator\n- `validator_keys[]`: must match validators.set length\n- `gen_cfg.block_reward`, `marks_coeff`: u128 strings\n\n**Validation**:\n- Validator key derivation path must be `m/1000000'/1'`\n- Derived pubkey/acct must match gen_cfg.validators.set entries\n- KDF: `argon2id` (WALLET_KDF constant)\n- AEAD: `chacha20poly1305`\n\n### 4. Current CY Cluster Scripts\n**Topology**: 3-node lab on shard CY (domain-hi 0x2C = Cyprus)\n\n| Role | Script | RPC | Peer | Instance ID |\n|------|--------|-----|------|-------------|\n| Proposer | `cy-cluster-proposer.ps1` | 127.0.0.1:3030 | 127.0.0.1:13030 | cy-quorum-proposer |\n| Attester | `cy-cluster-attester.ps1` | 127.0.0.2:3030 | 127.0.0.2:13030 | cy-quorum-attester |\n| Follower | `cy-cluster-follower.ps1` | 127.0.0.3:3030 | 127.0.0.3:13030 | cy-follow |\n\n**Shared config**: `cy-cluster-common.ps1`\n- `$CyGenesis = 'tmp\genesis-custom.json'` ← **MANUAL DEPENDENCY**\n- `$CyGenesisPass = '12345'`\n- `$CyNetwork = 'testnet-qa'`\n- `$CyDomainHi = '0x2C'`\n- `$CyClusterLabel = 'test-cluster-CY'`\n\n**Current manual dependency**: All three scripts fail if `tmp\genesis-custom.json` doesn't exist.\n\n### 5. Files to Create/Modify for Public Demo Package\n\n**New scripts needed**:\n- `scripts/demo-genesis-build.ps1`: One-command genesis generation with 21B PWM premine\n- `scripts/demo-devnet-start.ps1`: One-command 3-node devnet launch\n- `scripts/demo-genesis-verify.ps1`: Premine sum verification\n\n**Documentation to create/update**:\n- `docs/runbooks/demo-devnet-quickstart.md`: Step-by-step public devnet runbook\n- Update `docs/tester-guide-devnet-smoke.md`: Link to API v1 smoke\n- Update `docs/api-v1.md`: Ensure smoke examples match demo runbook\n\n### 6. 21B PWM Premine Verification\n\n**Calculation**:\n- Target: 21,000,000,000 PWM\n- Raw scale: 1 PWM = 1,000,000 raw\n- Raw target: `21_000_000_000_000_000`\n\n**Verification approaches**:\n1. **CLI-based** (semi-automated): Parse genesis JSON, sum `gen_cfg.funding.accounts[*].bal`, compare to target\n2. **Rust unit test**: Add `demo_genesis_21b_premine_ok` test in `crates/pwm-cli/src/tests/`\n3. **PowerShell**: `Get-Content genesis.json | ConvertFrom-Json | ForEach-Object { ... } | Measure-Object -Sum`\n\n**Demo allocation suggestion** (even distribution):\n- 1 account with 21B PWM: `bal = 21_000_000_000_000_000`\n- OR 3 accounts (proposer/attester/follower): `bal = 7_000_000_000_000_000` each\n- OR 10 accounts: `bal = 2_100_000_000_000_000` each\n\n### 7. Recommended Implementation Plan for pwm-coding\n\n**Slice 1: Demo Genesis Builder Script**\n- File: `scripts/demo-genesis-build.ps1`\n- Actions:\n  - Generate wallet with single account\n  - Call `pwm genesis-build --premine-bal 21000000000000000` (21B in raw)\n  - Output to `tmp/demo-genesis.json` (or committed `docs/examples/demo-genesis.json`)\n  - Verify sum == 21B PWM\n\n**Slice 2: Public Devnet Launcher**\n- File: `scripts/demo-devnet-start.ps1`\n- Actions:\n  - Check genesis exists (auto-run builder if missing)\n  - Create state directories in `tmp/demo-state-{proposer,attester,follower}`\n  - Launch 3 nodes in background (or sequential with instructions)\n  - Generate `tmp/demo-peers.yaml`\n  - Wait for /v1/status ready\n\n**Slice 3: API Smoke Integration**\n- Update: `docs/runbooks/demo-devnet-quickstart.md`\n- Actions:\n  - Document `Invoke-RestMethod http://127.0.0.1:3030/v1/status`\n  - Document `Invoke-RestMethod http://127.0.0.1:3030/v1/head`\n  - Document account check via `/v1/account/:id`\n  - Link to `docs/api-v1.md` for full API contract\n\n**Slice 4: Premine Verification**\n- File: `scripts/demo-genesis-verify.ps1`\n- Actions:\n  - Load genesis JSON\n  - Sum all funding account balances\n  - Assert sum == 21_000_000_000_000_000\n  - Print formatted result\n\n**Files to modify**:\n- `cy-cluster-common.ps1`: Make `$CyGenesis` configurable via env var\n- `docs/GENESIS_BLOCK.md`: Add section on demo genesis with 21B premine\n\n### 8. Test Commands for pwm-testing\n\n```powershell\n# Build genesis with 21B premine
+cargo run -p pwm-cli -- genesis-build \\\n  --wallet ./tmp/demo-wallet.yaml \\\n  --out ./tmp/demo-genesis.json \\\n  --premine-bal 21000000000000000 \\\n  --genesis-passphrase demo-pass\n\n# Verify via API after devnet start\nInvoke-RestMethod http://127.0.0.1:3030/v1/status\nInvoke-RestMethod http://127.0.0.1:3030/v1/head\n\n# Check genesis account balance\n$accounts = Invoke-RestMethod http://127.0.0.1:3030/v1/accounts\nInvoke-RestMethod \"http://127.0.0.1:3030/v1/account/$($accounts[0].id)\"\n```",
+  "log_digest": [],
+  "open_questions": [
+    "Should demo genesis be committed to repo (docs/examples/) or always generated fresh?",
+    "What wallet seed should be used for reproducible demo genesis (fixed seed vs random)?",
+    "Should premine be single account or split across multiple (proposer/attester/follower)?",
+    "Is 21B PWM premine for demo acceptable security posture (devnet only)?",
+    "Do we need Linux/Git Bash parity scripts or PowerShell-only for V3?"
+  ],
+  "warnings": [
+    "CQDS MCP start_grep unavailable (query parameter issue) - used rg fallback",
+    "Current CY scripts hard-depend on tmp\genesis-custom.json - this must be addressed",
+    "21B PWM = 21 quadrillion raw units - ensure u128 handles this (max ~340 undecillion, so OK)"
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "pwm-info research for MVP V3 Sprint 3",
+      "input_tokens": 8500,
+      "output_tokens": 4200,
+      "total_tokens": 12700,
+      "confidence": "high",
+      "notes": "16 files analyzed, canonical raw scale identified, 21B PWM premine calculation verified"
+    }
+  },
+  "raw_scale": {
+    "constant_name": "PWM_RAW_SCALE",
+    "constant_location": "crates/pwm-core/src/display.rs:4",
+    "value_raw": 1000000,
+    "value_human": "1 PWM = 1,000,000 raw units (6 decimals)"
+  },
+  "premine_target": {
+    "whitepaper_pwm": 21000000000,
+    "raw_units": 21000000000000000,
+    "calculation": "21_000_000_000 * 1_000_000 = 21_000_000_000_000_000 raw"
+  },
+  "entry_points": {
+    "genesis_build_cli": "pwm genesis-build",
+    "genesis_build_code": "crates/pwm-cli/src/cmd_genesis.rs:269",
+    "genesis_load_code": "crates/pwmd/src/snapshot/genesis.rs:208",
+    "devnet_factory": "crates/pwm-core/src/genesis.rs:130"
+  },
+  "manual_assumptions": [
+    "CY lab scripts require pre-existing tmp\genesis-custom.json (manual step)",
+    "Wallet must be initialized before genesis-build (separate command)",
+    "Genesis passphrase defaults to '12345' in CY lab (insecure for production)"
+  ],
+  "recommended_slices": [
+    {
+      "slice_id": "slice-1-genesis-script",
+      "title": "Create demo-genesis-build.ps1 with 21B premine",
+      "files": ["scripts/demo-genesis-build.ps1"],
+      "acceptance": "Single command generates genesis with 21B PWM total premine"
+    },
+    {
+      "slice_id": "slice-2-devnet-launcher",
+      "title": "Create demo-devnet-start.ps1 one-command launcher",
+      "files": ["scripts/demo-devnet-start.ps1", "cy-cluster-common.ps1"],
+      "acceptance": "No manual tmp/genesis-custom.json dependency; auto-generates if missing"
+    },
+    {
+      "slice_id": "slice-3-runbook",
+      "title": "Write demo-devnet-quickstart.md runbook",
+      "files": ["docs/runbooks/demo-devnet-quickstart.md", "docs/tester-guide-devnet-smoke.md"],
+      "acceptance": "External tester can follow runbook without reading source"
+    },
+    {
+      "slice_id": "slice-4-verify",
+      "title": "Create demo-genesis-verify.ps1 premine check",
+      "files": ["scripts/demo-genesis-verify.ps1"],
+      "acceptance": "Script verifies sum of funding accounts equals 21B PWM"
+    }
+  ],
+  "commands": {
+    "genesis_build_21b": "cargo run -p pwm-cli -- genesis-build --wallet ./tmp/demo-wallet.yaml --out ./tmp/demo-genesis.json --premine-bal 21000000000000000 --genesis-passphrase demo-pass",
+    "api_smoke_status": "Invoke-RestMethod http://127.0.0.1:3030/v1/status",
+    "api_smoke_head": "Invoke-RestMethod http://127.0.0.1:3030/v1/head",
+    "api_smoke_accounts": "Invoke-RestMethod http://127.0.0.1:3030/v1/accounts"
+  },
+  "risks": [
+    "21B premine in demo genesis could be confused with production if not clearly marked",
+    "Fixed wallet seed for reproducibility may expose demo keys if published",
+    "Current CY scripts fail hard without tmp/genesis-custom.json - need graceful fallback"
+  ]
+}

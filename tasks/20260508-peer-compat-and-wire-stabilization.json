@@ -1,8 +1,10 @@
 {
   "id": "20260508-peer-compat-and-wire-stabilization",
   "title": "Peer compatibility matrix hardening and wire stabilization",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-05-08",
+  "resolution": "done_superseded_residual_wave_gate",
+  "resolved_at": "2026-05-16",
   "commits": [
     "be89b30",
     "5dbdc49",

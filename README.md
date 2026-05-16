@@ -6,7 +6,20 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ![pwm-tui operator UI (demo)](tui-demo-screenshot.png)
 
-**What works today (MVP-shaped):**
+## Current status (MVP v3 foundation closed)
+
+- **MVP v3 foundation for public devnet is closed** (Sprints V3-1..V3-4).
+- **Clean public devnet quickstart exists**: from a clean clone, a deterministic demo genesis path is documented and verified (premine target `21,000,000,000 PWM` = `21_000_000_000_000_000 raw`).
+- **Public API freeze skeleton is documented** in `docs/api-v1.md` for `/v1/*` baseline.
+- **Epoch Snapshot schema + replay gate are in place** as the V3 trust baseline for state reload/replay behavior.
+- **ADR package is published** in `docs/adr/` for foundation architecture boundaries.
+- **Runtime log-control RPC is operator/debug-only** and explicitly outside the stable public API contract.
+
+**What works today (post-V3 foundation):**
+
+- **Integrated public-devnet smoke is covered for read API endpoints:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
+- **`POST /v1/tx` remains in the `/v1` API skeleton**, but was not part of the V3-4 integrated public smoke closeout (follow-up smoke can be added separately).
+- **Operator runtime log-control endpoints** (`/v1/operator/log/override`) are available as an operator/debug surface, not as stable public client API.
 
 - **Two spec-level geo-shards** as two `pwmd` processes with different `domain_hi` (e.g. `0x10` / `0x20`), separate `--state-root`, and a **tested** happy path for peering over **real transport** with reciprocal `--transport-peer-seed` peers.
 - **Same-shard** transfers and usual account lifecycle (`INIT`, `TRANSFER`, staking hooks) via RPC and CLI/TUI.
@@ -82,6 +95,11 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 ## Key docs
 
 - README (Russian): [README-ru.md](README-ru.md)
+- MVP v3 foundation plan: `docs/plans/mvp_v3.md`
+- API freeze skeleton (`/v1/*`): `docs/api-v1.md`
+- Public devnet quickstart: `docs/runbooks/demo-devnet-quickstart.md`
+- ADR package index: `docs/adr/README.md`
+- Runtime log-control RPC (operator/debug): `docs/rfc/17-runtime-log-control-rpc.md`
 - Draft whitepaper: `DRAFT_WHITEPAPER.md`
 - Whitepaper (RU): `DRAFT_WHITEPAPER-ru.md`
 - Matrixchain (term vs v0 code): `docs/MATRIXCHAIN_SPEC_v0.md`
@@ -94,8 +112,6 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 - Node storage and snapshot modes: `docs/guide-node-storage-and-snapshot.md`
 - ClickHouse snapshot runbook: `docs/runbook-store-snapshots.md`
 - CLI/TUI two-shard and cross-shard scenarios: `docs/tester-guide-cli-tui-scenarios.md`
-- V2 roadmap and sprint plan: `docs/plans/mvp_v2.md`
-- MVP v2 public-docs readiness review: `docs/reviews/20260515-mvp-v2-public-docs-readiness.md`
 - Domain clusters dictionary: `docs/DOMAINS.md`
 - Phase 1 checklist: `docs/PHASE1_CHECKLIST.md`
 - Phase 1 release summary: `docs/PHASE1_RELEASE_SUMMARY.md`

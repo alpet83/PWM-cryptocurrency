@@ -16,8 +16,8 @@
 # Lease backend in this lab is process-local to avoid stale shared file-lease CAS conflicts across
 # repeated local runs. This is lab-only and assumes single active sealer + non-sealing attester.
 
-$script:CyGenesis = Join-Path $PSScriptRoot 'tmp\genesis-custom.json'
-$script:CyGenesisPass = '12345'
+$script:CyGenesis = if ($env:PWM_DEMO_GENESIS_PATH) { $env:PWM_DEMO_GENESIS_PATH } else { Join-Path $PSScriptRoot 'tmp\genesis-custom.json' }
+$script:CyGenesisPass = if ($env:PWM_DEMO_GENESIS_PASSPHRASE) { $env:PWM_DEMO_GENESIS_PASSPHRASE } else { '12345' }
 $script:CyNetwork = 'testnet-qa'
 $script:CyDomainHi = '0x2C'
 $script:CyClusterLabel = 'test-cluster-CY'

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "20260516-domain-cluster-allocation-policy",
+  "title": "Domain cluster allocation policy note",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/CONCEPT_ROADMAP.md domain lease/governance section",
+    "docs/DOMAINS.md sector/reserve domain model"
+  ],
+  "brief": "Clarify strategic domain-cluster allocation for corporate/sector shards: the initial one-sector-one-cluster index is not enough to reflect real demand, especially in IT. Document a reserved multi-cluster IT allocation direction and the tradeoff around 255 rentable domain_lo slots per base cluster, without changing runtime domain_index.rs in this slice.",
+  "delegations": [
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Document owner decision in CONCEPT_ROADMAP and DOMAINS; no code/runtime change.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/CONCEPT_ROADMAP.md",
+        "docs/DOMAINS.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 2500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-16"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review domain-cluster allocation policy note for consistency with domain_hi/domain_lo model and V4/V5 backlog boundaries.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260516-domain-cluster-allocation-policy-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 5500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-16"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260516-domain-cluster-allocation-policy-review.md"
+  },
+  "notes": "Owner noted that corporate domain clusters were originally planned by industry count, which likely under-represents real demand for IT. This slice documents a strategic reserve policy: allocate part of reserved corporate/sector clusters, possibly around 16, to IT subclusters, each with up to 255 rentable domain_lo values after service/reserved slots. Runtime domain index changes are deferred.\n\npwm-review (2026-05-16): PASS_WITH_NITS. Docs align domain_hi=cluster/shard identity and domain_lo=selector/rentable namespace; sector table stays runtime SoT until ADR; explicit deferral of domain_index.rs. Nit about clarifying \"up to 255\" was auto-closed in docs."
+}

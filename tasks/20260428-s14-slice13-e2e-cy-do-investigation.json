@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260428-s14-slice13-e2e-cy-do-investigation",
   "title": "Sprint 14 Slice 13: E2E CY->DO transfer investigation",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": ["Sprint 14 / Slice 13"],
   "brief": "Проверить полный цикл CY->DO перевода на поднятых нодах и фактические state transitions.",
   "delegations": [
@@ -10,5 +10,7 @@
   ],
   "commits": [],
   "artifacts": {"testing_md": null},
-  "notes": "User reports transfer/history/state persistence anomalies."
+  "resolution": "stale_superseded",
+  "resolved_at": "2026-05-16",
+  "notes": "User reports transfer/history/state persistence anomalies. Backlog triage 2026-05-16: broad old CY->DO investigation was superseded by S15/V2-8/V2-9 and V3 public devnet smoke. Reopen only as fresh current-code E2E if reproduced."
 }

@@ -4,13 +4,34 @@
 
 1. Поднять ClickHouse (например `tools/docker/pwmd-clickhouse-compose.yaml` в репозитории, если используется в проекте).
 2. Подставить плейсхолдер `{database}` в `tools/docker/sql/clickhouse_pwm_snapshots.sql` (или применить шаблон, принятый в вашем compose) и выполнить SQL в кластере.
-3. Убедиться, что для физического кластера и домена создаются таблицы `blocks__0xHH`, `checkpoints__0xHH`, `validators_accept__0xHH` с `row_key` в `ORDER BY` (см. `docs/reviews/sprint-15-slice-7-plan.md` §3).
+3. Убедиться, что для физического кластера и домена создаются таблицы `blocks__0xHH`, `checkpoints__0xHH`, `validators_accept__0xHH` с `row_key` в `ORDER BY` (см. `docs/reviews/sprint-15-slice-7-plan.md`, раздел 3).
 
 ## Row key и идентичность цепочки
 
 - Логический ключ строки: `row_key` = `pwmd_snap_row_key` (по умолчанию `network_id|0x{domain_hi}|{hex(genesis state0 digest)}`, либо override `--snapshot-store-key` / `PWM_SNAPSHOT_STORE_KEY`).
 - Несколько нод в одной БД допустимы, если `row_key` различается; коллизия по одному ключу перезатрёт «чужой» снимок при той же физической таблице.
 - Семантика загрузки различается: JsonFile по умолчанию доверяет summary+manifest и грузит tail, а ClickHouse сейчас остаётся full-replay backend; подробнее см. `guide-node-storage-and-snapshot.md`.
+
+## Epoch manifest schema (JsonFile)
+
+- `epochs/pwm-epochs-manifest.json` использует отдельный `schema_v` контракт для Epoch Snapshot.
+- Текущий runtime принимает только `schema_v = 1`; unsupported versions отклоняются явной ошибкой `unsupported epoch manifest schema ...`.
+- Это не связано с genesis schema (`schema_version`) и snapshot wire version (`version` в `pwm-data.json`).
+- В этом слайсе не добавляется runtime-семантика Bootstrap Snapshot / pruning / cleanup-chain.
+
+## Focused replay gate (V3)
+
+Минимальная команда для local/CI проверки replay determinism:
+
+```bash
+cargo test -p pwmd --lib v3_replay_det_gate_ok
+```
+
+Дополнительно для явной проверки schema-compat пути можно запускать:
+
+```bash
+cargo test -p pwmd --lib epoch_man_v
+```
 
 ## Снижение доступности ClickHouse
 

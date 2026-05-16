@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "id": "20260516-pwmd-runtime-log-control-rpc",
+  "title": "pwmd operator RPC: runtime log verbosity and focus control",
+  "status": "done",
+  "mvp_checklist": [
+    "post-V3 operator/debug API follow-up",
+    "docs/api-v1.md operator endpoints outside stable public contract"
+  ],
+  "brief": "Add an authorized operator/debug RPC surface for changing pwmd log verbosity and focus at runtime, so operators can temporarily increase detail around a target subsystem without generating megabytes of always-on debug logs. Start with a short specification, then implement through the normal pwm-coding -> pwm-testing -> pwm-review conveyor.",
+  "requirements": [
+    "Operator/debug endpoint, not public stable API.",
+    "Must be authorization-gated or loopback/dev-mode gated; no unauthenticated remote verbosity control.",
+    "Must support scoped focus filters such as transport:peers, sync:live, seal:loop, snapshot, api.",
+    "Must support TTL/auto-expire to restore baseline logging.",
+    "Must audit-log changes and restoration.",
+    "Must avoid changing consensus or wire semantics."
+  ],
+  "slices": [
+    {
+      "id": "slice-0-info-map",
+      "title": "Map current pwmd API and logging architecture",
+      "scope": [
+        "crates/pwmd/src/api/**",
+        "crates/pwmd/src/logging*",
+        "crates/pwmd/src/config.rs",
+        "docs/pwmd.md",
+        "docs/api-v1.md"
+      ],
+      "acceptance": [
+        "pwm-info identifies router entry points, logging filter setup, file/peer log sinks, and safe place for runtime control state.",
+        "The map calls out what can be done without restarting tracing subscriber and what requires reloadable filter support."
+      ]
+    },
+    {
+      "id": "slice-1-spec",
+      "title": "Operator RPC specification",
+      "scope": [
+        "docs/rfc/17-runtime-log-control-rpc.md",
+        "docs/api-v1.md",
+        "docs/pwmd.md"
+      ],
+      "acceptance": [
+        "Spec defines endpoints, auth/gating, request/response payloads, TTL, focus names, and audit events.",
+        "Spec explicitly keeps the endpoints outside public stable /v1 contract.",
+        "Spec defines a minimal implementation profile for the first coding slice."
+      ]
+    },
+    {
+      "id": "slice-2-implementation",
+      "title": "Runtime log control implementation",
+      "scope": [
+        "crates/pwmd/src/**",
+        "docs/**"
+      ],
+      "acceptance": [
+        "Operator can set temporary runtime log level/focus and inspect/reset current override.",
+        "Unauthorized/non-loopback access is rejected according to the spec.",
+        "TTL restore path is tested.",
+        "Audit events are logged."
+      ]
+    },
+    {
+      "id": "slice-3-testing-review",
+      "title": "Tests and independent review",
+      "scope": [
+        "targeted pwmd tests",
+        "docs/reviews/*"
+      ],
+      "acceptance": [
+        "pwm-testing passes focused tests and documents any manual smoke.",
+        "pwm-review reports PASS or PASS_WITH_NITS."
+      ]
+    }
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "Map current pwmd API routing and logging/tracing architecture for runtime verbosity/focus control.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260516-pwmd-runtime-log-control-rpc-info.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 8000,
+        "output": 3000,
+        "total": 11000,
+        "confidence": "high"
+      },
+      "done_at": "2026-05-16T11:05:00Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Draft runtime log control RPC spec, then implement authorized operator endpoints and tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/api/handlers_operator_log.rs",
+        "crates/pwmd/src/api/router.rs",
+        "crates/pwmd/src/api/mod.rs",
+        "crates/pwmd/src/logging.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/tests/http_operator_log.rs",
+        "docs/api-v1.md",
+        "docs/pwmd.md",
+        "issues-report.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 32000,
+        "output": 8500,
+        "total": 40500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T11:14:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate runtime log control RPC auth/gating, TTL restore, focus behavior, docs, and targeted pwmd tests.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260516-pwmd-runtime-log-control-rpc.json",
+        "crates/pwmd/src/tests/http_operator_log.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9000,
+        "output": 3200,
+        "total": 12200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T15:25:00Z",
+      "notes": "Re-verify after pwm-coding nit-fix (Windows, CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency): preflight_target_debug.ps1 OK; cargo fmt --check OK; check_entity_name_segments http_operator_log.rs clean; cargo test -p pwmd op_log_ 8/8 PASS; cargo check -p pwmd --lib OK."
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Auto-close mechanical nits from pwm-testing: stabilize TTL test, add wrong-bearer test, and add light real TCP smoke.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/tests/http_operator_log.rs",
+        "tasks/20260516-pwmd-runtime-log-control-rpc.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9000,
+        "output": 3000,
+        "total": 12000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T11:20:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of runtime log control RPC security, scope, tests, and operator docs.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/runtime-log-control-rpc-review-20260516.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 3200,
+        "total": 15200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T16:30:00Z",
+      "notes": "Verdict: APPROVE_WITH_NITS — security/auth/focus/TTL/sink routing consistent with RFC 17 and docs; no high-severity issues. Nits: optional constant-time bearer compare; optional audit line includes operator reason; ops doc on reverse proxy vs loopback trust; CORS DELETE acceptable with bearer-only remote control. GLOSSARY unchanged (not sprint-final). Orchestrator may close ticket after merge/traceability."
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "info_json": "tasks/20260516-pwmd-runtime-log-control-rpc-info.json",
+    "spec_md": "docs/rfc/17-runtime-log-control-rpc.md",
+    "review_md": "docs/reviews/runtime-log-control-rpc-review-20260516.md"
+  },
+  "notes": "Created after MVP V3 closeout. Owner requested a specification and implementation slice for authorized pwmd RPC endpoints that dynamically control logging verbosity/focus during runtime. pwm-info confirmed current logging is static EnvFilter with no reload support, API state is App via axum router, current auth pattern is dev_profile only, and recommended profile is tracing_subscriber reload layer plus loopback-or-Bearer operator endpoints. Orchestrator drafted docs/rfc/17-runtime-log-control-rpc.md and linked it from docs/api-v1.md and docs/pwmd.md. pwm-coding implemented reloadable runtime filter control, operator GET/POST/DELETE endpoints with loopback-or-token auth gate (`PWM_ADMIN_TOKEN`), strict payload validation, TTL auto-restore, `pwmd::operator` audit events, and focused HTTP tests for set/get/delete, invalid focus/ttl, remote rejection, token auth, and TTL expiry restore. pwm-testing gate (Windows, isolated CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency): `cargo fmt --check`, `check_entity_name_segments.py` on touched pwmd Rust files (clean), `cargo check -p pwmd --lib`, `cargo test -p pwmd op_log_` — initial 6/6 PASS (pre-extra tests). Docs cross-check: operator class outside §2 freeze OK; PWM_ADMIN_TOKEN + loopback wording matches lifecycle.rs + handlers_operator_log.rs; TTL 1..=3600 + focus names match RFC table; docs use placeholder Bearer form (no leaked secrets). Nit follow-up by pwm-coding: replaced fixed sleep in `op_log_ttl_restore` with bounded polling loop, added explicit `remote + token configured + wrong Bearer` test (expects 403 and verifies override unchanged), and added lightweight real TCP smoke test for operator log endpoint over loopback socket. pwm-testing re-verify post-nit-fix: same gate commands; `op_log_` 8/8 PASS. Residual: no dedicated long-lived external process smoke; TCP smoke covers live listener + raw HTTP on loopback. pwm-review: independent report in artifacts.review_md; APPROVE_WITH_NITS (see delegations[pwm-review].notes). Orchestrator closeout: accepted low-priority owner-decision nits as follow-up (constant-time bearer compare, audit reason, reverse-proxy ops note); ticket status set to done."
+}

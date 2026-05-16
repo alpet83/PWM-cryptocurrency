@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260429-s14-slice23-recipient-init-gate",
   "title": "Sprint 14 Slice 23: recipient init gate",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Запретить пользовательские transfer/import зачисления на missing/init=false recipient; добавить CLI/TUI preflight и явную ошибку вместо stub-credit.",
   "delegations": [
     {
@@ -26,5 +26,7 @@
     "testing_md": null,
     "review_md": null
   },
-  "notes": "User chose strict blocking over stub-credit: recipient must be initialized before funds can be sent/imported."
+  "resolution": "completed_status_stale",
+  "resolved_at": "2026-05-16",
+  "notes": "User chose strict blocking over stub-credit: recipient must be initialized before funds can be sent/imported. Backlog triage 2026-05-16: current State::require_recipient rejects missing/uninitialized recipients and tests cover no-mutation transfer/import cases; close stale status."
 }

@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "id": "20260516-v3-sprint3-demo-genesis-devnet",
+  "title": "MVP V3 Sprint 3: demo genesis package and public devnet runbook",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v3.md Sprint V3-3",
+    "docs/CONCEPT_ROADMAP.md MVP V3 tasks: Demo genesis package, public devnet runbook"
+  ],
+  "brief": "Build the MVP V3 public-devnet demo package: reproducible demo genesis, validator set/topology, runbook and API smoke. The demo genesis must align with the Whitepaper-level premine target of 21 billion PWM, with raw-unit scale documented and verified. The package should let an external tester start a clean local devnet without manually crafting tmp/genesis-custom.json or reading source code.",
+  "requirements": [
+    "Demo genesis premine target: 21,000,000,000 PWM at the code's canonical raw scale.",
+    "Document exact raw-unit conversion and where the premine is allocated.",
+    "Keep this as public devnet/demo material, not production security posture.",
+    "Do not change consensus/economic policy outside what is required to generate and verify the demo genesis package."
+  ],
+  "slices": [
+    {
+      "id": "slice-0-info-map",
+      "title": "Map genesis builder, devnet scripts, runbooks, and API smoke",
+      "scope": [
+        "crates/pwm-cli/src/cmd_genesis.rs",
+        "crates/pwmd/src/snapshot/genesis.rs",
+        "docs/GENESIS_BLOCK.md",
+        "docs/rfc/5-genesis-and-bootstrap.md",
+        "docs/tester-guide-devnet-smoke.md",
+        "cy-cluster-*.ps1",
+        "scripts/*devnet*",
+        "docs/api-v1.md"
+      ],
+      "acceptance": [
+        "pwm-info produces a reusable map of how to generate/load genesis and run current devnet/CY lab.",
+        "The map identifies canonical PWM raw scale and how to express 21B PWM in genesis.",
+        "The map calls out current manual tmp/genesis-custom.json assumptions."
+      ]
+    },
+    {
+      "id": "slice-1-demo-topology-freeze",
+      "title": "Freeze demo topology and premine allocation",
+      "scope": [
+        "docs/runbooks/*",
+        "docs/GENESIS_BLOCK.md",
+        "docs/plans/mvp_v3.md"
+      ],
+      "acceptance": [
+        "Node roles, ports, domains, state roots, and validator identities are specified.",
+        "Premine allocation sums to 21B PWM at raw scale.",
+        "Runbook states demo/devnet assumptions and non-production posture."
+      ]
+    },
+    {
+      "id": "slice-2-package-script-runbook",
+      "title": "Create reproducible demo genesis package/runbook path",
+      "scope": [
+        "scripts/*",
+        "docs/runbooks/*",
+        "docs/tester-guide-devnet-smoke.md"
+      ],
+      "acceptance": [
+        "External tester has a one-command or near-one-command path to generate/use demo genesis.",
+        "No hidden dependency on pre-existing tmp/genesis-custom.json remains in the primary demo path.",
+        "The generated/packaged genesis can be checked for 21B PWM premine."
+      ]
+    },
+    {
+      "id": "slice-3-public-devnet-smoke",
+      "title": "API smoke linked from docs/api-v1.md",
+      "scope": [
+        "docs/api-v1.md",
+        "docs/runbooks/*",
+        "scripts/*"
+      ],
+      "acceptance": [
+        "Runbook includes /v1/status and minimal account/head smoke.",
+        "The smoke references docs/api-v1.md without duplicating unstable wire details.",
+        "Testing can run the smoke on clean state roots."
+      ]
+    },
+    {
+      "id": "slice-4-review",
+      "title": "Independent review of Sprint V3-3",
+      "scope": [
+        "demo genesis package/runbook diff",
+        "docs/plans/mvp_v3.md",
+        "tasks/20260516-v3-sprint3-demo-genesis-devnet.json"
+      ],
+      "acceptance": [
+        "pwm-review reports PASS or PASS_WITH_NITS.",
+        "Any mechanical PASS_WITH_NITS items are auto-closed by the orchestrator conveyor."
+      ]
+    }
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "Map current genesis builder/load paths, demo/CY scripts, runbooks, API smoke, raw scale, and 21B PWM premine representation.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260516-v3-sprint3-demo-genesis-devnet-info.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 8500,
+        "output": 4200,
+        "total": 12700,
+        "confidence": "high"
+      },
+      "done_at": "2026-05-16T10:15:00Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement demo genesis package/runbook path with 21B PWM premine verification and public devnet smoke docs/scripts.",
+      "result": "PASS",
+      "artifacts": [
+        "scripts/demo-genesis-build.ps1",
+        "scripts/demo-genesis-verify.ps1",
+        "scripts/demo-devnet-start.ps1",
+        "cy-cluster-common.ps1",
+        "docs/runbooks/demo-devnet-quickstart.md",
+        "docs/plans/mvp_v3.md",
+        "docs/api-v1.md",
+        "docs/tester-guide-devnet-smoke.md",
+        "tasks/20260516-v3-sprint3-demo-genesis-devnet.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 17000,
+        "output": 4900,
+        "total": 21900,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T10:25:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate generated/packaged demo genesis, 21B premine sum, clean-run public devnet path, and API smoke commands.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "scripts/demo-genesis-build.ps1",
+        "docs/runbooks/demo-devnet-quickstart.md",
+        "tmp/pwm-testing-demo-genesis.json (local smoke artifact; gitignored)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 6200,
+        "output": 2800,
+        "total": 9000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T12:30:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of Sprint V3-3 demo genesis/public devnet package, Whitepaper premine alignment, and runbook reproducibility.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/sprint-v3-3-demo-genesis-devnet-review-20260516.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 14000,
+        "output": 4500,
+        "total": 18500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T14:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "plan_md": "docs/plans/mvp_v3.md",
+    "info_json": "tasks/20260516-v3-sprint3-demo-genesis-devnet-info.json",
+    "runbook_md": "docs/runbooks/demo-devnet-quickstart.md",
+    "demo_genesis_build_script": "scripts/demo-genesis-build.ps1",
+    "demo_genesis_verify_script": "scripts/demo-genesis-verify.ps1",
+    "demo_devnet_start_script": "scripts/demo-devnet-start.ps1",
+    "review_md": "docs/reviews/sprint-v3-3-demo-genesis-devnet-review-20260516.md"
+  },
+  "notes": "Created by orchestrator for MVP V3 Sprint 3. Owner clarified that the real demo genesis block should contain a 21B PWM premine to align with the Whitepaper. pwm-info confirmed PWM_RAW_SCALE=1_000_000 and the 21B PWM premine target is 21_000_000_000_000_000 raw units; current CY scripts depend on tmp/genesis-custom.json as a manual assumption to remove from the primary public-devnet path. pwm-coding implemented near-one-command demo path: demo genesis builder + premine verifier + wrapper launcher and a dedicated quickstart runbook. CY scripts remain backward-compatible; cy-cluster-common now supports env override for genesis path/passphrase while preserving defaults. pwm-testing (2026-05-16): script dry-runs OK; verify fail-fast on missing genesis (exit 1); real build+verify OK with CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency after demo-genesis-build alignment to pwm-cli (plaintext-dev for wallet init without passphrase; default wallet init uses CY brute-force, not derivation-index 0). Full 3-node/API smoke on fresh demo genesis not re-run here (operator CY cluster already running in terminals; Invoke-RestMethod to 127.0.0.1:3030 from test shell failed). pwm-review (2026-05-16): PASS_WITH_NITS; premine math and verifier sound for canonical pwm-cli JSON (bal as string); runbook sufficient for external tester; residual risk = incomplete E2E smoke in testing (owner/Sprint V3-4). Mechanical nits closed: mvp_v3 task decomposition links for V3-2/V3-3; cy-cluster-proposer.ps1 header comment vs PWM_DEMO_GENESIS_PATH. Orchestrator closeout: docs/plans/mvp_v3.md frontmatter v3-sprint-3-demo-genesis-devnet marked completed; ticket status set to done; integrated 3-node/API smoke carried into Sprint V3-4."
+}

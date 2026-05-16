@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "20260516-domain-lo-zero-init-policy-gap",
+  "title": "Document domain_lo zero and V4 corporate INIT policy gap",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/CONCEPT_ROADMAP.md domain lease/governance section",
+    "docs/DOMAINS.md sector/reserve domain model",
+    "docs/rfc/6-policy-engine.md V4 policy hooks",
+    "docs/WHITE_SPEC_v0.md INIT compatibility note"
+  ],
+  "brief": "Clarify that the future corporate-sector domain model reserves domain_lo=0 in each production base cluster for non-rented generic company registration, with company metadata and emergency routing policy carried by a V4 INIT extension. Keep current Phase 1B runtime domain_index.rs unchanged.",
+  "delegations": [
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Document the semantic gap and future V4/V5 boundary without runtime code changes.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/CONCEPT_ROADMAP.md",
+        "docs/DOMAINS.md",
+        "docs/WHITE_SPEC_v0.md",
+        "docs/rfc/6-policy-engine.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-16"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Doc-only review: domain_lo=0 vs rented lo>0, v0/v3 INIT vs V4, no false implication of current domain_index.rs support.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260516-domain-lo-zero-init-policy-gap-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-16T00:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260516-domain-lo-zero-init-policy-gap-review.md"
+  },
+  "notes": "Owner clarified expected semantics: domain_lo=0 in each future corporate-sector cluster is intended for a company that does not rent its own domain namespace and registers through metadata in INIT. V4 INIT extension is also expected to support emergency routing policy. This is currently under-specified in RFCs. pwm-review (2026-05-16): PASS_WITH_NITS — cross-links and DOMAINS explicit non-change of domain_index.rs OK; optional nit about the CONCEPT_ROADMAP lease-principles wording was auto-closed by explicitly splitting domain_lo > 0 rental semantics from domain_lo = 0 root/generic registration."
+}

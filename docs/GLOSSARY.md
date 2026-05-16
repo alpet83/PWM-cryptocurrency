@@ -193,25 +193,77 @@
 
 ---
 
+## MVP V3: foundation и public devnet {#thema-v3-foundation}
+
+Короткие определения для закрытия **MVP V3** (документы и runbook, без прод-обещаний V4/V5). Подробнее: [план V3](plans/mvp_v3.md), [API v1](api-v1.md), [ADR index](adr/README.md).
+
+### Public devnet (публичный devnet) {#term-public-devnet}
+
+- **Простыми словами:** открытый для внешних тестеров сценарий: по инструкции из репозитория поднять несколько узлов и дернуть **публичный** HTTP API, не читая исходники приложения.
+- **Важно:** это **не** обещание production-безопасности; passphrase и демо-ключи в runbook специально публичные и только для локальной лаборатории.
+
+### Demo genesis (демо genesis) {#term-demo-genesis}
+
+- **Простыми словами:** заранее согласованный пакет **genesis** (валидаторы, shard, начальные балансы), который скрипты собирают из репозитория для демо, чтобы все видели одну и ту же стартовую цепочку.
+
+### Premine 21B PWM (21 миллиард, в raw) {#term-premine-21b}
+
+- **Простыми словами:** целевая эмиссия в whitepaper — **21 000 000 000 PWM**; в коде и верификаторе её проверяют в **raw** единицах: **`21_000_000_000_000_000` raw** при масштабе `1 PWM = 1_000_000 raw` (см. runbook и `scripts/demo-genesis-verify.ps1`).
+
+### API freeze (`/v1/*`, public stable) {#term-api-freeze-v1}
+
+- **Простыми словами:** договорённость V3: перечисленные в `docs/api-v1.md` маршруты **`/v1/status`, `/v1/head`, `/v1/accounts`, `/v1/account/:id`, `/v1/tx`** считаются **публичным стабильным контуром** для devnet; ломать их контракт после V3 нужно осознанно (например отдельная версия пути). Операторские и dev-only маршруты в тот же freeze **не** входят.
+
+### Epoch Snapshot (снимок эпох) {#term-epoch-snapshot-v3}
+
+- **Простыми словами:** то, как `pwmd` **сейчас** хранит операционное состояние на диске: сводка `pwm-data.json` плюс каталог `epochs/` с файлами блоков и манифестом `pwm-epochs-manifest.json` (в V3 у манифеста свой **`schema_v`**, не путать с версией genesis или wire-снимка).
+
+### Bootstrap Snapshot {#term-bootstrap-snapshot-v3}
+
+- **Простыми словами:** **будущий** архивный формат «тяжёлого» снимка для долгого хранения и восстановления после pruning; в **V3** он описан в ADR как направление, **без** полной реализации в runtime.
+
+### Cleanup-chain (цепочка архивных обязательств) {#term-cleanup-chain-v3}
+
+- **Простыми словами:** задуманная **линейная цепочка** архивных commitments (каждый новый якорь ссылается на предыдущий), чтобы сопровождать будущую уборку истории; в V3 это **архитектурная рамка** в ADR 0004, не рабочий протокол для всех узлов.
+
+### Replay determinism gate (гейт детерминизма replay) {#term-replay-det-gate-v3}
+
+- **Простыми словами:** короткая команда тестов, которая дважды прогоняет один и тот же **replay** и проверяет, что итог (например state root / tip) **не разъехался** — страховка от скрытой недетерминированности в пути воспроизведения цепочки. В документации для V3 зафиксирована как `cargo test -p pwmd --lib v3_replay_det_gate_ok` (см. [руководство по storage](guide-node-storage-and-snapshot.md)); она **не заменяет** отдельные тесты на формат манифеста на диске.
+
+### ADR (архитектурные решения V3) {#term-adr-v3-package}
+
+- **Простыми словами:** короткие документы «как мы договорились думать дальше»: IPv4 claiming (0002), offchain scaling (0003), cleanup-chain и снимки (0004). Статусы **Draft (V3 foundation)** означают «направление зафиксировано», а не «всё уже реализовано в ноде».
+
+---
+
 ## Алфавитный указатель
 
 ### Латиница (A–Z)
 
 | Термин / токен | Ссылка |
 |----------------|--------|
+| A ADR (V3 foundation package) | [ADR V3](#term-adr-v3-package) |
+| A API freeze `/v1/*` | [API freeze V3](#term-api-freeze-v1) |
 | A attester | [Attester](#term-attester) |
 | A auto-attest (incoming propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
+| B Bootstrap Snapshot (future) | [Bootstrap Snapshot](#term-bootstrap-snapshot-v3) |
 | B `binding_mismatch` | [binding_mismatch](#term-binding-mismatch) |
 | C capability / `PWM_PROTOCOL_VERSION` | [Capability / версия](#term-capability-version) |
+| C cleanup-chain (V3 ADR) | [Cleanup-chain](#term-cleanup-chain-v3) |
 | C ClusterPropose / ClusterAttest (wire) | [Wire](#term-wire), [кластер](#thema-cluster) |
+| D demo genesis | [Demo genesis](#term-demo-genesis) |
+| E Epoch Snapshot (V3) | [Epoch Snapshot V3](#term-epoch-snapshot-v3) |
 | F follower | [Source и follower](#term-source-follower) |
 | G `run_cluster_gate` / gate | [`run_cluster_gate`](#term-run-cluster-gate) |
 | K k-of-n | [k-of-n](#term-k-of-n) |
 | N `node_instance_id`, `--node-instance-id` | [membership](#term-membership) |
+| P premine 21B (raw) | [Premine 21B](#term-premine-21b) |
 | P proposer | [Proposer](#term-proposer) |
+| P public devnet | [Public devnet](#term-public-devnet) |
 | P `process-local` (lease backend) | [Аренда в процессе](#term-process-local-lease) |
 | peer-behind | [Peer-behind](#term-peer-behind) |
 | Q `quorum_pending`, `quorum_timeout` | [quorum_pending](#term-quorum-pending), [quorum_timeout](#term-quorum-timeout) |
+| R replay determinism gate | [Replay gate V3](#term-replay-det-gate-v3) |
 | R `record_cluster_propose_originated` | [зеркало propose](#term-record-cluster-propose-originated) |
 | S `send_cluster_prop` | [send_cluster_prop](#term-send-cluster-prop) |
 | S same-shard, seal, source | [same-shard](#term-same-shard), [seal](#term-seal), [follower](#term-source-follower) |
@@ -225,27 +277,36 @@
 | Термин | Ссылка |
 |--------|--------|
 | Активный набор кворума | [Relay pool vs quorum](#term-relay-pool) |
+| API freeze `/v1/*` (V3) | [API freeze V3](#term-api-freeze-v1) |
+| Архитектурные записи ADR (V3) | [ADR V3](#term-adr-v3-package) |
 | Авто-аттестация (входящий propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
 | Аренда в процессе (lease) | [`process-local`](#term-process-local-lease) |
 | Аттестер | [Attester](#term-attester) |
+| Bootstrap Snapshot (будущий) | [Bootstrap Snapshot](#term-bootstrap-snapshot-v3) |
 | Гейт (кластерный) | [`run_cluster_gate`](#term-run-cluster-gate) |
+| Гейт replay (V3) | [Replay determinism gate](#term-replay-det-gate-v3) |
 | Двухузловой soak | [Двухузловой soak](#term-two-node-soak) |
+| Демо genesis | [Demo genesis](#term-demo-genesis) |
 | Догоняющий узел (follower) | [Source и follower](#term-source-follower) |
 | Зеркало propose | [`record_cluster_propose_originated`](#term-record-cluster-propose-originated) |
+| Cleanup-chain (V3) | [Cleanup-chain](#term-cleanup-chain-v3) |
 | Исходящий ClusterPropose | [`send_cluster_prop`](#term-send-cluster-prop) |
 | Источник (source) | [Source и follower](#term-source-follower) |
 | Клон валидатора | [Validator clone](#term-validator-clone) |
 | Кворум | [k-of-n](#term-k-of-n) |
 | Модель экземпляра (`node_instance_id`) | [membership](#term-membership) |
 | Одна шарда (same-shard) | [same-shard](#term-same-shard) |
+| Premine 21B (эмиссия в raw) | [Premine 21B](#term-premine-21b) |
 | Пир «сзади» | [Peer-behind](#term-peer-behind) |
 | Пропоузер | [Proposer](#term-proposer) |
+| Публичный devnet | [Public devnet](#term-public-devnet) |
 | Разводка / divergence | [`sync_tip_divergence`](#term-sync-tip-divergence) |
 | Реле-пул | [Relay pool](#term-relay-pool) |
 | Сейл | [Seal](#term-seal) |
+| Снимок эпох (Epoch Snapshot, V3) | [Epoch Snapshot V3](#term-epoch-snapshot-v3) |
 | Состав кластера (membership) | [membership](#term-membership) |
 | Транспорт по проводу (wire) | [Wire](#term-wire) |
 
 ---
 
-*Информация согласована с обзорами V2-9 и RFC 16 по состоянию на заметки 2026-05; при изменении протокола сверяйте первоисточник в `docs/rfc/16-validator-clone-attestation.md`.*
+*Информация согласована с обзорами V2-9, RFC 16 и блоком MVP V3 foundation в этом файле по состоянию на 2026-05; при изменении протокола сверяйте первоисточник в `docs/rfc/16-validator-clone-attestation.md`.*

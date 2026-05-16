@@ -2,12 +2,12 @@
   "schema_version": 1,
   "id": "20260429-s15-sprint-kickoff-and-slices",
   "title": "Sprint 15 kickoff: full-slice decomposition and artifacts (+S15-S3.1 TUI step-flow)",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Ритуал старта Sprint 15: checklist, kickoff note, нарезка на полноценные слайсы S15-S0..S15-S7 и фиксация gate-контракта.",
   "slices": [
     { "id": "S15-S0-ARCH-FREEZE", "status": "completed" },
-    { "id": "S15-S1-XSHARD-HARDEN", "status": "in_progress" },
-    { "id": "S15-S2-FOREIGN-BAL-SEM", "status": "pending" },
+    { "id": "S15-S1-XSHARD-HARDEN", "status": "superseded" },
+    { "id": "S15-S2-FOREIGN-BAL-SEM", "status": "superseded" },
     { "id": "S15-S3-GENESIS-GUARD", "status": "completed" },
     { "id": "S15-S3.1-TUI-XSHARD-STEP-FLOW", "status": "completed" },
     { "id": "S15-S3.2-TUI-XSHARD-INTERACTIVE-STEP-FLOW", "status": "completed" },
@@ -51,10 +51,10 @@
     { "id": "S15-O1-WAVE10-TUI-DRAW-REMAINDER", "status": "completed" },
     { "id": "S15-O1-WAVE11-TUI-TESTS-EXTRACT", "status": "completed" },
     { "id": "S15-O1-WAVE12-TEST-SUPPORT-NARROW-PUB", "status": "completed" },
-    { "id": "S15-S4-SNAPSHOT-ABSTRACTION", "status": "pending" },
-    { "id": "S15-S5-CLICKHOUSE-PROTOTYPE", "status": "pending" },
-    { "id": "S15-S6-E2E-BACKEND-CONSISTENCY", "status": "pending" },
-    { "id": "S15-S7-CLOSEOUT", "status": "pending" }
+    { "id": "S15-S4-SNAPSHOT-ABSTRACTION", "status": "superseded" },
+    { "id": "S15-S5-CLICKHOUSE-PROTOTYPE", "status": "deferred" },
+    { "id": "S15-S6-E2E-BACKEND-CONSISTENCY", "status": "superseded" },
+    { "id": "S15-S7-CLOSEOUT", "status": "superseded" }
   ],
   "artifacts": {
     "checklist_md": "docs/reviews/sprint-15-checklist.md",
@@ -62,5 +62,7 @@
     "plan_md": "docs/plans/mvp_v1_testnet_multi-sprint.md",
     "architecture_freeze_md": "docs/reviews/sprint-15-s0-architecture-freeze.md"
   },
-  "notes": "Block-level finding on readiness/genesis/replay => carry-over until remediation."
+  "resolution": "superseded_by_v2_9_v3",
+  "resolved_at": "2026-05-16",
+  "notes": "Block-level finding on readiness/genesis/replay => carry-over until remediation. Backlog triage 2026-05-16: S15 parent tracker is stale; remaining pending snapshot/backend items were superseded or deferred by V2-9/V3 and should be represented by fresh backlog if needed."
 }

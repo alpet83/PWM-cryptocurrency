@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "id": "20260516-v3-sprint1-spec-adr-api",
+  "title": "MVP V3 Sprint 1: spec freeze base — API and ADR",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v3.md Sprint V3-1",
+    "docs/CONCEPT_ROADMAP.md MVP V3 tasks: API freeze /v1/*, ADR IPv4 Claiming, ADR Offchain Scaling, ADR Cleanup-chain"
+  ],
+  "brief": "Start MVP V3 as foundation-only public-devnet work. Sprint V3-1 must create the spec/ADR base: docs/api-v1.md skeleton and endpoint classification, docs/adr index, and three V3 ADR drafts/decisions for IPv4 Claiming Design, Offchain Scaling Model, and Cleanup-chain / Epoch Snapshot vs Bootstrap Snapshot / external anchoring. Done when the artifacts exist, clearly separate V3 foundation scope from V4/V5/V7 implementation, and are ready for testing/review.",
+  "slices": [
+    {
+      "id": "slice-0-api-source-audit",
+      "title": "Audit current API/doc sources",
+      "scope": [
+        "docs/pwmd.md",
+        "docs/rfc/14-claim-burn-api-error-contract.md",
+        "docs/reviews/*api*",
+        "docs/CONCEPT_ROADMAP.md"
+      ],
+      "acceptance": [
+        "Public stable, operator, and dev-only endpoint classes are listed.",
+        "Missing information for docs/api-v1.md is called out without blocking the skeleton."
+      ]
+    },
+    {
+      "id": "slice-1-api-v1-skeleton",
+      "title": "Create docs/api-v1.md skeleton",
+      "scope": [
+        "docs/api-v1.md"
+      ],
+      "acceptance": [
+        "Document explains the V3 API freeze boundary.",
+        "Includes minimal curl/PowerShell examples for public devnet smoke.",
+        "Marks dev/operator endpoints as outside the stable public contract."
+      ]
+    },
+    {
+      "id": "slice-2-adr-package",
+      "title": "Create ADR index and three V3 ADR drafts",
+      "scope": [
+        "docs/adr/README.md",
+        "docs/adr/0002-ipv4-claiming-design.md",
+        "docs/adr/0003-offchain-scaling-model.md",
+        "docs/adr/0004-cleanup-chain-bootstrap-snapshot-and-anchoring.md"
+      ],
+      "acceptance": [
+        "ADR status is explicit.",
+        "Each ADR fixes direction and deferred implementation boundaries.",
+        "ADR content stays consistent with docs/CONCEPT_ROADMAP.md and DRAFT_WHITEPAPER-ru.md."
+      ]
+    },
+    {
+      "id": "slice-3-review",
+      "title": "Independent review of Sprint V3-1 artifacts",
+      "scope": [
+        "docs/api-v1.md",
+        "docs/adr/*.md",
+        "docs/plans/mvp_v3.md"
+      ],
+      "acceptance": [
+        "pwm-review reports PASS or PASS_WITH_NITS.",
+        "Any mechanical nits are auto-closed through the conveyor."
+      ]
+    }
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Create Sprint V3-1 documentation artifacts: docs/api-v1.md skeleton, docs/adr README/index, and three ADR drafts for IPv4 Claiming, Offchain Scaling, and Cleanup-chain / Bootstrap Snapshot / external anchoring. Keep scope foundation-only and do not edit crates/.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/api-v1.md",
+        "docs/adr/README.md",
+        "docs/adr/0002-ipv4-claiming-design.md",
+        "docs/adr/0003-offchain-scaling-model.md",
+        "docs/adr/0004-cleanup-chain-bootstrap-snapshot-and-anchoring.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 16500,
+        "output": 4100,
+        "total": 20600,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T09:15:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate Sprint V3-1 documentation artifacts for link integrity, scope consistency, and public-devnet API smoke usability; run lightweight checks suitable for docs-only changes.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/plans/mvp_v3.md",
+        "docs/api-v1.md",
+        "docs/adr/README.md",
+        "docs/adr/0002-ipv4-claiming-design.md",
+        "docs/adr/0003-offchain-scaling-model.md",
+        "docs/adr/0004-cleanup-chain-bootstrap-snapshot-and-anchoring.md",
+        "tasks/20260516-v3-sprint1-spec-adr-api.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 2500,
+        "total": 14500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T12:00:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of Sprint V3-1 artifacts against docs/plans/mvp_v3.md, docs/CONCEPT_ROADMAP.md, DRAFT_WHITEPAPER-ru.md, and V2 closure constraints.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/sprint-v3-1-spec-adr-api-review-20260516.md",
+        "docs/api-v1.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 4200,
+        "total": 32200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T14:00:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "plan_md": "docs/plans/mvp_v3.md",
+    "api_v1_md": "docs/api-v1.md",
+    "adr_index_md": "docs/adr/README.md",
+    "adr_ipv4_md": "docs/adr/0002-ipv4-claiming-design.md",
+    "adr_offchain_md": "docs/adr/0003-offchain-scaling-model.md",
+    "adr_cleanup_md": "docs/adr/0004-cleanup-chain-bootstrap-snapshot-and-anchoring.md",
+    "review_md": "docs/reviews/sprint-v3-1-spec-adr-api-review-20260516.md"
+  },
+  "notes": "Created by orchestrator when starting MVP V3 Sprint 1. The attached Cursor plan file is intentionally not edited. pwm-coding completed the first documentation handoff and created the API/ADR foundation artifacts. pwm-testing (docs-only leg): PASS_WITH_NITS — JSON-valid ticket; локальные ссылки в проверенных документах не противоречат существующим путям; api-v1 см. отдельную сводку delegations[]. Исправлены устаревшие bullets в docs/plans/mvp_v3.md про отсутствие api-v1.md/ADR (мех.). pwm-review: PASS_WITH_NITS — блокирующих находок нет; foundation-only и развод Epoch/Bootstrap/API-boundary подтверждены; см. docs/reviews/sprint-v3-1-spec-adr-api-review-20260516.md. Механический nit в docs/api-v1.md (пустой блок §3) закрыт одной вводной строкой в review leg. Orchestrator closeout: docs/plans/mvp_v3.md frontmatter v3-sprint-1-spec-adr-api marked completed; ticket status set to done after accepted review gate."
+}

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260422-pwmd-snapshot-canonical-only-and-self-verified",
   "title": "pwmd snapshot canonical-only and self-verified",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": [
     "docs/PHASE1_CHECKLIST.md Sprint 1C / 2",
     "docs/PHASE1_CHECKLIST.md Sprint 1C / 3"
@@ -24,5 +24,11 @@
   "artifacts": {
     "review_md": null
   },
-  "notes": "Основание: пользователь хочет исключить непроверяемые данные в pwm-data.json и оставить только canonical хранение."
+  "resolution": "superseded_concept_carried",
+  "resolved_at": "2026-05-16",
+  "superseded_by": [
+    "tasks/20260516-v3-sprint2-snapshot-replay.json",
+    "docs/adr/0004-cleanup-chain-bootstrap-snapshot-and-anchoring.md"
+  ],
+  "notes": "Основание: пользователь хочет исключить непроверяемые данные в pwm-data.json и оставить только canonical хранение. Backlog triage 2026-05-16: old Phase1 ticket superseded by V3 Epoch Snapshot schema/replay gate; canonical/self-verified concept carried forward to future Bootstrap Snapshot hardening."
 }

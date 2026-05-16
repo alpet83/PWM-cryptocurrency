@@ -5,6 +5,7 @@ mod handlers_account;
 mod handlers_backfill;
 mod handlers_bridge;
 mod handlers_federation;
+mod handlers_operator_log;
 mod handlers_peer;
 mod handlers_roaming;
 mod handlers_shutdown;

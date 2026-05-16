@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260421-phase1b-domain-index-sqlite-plan",
   "title": "Phase 1B: domain_index data source to sqlite3",
-  "status": "in_progress",
+  "status": "open",
   "mvp_checklist": [
     "docs/PHASE1_CHECKLIST.md Sprint 1B / 1"
   ],
@@ -21,5 +21,7 @@
   ],
   "commits": [],
   "artifacts": {},
-  "notes": "Причина: масштабирование списка regulatory/TNC без раздувания domain_index.rs; нужен удобный pipeline пополнения данных."
+  "resolution": "deferred_until_domain_leasing",
+  "resolved_at": "2026-05-16",
+  "notes": "Причина: масштабирование списка regulatory/TNC без раздувания domain_index.rs; нужен удобный pipeline пополнения данных. Backlog triage 2026-05-16: owner noted SQLite is questionable because ClickHouse integration exists and may become the main data source. Do not implement SQLite now; revisit as a neutral domain registry data-source decision near lease/auction implementation."
 }

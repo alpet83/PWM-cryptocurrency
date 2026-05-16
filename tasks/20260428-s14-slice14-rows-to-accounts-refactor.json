@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260428-s14-slice14-rows-to-accounts-refactor",
   "title": "Sprint 14 Slice 14: rows-to-accounts refactor and TUI hint cleanup",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": ["Sprint 14 / Slice 14"],
   "brief": "Переименовать rows в accounts по genesis-схеме и убрать подсказку F7 в TUI.",
   "delegations": [
@@ -12,5 +12,7 @@
   ],
   "commits": [],
   "artifacts": {"coding_md": null, "testing_md": null, "review_md": null},
-  "notes": "Run in parallel with slice13 investigation."
+  "resolution": "completed_status_stale",
+  "resolved_at": "2026-05-16",
+  "notes": "Run in parallel with slice13 investigation. Backlog triage 2026-05-16: current genesis ingestion uses gen_cfg.funding.accounts and V3 demo genesis depends on the new shape; close stale status."
 }

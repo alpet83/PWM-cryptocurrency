@@ -35,6 +35,38 @@ TotalSupply = 21,000,000,000 PWM
 
 ---
 
+## 2.1 Bootstrap Distribution Topology
+
+The demo/devnet profile may mint the full premine into a compact genesis
+allocation. Production claim distribution should not assume that one base
+premine address sends thousands of cross-shard transfers to final recipients.
+
+Preferred direction for future implementation:
+
+```text
+base premine pool
+  -> shard distribution accounts
+    -> shard-local claim payouts
+```
+
+This "fan-out tree" keeps the initial genesis auditable while avoiding a launch
+storm of cross-shard `EXPORT` / `IMPORT` operations. Each shard distribution
+account can be backed by a claim-registry batch root or allocation commitment.
+
+Alternative under consideration:
+
+```text
+fat genesis
+  -> many shard-local pre-funded accounts
+```
+
+This reduces runtime fan-out but makes the genesis block/state larger and
+harder to audit, distribute, replay and commit in future bootstrap snapshots.
+
+Final production choice is deferred to the IPv4 claiming implementation RFC.
+
+---
+
 ## 3. Distribution Pools
 
 ### 3.1 IPv4 Claim Pool (post-v1 extension)

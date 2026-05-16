@@ -8,6 +8,20 @@
 
 Экономический и консенсусный трек **MVP v2** ведётся отдельно в [plans/mvp_v2.md](plans/mvp_v2.md); этот файл остаётся базовым чеклистом v0/v1 testnet и cross-shard MVP.
 
+Foundation-трек **MVP v3** ведётся отдельно в [plans/mvp_v3.md](plans/mvp_v3.md); ниже добавлен короткий traceability-блок, чтобы общий чеклист ссылался на закрытый public-devnet gate.
+
+---
+
+## 0v3. MVP v3 foundation closeout
+
+| Статус | Пункт |
+|--------|--------|
+| [x] | `/v1/*` API freeze skeleton и ADR package: [api-v1.md](api-v1.md), [adr/README.md](adr/README.md), ticket [20260516-v3-sprint1-spec-adr-api.json](../tasks/20260516-v3-sprint1-spec-adr-api.json) |
+| [x] | Epoch Snapshot manifest `schema_v` compatibility contract и replay determinism gate: [guide-node-storage-and-snapshot.md](guide-node-storage-and-snapshot.md), ticket [20260516-v3-sprint2-snapshot-replay.json](../tasks/20260516-v3-sprint2-snapshot-replay.json) |
+| [x] | Demo genesis package с premine 21B PWM и public devnet quickstart: [runbooks/demo-devnet-quickstart.md](runbooks/demo-devnet-quickstart.md), ticket [20260516-v3-sprint3-demo-genesis-devnet.json](../tasks/20260516-v3-sprint3-demo-genesis-devnet.json) |
+| [x] | Integrated V3 public-devnet smoke: clean genesis build/verify, CY 3-node, `/v1/status`, `/v1/head`, `/v1/accounts`, `/v1/account/:id`; финальный review [sprint-v3-4-public-devnet-closeout-review-20260516.md](reviews/sprint-v3-4-public-devnet-closeout-review-20260516.md), ticket [20260516-v3-sprint4-public-devnet-closeout.json](../tasks/20260516-v3-sprint4-public-devnet-closeout.json) |
+| [~] | `POST /v1/tx` остаётся в API freeze skeleton, но не входил в V3-4 integrated smoke; покрыть отдельной smoke-строкой при расширении external integration сценариев. |
+
 ---
 
 ## 1. Спецификация и решения

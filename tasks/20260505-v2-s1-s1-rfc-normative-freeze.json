@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260505-v2-s1-s1-rfc-normative-freeze",
   "title": "Sprint V2-1 Slice 1: RFC normative freeze inputs",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": [
     "§1 Спецификация и решения"
   ],
@@ -66,5 +66,7 @@
     "review_md": "docs/reviews/sprint-v2-1-slice-1-normative-freeze.md",
     "test_matrix_md": "docs/reviews/sprint-v2-1-slice-1-test-matrix.md"
   },
-  "notes": "pwm-review PARTIAL: нормативный черновик sprint-v2-1-slice-1-normative-freeze.md. pwm-testing (этот шаг): добавлена черновая матрица сценариев sprint-v2-1-slice-1-test-matrix.md (positive/negative intents, привязка к Slice A–D и N-PURPOSE/N-MAT/N-FREE), закрывает черновик строк для acceptance критерия §5 п.5 (негативы/reorg/free-limit и др. как намерения). Carry-over по Slice 1: закрыт как входной пакет и продолжен в Slice A; стартовал RFC Slice A с артефактом docs/reviews/sprint-v2-1-slice-a-tx-schema-freeze.md (tx schema freeze для purpose/claim, taxonomy, serialization, backward-compat). Закрыто документами: RFC inputs, normative freeze, test matrix. Остаётся открытым до B/C/D: правило reorg для claim/free-marker, частичный vs полный сброс непрерывности баланса, таксономия ошибок API в финальном API-формате, off-chain hashing guide; перенос в реальные `cargo` тесты — после кодовых слайсов. Статус тикета: in_progress до sign-off владельца/следующих RFC."
+  "resolution": "carried_forward_to_v4_v5_rfc_backlog",
+  "resolved_at": "2026-05-16",
+  "notes": "pwm-review PARTIAL: нормативный черновик sprint-v2-1-slice-1-normative-freeze.md. pwm-testing: добавлена черновая матрица сценариев sprint-v2-1-slice-1-test-matrix.md. Backlog triage 2026-05-16: owner accepted consolidating useful claim/purpose/policy material into future V4/V5 RFC backlog rather than continuing the old V2-1 slice chain."
 }

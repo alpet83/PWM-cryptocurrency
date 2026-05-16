@@ -4,6 +4,7 @@ use crate::config::{LogFileMode, LoggingConfig};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::OnceLock;
 use std::sync::{Arc, Mutex};
 use tracing::field::{Field, Visit};
 use tracing::{debug, error, info, Level, Metadata};
@@ -15,6 +16,122 @@ use tracing_subscriber::fmt::writer::{MakeWriter, MakeWriterExt};
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::reload;
+use tracing_subscriber::Registry;
+
+pub(crate) trait LogFilterCtl: Send + Sync {
+    fn baseline_spec(&self) -> String;
+    fn apply_spec(&self, spec: &str) -> Result<(), String>;
+
+    fn apply_baseline(&self) -> Result<(), String> {
+        self.apply_spec(&self.baseline_spec())
+    }
+}
+
+pub(crate) type LogFilterCtlRef = Arc<dyn LogFilterCtl>;
+
+#[derive(Clone)]
+struct RuntimeLogCtl {
+    baseline: String,
+    reload: reload::Handle<EnvFilter, Registry>,
+}
+
+impl LogFilterCtl for RuntimeLogCtl {
+    fn baseline_spec(&self) -> String {
+        self.baseline.clone()
+    }
+
+    fn apply_spec(&self, spec: &str) -> Result<(), String> {
+        let filter = EnvFilter::try_new(spec)
+            .map_err(|e| format!("invalid runtime log filter {spec:?}: {e}"))?;
+        self.reload
+            .reload(filter)
+            .map_err(|e| format!("runtime log filter reload failed: {e}"))
+    }
+}
+
+static LOG_CTL: OnceLock<LogFilterCtlRef> = OnceLock::new();
+
+pub(crate) fn runtime_log_ctl() -> Option<LogFilterCtlRef> {
+    LOG_CTL.get().cloned()
+}
+
+pub(crate) fn ovr_filter_spec(base: &str, level: &str, focus: &str) -> String {
+    if focus == "all" {
+        return level.to_string();
+    }
+    let mut spec = base.trim().to_string();
+    for target in focus_targets(focus) {
+        if !spec.is_empty() {
+            spec.push(',');
+        }
+        spec.push_str(target);
+        spec.push('=');
+        spec.push_str(level);
+    }
+    if spec.is_empty() {
+        level.to_string()
+    } else {
+        spec
+    }
+}
+
+fn focus_targets(focus: &str) -> &'static [&'static str] {
+    match focus {
+        "transport:peers" => &["pwmd::peer"],
+        "sync:live" => &["pwmd::sync"],
+        "seal:loop" => &["pwmd::lifecycle", "pwmd::lease"],
+        "snapshot" => &["pwmd::snapshot", "pwmd::startup::snapshot"],
+        "api" => &["pwmd::api"],
+        _ => &[],
+    }
+}
+
+fn startup_filter() -> (String, EnvFilter) {
+    let from_env = std::env::var("RUST_LOG")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    if let Some(spec) = from_env {
+        match EnvFilter::try_new(spec.clone()) {
+            Ok(filter) => return (spec, filter),
+            Err(err) => {
+                eprintln!("warning: invalid RUST_LOG={spec:?}; using debug fallback: {err}");
+            }
+        }
+    }
+    ("debug".to_string(), EnvFilter::new("debug"))
+}
+
+#[cfg(test)]
+pub(crate) fn mk_test_log_ctl(base: &str) -> LogFilterCtlRef {
+    Arc::new(TestLogCtl {
+        base: base.to_string(),
+        active: Mutex::new(base.to_string()),
+    })
+}
+
+#[cfg(test)]
+struct TestLogCtl {
+    base: String,
+    active: Mutex<String>,
+}
+
+#[cfg(test)]
+impl LogFilterCtl for TestLogCtl {
+    fn baseline_spec(&self) -> String {
+        self.base.clone()
+    }
+
+    fn apply_spec(&self, spec: &str) -> Result<(), String> {
+        let mut guard = self
+            .active
+            .lock()
+            .map_err(|_| "test log ctl mutex poisoned".to_string())?;
+        *guard = spec.to_string();
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, Default)]
 pub struct NodeLogger;
@@ -314,7 +431,8 @@ pub fn init_logging(
     runtime_node_id: Option<&str>,
 ) -> Result<(), String> {
     cfg.validate()?;
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+    let (baseline, filter) = startup_filter();
+    let (filter, reload_handle) = reload::Layer::new(filter);
     let console_ansi = console_ansi_enabled(cfg, console_is_tty);
     let mk_console = || {
         let out = std::io::stdout
@@ -367,6 +485,10 @@ pub fn init_logging(
         .with(main_file_layer)
         .with(peer_file_layer)
         .init();
+    let _ = LOG_CTL.set(Arc::new(RuntimeLogCtl {
+        baseline,
+        reload: reload_handle,
+    }));
     Ok(())
 }
 

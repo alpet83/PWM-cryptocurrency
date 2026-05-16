@@ -95,6 +95,14 @@ Identity launch rules:
 - если ни одно из explicit-полей не задано — стартует **neutral relay baseline** (отдельный snapshot namespace под listen; shard-enforced guards не активируются);
 - частично заданный набор explicit-полей (например только `cluster_id`) отклоняется на старте.
 
+Runtime log-control operator RPC:
+- post-V3 draft: `docs/rfc/17-runtime-log-control-rpc.md`;
+- endpoints: `GET|POST|DELETE /v1/operator/log/override`;
+- endpoint class: operator/debug, outside the stable public `/v1/*` contract;
+- auth gate: loopback accepted; non-loopback requires `PWM_ADMIN_TOKEN` with `Authorization: Bearer <token>`;
+- payload validation: `level` (`trace|debug|info|warn|error`), `focus` (`transport:peers|sync:live|seal:loop|snapshot|api|all`), `ttl_seconds` (`1..=3600`);
+- required safety: TTL/auto-restore and audit events (`pwmd::operator`) for set/clear/expire/reject.
+
 Storage namespace (domain-first):
 - **explicit** identity: snapshot под `state/domain-hi-0xNN/pwm-data.json` (и рядом `epochs/` при epoch-хранилище);
 - **neutral** relay baseline: `state/neutral/<listen-tag>/pwm-data.json` (`:` → `+` в теге), см. `guide-node-storage-and-snapshot.md`;

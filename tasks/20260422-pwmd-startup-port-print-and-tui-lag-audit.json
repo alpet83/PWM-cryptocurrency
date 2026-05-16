@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260422-pwmd-startup-port-print-and-tui-lag-audit",
   "title": "pwmd startup port print + TUI lag audit handoff",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": [
     "docs/PHASE1_CHECKLIST.md Sprint 1C / 1"
   ],
@@ -23,5 +23,7 @@
   "artifacts": {
     "review_md": null
   },
-  "notes": "Основание: пользователь не видит порт старта pwmd и жалуется на лаги TUI; lag audit собран отдельной делегацией pwm-review."
+  "resolution": "startup_port_done_tui_lag_deferred",
+  "resolved_at": "2026-05-16",
+  "notes": "Основание: пользователь не видит порт старта pwmd и жалуется на лаги TUI; lag audit собран отдельной делегацией pwm-review. Backlog triage 2026-05-16: startup listen URL is now logged/file-logged by pwmd; any TUI lag work should be a fresh focused backlog item."
 }

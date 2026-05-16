@@ -18,6 +18,19 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct LogOvrState {
+    pub(crate) level: String,
+    pub(crate) focus: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reason: Option<String>,
+    pub(crate) set_at_ms: u64,
+    pub(crate) expires_at_ms: u64,
+    pub(crate) auth_mode: String,
+    #[serde(skip)]
+    pub(crate) rev: u64,
+}
+
 #[derive(Clone)]
 pub struct App {
     pub inner: Arc<RwLock<Inner>>,
@@ -64,6 +77,14 @@ pub struct App {
     pub(crate) transport_config: Arc<RwLock<TransportConfig>>,
     /// One-shot sender wired in `run_with`; used by `POST /v1/shutdown` for graceful HTTP stop.
     pub(crate) shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    /// Runtime log filter control handle (reload layer), if logging was initialized with control support.
+    pub(crate) log_ctl: Option<crate::logging::LogFilterCtlRef>,
+    /// Current operator log override state with TTL metadata.
+    pub(crate) log_ovr: Arc<RwLock<Option<LogOvrState>>>,
+    /// Monotonic override revision used to cancel stale TTL tasks.
+    pub(crate) log_ovr_rev: Arc<AtomicU64>,
+    /// Optional operator bearer token used for non-loopback auth gate.
+    pub(crate) op_token: Option<Arc<str>>,
 }
 
 pub struct Inner {

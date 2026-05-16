@@ -1,7 +1,7 @@
 {
   "id": "20260508-v2-slice6-hotfix-tip-hash-divergence",
   "title": "Mini-hotfix: tip_hash divergence on same canonical chain",
-  "status": "blocked",
+  "status": "done",
   "created": "2026-05-08",
   "context": {
     "source": "docs/reviews/20260508-v2-8-slice6-review.md",
@@ -9,6 +9,8 @@
     "goal": "Identify root cause and remove false divergence for same-chain nodes.",
     "closure": "Корневая причина соотнесена с конкурирующими seal при одной validator identity и недетерминизмом заголовка; «починить» без смены модели печати нецелесообразно. Harness усилен диагностикой (коммит 36823f3). Дальнейшая приёмка wave и детерминизм tip — в рамках V2-9 / RFC 16, не продолжение hotfix-only линии. См. docs/plans/mvp_v2.md Sprint V2-8 «Статус и перенос приёмки»."
   },
+  "resolution": "superseded_by_v2_9_rfc16",
+  "resolved_at": "2026-05-16",
   "delegations": [
     {
       "agent": "pwm-review",

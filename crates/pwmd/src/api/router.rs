@@ -12,6 +12,7 @@ use super::handlers_account::{v1_account, v1_accounts};
 use super::handlers_backfill::{v1_cross_shard_backfill, v1_cross_shard_facts};
 use super::handlers_bridge::v1_bridge_federation_reset;
 use super::handlers_federation::v1_federation_shards;
+use super::handlers_operator_log::{v1_log_ovr_del, v1_log_ovr_get, v1_log_ovr_set};
 use super::handlers_peer::{v1_dev_peers, v1_peer_hello};
 use super::handlers_roaming::{
     v1_export_handoff_register, v1_export_readiness, v1_roaming_intent_create,
@@ -29,6 +30,12 @@ pub fn router(app: App, cors: CorsLayer) -> Router {
         .route(
             "/v1/bridge-federation/reset",
             post(v1_bridge_federation_reset),
+        )
+        .route(
+            "/v1/operator/log/override",
+            get(v1_log_ovr_get)
+                .post(v1_log_ovr_set)
+                .delete(v1_log_ovr_del),
         )
         .route("/v1/shutdown", post(v1_shutdown))
         .route("/v1/head", get(v1_head))

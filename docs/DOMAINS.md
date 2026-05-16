@@ -8,7 +8,7 @@
 - `domain_hi = domain_code >> 8` используется для cluster identity и shard-level comparison.
 - `domain_lo`:
   - для `Regulatory` зарезервирован под future-segmentation;
-  - для `Sector` используется как селектор;
+  - для текущего Phase 1B `Sector` используется как селектор;
   - для `Reserve` и `Witness` используется как служебный диапазон.
 
 ## Поддерживаемые категории
@@ -235,6 +235,16 @@
 - Domain-first запуск использует `--domain-hi` / `--domain-cluster` + identity tuple.
 - Запуск без explicit identity использует neutral relay baseline; snapshot по умолчанию под `state/neutral/<listen-tag>/pwm-data.json` (см. `guide-node-storage-and-snapshot.md`).
 - Устаревший CLI `--shard` и пути `state/shard-a|shard-b` в поддерживаемом операторском контракте **не используются**.
+
+## Strategic reserve note (post-V3)
+
+Текущая таблица отражает runtime-индекс, а не финальную production-политику распределения корпоративных доменных кластеров. Запись `0xD015 | ITC | Information Technology` остаётся текущим индексированным IT-сектором, но будущая domain-allocation policy может выделить часть `Reserve` / corporate-sector ranges под несколько IT-подкластеров.
+
+Мотивация: IT-сектор может иметь значительно больший спрос на аренду доменных namespace, чем большинство отраслей. Если оставить один base cluster на весь IT, то до 255 арендуемых `domain_lo` значений после служебных резервов могут стать искусственным бутылочным горлышком и источником governance-конфликтов. Концептуальный ориентир зафиксирован в `docs/CONCEPT_ROADMAP.md`: до 16 резервных base clusters для IT-подсекторов, каждый с собственным набором до 255 арендуемых `domain_lo`.
+
+В будущей corporate-sector модели `domain_lo = 0` внутри каждого production base cluster должен рассматриваться как root/generic registration slot: компания может зарегистрироваться в отраслевом кластере через расширенный `INIT`, не арендуя собственный `domain_lo`. Арендуемые `domain_lo > 0` остаются отдельными namespace с lease/auction lifecycle и полномочиями доменного держателя. Формат metadata в `INIT` и emergency-routing policy относятся к V4/V5 ADR/RFC backlog.
+
+Это **не** меняет текущий `crates/pwm-core/src/domain_index.rs` и не вводит новые runtime-valid codes. Конкретные коды, labels, auction policy и migration path должны быть утверждены отдельным ADR/RFC перед production-аукционами доменов.
 
 ## Источник истины
 

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260430-s15-slice3-12-4-peer-protocol-churn-rootcause-fix",
   "title": "S15-S3.12.4: fix peer protocol churn root cause",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Исправить реальную причину peer-session churn, выявленную S3.12.3 diagnostics: `protocol_error` / `heartbeat_read_failed` после открытия trusted session. Слайс должен идти через delegation conveyor, а не через прямую реализацию оркестратором.",
   "scope": [
     "Разобрать свежие diagnostic logs S3.12.3 и код transport только в зоне peer wire/read/heartbeat/session loop",
@@ -85,5 +85,12 @@
     "review": "docs/reviews/sprint-15-s3-12-4-review.md"
   },
   "commits": [],
-  "notes": "Started after orchestrator prompt refresh for subagent token telemetry. Coding PASS recorded from pwm-coding handoff. Testing FAIL: focused checks pass, but live CY/DO smoke still repeats protocol_error detail=heartbeat_read_failed after successful handshake/session open. Review verdict: request changes; likely reciprocal-session/inbound-close gap, next slice should isolate via peer-only micro-node harness."
+  "resolution": "historical_superseded",
+  "resolved_at": "2026-05-16",
+  "superseded_by": [
+    "tasks/20260430-s15-slice3-12-5-peer-only-micronode-harness.json",
+    "tasks/20260430-s15-slice3-12-6-production-idle-read-fix.json",
+    "tasks/20260513-v2-sprint9-rfc16-cluster-attestation.json"
+  ],
+  "notes": "Started after orchestrator prompt refresh for subagent token telemetry. Coding PASS recorded from pwm-coding handoff. Testing FAIL: focused checks pass, but live CY/DO smoke still repeats protocol_error detail=heartbeat_read_failed after successful handshake/session open. Backlog triage 2026-05-16: owner accepted archiving as historical diagnosis; current peer churn must be opened as fresh pwm-debug against current transport."
 }

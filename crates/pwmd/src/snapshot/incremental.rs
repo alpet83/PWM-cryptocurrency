@@ -4,8 +4,8 @@
 //! disk-bound phase; trimming the in-memory tip is `absorb_blocks_tail` in `lifecycle` (cheap).
 
 use super::epoch::{
-    epoch_file_name, epoch_file_path, epoch_idx, epoch_range, manifest_file_path, mk_manifest,
-    EpochManifest, EpochMeta,
+    ensure_epoch_man_schema, epoch_file_name, epoch_file_path, epoch_idx, epoch_range,
+    manifest_file_path, mk_manifest, EpochManifest, EpochMeta,
 };
 use super::telemetry::SNAP_STARTUP_TARGET;
 use crate::state::Inner;
@@ -156,12 +156,7 @@ pub(crate) fn load_blocks_from_epochs(summary_path: &Path) -> Result<Vec<Block>,
     let raw = fs::read_to_string(&mp).map_err(|e| format!("read epoch manifest: {e}"))?;
     let man: EpochManifest =
         serde_json::from_str(&raw).map_err(|e| format!("parse epoch manifest: {e}"))?;
-    if man.schema_v != 1 {
-        return Err(format!(
-            "unsupported epoch manifest schema {}",
-            man.schema_v
-        ));
-    }
+    ensure_epoch_man_schema(man.schema_v)?;
     let base = summary_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -230,12 +225,7 @@ pub(crate) fn load_cons_blocks_epochs(
     }
     let man = read_epoch_manifest(summary_path)?
         .ok_or_else(|| "epoch consecutive load: missing manifest".to_string())?;
-    if man.schema_v != 1 {
-        return Err(format!(
-            "unsupported epoch manifest schema {}",
-            man.schema_v
-        ));
-    }
+    ensure_epoch_man_schema(man.schema_v)?;
     let base = summary_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -307,12 +297,7 @@ pub(crate) fn load_hash_scan_blocks(
     }
     let man = read_epoch_manifest(summary_path)?
         .ok_or_else(|| "epoch hash scan: missing manifest".to_string())?;
-    if man.schema_v != 1 {
-        return Err(format!(
-            "unsupported epoch manifest schema {}",
-            man.schema_v
-        ));
-    }
+    ensure_epoch_man_schema(man.schema_v)?;
     let mut out = vec![None; hashes.len()];
     let mut need = hashes.len();
     let base = summary_path
@@ -417,12 +402,7 @@ pub(crate) fn load_block_at_height(
     let Some(man) = read_epoch_manifest(summary_path)? else {
         return Ok(None);
     };
-    if man.schema_v != 1 {
-        return Err(format!(
-            "unsupported epoch manifest schema {}",
-            man.schema_v
-        ));
-    }
+    ensure_epoch_man_schema(man.schema_v)?;
     let base = summary_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -458,12 +438,7 @@ pub(crate) fn load_tail_blocks(summary_path: &Path, tail_cap: usize) -> Result<V
     let Some(man) = read_epoch_manifest(summary_path)? else {
         return Err("epoch tail load: missing manifest".into());
     };
-    if man.schema_v != 1 {
-        return Err(format!(
-            "unsupported epoch manifest schema {}",
-            man.schema_v
-        ));
-    }
+    ensure_epoch_man_schema(man.schema_v)?;
     let tip = man.canonical_h;
     if tip == 0 {
         if man.epochs.iter().any(|e| e.last_h > 0) {
@@ -529,6 +504,7 @@ pub(crate) fn load_tail_blocks(summary_path: &Path, tail_cap: usize) -> Result<V
 }
 
 fn write_manifest(summary_path: &Path, man: &EpochManifest) -> Result<(), String> {
+    ensure_epoch_man_schema(man.schema_v)?;
     let p = manifest_file_path(summary_path);
     if let Some(dir) = p.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("manifest mkdir: {e}"))?;
@@ -549,6 +525,7 @@ fn write_manifest(summary_path: &Path, man: &EpochManifest) -> Result<(), String
 mod tests {
     use super::*;
     use crate::bootstrap::app_from_dev_net;
+    use crate::snapshot::epoch::EPOCH_MAN_SCHEMA_CUR;
     use crate::snapshot::epoch::SNAP_CHK_BLK_IV;
     use crate::snapshot::io::{json_file_seal_persist, save_checkpoint_summary};
     use crate::snapshot::{encode_inner_snap_json, load_snapshot};
@@ -734,6 +711,57 @@ mod tests {
         .expect("snap");
         assert_eq!(trust.blocks.len(), pwm_core::TAIL_BLOCK_CAP);
         assert_eq!(trust.blocks.last().expect("tip").hdr.height, N);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn epoch_man_v1_tail_ok() {
+        let sfx = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pwm-epoch-man-v1-{sfx}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let pb = dir.join("pwm-data.json");
+        let app = app_from_dev_net();
+        {
+            let mut g = app.inner.try_write().expect("inner");
+            g.chain.seal(vec![]).expect("seal");
+            append_tip_block(&pb, &g).expect("append");
+            save_checkpoint_summary(&pb, &g).expect("summary");
+        }
+        let got = load_tail_blocks(&pb, 8).expect("v1 accepted");
+        assert_eq!(got.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn epoch_man_v2_tail_err() {
+        let sfx = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pwm-epoch-man-v2-{sfx}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let pb = dir.join("pwm-data.json");
+        let app = app_from_dev_net();
+        {
+            let mut g = app.inner.try_write().expect("inner");
+            g.chain.seal(vec![]).expect("seal");
+            append_tip_block(&pb, &g).expect("append");
+            save_checkpoint_summary(&pb, &g).expect("summary");
+        }
+        let mut man = read_epoch_manifest(&pb)
+            .expect("read manifest")
+            .expect("manifest exists");
+        man.schema_v = EPOCH_MAN_SCHEMA_CUR.saturating_add(1);
+        let mp = manifest_file_path(&pb);
+        let body = serde_json::to_string_pretty(&man).expect("encode manifest");
+        std::fs::write(&mp, body).expect("overwrite manifest");
+        let err = load_tail_blocks(&pb, 8).expect_err("must reject");
+        assert!(err.contains("unsupported epoch manifest schema"), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

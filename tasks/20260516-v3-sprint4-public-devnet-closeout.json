@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "id": "20260516-v3-sprint4-public-devnet-closeout",
+  "title": "MVP V3 Sprint 4: public devnet integrated closeout",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v3.md Sprint V3-4",
+    "docs/CONCEPT_ROADMAP.md MVP V3 readiness criteria: demo genesis runbook, API docs, ADRs, replay gate"
+  ],
+  "brief": "Close MVP V3 foundation by running an integrated public-devnet smoke on the demo genesis package, verifying V3 artifacts end-to-end, and producing the final review gate. This sprint specifically closes the V3-3 residual risk: full 3-node/API smoke on a fresh demo genesis was not run in the previous slice.",
+  "slices": [
+    {
+      "id": "slice-0-integrated-smoke",
+      "title": "Integrated public-devnet smoke",
+      "scope": [
+        "scripts/demo-genesis-build.ps1",
+        "scripts/demo-genesis-verify.ps1",
+        "scripts/demo-devnet-start.ps1",
+        "cy-cluster-*.ps1",
+        "docs/runbooks/demo-devnet-quickstart.md"
+      ],
+      "acceptance": [
+        "Demo genesis generation succeeds on a clean state path.",
+        "Premine verifier confirms 21,000,000,000,000,000 raw.",
+        "At least the documented public API smoke reaches /v1/status, /v1/head, /v1/accounts, and one /v1/account/:id where practical.",
+        "The smoke avoids stale V2 blockchain state and uses isolated test state/log paths."
+      ]
+    },
+    {
+      "id": "slice-1-artifact-consistency",
+      "title": "V3 artifact consistency pass",
+      "scope": [
+        "docs/plans/mvp_v3.md",
+        "docs/api-v1.md",
+        "docs/adr/*.md",
+        "docs/guide-node-storage-and-snapshot.md",
+        "docs/runbooks/demo-devnet-quickstart.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance": [
+        "All V3 sprint artifacts are linked from plan or tickets.",
+        "Backlog items for V4/V5 are explicitly not V3 blockers.",
+        "No docs imply production security posture for the demo devnet."
+      ]
+    },
+    {
+      "id": "slice-2-final-review",
+      "title": "Final V3 review gate",
+      "scope": [
+        "docs/plans/mvp_v3.md",
+        "tasks/20260516-v3-sprint1-spec-adr-api.json",
+        "tasks/20260516-v3-sprint2-snapshot-replay.json",
+        "tasks/20260516-v3-sprint3-demo-genesis-devnet.json",
+        "tasks/20260516-v3-sprint4-public-devnet-closeout.json"
+      ],
+      "acceptance": [
+        "pwm-review reports PASS or PASS_WITH_NITS for final V3 closeout.",
+        "Final review includes sprint-final glossary check per orchestrator rules.",
+        "Any mechanical PASS_WITH_NITS items are auto-closed by the orchestrator conveyor."
+      ]
+    }
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Run integrated public-devnet smoke for V3: clean demo genesis build/verify, isolated test state/logs, and documented /v1 API smoke where practical.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260516-v3-sprint4-public-devnet-smoke.md",
+        "tmp/v3-s4-retest-20260516133147",
+        "docs/runbooks/demo-devnet-quickstart.md",
+        "docs/api-v1.md",
+        "scripts/demo-devnet-start.ps1"
+      ],
+      "tokens": {
+        "source": "handoff_estimate",
+        "input": "~2800",
+        "output": "~4200",
+        "total": "~7000",
+        "confidence": "low"
+      },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Auto-close PASS_WITH_NITS on clean wallet path by making demo-genesis build deterministic for external testers and updating runbook/script parameters.",
+      "result": "PASS",
+      "artifacts": [
+        "scripts/demo-genesis-build.ps1",
+        "scripts/demo-devnet-start.ps1",
+        "docs/runbooks/demo-devnet-quickstart.md"
+      ],
+      "tokens": {
+        "source": "handoff_estimate",
+        "input": "~2600",
+        "output": "~2200",
+        "total": "~4800",
+        "confidence": "low"
+      },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final MVP V3 review gate: verify V3 artifacts, integrated smoke result, backlog separation, and sprint-final glossary/checklist traceability.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/sprint-v3-4-public-devnet-closeout-review-20260516.md",
+        "docs/GLOSSARY.md",
+        "docs/plans/mvp_v3.md",
+        "docs/api-v1.md",
+        "tasks/20260516-v3-sprint4-public-devnet-smoke.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": "~45000",
+        "output": "~9000",
+        "total": "~54000",
+        "confidence": "low"
+      },
+      "done_at": null
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "plan_md": "docs/plans/mvp_v3.md",
+    "smoke_report": "tasks/20260516-v3-sprint4-public-devnet-smoke.md",
+    "review_md": "docs/reviews/sprint-v3-4-public-devnet-closeout-review-20260516.md"
+  },
+  "notes": "Created by orchestrator for MVP V3 Sprint 4. Owner clarified that the previous CY cluster was actually stopped; stale accumulated V2 blockchain files were removed, so integrated public-devnet smoke can proceed on clean state.\n[pwm-testing 20260516] Integrated smoke PASS_WITH_NITS: 3-node CY cluster on fresh genesis at tmp\\\\v3-smoke-s4\\\\genesis-custom.json; premine verify 21_000_000_000_000_000 raw OK; API /v1/status, /head, /accounts(envelope), /account/:id OK; stale tmp\\\\state-cy-* cleared pre-run; cleanup Stop-Process pwmd x3. Nits: default CY wallet init brute-force aborted (no match) before exhaustion—used tmp\\\\pwm-testing-demo-wallet.yaml for reproducibility; corrected /v1/accounts wrapper examples in docs+script echo.\n[pwm-coding 20260516] Closed PASS_WITH_NITS wallet-init issue by switching default demo-genesis wallet creation to deterministic public demo seed/index (`master=...0001`, `m/0/287292`) with bounded brute-force retained as optional fallback (`-UseCountryBruteforce`, `-MaxTry`). Updated `demo-devnet-start.ps1` passthrough/help hints and runbook to document that demo seed/passphrase are dev-only public material. Verified clean path with fresh wallet/output and premine check (21_000_000_000_000_000 raw).\n[pwm-testing 20260516 retest after clean-wallet fix] PASS: `demo-genesis-build.ps1 -ForceRecreateWallet` on fresh dir `tmp/v3-s4-retest-20260516133147` (new YAML+genesis, deterministic demo master/index); embedded verify `Premine verified: 21000000000000000 raw`; `demo-devnet-start.ps1 -SkipBuild -DryRun` echoed correct `PWM_DEMO_GENESIS_PATH` and API hints; 3-node CY smoke reprised with cleared `tmp/state-cy-*`, logs under `tmp/v3-s4-retest-20260516133147/logs`, `/v1/status` ready=true, `/v1/head`, `/v1/accounts` (2 rows), `/v1/account/:id` OK; `CARGO_TARGET_DIR=F:\\\\pwm-test\\\\PWM-cryptocurrency`; preflight target/debug ~226MiB below threshold; cleanup `pwmd` count 0.\n[pwm-review 20260516] Final V3 foundation closeout: PASS_WITH_NITS. Report: docs/reviews/sprint-v3-4-public-devnet-closeout-review-20260516.md. Auto-closed mechanical doc nits: mvp_v3.md sprint-4 task path + frontmatter in_progress; smoke md verdict + retest note; api-v1.md status line; GLOSSARY V3 section + index. Orchestrator closeout: CONCEPT_ROADMAP V3 row/readiness criteria and MVP-checklist V3 traceability block updated; docs/plans/mvp_v3.md frontmatter v3-sprint-4 marked completed; ticket status set to done; POST /v1/tx smoke remains explicit non-blocking follow-up."
+}

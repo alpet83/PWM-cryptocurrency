@@ -118,6 +118,10 @@ pub(crate) fn app_from_chain_boot(
         hello_nonce_ctr: Arc::new(AtomicU64::new(1)),
         transport_config: Arc::new(RwLock::new(TransportConfig::default())),
         shutdown_tx: Arc::new(Mutex::new(None)),
+        log_ctl: crate::logging::runtime_log_ctl(),
+        log_ovr: Arc::new(RwLock::new(None)),
+        log_ovr_rev: Arc::new(AtomicU64::new(0)),
+        op_token: None,
     }
 }
 
@@ -245,6 +249,10 @@ pub fn app_from_genesis_shard(
                 transport_config: Arc::new(RwLock::new(TransportConfig::default())),
                 autosnapshot_backend,
                 shutdown_tx: Arc::new(Mutex::new(None)),
+                log_ctl: crate::logging::runtime_log_ctl(),
+                log_ovr: Arc::new(RwLock::new(None)),
+                log_ovr_rev: Arc::new(AtomicU64::new(0)),
+                op_token: None,
             });
         }
     }
@@ -308,5 +316,9 @@ pub fn app_from_genesis_shard(
         transport_config: Arc::new(RwLock::new(TransportConfig::default())),
         autosnapshot_backend,
         shutdown_tx: Arc::new(Mutex::new(None)),
+        log_ctl: crate::logging::runtime_log_ctl(),
+        log_ovr: Arc::new(RwLock::new(None)),
+        log_ovr_rev: Arc::new(AtomicU64::new(0)),
+        op_token: None,
     })
 }

@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "id": "20260516-v3-sprint2-snapshot-replay",
+  "title": "MVP V3 Sprint 2: Epoch Snapshot schema versioning and replay gate",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v3.md Sprint V3-2",
+    "docs/CONCEPT_ROADMAP.md MVP V3 tasks: State schema versioning, replay determinism CI"
+  ],
+  "brief": "Implement MVP V3 foundation slice for current runtime Epoch Snapshot: make manifest schema versioning explicit, add a migration/compatibility contract for the existing manifest version, and add a lightweight replay determinism gate suitable for local/CI use. Do not implement future Bootstrap Snapshot, cleanup-chain, pruning, or external anchoring runtime semantics in this slice.",
+  "slices": [
+    {
+      "id": "slice-0-info-map",
+      "title": "Map snapshot/genesis/replay entry points",
+      "scope": [
+        "crates/pwmd/src/snapshot/epoch.rs",
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/tests/*snapshot*",
+        "docs/guide-node-storage-and-snapshot.md",
+        "docs/runbook-store-snapshots.md"
+      ],
+      "acceptance": [
+        "pwm-info produces a reusable file map and implementation notes for coding/testing/review.",
+        "The map explicitly separates Epoch Snapshot manifest schema from genesis schema and future Bootstrap Snapshot semantics."
+      ]
+    },
+    {
+      "id": "slice-1-schema-contract",
+      "title": "Explicit Epoch Snapshot manifest schema contract",
+      "scope": [
+        "crates/pwmd/src/snapshot/epoch.rs",
+        "crates/pwmd/src/snapshot/incremental.rs"
+      ],
+      "acceptance": [
+        "Current manifest schema version is named/centralized rather than ad-hoc literal checks.",
+        "Unsupported manifest schema versions fail with an explicit error.",
+        "The implementation does not change current on-disk schema v1 behavior."
+      ]
+    },
+    {
+      "id": "slice-2-migration-and-tests",
+      "title": "Migration/compatibility table and tests",
+      "scope": [
+        "crates/pwmd/src/snapshot/*",
+        "crates/pwmd/src/tests/*snapshot*"
+      ],
+      "acceptance": [
+        "There is a small migration/compatibility entry point for manifest schema v1.",
+        "Tests cover current schema v1 acceptance and unsupported version rejection.",
+        "No future Bootstrap Snapshot/pruning semantics are introduced."
+      ]
+    },
+    {
+      "id": "slice-3-replay-gate",
+      "title": "Replay determinism local/CI gate",
+      "scope": [
+        "crates/pwmd/src/tests/*snapshot*",
+        "scripts/*",
+        "docs/guide-node-storage-and-snapshot.md",
+        "docs/runbook-store-snapshots.md"
+      ],
+      "acceptance": [
+        "A reproducible command or focused test exists for V3 replay determinism.",
+        "Docs name the command and describe what it catches.",
+        "The gate is lightweight enough for focused CI/local use."
+      ]
+    },
+    {
+      "id": "slice-4-review",
+      "title": "Independent review of Sprint V3-2",
+      "scope": [
+        "code diff for snapshot/replay",
+        "docs/plans/mvp_v3.md",
+        "docs/guide-node-storage-and-snapshot.md",
+        "tasks/20260516-v3-sprint2-snapshot-replay.json"
+      ],
+      "acceptance": [
+        "pwm-review reports PASS or PASS_WITH_NITS.",
+        "Any mechanical PASS_WITH_NITS items are auto-closed by the orchestrator conveyor."
+      ]
+    }
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "Map existing Epoch Snapshot manifest, snapshot load/replay, genesis schema, and tests for Sprint V3-2 reuse.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260516-v3-sprint2-snapshot-replay-info.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 8500,
+        "output": 4200,
+        "total": 12700,
+        "confidence": "high"
+      },
+      "done_at": "2026-05-16T09:35:00Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement explicit Epoch Snapshot manifest schema versioning, v1 compatibility/migration entry point, focused tests, and replay determinism gate/docs.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/epoch.rs",
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "docs/guide-node-storage-and-snapshot.md",
+        "docs/runbook-store-snapshots.md",
+        "docs/plans/mvp_v3.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 18000,
+        "output": 5200,
+        "total": 23200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T09:45:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Run focused tests and docs checks for Sprint V3-2 snapshot schema/replay changes.",
+      "result": "PASS",
+      "artifacts": [
+        "cargo fmt --check (repo root)",
+        "python scripts/check_entity_name_segments.py crates/pwmd/src/snapshot/epoch.rs crates/pwmd/src/snapshot/incremental.rs crates/pwmd/src/snapshot/io.rs",
+        "cargo test -p pwmd --lib v3_replay_det_gate_ok",
+        "cargo test -p pwmd --lib epoch_man_v",
+        "cargo check -p pwmd --lib",
+        "CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency (Windows isolated target)",
+        "Docs reviewed: docs/guide-node-storage-and-snapshot.md, docs/runbook-store-snapshots.md — terminology boundaries OK"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9500,
+        "output": 2800,
+        "total": 12300,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T15:00:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of Sprint V3-2 implementation and docs against MVP v3 plan and snapshot terminology boundaries.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/sprint-v3-2-snapshot-replay-review-20260516.md",
+        "docs/guide-node-storage-and-snapshot.md (gate scope clarification, mechanical)",
+        "docs/runbook-store-snapshots.md (paragraph-sign cross-ref, mechanical)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 5200,
+        "total": 33200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-16T18:30:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "plan_md": "docs/plans/mvp_v3.md",
+    "info_json": "tasks/20260516-v3-sprint2-snapshot-replay-info.json",
+    "review_md": "docs/reviews/sprint-v3-2-snapshot-replay-review-20260516.md"
+  },
+  "notes": "Created by orchestrator for MVP V3 Sprint 2. Scope is current Epoch Snapshot schema/replay only; future Bootstrap Snapshot, cleanup-chain, pruning, and external anchoring are deferred by ADR 0004. pwm-info produced tasks/20260516-v3-sprint2-snapshot-replay-info.json: current schema_v is hardcoded as 1 in epoch.rs/incremental.rs/io.rs, genesis schema and snapshot wire versions are separate version streams, and V3 gaps are explicit v1 acceptance/rejection tests plus a focused replay determinism gate. pwm-review (2026-05-16): PASS_WITH_NITS — schema gate centralized (ensure_epoch_man_schema), v1 on-disk behavior preserved for valid manifests, rejection consistent on all reviewed epoch consumers + validate_snapshot_trusted; v3_replay_det_gate_ok is in-memory replay path (docs clarified). Mechanical doc fixes: runbook paragraph-sign ref; guide gate scope note. Orchestrator closeout: plan wording adjusted from migration table to compatibility entry point, docs/plans/mvp_v3.md frontmatter v3-sprint-2 marked completed, ticket status set to done. Optional fail-fast schema check on informational manifest read remains non-blocking polish."
+}

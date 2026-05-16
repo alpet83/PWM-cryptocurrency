@@ -1,8 +1,10 @@
 {
   "id": "20260508-wave-a-hash-parity-followup",
   "title": "Wave A hash parity follow-up (deterministic canonical tip)",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-05-08",
+  "resolution": "superseded_by_v2_9_rfc16",
+  "resolved_at": "2026-05-16",
   "commits": [
     "8d971cb",
     "286e582",

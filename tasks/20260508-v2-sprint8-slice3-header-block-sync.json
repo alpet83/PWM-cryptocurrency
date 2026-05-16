@@ -1,7 +1,7 @@
 {
   "id": "20260508-v2-sprint8-slice3-header-block-sync",
   "title": "V2-8 Slice 3: header-first sync + block fetch/apply",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-05-08",
   "context": {
     "sprint": "V2-8",
@@ -34,8 +34,8 @@
     },
     {
       "agent": "pwm-review",
-      "status": "pending",
-      "summary": "Ранее: PASS_WITH_NITS без pwm-testing артефакта. После появления artifacts.testing_md — подтвердить закрытие slice или обновить nits; учесть docs/reviews/20260508-v2-8-slice3-review.md.",
+      "status": "cancelled",
+      "summary": "Ранее: PASS_WITH_NITS без pwm-testing артефакта. Backlog triage 2026-05-16: owner accepted closing as done_superseded by V2-9/RFC16 without spending fresh review budget.",
       "inputs": [
         "tasks/20260508-v2-sprint8-slice3-header-block-sync.json",
         "docs/reviews/20260508-v2-8-slice3-testing.md",
@@ -64,5 +64,10 @@
     "review_md": "docs/reviews/20260508-v2-8-slice3-review.md",
     "testing_md": "docs/reviews/20260508-v2-8-slice3-testing.md"
   },
-  "notes": "pwm-coding 2026-05-08: baseline slice 3. pwm-testing 2026-05-08: отчёт testing_md; тикет in_progress до подтверждения pwm-review с учётом testing md. Старый pwm-review вердикт см. review_md."
+  "resolution": "done_superseded",
+  "resolved_at": "2026-05-16",
+  "superseded_by": [
+    "tasks/20260513-v2-sprint9-rfc16-cluster-attestation.json"
+  ],
+  "notes": "pwm-coding 2026-05-08: baseline slice 3. pwm-testing 2026-05-08: отчёт testing_md. Backlog triage 2026-05-16: owner accepted closing without spending fresh review budget; later V2-9/RFC16 became the acceptance gate."
 }

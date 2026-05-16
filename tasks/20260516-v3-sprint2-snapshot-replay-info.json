@@ -1,0 +1,223 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-16T09:31:00Z",
+  "title": "MVP V3 Sprint 2: Epoch Snapshot schema versioning and replay gate - Discovery Map",
+  "research_question": "Map existing Epoch Snapshot manifest, schema versioning, genesis schema separation, snapshot load/replay paths, and test coverage to prepare for V3-2 implementation of explicit manifest schema contract and replay determinism gate.",
+  "parent_ticket": "20260516-v3-sprint2-snapshot-replay",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {
+        "pattern": "schema_v|EpochManifest",
+        "paths_glob_optional": "crates/pwmd/src/snapshot/*.rs",
+        "summary": "Found EpochManifest definition in epoch.rs with schema_v field, hardcoded to 1 in mk_manifest()"
+      },
+      {
+        "pattern": "schema_v != 1|unsupported epoch manifest schema",
+        "paths_glob_optional": "crates/pwmd/src/snapshot/*.rs",
+        "summary": "Found 6 locations where schema_v is checked against literal 1"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "crates/pwmd/src/snapshot/epoch.rs",
+      "why": "spec",
+      "note": "EpochManifest struct with schema_v: u32; EPOCH_MANIFEST_FILE='pwm-epochs-manifest.json'; mk_manifest() hardcodes schema_v=1; EPOCH_SPAN=1000"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/incremental.rs",
+      "why": "match",
+      "note": "6 locations check man.schema_v != 1 with 'unsupported epoch manifest schema' error; load_blocks_from_epochs, load_cons_blocks_epochs, load_hash_scan_blocks, load_block_at_height, load_tail_blocks, write_manifest"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/io.rs",
+      "why": "match",
+      "note": "validate_snapshot_trusted() checks man.schema_v != 1 at line 315; full replay validation via validate_snapshot(); SnapshotLoadOpts with verify_chain flag"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/genesis.rs",
+      "why": "spec",
+      "note": "GENESIS_SCHEMA_VERSION=5, GENESIS_SCHEMA_BACKWARD=4; load_genesis_bundle() validates schema_version; SEPARATE from EpochManifest schema"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/types.rs",
+      "why": "spec",
+      "note": "SNAPSHOT_VERSION=2 (snapshot wire format version); SNAPSHOT_V1=1 for legacy; distinct from EpochManifest schema_v"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/mod.rs",
+      "why": "import",
+      "note": "Module re-exports; public API surface for snapshot operations"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/store.rs",
+      "why": "other",
+      "note": "SnapshotBackend enum (JsonFile vs ClickHouse); load paths"
+    },
+    {
+      "path": "crates/pwmd/src/tests/snapshot_roaming.rs",
+      "why": "match",
+      "note": "Existing tests: snapshot_roundtrip_blocks_and_state, snap_rt_xshard_ok, snap_rt_xfer_init_rcv, snap_rt_exp_only_ok, snap_rt_imp_guard_pv, snap_rt_handoff_import_ok, snap_rt_rov_lock_ok, snap_rt_rov_rel_ok, snapshot_rejects_mismatched_genesis, snap_v0_legacy_mig_ok, snap_v1_read_save_v2, snap_v2_bad_num_fail, snap_bad_ctr_nc, snap_ignore_der_nc, snap_reject_prev_hash, snap_bad_hdr, snap_diag_first_bad_height, snap_reject_dup_acct, snap_or_mk_quota, snap_reject_quota_mismatch"
+    },
+    {
+      "path": "crates/pwmd/src/tests/snapshot_backend_replay.rs",
+      "why": "match",
+      "note": "ClickHouse vs JsonFile backend wire equality test; snap_ch_wire_jsonfile_mock"
+    },
+    {
+      "path": "docs/guide-node-storage-and-snapshot.md",
+      "why": "spec",
+      "note": "Operator guide: load modes (trust-default vs full replay), --snapshot-verify-chain flag, manifest/summary relationship"
+    },
+    {
+      "path": "docs/runbook-store-snapshots.md",
+      "why": "spec",
+      "note": "Runbook for snapshot storage; ClickHouse and JsonFile paths"
+    },
+    {
+      "path": "docs/adr/0004-cleanup-chain-bootstrap-snapshot-and-anchoring.md",
+      "why": "spec",
+      "note": "V3 boundary ADR: separates Epoch Snapshot (current runtime) from Bootstrap Snapshot (future pruning/archival); cleanup-chain deferred"
+    },
+    {
+      "path": "docs/plans/mvp_v3.md",
+      "why": "spec",
+      "note": "Sprint V3-2 scope definition: current Epoch Snapshot only, no Bootstrap Snapshot semantics"
+    }
+  ],
+  "digest": "## Epoch Snapshot Manifest Schema (Current State)\n\n### 1. Definition Location\n- `crates/pwmd/src/snapshot/epoch.rs` lines 23-30: `EpochManifest` struct with `schema_v: u32`\n- Line 14: `EPOCH_MANIFEST_FILE = \"pwm-epochs-manifest.json\"`\n- Line 75: `mk_manifest()` hardcodes `schema_v: 1`\n\n### 2. Schema Version Checks (6 locations, all literal `1`)\nAll in `crates/pwmd/src/snapshot/incremental.rs`:\n- Line 159: `load_blocks_from_epochs()` - rejects non-1 schemas\n- Line 233: `load_cons_blocks_epochs()` - rejects non-1 schemas  \n- Line 310: `load_hash_scan_blocks()` - rejects non-1 schemas\n- Line 420: `load_block_at_height()` - rejects non-1 schemas\n- Line 461: `load_tail_blocks()` - rejects non-1 schemas\n- `crates/pwmd/src/snapshot/io.rs` line 315: `validate_snapshot_trusted()` - rejects non-1 schemas\n\n### 3. Snapshot Load/Replay Paths\n**Trust-default (fast) path:**\n- `io.rs:load_snapshot_timed()` -> `validate_snapshot_trusted()`\n- Validates manifest/summary agreement, tail linkage, PoA headers\n- Does NOT replay all historical transactions\n- Triggered when `SnapshotLoadOpts.verify_chain = false`\n\n**Full replay (audit) path:**\n- `io.rs:load_snapshot_timed()` -> `validate_snapshot()`\n- Full genesis-to-tip replay with state root verification\n- Triggered by `--snapshot-verify-chain` or `PWM_SNAPSHOT_VERIFY_CHAIN=1`\n- Automatic fallback when `checkpoint_height != manifest.canonical_h`\n\n### 4. Schema Version Types (MUST BE KEPT SEPARATE)\n| Schema | Location | Purpose | Current Value |\n|--------|----------|---------|---------------|\n| EpochManifest schema_v | epoch.rs | Epoch file manifest versioning | 1 |\n| Genesis schema_version | genesis.rs | Genesis JSON format | 5 (backward 4) |\n| Snapshot wire version | types.rs | Snapshot JSON wire format | 2 (backward 1) |\n\n**Critical:** These are independent versioning streams. Genesis schema is for the genesis JSON file format; EpochManifest schema_v is for the `pwm-epochs-manifest.json` that tracks epoch file boundaries.\n\n### 5. Test Coverage Analysis\n\n**Existing tests (snapshot_roaming.rs):**\n- Roundtrip: state, blocks, roaming, cross-shard, xfers, exports, imports\n- Migration: v0 legacy, v1->v2 wire format\n- Validation: genesis mismatch, bad hex/dec, bad prev_hash, tampered headers\n- Replay diagnostics: first_bad_height, tx_kind, class\n\n**Existing tests (snapshot_backend_replay.rs):**\n- ClickHouse vs JsonFile wire equality (feature-gated)\n\n**GAPS for V3 acceptance:**\n1. No explicit `schema_v` acceptance test (only implicit via manifest read)\n2. No unsupported schema version rejection test (error path)\n3. No dedicated replay determinism gate command/script\n4. No migration/compatibility entry point tests\n\n### 6. Entry Points for Implementation\n\n**Slice 1 (schema contract):**\n- `epoch.rs`: Add constant `EPOCH_MANIFEST_SCHEMA_V: u32 = 1`\n- `epoch.rs`: Add `EPOCH_MANIFEST_SCHEMA_V_MIN/MAX` for compatibility range\n- `incremental.rs`: Replace 6 literal `1` checks with constant\n- `io.rs`: Replace literal check with constant\n\n**Slice 2 (migration/tests):**\n- Add `epoch_manifest_compatible(schema_v) -> bool` helper\n- Add test: `epoch_manifest_v1_accepted()`\n- Add test: `epoch_manifest_unsupported_rejected()`\n- Add test: `epoch_manifest_schema_v2_reserved()` (fails to ensure forward compatibility)\n\n**Slice 3 (replay gate):**\n- Add dedicated test: `replay_determinism_fixture_chain()`\n- Document: `cargo test -p pwmd snapshot_` for local gate\n- Consider: script in `scripts/` for CI replay verification\n\n### 7. Operator Contract Updates\n\n**Files requiring doc updates:**\n- `docs/guide-node-storage-and-snapshot.md`: Add manifest schema section\n- `docs/runbook-store-snapshots.md`: Add schema compatibility note\n\n**No changes needed to:**\n- Genesis schema docs (separate concern per ADR-0004)\n- Bootstrap Snapshot docs (deferred to post-V3)\n\n### 8. Risks and Boundaries\n\n**Risk R1: Schema confusion**\nMitigation: Explicit naming - `EPOCH_MANIFEST_SCHEMA_V` vs `GENESIS_SCHEMA_VERSION`\n\n**Risk R2: Future version ambiguity**\nMitigation: V3 only accepts v1; v2+ explicitly rejected with clear error\n\n**Risk R3: Bootstrap Snapshot bleed**\nMitigation: ADR-0004 explicitly defers cleanup-chain, pruning, Bootstrap Snapshot to post-V3\n",
+  "log_digest": [],
+  "open_questions": [
+    "Should the replay determinism gate be a cargo test or a standalone script that runs pwmd with --snapshot-verify-chain?",
+    "Is there a preferred location for migration/compatibility functions - epoch.rs or incremental.rs?",
+    "Should the schema compatibility check return Result or bool for better error messages?"
+  ],
+  "warnings": [],
+  "participation": {
+    "token_usage": {
+      "source": "pwm-info analysis of 13 source/doc files",
+      "input_tokens": 8500,
+      "output_tokens": 4200,
+      "total_tokens": 12700,
+      "confidence": "high - based on direct file reads, no CQDS needed for local codebase"
+    }
+  },
+  "recommended_slices": {
+    "slice_1_schema_contract": {
+      "files": [
+        "crates/pwmd/src/snapshot/epoch.rs",
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "crates/pwmd/src/snapshot/io.rs"
+      ],
+      "changes": [
+        "Add EPOCH_MANIFEST_SCHEMA_V = 1 constant in epoch.rs",
+        "Add EPOCH_MANIFEST_SCHEMA_V_MAX = 1 for forward compatibility",
+        "Add epoch_manifest_compatible(schema_v) -> Result<(), String> helper",
+        "Replace 6 literal schema_v != 1 checks with helper call"
+      ],
+      "acceptance_criteria": [
+        "All schema version checks use named constants",
+        "Unsupported versions produce explicit error messages",
+        "Current v1 behavior unchanged"
+      ]
+    },
+    "slice_2_migration_tests": {
+      "files": [
+        "crates/pwmd/src/snapshot/epoch.rs",
+        "crates/pwmd/src/tests/snapshot_roaming.rs or new test file"
+      ],
+      "changes": [
+        "Add migration/compatibility entry point",
+        "Add test: epoch_manifest_schema_v1_acceptance",
+        "Add test: epoch_manifest_unsupported_version_rejection",
+        "Add test: epoch_manifest_schema_v2_reserved (ensures forward compat)"
+      ],
+      "acceptance_criteria": [
+        "Tests cover current schema v1 acceptance",
+        "Tests cover unsupported version rejection",
+        "No future Bootstrap Snapshot/pruning semantics introduced"
+      ]
+    },
+    "slice_3_replay_gate": {
+      "files": [
+        "crates/pwmd/src/tests/snapshot_roaming.rs",
+        "scripts/ (optional new script)",
+        "docs/guide-node-storage-and-snapshot.md"
+      ],
+      "changes": [
+        "Add replay_determinism_fixture_chain test using dev_net fixture",
+        "Document replay gate command in operator guide",
+        "Optional: create scripts/replay-gate.sh for CI"
+      ],
+      "acceptance_criteria": [
+        "Reproducible command exists for V3 replay determinism",
+        "Docs name the command and describe what it catches",
+        "Gate is lightweight enough for CI/local use"
+      ]
+    },
+    "slice_4_docs": {
+      "files": [
+        "docs/guide-node-storage-and-snapshot.md",
+        "docs/runbook-store-snapshots.md"
+      ],
+      "changes": [
+        "Add manifest schema versioning section",
+        "Add compatibility/migration note",
+        "Clarify Epoch Snapshot vs Genesis schema vs Bootstrap Snapshot"
+      ],
+      "acceptance_criteria": [
+        "Operator docs reflect schema versioning contract",
+        "No ambiguity between Epoch Snapshot and Bootstrap Snapshot"
+      ]
+    }
+  },
+  "entry_points": {
+    "manifest_definition": "crates/pwmd/src/snapshot/epoch.rs:23-30",
+    "manifest_creation": "crates/pwmd/src/snapshot/epoch.rs:69-81",
+    "manifest_schema_checks": [
+      "crates/pwmd/src/snapshot/incremental.rs:159",
+      "crates/pwmd/src/snapshot/incremental.rs:233",
+      "crates/pwmd/src/snapshot/incremental.rs:310",
+      "crates/pwmd/src/snapshot/incremental.rs:420",
+      "crates/pwmd/src/snapshot/incremental.rs:461",
+      "crates/pwmd/src/snapshot/io.rs:315"
+    ],
+    "full_replay_validation": "crates/pwmd/src/snapshot/io.rs:96-270",
+    "trust_default_validation": "crates/pwmd/src/snapshot/io.rs:273-440",
+    "load_snapshot_main": "crates/pwmd/src/snapshot/io.rs:556-661",
+    "genesis_schema_version": "crates/pwmd/src/snapshot/genesis.rs:136-137"
+  },
+  "test_gaps": [
+    "No explicit EpochManifest schema_v acceptance test",
+    "No unsupported schema version rejection test",
+    "No dedicated replay determinism gate test fixture",
+    "No migration/compatibility helper tests"
+  ],
+  "commands": {
+    "test_all_snapshot": "cargo test -p pwmd snapshot_",
+    "test_snapshot_roaming": "cargo test -p pwmd --test snapshot_roaming",
+    "test_replay_feature": "cargo test -p pwmd snap_replay_uses_blk_ctx",
+    "verify_chain_cli": "pwmd --snapshot-verify-chain",
+    "verify_chain_env": "PWM_SNAPSHOT_VERIFY_CHAIN=1 pwmd"
+  },
+  "risks": [
+    {
+      "risk": "Confusion between EpochManifest schema_v and Genesis schema_version",
+      "mitigation": "Use explicit naming constants; document separation in comments and ADR-0004",
+      "severity": "medium"
+    },
+    {
+      "risk": "Future schema version ambiguity when v2 is introduced",
+      "mitigation": "V3 only accepts v1; v2+ explicitly rejected with clear error until migration path defined",
+      "severity": "low"
+    },
+    {
+      "risk": "Bootstrap Snapshot semantics bleeding into V3",
+      "mitigation": "ADR-0004 explicitly defers cleanup-chain/pruning/Bootstrap Snapshot to post-V3",
+      "severity": "low"
+    }
+  ]
+}

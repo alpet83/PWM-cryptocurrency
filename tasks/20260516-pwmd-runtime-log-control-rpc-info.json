@@ -1,0 +1,208 @@
+{
+  "pwm_info_schema": "1",
+  "id": "20260516-pwmd-runtime-log-control-rpc-info",
+  "title": "Discovery map: pwmd runtime log verbosity/focus control RPC",
+  "created_at": "2026-05-16",
+  "task_ref": "20260516-pwmd-runtime-log-control-rpc",
+  "digest": "Axum router in api/router.rs with CORS layer; logging via static EnvFilter in logging.rs (no reload support); dev_profile gating pattern exists; recommended /v1/operator/log/* endpoints with loopback/admin auth",
+  "files": [
+    "crates/pwmd/src/api/router.rs",
+    "crates/pwmd/src/api/mod.rs",
+    "crates/pwmd/src/api/handlers_peer.rs",
+    "crates/pwmd/src/api/handlers_shutdown.rs",
+    "crates/pwmd/src/api/common.rs",
+    "crates/pwmd/src/logging.rs",
+    "crates/pwmd/src/state.rs",
+    "crates/pwmd/src/config.rs",
+    "crates/pwmd/src/lib.rs",
+    "crates/pwmd/src/lifecycle.rs",
+    "crates/pwmd/src/main.rs",
+    "docs/api-v1.md"
+  ],
+  "api_entry_points": {
+    "router_construction": {
+      "file": "crates/pwmd/src/api/router.rs",
+      "function": "pub fn router(app: App, cors: CorsLayer) -> Router",
+      "pattern": "Axum Router::new() with .route() calls, .layer(cors), .with_state(app)",
+      "state_type": "App (crate::state::App)",
+      "endpoint_structure": "/v1/* endpoints mounted here"
+    },
+    "dev_endpoint_gating": {
+      "file": "crates/pwmd/src/api/handlers_peer.rs",
+      "pattern": "if !a.dev_profile && !transport_enabled { return Err((StatusCode::NOT_FOUND, ...)) }",
+      "note": "dev_profile is derived from network_id.starts_with('dev') in bootstrap.rs"
+    },
+    "cors_setup": {
+      "file": "crates/pwmd/src/lib.rs:97-122",
+      "function": "pub fn cors_for_listen(listen: SocketAddr) -> Result<CorsLayer, String>",
+      "behavior": "Permissive CORS for loopback; PWM_CORS_ORIGINS env required for non-loopback"
+    },
+    "handler_modules": [
+      "handlers_account.rs",
+      "handlers_backfill.rs",
+      "handlers_bridge.rs",
+      "handlers_federation.rs",
+      "handlers_peer.rs",
+      "handlers_roaming.rs",
+      "handlers_shutdown.rs",
+      "handlers_status.rs",
+      "handlers_tx.rs"
+    ]
+  },
+  "logging_entry_points": {
+    "init_function": {
+      "file": "crates/pwmd/src/logging.rs:311-371",
+      "function": "pub fn init_logging(cfg: &LoggingConfig, console_is_tty: bool, runtime_node_id: Option<&str>) -> Result<(), String>",
+      "called_from": "main.rs (binary startup)",
+      "note": "Called once at startup; no runtime reload mechanism currently"
+    },
+    "filter_construction": {
+      "file": "crates/pwmd/src/logging.rs:317",
+      "code": "let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(\"debug\"));",
+      "type": "tracing_subscriber::filter::EnvFilter",
+      "limitation": "Static filter created once at init; no reload support"
+    },
+    "log_targets_observed": [
+      "pwmd::peer - peer transport, handshake, sync messages",
+      "pwmd::sync - sync progress (sync_live.rs)",
+      "pwmd::snapshot - snapshot operations (incremental.rs, store.rs)",
+      "pwmd::node - general node events (tests only)",
+      "default - seal loop, API handlers, other components"
+    ],
+    "sink_architecture": {
+      "console": "stdout (INFO+) + stderr (WARN+); filtered to exclude peer targets",
+      "main_file": "Rotating file sink; filtered to exclude peer targets",
+      "peer_file": "Separate rotating file sink; includes only peer targets"
+    },
+    "peer_target_filter": {
+      "file": "crates/pwmd/src/logging.rs:373-375",
+      "code": "fn is_peer_target(meta: &Metadata<'_>) -> bool { meta.target().starts_with(\"pwmd::peer\") }"
+    }
+  },
+  "current_limitations": {
+    "no_reloadable_filter": "EnvFilter is created once in init_logging() and moved into tracing_subscriber::registry().with(filter). There is no Reloadable layer or handle stored.",
+    "no_runtime_log_state": "App struct (state.rs) has no fields for log verbosity overrides or operator focus settings.",
+    "no_admin_auth_pattern": "No Bearer token, API key, or admin authentication pattern exists. Only dev_profile boolean gating is used.",
+    "static_subscriber": "tracing_subscriber::registry().init() can only be called once; runtime filter changes require Reloadable or reinit (not currently implemented).",
+    "RUST_LOG_only": "Current approach relies on RUST_LOG env var at startup; no runtime API to adjust."
+  },
+  "recommended_spec": {
+    "endpoint_prefix": "/v1/operator/log",
+    "endpoints": [
+      {
+        "method": "POST",
+        "path": "/v1/operator/log/override",
+        "description": "Set temporary runtime log verbosity/focus",
+        "request_body": {
+          "level": "trace|debug|info|warn|error (optional, default: debug)",
+          "focus": "transport|sync|seal|snapshot|api|all (optional, default: all)",
+          "ttl_seconds": "u64 (optional, default: 300, max: 3600)"
+        },
+        "response": "200 OK with current override state, or 401/403 for auth failure"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/operator/log/override",
+        "description": "Get current log override state (if any)"
+      },
+      {
+        "method": "DELETE",
+        "path": "/v1/operator/log/override",
+        "description": "Clear log override and restore baseline immediately"
+      }
+    ],
+    "auth_gating": {
+      "primary": "Require loopback address (listen.ip().is_loopback()) OR",
+      "secondary": "Optional admin token via PWM_ADMIN_TOKEN env var, checked via Authorization: Bearer header",
+      "restriction": "Non-loopback without admin token must reject with 403 Forbidden"
+    },
+    "focus_mapping": {
+      "transport": "target_filter: pwmd::peer=trace",
+      "sync": "target_filter: pwmd::sync=trace",
+      "seal": "module_path filter for seal loop components",
+      "snapshot": "target_filter: pwmd::snapshot=trace",
+      "api": "module_path filter for api::handlers* modules",
+      "all": "global level adjustment"
+    },
+    "audit_requirement": "All override changes (set/clear/expire) must log via info! with target 'pwmd::operator' including remote addr, old level, new level, focus, ttl"
+  },
+  "recommended_implementation": {
+    "tracing_reload": {
+      "approach": "Use tracing_subscriber::reload::Layer with EnvFilter",
+      "code_pattern": "let (filter, reload_handle) = tracing_subscriber::reload::Layer::new(filter); store handle in App",
+      "docs": "https://docs.rs/tracing-subscriber/latest/tracing_subscriber/reload/index.html"
+    },
+    "app_state_extension": {
+      "file": "crates/pwmd/src/state.rs",
+      "add_fields": [
+        "pub(crate) log_override: Arc<RwLock<Option<LogOverrideState>>>",
+        "pub(crate) log_reload_handle: Option<Arc<ReloadHandle<EnvFilter>>>"
+      ],
+      "new_struct": "LogOverrideState { level: String, focus: String, expires_at: Instant, set_by: SocketAddr }"
+    },
+    "ttl_mechanism": {
+      "approach": "Store expiration Instant in LogOverrideState; spawn tokio task that sleeps until expiry then restores baseline",
+      "race_safety": "Use Arc<RwLock> compare-and-swap to ensure only the correct TTL task clears its own override"
+    },
+    "handler_module": {
+      "new_file": "crates/pwmd/src/api/handlers_operator_log.rs",
+      "routes": "Add to router.rs under /v1/operator/log/*",
+      "common_checks": "Extract to api/common.rs: check_operator_auth(app, req_headers, remote_addr) -> Result<(), AuthError>"
+    },
+    "minimal_first_slice": {
+      "scope": "Loopback-only gating, single global level override (no focus yet), 300s TTL with restore",
+      "excludes": "Complex focus filtering, peer log routing changes, persistent override across restarts"
+    }
+  },
+  "test_plan": {
+    "unit_tests": [
+      "EnvFilter reload roundtrip: set trace, verify filter change, restore info",
+      "TTL expiration: set 5s TTL, verify auto-restore fires correctly",
+      "Auth rejection: non-loopback without token gets 403"
+    ],
+    "manual_smoke": [
+      "curl -X POST http://127.0.0.1:3030/v1/operator/log/override -H 'Content-Type: application/json' -d '{\"level\":\"trace\",\"ttl_seconds\":60}'",
+      "curl http://127.0.0.1:3030/v1/operator/log/override",
+      "curl -X DELETE http://127.0.0.1:3030/v1/operator/log/override"
+    ],
+    "integration": [
+      "Verify override applies to subsequent peer sync messages (visible in logs)",
+      "Verify audit log entries appear in main log sink",
+      "Verify TTL restore emits final audit log entry"
+    ]
+  },
+  "risks": {
+    "security": [
+      "Unauthorized remote log control could expose sensitive data or facilitate DoS via log volume",
+      "Mitigation: Loopback-only default + optional admin token; reject non-loopback without auth"
+    ],
+    "log_volume": [
+      "Trace level on busy transports can generate GBs of logs quickly",
+      "Mitigation: Hard TTL cap (3600s max), default 300s, peer logs already separate sink"
+    ],
+    "race_conditions": [
+      "Concurrent override set/reset could leave stale filter state",
+      "Mitigation: Use Arc<RwLock> with explicit compare-and-swap, audit log all transitions"
+    ],
+    "windows_process": [
+      "Windows may have different TTY detection for console color; ensure NO_COLOR is still respected"
+    ],
+    "subscriber_reinit": [
+      "Cannot reinit tracing_subscriber; reload handle is the only safe mutation path",
+      "Mitigation: Use reload::Layer pattern, never call tracing_subscriber::registry().init() twice"
+    ],
+    "consensus_impact": [
+      "Log changes must never alter wire format, handshake semantics, or seal timing",
+      "Mitigation: Keep logging pure side-effect only; verify via code review that no logic branches on log level"
+    ]
+  },
+  "additional_context": {
+    "api_v1_classification": "Operator endpoints are explicitly outside public stable contract per docs/api-v1.md §3.2",
+    "dev_profile_pattern": "Existing pattern in handlers_peer.rs: check a.dev_profile for dev-only endpoints",
+    "related_docs": [
+      "docs/api-v1.md - API contract boundaries",
+      "docs/pwmd.md - (if exists) operator guide",
+      "docs/runbooks/demo-devnet-quickstart.md - test environment setup"
+    ]
+  }
+}

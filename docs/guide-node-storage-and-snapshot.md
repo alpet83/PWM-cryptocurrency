@@ -30,6 +30,15 @@ The epoch layout next to the summary is:
 
 `SNAP_CHK_BLK_IV = 100` controls periodic summary/checkpoint rewrite on the seal path. It is separate from `EPOCH_SPAN`: checkpoints are denser than epoch-file boundaries.
 
+## Epoch manifest schema contract (V3-2)
+
+- `epochs/pwm-epochs-manifest.json` uses its own schema stream (`schema_v`) and is independent from:
+  - genesis bundle `schema_version`;
+  - snapshot wire `version` in `pwm-data.json`.
+- Current runtime contract accepts only `schema_v = 1` (`EPOCH_MAN_SCHEMA_CUR` in code).
+- Any other value is rejected with explicit `unsupported epoch manifest schema ...` error.
+- V3-2 does not introduce Bootstrap Snapshot / cleanup-chain / pruning semantics; those remain deferred.
+
 ## Tail load
 
 At runtime the in-memory chain may keep only a recent tail of blocks, bounded by `TAIL_BLOCK_CAP`. On restart, normal JsonFile loading reads the summary state and only the recent tail from `epochs/`, then checks that the tail links to the stored parent block and to manifest `tip_hash`.
@@ -59,6 +68,21 @@ PWM_SNAPSHOT_VERIFY_CHAIN=1 pwmd
 ```
 
 Truth values other than empty/`0`/`false`/`no`/`off` enable audit mode. Audit mode loads all epoch blocks and runs full genesis-to-tip replay validation. It is slower but stronger when checking disk integrity.
+
+### Focused V3 replay determinism gate
+
+Use this lightweight command in local runs and CI when you need a deterministic replay gate without running the full workspace suite:
+
+```bash
+cargo test -p pwmd --lib v3_replay_det_gate_ok
+```
+
+What it catches:
+
+- replay reproducibility on the same fixture chain (state root/tip hash must match between two replay runs);
+- regressions in replay path that can desync `Epoch Snapshot` validation.
+
+It does **not** by itself exercise JsonFile `epochs/` manifest I/O; pair coverage with `epoch_man_v` / epoch persistence tests when changing manifest on-disk format.
 
 ### Automatic fallback
 

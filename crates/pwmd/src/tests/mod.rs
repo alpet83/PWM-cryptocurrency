@@ -4,6 +4,7 @@ mod prelude;
 
 mod helpers;
 mod http_export;
+mod http_operator_log;
 mod http_status;
 #[cfg(feature = "clickhouse-snapshot")]
 mod snapshot_backend_replay;

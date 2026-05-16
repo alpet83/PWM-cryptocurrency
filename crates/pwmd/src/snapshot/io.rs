@@ -1,7 +1,7 @@
 //! Snapshot filesystem load/save, migration helpers, and cfg validation.
 //! Primary-load wall times are recorded in [`load_snapshot_timed`] for `pwmd::startup::snapshot`.
 
-use super::epoch::manifest_file_path;
+use super::epoch::{ensure_epoch_man_schema, manifest_file_path};
 use super::genesis::snapshot_genesis_accounts;
 use super::incremental;
 use super::telemetry::{JsonSnapTiming, SNAP_STARTUP_TARGET};
@@ -312,12 +312,7 @@ fn validate_snapshot_trusted(
     }
     let man = incremental::read_epoch_manifest(summary_path)?
         .ok_or_else(|| "snapshot trust validation: missing epoch manifest".to_string())?;
-    if man.schema_v != 1 {
-        return Err(format!(
-            "unsupported epoch manifest schema {}",
-            man.schema_v
-        ));
-    }
+    ensure_epoch_man_schema(man.schema_v)?;
     let tip = man.canonical_h;
     if tip != snapshot.checkpoint_height {
         return Err(format!(
@@ -916,5 +911,41 @@ mod tests {
             checkpoint_height: 0,
         };
         validate_snapshot(&mut snap, &cfg).expect("replay with block context");
+    }
+
+    #[test]
+    fn v3_replay_det_gate_ok() {
+        let (cfg, sks) = pwm_core::dev_net();
+        let mut chain = pwm_core::Chain::boot(cfg.clone(), sks.clone());
+        let signer = cfg.accounts[0].acct;
+        let tx = SignedTx::sign_body(
+            &sks[0],
+            domain_of_account_id(&signer),
+            cfg.accounts[0].der_idx,
+            0,
+            TxBody::Stake { amount: 1 },
+        );
+        chain.seal(vec![tx]).expect("seal");
+        chain.seal(vec![]).expect("seal #2");
+        let blocks = chain.blocks.iter().cloned().collect::<Vec<_>>();
+        let base = SnapshotData {
+            version: SNAPSHOT_VERSION,
+            genesis_accounts: snapshot_genesis_accounts(&cfg),
+            blocks,
+            state: chain.st.clone(),
+            roaming: SnapshotRoamingWire::default(),
+            cross_shard: CrossShardLedger::default(),
+            blocks_stored: BlocksStored::Epochs,
+            checkpoint_height: chain.tip_h(),
+        };
+        let mut run_a = base.clone();
+        let mut run_b = base;
+        replay_validate(&mut run_a, &cfg).expect("replay A");
+        replay_validate(&mut run_b, &cfg).expect("replay B");
+        assert_eq!(digest(&run_a.state), digest(&run_b.state));
+        assert_eq!(
+            run_a.blocks.last().map(|b| hdr_hash(&b.hdr)),
+            run_b.blocks.last().map(|b| hdr_hash(&b.hdr))
+        );
     }
 }

@@ -214,6 +214,30 @@ policy_requires_membership(sender, receiver):
     recipient_must_be_member_of(sender)
 ```
 
+#### 7.3.1 Corporate INIT registration gap (V4)
+
+The v1/v3 baseline keeps `INIT` minimal. V4 policy runtime must specify an extended corporate `INIT` profile before production domain leasing:
+
+```text
+CorporateInitExtension {
+  company_metadata_commitment,
+  external_verification_ref,
+  requested_domain_lo,
+  emergency_routing_policy,
+  cosign_policy,
+}
+```
+
+Draft semantics:
+
+- `requested_domain_lo = 0` means root/generic company registration inside the corporate-sector base cluster; it is not a rented domain namespace.
+- `requested_domain_lo > 0` means registration against a rented or requested corporate namespace and must follow lease/auction policy.
+- `company_metadata_commitment` avoids putting mutable or private corporate metadata directly into consensus state while allowing audit/recovery flows.
+- `emergency_routing_policy` defines limited fallback routing behavior for incident response, compromise recovery, or organizational key rotation.
+- `cosign_policy` links corporate registration to multisig/membership rules.
+
+This subsection is a gap marker, not a final wire format. Field names, signatures, metadata hashing, policy limits, and migration behavior require a dedicated RFC/ADR before implementation.
+
 ---
 
 ### 7.4 Extension Burn-Only Mode

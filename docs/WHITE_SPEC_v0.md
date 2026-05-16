@@ -58,6 +58,8 @@
 
 После `INIT` счёт активен; `index` и `flags` хранятся в состоянии.
 
+**V4 compatibility gap:** текущий v0 `INIT` не несёт corporate metadata и не различает root/generic registration внутри corporate-sector cluster. В V4 Policy Engine Runtime ожидается расширение `INIT`, которое сможет регистрировать компанию в `domain_lo = 0` без аренды собственного домена, а также задавать ограниченную policy posture, включая основу для аварийной маршрутизации. До появления отдельного RFC/ADR эти поля не являются частью v0 wire/state contract.
+
 ## 3. Транзакции (тело + подпись)
 
 Каноническое сериализованное тело (без подписи) хэшируется: `tx_hash = BLAKE3(canonical_body)`.

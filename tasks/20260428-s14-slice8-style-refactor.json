@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260428-s14-slice8-style-refactor",
   "title": "Sprint 14 Slice 8: production naming style refactor",
-  "status": "in_progress",
+  "status": "open",
   "mvp_checklist": ["Sprint 14 / Slice 8"],
   "brief": "Привести имена production-symbols к <=4 словам + закрепить контроль в агентных промптах.",
   "delegations": [
@@ -16,5 +16,7 @@
     "testing_md": null,
     "review_md": null
   },
-  "notes": "Style gate: native non-test identifiers <=4 words."
+  "resolution": "deferred_style_backlog",
+  "resolved_at": "2026-05-16",
+  "notes": "Style gate: native non-test identifiers <=4 words. Backlog triage 2026-05-16: prompt/checker discipline superseded the need for a broad active refactor. Keep only as optional style backlog if owner wants a dedicated cleanup sprint."
 }

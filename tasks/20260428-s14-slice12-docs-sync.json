@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260428-s14-slice12-docs-sync",
   "title": "Sprint 14 Slice 12: docs sync and consistency",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": ["Sprint 14 / Slice 12"],
   "brief": "Полный review docs на консистентность с v4/genesis/cli изменениями + исправление нестыковок.",
   "delegations": [
@@ -13,5 +13,7 @@
   ],
   "commits": [],
   "artifacts": {"review_md": null, "coding_md": null, "testing_md": null, "final_review_md": null},
-  "notes": "User flagged possible port mismatch 3040 vs 3030 in GENESIS_BLOCK.md"
+  "resolution": "superseded_by_v3_docs_closeout",
+  "resolved_at": "2026-05-16",
+  "notes": "User flagged possible port mismatch 3040 vs 3030 in GENESIS_BLOCK.md. Backlog triage 2026-05-16: V3 closeout refreshed roadmap/checklist/glossary/API/runbooks; use narrow current doc tickets for any remaining inconsistencies."
 }

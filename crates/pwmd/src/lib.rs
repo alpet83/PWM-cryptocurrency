@@ -116,7 +116,7 @@ pub fn cors_for_listen(listen: SocketAddr) -> Result<CorsLayer, String> {
         );
     }
     Ok(CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers(Any)
         .allow_origin(AllowOrigin::list(origins)))
 }

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260430-s15-slice3-12-1-peer-churn-and-foreign-lookup-remediation",
   "title": "S15-S3.12.1: peer churn and foreign lookup remediation",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Устранить reconnect/hello churn и довести foreign lookup до authoritative результата при живом trusted CY<->DO канале.",
   "scope": [
     "Стабилизировать stateful peer sessions (уменьшить/убрать постоянный hello churn)",
@@ -15,6 +15,8 @@
     "При недоступности peer path остаётся explicit unavailable/unknown",
     "Есть coding/testing/review artifacts с PASS по live прогону"
   ],
+  "resolution": "done_obsolete_parent_closed",
+  "resolved_at": "2026-05-16",
   "artifacts": {
     "coding": "docs/reviews/sprint-15-s3-12-1-coding.md",
     "testing": "docs/reviews/sprint-15-s3-12-1-testing.md",

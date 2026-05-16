@@ -544,3 +544,10 @@
 - Причина: пустая подстановка в PowerShell; clap ранее требовал значение после `--master`; fallback читал только env, вшитый в поле через `PWM_MASTER_SEED`.
 - Фикс/обход: для `--master` заданы `num_args=0..=1` + `default_missing_value=""`, пустая строка отбрасывается в `resolve_master_seed`; добавлено чтение **дополнительного** env **`MASTER_SEED`** (после trim) с тем же hex-форматом; обновлён текст ошибки stateless. Рабочие варианты: `$env:PWM_MASTER_SEED` или `$env:MASTER_SEED`, либо **`--master`** без аргумента при установленном env, либо только `--wallet-out` к существующему кошельку без `--master`.
 - Что проверить потом: краткая строка в runbook/cli help для операторов Windows.
+
+- Дата: 2026-05-16
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs`, `crates/pwmd/src/api/handlers_operator_log.rs`, `crates/pwmd/src/tests/http_operator_log.rs`.
+- Симптом: operator RPC auth-gate по remote IP работал нестабильно в unit/router тестах и может давать `remote=unknown` без явного connect-info.
+- Причина: extractor `ConnectInfo<SocketAddr>` в axum заполняется только когда сервер стартует через `into_make_service_with_connect_info`, а в `oneshot` тестах extension нужно добавлять вручную.
+- Фикс/обход: HTTP serve переведён на `into_make_service_with_connect_info::<SocketAddr>()`; в тестах запросы к operator endpoint добавляют extension `ConnectInfo(addr)`.
+- Что проверить потом: при добавлении новых operator/admin endpoints сразу включать connect-info в тестовые запросы, иначе auth-ветки loopback/non-loopback могут тестироваться некорректно.

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260430-s15-slice3-12-6-production-idle-read-fix",
   "title": "S15-S3.12.6: fix production peer idle-read handling",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Узко исправить production stateful peer loops, где idle/no-data/read timeout может превращаться в `wire_read_failed` или `heartbeat_read_failed`. Не менять wire format и не делать широкий rewrite transport.",
   "scope": [
     "Править только production read-error handling вокруг `process_inbound_socket` и `run_seed_session`, плюс минимальные helpers/tests",
@@ -73,5 +73,7 @@
     "review": "docs/reviews/sprint-15-s3-12-6-review.md"
   },
   "commits": [],
-  "notes": "Started from S3.12.5 review: empty/read-timeout false network error hypothesis is likely; fix production loops without wire-format rewrite. Coding PASS recorded. Testing PARTIAL: focused checks pass, but live two-node smoke fails with recurring wire_decode_failed: u128 is not supported, causing reconnect churn."
+  "resolution": "done_obsolete_parent_closed",
+  "resolved_at": "2026-05-16",
+  "notes": "Started from S3.12.5 review: empty/read-timeout false network error hypothesis is likely; fix production loops without wire-format rewrite. Coding PASS recorded. Testing PARTIAL: focused checks pass, but live two-node smoke fails with recurring wire_decode_failed: u128 is not supported, causing reconnect churn. Backlog triage 2026-05-16: wire/u128 and RFC16 work superseded this old partial live gate."
 }

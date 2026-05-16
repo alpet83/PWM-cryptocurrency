@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260430-s15-slice3-12-5-peer-only-micronode-harness",
   "title": "S15-S3.12.5: peer-only micro-node harness for stateful transport",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Изолировать stateful peer protocol от ledger/API/TUI: написать микро-ноды/тестовый harness, где два потока/узла в одном приложении соединяются, обслуживают сокеты и поддерживают peer protocol. Главная гипотеза: чтение пустого/не готового socket buffer или read timeout может ошибочно трактоваться как обрыв соединения.",
   "scope": [
     "Собрать peer-only harness без ledger/API/TUI шума, используя текущие wire frame/read/write/session primitives там, где возможно",
@@ -81,5 +81,7 @@
     "review": "docs/reviews/sprint-15-s3-12-5-review.md"
   },
   "commits": [],
-  "notes": "Started from S3.12.4 request-changes review and user hypothesis that an empty socket buffer/read-not-ready may be misread as connection break. Coding PASS: peer-only harness stays stable across idle timeout and 5 heartbeat intervals. Review result: hypothesis likely; production loops can still turn idle/read timeout into wire_read_failed or heartbeat_read_failed. Next: S3.12.6 narrow fix."
+  "resolution": "done_obsolete_followed_by_s3_12_6",
+  "resolved_at": "2026-05-16",
+  "notes": "Started from S3.12.4 request-changes review and user hypothesis that an empty socket buffer/read-not-ready may be misread as connection break. Coding PASS: peer-only harness stays stable across idle timeout and 5 heartbeat intervals. Review result: hypothesis likely; production loops can still turn idle/read timeout into wire_read_failed or heartbeat_read_failed. Backlog triage 2026-05-16: historical chain closed; current peer issues require fresh pwm-debug."
 }

@@ -759,6 +759,14 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
         Some(config.data_file.clone()),
         Some(config.identity.clone()),
     )?;
+    if app.log_ctl.is_none() {
+        app.log_ctl = crate::logging::runtime_log_ctl();
+    }
+    app.op_token = std::env::var("PWM_ADMIN_TOKEN")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .map(Arc::<str>::from);
     if let Some(ref raw) = config.node_instance_id_override {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
@@ -1006,13 +1014,16 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
         config.identity.node_id,
         mode.as_str()
     ));
-    axum::serve(listener, r)
-        .with_graceful_shutdown(async {
-            let _ = shutdown_done_rx.await;
-            info!("HTTP server graceful shutdown");
-        })
-        .await
-        .map_err(|e| format!("serve: {e}"))?;
+    axum::serve(
+        listener,
+        r.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let _ = shutdown_done_rx.await;
+        info!("HTTP server graceful shutdown");
+    })
+    .await
+    .map_err(|e| format!("serve: {e}"))?;
     Ok(())
 }
 

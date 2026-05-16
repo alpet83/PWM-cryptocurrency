@@ -1,4 +1,4 @@
-# RFC16 proposer (sealer) - shard CY lab. Requires cy-cluster-common.ps1 and tmp\genesis-custom.json.
+# RFC16 proposer (sealer) - shard CY lab. Sources cy-cluster-common.ps1 (genesis defaults: tmp\genesis-custom.json or $env:PWM_DEMO_GENESIS_PATH).
 # UTF-8 with BOM - do not save as ANSI-only on Windows if you add non-ASCII text inside quoted strings.
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260428-s14-slice6-v3-default-and-bruteforce-resume",
   "title": "Sprint 14 Slice 6: v3 default create + bruteforce resume",
-  "status": "blocked",
+  "status": "done",
   "mvp_checklist": ["Sprint 14 / Slice 6"],
   "brief": "Сделать schema v3 дефолтной при создании wallet, синхронизировать stdout с v3 терминами и добавить addr-bruteforce resume от существующего wallet.",
   "delegations": [
@@ -12,5 +12,11 @@
   ],
   "commits": [],
   "artifacts": {"review_md": "docs/reviews/sprint-14-slice6-review.md"},
-  "notes": "Конвейер выполнен, итог review: BLOCK. Причина: create-path использует merge-save и может наследовать старые/чувствительные поля при существующем wallet_out. Требуется remediation: strict overwrite v3 для create-path + тесты."
+  "resolution": "wontfix_superseded",
+  "resolved_at": "2026-05-16",
+  "superseded_by": [
+    "wallet-first path and legacy active-account cleanup",
+    "scripts/demo-genesis-build.ps1 deterministic demo wallet path"
+  ],
+  "notes": "Конвейер выполнен, итог review: BLOCK. Причина: create-path использует merge-save и может наследовать старые/чувствительные поля при существующем wallet_out. После backlog triage 2026-05-16 владелец согласовал рекомендацию: не resurrect старый смешанный тикет. Если strict overwrite v3 create-path снова понадобится, открыть свежий узкий тикет."
 }

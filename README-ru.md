@@ -6,7 +6,20 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ![Интерфейс оператора pwm-tui (демо)](tui-demo-screenshot.png)
 
-**Что уже работает (контур MVP):**
+## Текущий статус (MVP v3 foundation закрыт)
+
+- **Foundation-этап MVP v3 для public devnet закрыт** (спринты V3-1..V3-4).
+- **Есть чистый public-devnet quickstart**: из clean clone документирован детерминированный demo genesis path с проверкой premine (`21_000_000_000 PWM` = `21_000_000_000_000_000 raw`).
+- **`/v1` API freeze skeleton зафиксирован** в `docs/api-v1.md` как baseline публичного контракта.
+- **Схема Epoch Snapshot и replay-determinism gate зафиксированы** как V3-база доверия для загрузки/реплея состояния.
+- **ADR-пакет опубликован** в `docs/adr/` и задаёт архитектурные границы foundation-слоя.
+- **Runtime log-control RPC относится к operator/debug поверхности** и явно не входит в стабильный public API.
+
+**Что уже работает (после закрытия V3 foundation):**
+
+- **Интегрированный public-devnet smoke покрывает read API:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
+- **`POST /v1/tx` остаётся в `/v1` API skeleton**, но не входил в интегрированный smoke Sprint V3-4 (отдельный smoke можно добить follow-up слайсом).
+- **Operator runtime log-control endpoints** (`/v1/operator/log/override`) доступны как operator/debug surface, а не как стабильный клиентский public API.
 
 - **Два spec-level geo-шарда** — два процесса `pwmd` с разным `domain_hi` (например `0x10` / `0x20`), отдельный `--state-root` у каждого и **отработанный** happy path для связи по **реальному транспорту** с взаимными `--transport-peer-seed`.
 - **Внутришардовые** переводы и обычный жизненный цикл счёта (`INIT`, `TRANSFER`, задел под стейкинг) через RPC, CLI и TUI.
@@ -82,6 +95,11 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 ## Ключевые документы
 
 - README (English): [README.md](README.md)
+- План foundation MVP v3: `docs/plans/mvp_v3.md`
+- API freeze skeleton (`/v1/*`): `docs/api-v1.md`
+- Quickstart public devnet: `docs/runbooks/demo-devnet-quickstart.md`
+- Индекс ADR-пакета: `docs/adr/README.md`
+- RFC runtime log-control RPC (operator/debug): `docs/rfc/17-runtime-log-control-rpc.md`
 - Черновик whitepaper: `DRAFT_WHITEPAPER.md`
 - Whitepaper (RU): `DRAFT_WHITEPAPER-ru.md`
 - Matrixchain (термин и v0): `docs/MATRIXCHAIN_SPEC_v0.md`
@@ -94,8 +112,6 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 - Хранилище ноды и режимы снапшота: `docs/guide-node-storage-and-snapshot.md`
 - Runbook снапшотов ClickHouse: `docs/runbook-store-snapshots.md`
 - CLI/TUI: два шарда и кросс-шард: `docs/tester-guide-cli-tui-scenarios.md`
-- Дорожная карта V2 и план спринтов: `docs/plans/mvp_v2.md`
-- Ревью готовности публичных docs MVP v2: `docs/reviews/20260515-mvp-v2-public-docs-readiness.md`
 - Словарь доменных кластеров: `docs/DOMAINS.md`
 - Phase 1 checklist: `docs/PHASE1_CHECKLIST.md`
 - Phase 1 release summary: `docs/PHASE1_RELEASE_SUMMARY.md`

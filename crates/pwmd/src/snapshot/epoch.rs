@@ -12,6 +12,7 @@ pub(crate) const SNAP_CHK_BLK_IV: u64 = 100;
 /// Max block heights per `epochs/block_e*.json` JSONL file (wider files ⇒ fewer files on disk).
 pub(crate) const EPOCH_SPAN: u64 = 1_000;
 pub(crate) const EPOCH_MANIFEST_FILE: &str = "pwm-epochs-manifest.json";
+pub(crate) const EPOCH_MAN_SCHEMA_CUR: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct EpochRange {
@@ -72,12 +73,26 @@ pub(crate) fn mk_manifest(
     epochs: Vec<EpochMeta>,
 ) -> EpochManifest {
     EpochManifest {
-        schema_v: 1,
+        schema_v: EPOCH_MAN_SCHEMA_CUR,
         epoch_span: EPOCH_SPAN,
         canonical_h,
         tip_hash,
         epochs,
     }
+}
+
+pub(crate) fn epoch_man_schema_ok(schema_v: u32) -> bool {
+    schema_v == EPOCH_MAN_SCHEMA_CUR
+}
+
+pub(crate) fn ensure_epoch_man_schema(schema_v: u32) -> Result<(), String> {
+    if epoch_man_schema_ok(schema_v) {
+        return Ok(());
+    }
+    Err(format!(
+        "unsupported epoch manifest schema {schema_v}; supported schema {}",
+        EPOCH_MAN_SCHEMA_CUR
+    ))
 }
 
 fn epochs_dir(summary_path: &Path) -> PathBuf {
@@ -133,5 +148,19 @@ mod tests {
             manifest_file_path(base),
             Path::new("/tmp/epochs/pwm-epochs-manifest.json")
         );
+    }
+
+    #[test]
+    fn epoch_man_v1_ok() {
+        assert!(epoch_man_schema_ok(EPOCH_MAN_SCHEMA_CUR));
+        assert!(ensure_epoch_man_schema(EPOCH_MAN_SCHEMA_CUR).is_ok());
+    }
+
+    #[test]
+    fn epoch_man_v2_err() {
+        let err =
+            ensure_epoch_man_schema(EPOCH_MAN_SCHEMA_CUR.saturating_add(1)).expect_err("reject");
+        assert!(err.contains("unsupported epoch manifest schema"), "{err}");
+        assert!(err.contains(&EPOCH_MAN_SCHEMA_CUR.to_string()), "{err}");
     }
 }

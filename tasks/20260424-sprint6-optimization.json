@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260424-sprint6-optimization",
   "title": "Sprint 6: optimization slices (transport/state quick wins)",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": [
     "docs/MVP-checklist.md",
     "docs/WHITE_SPEC_v0.md",
@@ -1710,5 +1710,8 @@
       "crates/pwmd/src/lib.rs | modified (git diff --numstat vs HEAD: 28 insertions, 21 deletions)"
     ],
     "generated_at": "2026-04-25T14:58:30.1299637+03:00"
-  }
+  },
+  "resolution": "completed_status_stale",
+  "resolved_at": "2026-05-16",
+  "notes": "Backlog triage 2026-05-16: all recorded Sprint 6 slices have completed evidence; status was stale."
 }

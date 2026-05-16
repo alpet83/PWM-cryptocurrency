@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260430-s15-slice3-10-foreign-account-peer-lookup",
   "title": "S15-S3.10: foreign account balance/init via peer lookup",
-  "status": "in_progress",
+  "status": "open",
   "brief": "Баланс и init-статус foreign-адресов должны получаться только через peer протокол home shard; при недоступности показывать неизвестно/??? вместо ложного 0.",
   "scope": [
     "Peer query для foreign account balance/init status",
@@ -20,5 +20,8 @@
     "coding": "docs/reviews/sprint-15-s3-10-coding.md",
     "testing": "docs/reviews/sprint-15-s3-10-testing.md",
     "review": "docs/reviews/sprint-15-s3-10-review.md"
-  }
+  },
+  "resolution": "deferred_to_v7_backlog",
+  "resolved_at": "2026-05-16",
+  "notes": "Backlog triage 2026-05-16: owner accepted recommendation to keep the product idea but discard the old active ticket shape. Re-slice under V7/explorer/cross-shard UX if authoritative foreign account visibility becomes a current goal."
 }

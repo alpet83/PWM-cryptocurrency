@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260516-old-task-backlog-triage",
+  "title": "Old task backlog triage after V2-9/V3 closeout",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v3.md closeout",
+    "tasks/*.json stale status cleanup candidate list"
+  ],
+  "brief": "Inventory old open/in_progress/blocked task tickets and classify whether they are stale, superseded, still actionable, or require owner decision. Do not change old task statuses in this slice.",
+  "delegations": [
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Read old task tickets and current V2/V3 plans/code evidence; produce docs-only triage report.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260516-old-task-backlog-triage.md",
+        "docs/reviews/20260516-owner-decision-old-tickets.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-16"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "triage_md": "docs/reviews/20260516-old-task-backlog-triage.md",
+    "owner_decision_md": "docs/reviews/20260516-owner-decision-old-tickets.md"
+  },
+  "notes": "No old ticket statuses were changed. Recommended next step is an explicit cleanup batch: mark stale completed/superseded tickets, keep only live backlog, and ask owner on product-direction groups. Follow-up owner-decision report was added with detailed context and options. SQLite domain index recommendation was revised: do not implement SQLite now; defer neutral domain registry data-source decision until domain leasing/auction work and account for ClickHouse."
+}

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260428-s14-slice17-logger-integration",
   "title": "Sprint 14 Slice 17: selective logger integration",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": ["Sprint 14 / Slice 17"],
   "brief": "Интегрировать аккуратно лучшие части логгера: TTY-color, rotation, template file name.",
   "delegations": [
@@ -10,5 +10,7 @@
   ],
   "commits": [],
   "artifacts": {"review_md": null},
-  "notes": "Template example: {date}/{log_name}-{time}.log"
+  "resolution": "superseded_by_runtime_log_control",
+  "resolved_at": "2026-05-16",
+  "notes": "Template example: {date}/{log_name}-{time}.log. Backlog triage 2026-05-16: runtime logging moved beyond this old slice with file logging/focused targets and V3 runtime log-control RPC. If rotation/template naming still matters, open a fresh ops backlog item."
 }

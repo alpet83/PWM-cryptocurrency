@@ -1,7 +1,7 @@
 {
   "id": "20260509-protocol-versioning-debug-controls",
   "title": "Protocol semver guards, build control logs, block dump, time-align seal",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-05-09",
   "context": {
     "goal": "Добавить управляемые механизмы диагностики и совместимости: контроль сборки в логах, semver-guard для пиров, debug-dump блоков и time-align запечатывания.",
@@ -232,5 +232,8 @@
       "slice_a": "Build control log + protocol semver guard + coding/review version bump discipline.",
       "slice_b": "Controlled divergence block dump + persistent divergence trigger + debug-only time-align seal."
     }
-  }
+  },
+  "resolution": "completed_status_stale",
+  "resolved_at": "2026-05-16",
+  "notes": "Backlog triage 2026-05-16: both planned slices have coding/testing/review PASS or approve-with-nits; residual risks are documented and do not justify active in_progress."
 }

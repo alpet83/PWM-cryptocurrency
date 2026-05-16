@@ -1,0 +1,99 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-16T11:53:00Z",
+  "title": "Phase1/S14 Task Tickets Audit - Obsolescence Classification",
+  "research_question": "Провести readonly-аудит старых Phase1/S14/Sprint6 task tickets и классифицировать каждый для оркестратора: obsolete/superseded, actionable for V4/V5, needs owner decision, или likely completed but stale.",
+  "parent_ticket": null,
+  "search": {
+    "files_scanned": [
+      "tasks/20260422-pwmd-snapshot-canonical-only-and-self-verified.json",
+      "tasks/20260429-s14-slice21-snapshot-hex-refactor.json",
+      "tasks/20260429-s14-slice23-recipient-init-gate.json",
+      "tasks/20260429-s14-slice20-tx-routing-and-state-integrity.json",
+      "tasks/20260429-s14-slice19-snapshot-persistence-investigation.json",
+      "tasks/20260428-s14-slice6-v3-default-and-bruteforce-resume.json",
+      "tasks/20260424-sprint6-optimization.json",
+      "tasks/20260429-s14-slice18-logging-minimal-integration.json",
+      "tasks/20260429-s14-slice19-snapshot-persistence-fix.json",
+      "docs/CHANGELOG.md",
+      "docs/plans/mvp_v3.md"
+    ],
+    "method": "local_file_read"
+  },
+  "files": [
+    {
+      "path": "tasks/20260422-pwmd-snapshot-canonical-only-and-self-verified.json",
+      "why": "spec",
+      "note": "Canonical-only snapshot policy тикет, статус in_progress, не завершен"
+    },
+    {
+      "path": "tasks/20260429-s14-slice21-snapshot-hex-refactor.json",
+      "why": "spec",
+      "note": "Hex-string snapshot refactor, статус in_progress"
+    },
+    {
+      "path": "tasks/20260429-s14-slice23-recipient-init-gate.json",
+      "why": "spec",
+      "note": "Recipient init gate тикет, статус in_progress"
+    },
+    {
+      "path": "tasks/20260429-s14-slice20-tx-routing-and-state-integrity.json",
+      "why": "spec",
+      "note": "TX routing/state integrity тикет, статус in_progress"
+    },
+    {
+      "path": "tasks/20260429-s14-slice19-snapshot-persistence-investigation.json",
+      "why": "spec",
+      "note": "Snapshot persistence investigation, статус in_progress"
+    },
+    {
+      "path": "tasks/20260428-s14-slice6-v3-default-and-bruteforce-resume.json",
+      "why": "spec",
+      "note": "V3 default wallet + bruteforce resume, статус blocked"
+    },
+    {
+      "path": "tasks/20260424-sprint6-optimization.json",
+      "why": "spec",
+      "note": "Sprint 6 optimization slices (1-24), статус in_progress но все slices завершены"
+    },
+    {
+      "path": "tasks/20260429-s14-slice18-logging-minimal-integration.json",
+      "why": "spec",
+      "note": "Logging integration тикет, статус in_progress"
+    },
+    {
+      "path": "tasks/20260429-s14-slice19-snapshot-persistence-fix.json",
+      "why": "spec",
+      "note": "Snapshot persistence fix тикет (pair to investigation)"
+    },
+    {
+      "path": "docs/CHANGELOG.md",
+      "why": "spec",
+      "note": "История изменений для cross-reference завершенной работы"
+    },
+    {
+      "path": "docs/plans/mvp_v3.md",
+      "why": "spec",
+      "note": "Текущий план MVP v3 для понимания актуального foundation scope"
+    }
+  ],
+  "digest": "## Классификация старых Phase1/S14/Sprint6 тикетов\n\n### 1. OBSOLETE/SUPERSEDED (рекомендация: archive/done-obsolete)\n\n| Файл | Статус | Причина | Evidence | Рекомендация |\n|------|--------|---------|----------|--------------|\n| 20260429-s14-slice19-snapshot-persistence-investigation.json | in_progress | Заменен V3 Sprint 2 snapshot/replay foundation | CHANGELOG 2026-05-16: V3-2 реализовал `ensure_epoch_man_schema` и replay gate; snapshot persistence работает в devnet | **archive → done-obsolete** — функциональность реализована в V3-2 |\n| 20260429-s14-slice19-snapshot-persistence-fix.json | (не указан) | Пара тикета investigation; V3-2 закрыл основную проблему | CHANGELOG 2026-05-16: `v3_replay_det_gate_ok` gate работает | **archive → done-obsolete** — часть V3-2 closeout |\n| 20260424-sprint6-optimization.json | in_progress | Все 24 slices фактически завершены (mini_report_slice1-24_* с verdict: pass) | Delegations show done_at timestamps for all slices 1-24; review_evidence_manifest_slice9-24 present | **archive → done-completed** — обновить статус, сохранить как история Sprint 6 |\n| 20260429-s14-slice21-snapshot-hex-refactor.json | in_progress | Заменен V3-2 schema versioning contract | V3-2 использует текущий формат (не hex); CHANGELOG не упоминает hex transition | **archive → done-obsolete** — V3-2 выбрал другой путь (schema_v контракт) |\n\n### 2. STILL ACTIONABLE FOR V4/V5/BACKLOG (требует решения владельца)\n\n| Файл | Статус | Причина | Evidence | Рекомендация |\n|------|--------|---------|----------|--------------|\n| 20260422-pwmd-snapshot-canonical-only-and-self-verified.json | in_progress | Концепция canonical-only остается валидной для Bootstrap Snapshot (V4+) | MVP v3 plan: Bootstrap Snapshot out of scope for V3; ADR 0004 mentions cleanup-chain | **move to V4 backlog** — переименовать в `2026XXXX-v4-bootstrap-snapshot-canonical-only.json` |\n| 20260429-s14-slice23-recipient-init-gate.json | in_progress | Security gate still relevant; overlaps with V3 devnet but not completed | No CHANGELOG entry for recipient init; V3-4 smoke focused on API/devnet, not tx policy | **retain as backlog** — переоценить приоритет для V4 policy engine |\n| 20260429-s14-slice18-logging-minimal-integration.json | in_progress | Логирование частично реализовано в V3, но не в полном объеме | CHANGELOG 2026-05-16: `pwmd::operator` audit events есть; DEBUG трассировка tx не упомянута | **retain as backlog** — сузить scope до DEBUG tx trace или закрыть как partially-done |\n\n### 3. NEEDS OWNER DECISION (требует явного решения)\n\n| Файл | Статус | Причина | Evidence | Рекомендация |\n|------|--------|---------|----------|--------------|\n| 20260429-s14-slice20-tx-routing-and-state-integrity.json | in_progress | Критичный тикет, но статус не обновлен с конца апреля; непонятно, закрыт ли в V2-9 | CHANGELOG: V2-9 RFC16 cluster seal e2e есть, но нет явного упоминания tx routing fixes | **owner decision required** — нужен audit: проверить, были ли интегрированы фиксы в V2-8/V2-9 или отдельный тикет |\n| 20260428-s14-slice6-v3-default-and-bruteforce-resume.json | blocked | Review gate: BLOCK с требованием remediation; непонятно, отменен ли v3-by-default | CHANGELOG 2026-05-15: wallet-first resolve с explicit `--wallet-out` и master seed fallback — это альтернативный путь | **owner decision required** — явно решить: (a) отменить v3-by-default, (b) реализовать remediation, или (c) закрыть как wontfix с учетом нового wallet-first пути |\n\n### 4. LIKELY ALREADY COMPLETED BUT STATUS STALE\n\n| Файл | Статус | Причина | Evidence | Рекомендация |\n|------|--------|---------|----------|--------------|\n| 20260424-sprint6-optimization.json | in_progress | Фактически все 24 slices прошли coding→testing→review с verdict pass | All mini_report_sliceN_* show done_at timestamps and verdict: pass | **update status → done** — оркестратор обновляет статус без нового кода |\n\n## Сводка по действиям\n\n1. **Immediate (без решения владельца):**\n   - Sprint 6 → обновить статус на done\n   - Snapshot persistence investigation/fix → archive как obsolete (заменено V3-2)\n   - Snapshot hex refactor → archive как obsolete (V3-2 выбрал другой путь)\n\n2. **Requires owner decision:**\n   - Slice6 v3-default → решить о судьбе (отмена/remediation/wontfix)\n   - Slice20 tx-routing → audit на предмет интеграции в V2-8/V2-9\n\n3. **V4 backlog candidates:**\n   - Canonical-only snapshot → перенести в V4 Bootstrap Snapshot scope\n   - Recipient init gate → переоценить приоритет при V4 policy\n   - Logging integration → сузить scope или закрыть как partially-done",
+  "open_questions": [
+    "Были ли фиксы из slice20 (tx-routing) интегрированы в V2-8/V2-9 RFC16 работу?",
+    "Является ли wallet-first путь (2026-05-15) заменой для v3-by-default (slice6) или они должны сосуществовать?",
+    "Нужен ли DEBUG tx trace из slice18 в V4 или текущий INFO/operator уровень достаточен?"
+  ],
+  "warnings": [
+    "Не выполнялся кодовый audit — только document/task cross-reference",
+    "Решения для 'needs owner decision' требуют явного approval"
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "pwm-info task audit",
+      "confidence": "high",
+      "files_audited": 11
+    }
+  }
+}

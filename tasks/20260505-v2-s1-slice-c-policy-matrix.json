@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260505-v2-s1-slice-c-policy-matrix",
   "title": "Sprint V2-1 Slice C: policy validation matrix for claim and burn",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": [
     "§1 Спецификация и решения"
   ],
@@ -64,5 +64,7 @@
   "artifacts": {
     "review_md": "docs/reviews/sprint-v2-1-slice-c-review.md"
   },
-  "notes": "Входы: Slice A/B freeze + Slice B testing/review reports. Выполнено docs-only наполнение Slice C: создан policy-matrix freeze с фазами mempool/preflight/apply; зафиксировано единое правило округления N-MAT-5 (floor/усечение в пользу сети); формализованы anchor incompatibility predicates (закрытие M1 из Slice B review); уточнён P-REO-04 для canonical rollback/replay; добавлена таблица decision -> expected error code class без финализации API формата. pwm-testing (docs-only gate): sprint-v2-1-slice-c-test-report.md — verdict PARTIAL (ClaimTx + матрица + C-MAT/C-ANC/C-REO тестопригодны; пробел BurnMarkTx в теле RFC vs заголовок тикета; wire E_* в D; нет исполняемых тестов). pwm-review: docs/reviews/sprint-v2-1-slice-c-review.md — Approve with nits (усилить трассируемость C-ANC-C к B-STATE; явно закрыть/расширить burn scope). Carry-over: стартован Slice D (API error contract freeze) с явным burn coverage и стабильным mapping E_* -> response_class в docs/reviews/sprint-v2-1-slice-d-api-contract-freeze.md. Статус тикета in_progress до Slice D/API и финальной редакции связанных документов при необходимости."
+  "resolution": "carried_forward_to_v4_v5_rfc_backlog",
+  "resolved_at": "2026-05-16",
+  "notes": "Входы: Slice A/B freeze + Slice B testing/review reports. Выполнено docs-only наполнение Slice C: policy-matrix freeze, rounding rule N-MAT-5, anchor incompatibility predicates, P-REO-04 clarification, and decision -> error class table. Backlog triage 2026-05-16: owner accepted consolidating useful policy material into future V4/V5 RFC backlog rather than continuing the old V2-1 slice chain."
 }

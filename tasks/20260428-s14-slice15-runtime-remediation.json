@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260428-s14-slice15-runtime-remediation",
   "title": "Sprint 14 Slice 15: runtime remediation and observability",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": ["Sprint 14 / Slice 15"],
   "brief": "Исправить runtime gaps: cross-shard finalize/persistence visibility/history trace + autosnapshot every 100 blocks.",
   "delegations": [
@@ -12,5 +12,7 @@
   ],
   "commits": [],
   "artifacts": {"coding_md": null, "testing_md": null, "review_md": null},
-  "notes": "User requested autosnapshot each 100 blocks and better tx/state observability."
+  "resolution": "superseded_by_v3_snapshot_and_logging",
+  "resolved_at": "2026-05-16",
+  "notes": "User requested autosnapshot each 100 blocks and better tx/state observability. Backlog triage 2026-05-16: autosnapshot/snapshot persistence and observability were superseded by later snapshot, debug-control, and V3 closeout work. Reopen only as fresh current-code runtime bug."
 }

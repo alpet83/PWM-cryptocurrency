@@ -4,6 +4,69 @@ Notable behavior and documentation changes. Section timestamps are **UTC**, deri
 
 ---
 
+## 2026-05-16T22:00Z — old task backlog cleanup (`tasks/20260516-old-task-backlog-triage.json`)
+
+### Changed
+
+- **Tasks:** closed stale `in_progress` / `blocked` S14/S15/V2-era tickets as completed, superseded, or deferred after owner approval; remaining live backlog is explicit `open` rather than misleading active work.
+- **Docs:** added detailed owner-decision report for old task tails and revised the domain-index SQLite recommendation to defer any domain registry data-source choice until lease/auction work, considering ClickHouse.
+
+---
+
+## 2026-05-16T20:00Z — domain cluster allocation policy note (`tasks/20260516-domain-cluster-allocation-policy.json`)
+
+### Added
+
+- **Docs:** clarified that corporate/sector domain clusters are not permanently constrained to a one-industry-one-shard model; IT may receive a future reserved multi-cluster allocation, with an initial planning direction of up to 16 base clusters and up to 255 rentable `domain_lo` values per cluster after service reservations.
+- **Governance:** kept current `docs/DOMAINS.md` / `domain_index.rs` as runtime source of truth and deferred concrete codes, labels, auction policy, and migration path to a future ADR/RFC before production domain auctions. Review: `docs/reviews/20260516-domain-cluster-allocation-policy-review.md`.
+- **V4 gap:** documented future `domain_lo = 0` root/generic company registration via extended corporate `INIT`, separate from rented `domain_lo > 0` namespace leases, and linked it to the V4 policy/emergency-routing backlog. Review: `docs/reviews/20260516-domain-lo-zero-init-policy-gap-review.md`.
+
+---
+
+## 2026-05-16T19:30Z — pwmd runtime log control operator RPC (`tasks/20260516-pwmd-runtime-log-control-rpc.json`)
+
+### Added
+
+- **`pwmd`:** authorized operator/debug endpoints `GET|POST|DELETE /v1/operator/log/override` for temporary runtime log verbosity/focus overrides with loopback or `PWM_ADMIN_TOKEN` bearer gate, TTL auto-restore, whitelisted focus filters, and `pwmd::operator` audit events.
+- **Docs/tests:** RFC 17, operator API docs, and focused `op_log_` tests cover invalid focus/TTL, remote denial, token allow/wrong bearer, bounded TTL restore, and lightweight TCP smoke. Review: `docs/reviews/runtime-log-control-rpc-review-20260516.md`.
+
+---
+
+## 2026-05-16T18:30Z — MVP v3 public devnet foundation closeout (`tasks/20260516-v3-sprint4-public-devnet-closeout.json`)
+
+### Added
+
+- **V3 closeout:** integrated public-devnet smoke on fresh deterministic demo genesis passed with 21B PWM premine verification, CY 3-node startup, `/v1/status`, `/v1/head`, `/v1/accounts`, and `/v1/account/:id`; final review: `docs/reviews/sprint-v3-4-public-devnet-closeout-review-20260516.md`.
+- **Docs:** V3 glossary/checklist/roadmap traceability updated; `POST /v1/tx` smoke remains an explicit follow-up beyond the V3 foundation gate.
+
+---
+
+## 2026-05-16T17:00Z — MVP v3 Sprint 3 demo genesis/public devnet package (`tasks/20260516-v3-sprint3-demo-genesis-devnet.json`)
+
+### Added
+
+- **Scripts:** demo genesis build/verify/start path for public devnet, including a 21B PWM premine target (`21_000_000_000_000_000` raw), fail-fast verifier, and CY launcher overrides for generated genesis path/passphrase.
+- **Docs:** public devnet quickstart runbook with premine math, API smoke, demo-only security posture, and review traceability. Review gate: `docs/reviews/sprint-v3-3-demo-genesis-devnet-review-20260516.md`.
+
+---
+
+## 2026-05-16T15:30Z — MVP v3 Sprint 2 snapshot schema/replay foundation (`tasks/20260516-v3-sprint2-snapshot-replay.json`)
+
+### Added
+
+- **`pwmd`:** centralized Epoch Snapshot manifest schema contract for `pwm-epochs-manifest.json`, focused v1 acceptance / unsupported-version rejection tests, and lightweight replay determinism gate `cargo test -p pwmd --lib v3_replay_det_gate_ok`.
+- **Docs:** storage/runbook updates for manifest `schema_v`, replay gate commands, and the boundary between current Epoch Snapshot and future Bootstrap Snapshot. Review gate: `docs/reviews/sprint-v3-2-snapshot-replay-review-20260516.md`.
+
+---
+
+## 2026-05-16T09:30Z — MVP v3 Sprint 1 spec/ADR/API foundation (`tasks/20260516-v3-sprint1-spec-adr-api.json`)
+
+### Added
+
+- **Docs:** MVP v3 foundation plan, `/v1/*` API freeze skeleton, ADR index, and V3 ADR drafts for IPv4 Claiming, Offchain Scaling, and Cleanup-chain / Bootstrap Snapshot / external anchoring. Review gate: `docs/reviews/sprint-v3-1-spec-adr-api-review-20260516.md`.
+
+---
+
 ## 2026-05-15T10:45Z — MVP v2 public docs readiness (`tasks/20260515-mvp-v2-public-docs-readiness.json`)
 
 ### Changed

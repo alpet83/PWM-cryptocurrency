@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260429-s15-architecture-genesis-consistency-and-db-snapshots",
   "title": "Sprint 15 planning: genesis consistency + optional DB snapshots",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Спланировать отдельный архитектурный спринт: согласованность кросс-шард балансов/генезиса, модель foreign balance visibility, preflight readiness, и опциональное хранение snapshot в БД вместо JSON.",
   "tracks": [
     "A: cross-shard balance semantics and readiness protocol",
@@ -13,5 +13,7 @@
     "architecture_plan_md": "docs/plans/sprint-15-architecture-genesis-consistency-and-db-snapshots.md",
     "review_md": "docs/reviews/sprint-15-architecture-kickoff-review.md"
   },
-  "notes": "Keep protocol safety first: no hidden foreign-balance assumptions; prefer explicit authoritative source semantics and deterministic recovery paths."
+  "resolution": "superseded_by_v2_9_v3",
+  "resolved_at": "2026-05-16",
+  "notes": "Keep protocol safety first: no hidden foreign-balance assumptions; prefer explicit authoritative source semantics and deterministic recovery paths. Backlog triage 2026-05-16: genesis consistency/snapshot abstraction were carried into V2-9/V3; optional DB snapshot backend should be a fresh future task if needed."
 }

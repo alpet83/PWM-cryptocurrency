@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260429-s15-slice3-1-tui-xshard-step-flow",
   "title": "S15-S3.1: TUI пошаговый межшардовый flow (diagnostic wizard)",
-  "status": "in_progress",
+  "status": "done",
   "brief": "Добавить в TUI понятный пошаговый процесс cross-shard отправки с явными этапами и статусами: preflight -> export -> handoff/provenance -> import.",
   "scope": [
     "TUI UX/state machine для пошагового cross-shard flow",
@@ -18,6 +18,8 @@
     "Новый backend-протокол или обход preflight-контракта",
     "Рефактор S15-S4 (snapshot abstraction/DB backend)"
   ],
+  "resolution": "completed_status_stale",
+  "resolved_at": "2026-05-16",
   "artifacts": {
     "coding": "docs/reviews/sprint-15-s3-1-coding.md",
     "testing": "docs/reviews/sprint-15-s3-1-testing.md",

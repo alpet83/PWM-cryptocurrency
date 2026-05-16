@@ -14,6 +14,7 @@
 ## 2) Быстрый старт (Windows + универсально)
 
 По умолчанию RPC ноды: `http://127.0.0.1:3030`.
+Для MVP V3 demo/public-devnet пути с автоматической сборкой genesis используйте: `docs/runbooks/demo-devnet-quickstart.md`.
 
 ### Терминал A: запустить ноду
 

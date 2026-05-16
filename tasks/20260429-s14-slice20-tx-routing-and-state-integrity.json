@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260429-s14-slice20-tx-routing-and-state-integrity",
   "title": "Sprint 14 Slice 20: tx routing and state integrity",
-  "status": "in_progress",
+  "status": "done",
   "mvp_checklist": ["Sprint 14 / Slice 20"],
   "brief": "Расследовать и исправить intra-shard CY reject, CY->DO balance loss, shard guard legacy, добавить безопасный commit/rollback и E2E CLI доказательство.",
   "delegations": [
@@ -13,5 +13,11 @@
   ],
   "commits": [],
   "artifacts": {"investigation_md": null, "coding_md": null, "testing_md": null, "review_md": null},
-  "notes": "User requested fix cycle until E2E passes for intra-CY and CY->DO via CLI."
+  "resolution": "stale_superseded",
+  "resolved_at": "2026-05-16",
+  "superseded_by": [
+    "V2-8/V2-9 sync and RFC16 cluster attestation work",
+    "V3 public devnet smoke and current state rollback tests"
+  ],
+  "notes": "User requested fix cycle until E2E passes for intra-CY and CY->DO via CLI. Backlog triage 2026-05-16: old umbrella is too broad for current codebase; later work covers the state-integrity class. If CY->DO balance loss is reproduced on current code, open a fresh focused bug with current logs."
 }

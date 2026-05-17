@@ -1,18 +1,18 @@
-# PWM API v1 (V3 foundation freeze skeleton)
+# PWM API v1 (V4 policy runtime baseline)
 
-Статус: Draft baseline, закрытие foundation MVP V3 (спринты 1–4, 2026-05-16)  
-Область: public devnet API contract baseline (`/v1/*` freeze boundary)
+Статус: Baseline after MVP v4 closeout (2026-05-17)  
+Область: public devnet `/v1/*` контракт с учётом V4 policy runtime
 
 ## 1) Зачем этот документ
 
-`docs/api-v1.md` — source-of-truth для freeze-границы API в MVP V3.  
-Цель V3: сделать публичный devnet контракт достаточно стабильным для внешнего smoke и интеграционного прототипирования, не втягивая runtime-реализацию V4/V5/V7.
+`docs/api-v1.md` — source-of-truth для `/v1/*` baseline после закрытия MVP v4.  
+Цель: зафиксировать публичный контракт для внешнего smoke и интеграционного прототипирования, включая уже shipped policy-runtime поверхность (без обещаний V5+ функциональности).
 
-## 2) Граница freeze в V3
+## 2) Граница baseline после V4
 
-### Входит в freeze (public stable `/v1/*`)
+### Входит в public baseline (`/v1/*`)
 
-Ниже endpoints, которые считаются публичным контрактом V3 и должны меняться только аддитивно:
+Ниже endpoints, которые считаются публичным контрактом после V4 closeout и должны меняться только аддитивно:
 
 - `GET /v1/status`
 - `GET /v1/head`
@@ -31,11 +31,11 @@
 
 Ниже три класса: публичный стабильный freeze (`/v1/*` из §2), операторские маршруты и dev-only поверхность.
 
-## 3.1 Public stable endpoints (V3)
+## 3.1 Public stable endpoints (V4 baseline)
 
-Поля статус-кодов и формы JSON ниже задают целевой freeze-контракт V3; перед продакшеном или финальным closeout их нужно сверять с `docs/pwmd.md` и фактическим поведением `pwmd`.
+Поля статус-кодов и формы JSON ниже задают целевой baseline-контракт после MVP v4; перед внешним релизом их нужно сверять с `docs/pwmd.md` и фактическим поведением `pwmd`.
 
-| Endpoint | Назначение | Минимальный контракт V3 |
+| Endpoint | Назначение | Минимальный контракт (после V4) |
 |---|---|---|
 | `GET /v1/status` | Readiness и runtime status | Возвращает фазу старта и признак готовности; пригоден для smoke-gate |
 | `GET /v1/head` | Текущая высота/тип | Возвращает `{ height, tip }` |
@@ -43,7 +43,30 @@
 | `GET /v1/account/:id` | Аккаунт по id | `400` при невалидном id, `404` если не найден |
 | `POST /v1/tx` | Подача транзакции | Принимает tx JSON, применяет валидацию и возвращает `204` на success |
 
-Примечание по ошибкам: для claim/burn reject semantics действует RFC 0014 (`docs/rfc/14-claim-burn-api-error-contract.md`) как стабильный baseline кодов/классов ошибок, где применимо.
+Примечание по ошибкам: для claim/burn/policy reject semantics действует RFC 0014 (`docs/rfc/14-claim-burn-api-error-contract.md`) как стабильный baseline кодов/классов ошибок, где применимо.
+
+### 3.1.1 V4 inspection-поля аккаунта (`/v1/accounts`, `/v1/account/:id`)
+
+В `AcctOut` (когда поля присутствуют в state) возвращаются inspection-поля policy runtime:
+
+- `rescue_address`
+- `active_policies`
+- `dormant_policies`
+- `finalized`
+- `owner_kind`
+- `owner_display_name`
+- `owner_country_hint`
+- `company_metadata_commitment`
+- `external_verification_ref`
+- `requested_domain_lo`
+
+Источник контракта: `docs/pwmd.md` (`GET /v1/accounts`, `GET /v1/account/:id`).
+
+### 3.1.2 `POST /v1/tx`: V4 policy/runtime shape
+
+- `POST /v1/tx` принимает `PolicyTx` наравне с остальными tx-видами.
+- При policy reject сервер возвращает RFC 14-совместимый JSON с `error.code` из стабильного набора `E_POLICY_*`.
+- Минимальные ожидаемые коды включают: `E_POLICY_NOT_INSTALLED`, `E_POLICY_NOT_ACTIVE`, `E_POLICY_DENIED`, `E_POLICY_SENDER_FILTERED`, `E_POLICY_ROUTING_DENIED`, `E_POLICY_MISSING_COSIGN`, `E_POLICY_RESCUE_REQUIRED`, `E_POLICY_EMERGENCY_COSIGN_REQUIRED`, `E_POLICY_ACCOUNT_FINALIZED`, `E_POLICY_IRREVERSIBLE`.
 
 ## 3.2 Operator endpoints (outside stable public contract)
 
@@ -128,18 +151,18 @@ $body = "<SIGNED_TX_JSON>"
 Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/tx" -Method Post -ContentType "application/json" -Body $body
 ```
 
-## 5) Совместимость и versioning policy (V3 baseline)
+## 5) Совместимость и versioning policy (V4 baseline)
 
 - Freeze касается только **public stable `/v1/*`** из раздела 3.1.
-- Для breaking-изменений публичного контракта после V3 требуется отдельное версионирование (`/v2/*`) или явно задокументированное исключение.
+- Для breaking-изменений публичного контракта после V4 требуется отдельное версионирование (`/v2/*`) или явно задокументированное исключение.
 - Operator/dev endpoints остаются evolveable surface и **не являются стабильным публичным контрактом**.
 
-## 6) Deferred boundaries (явно не часть V3 runtime)
+## 6) Deferred boundaries (явно не часть текущего V4 baseline)
 
-В рамках V3 этот документ не обещает:
+В рамках текущего baseline этот документ не обещает:
 
 - production offchain batch API;
 - runtime IPv4 claiming engine;
-- V4/V5/V7 policy/runtime фичи.
+- V5/V6/V7 runtime фичи.
 
-V3 здесь фиксирует только foundation-контракт для public devnet и дальнейшего review.
+Этот документ фиксирует V4-baseline контракт для public devnet и дальнейшего review.

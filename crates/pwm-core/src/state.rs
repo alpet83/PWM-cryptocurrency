@@ -1,8 +1,9 @@
 //! Canonical chain state: accounts map, fees, burns, import consumed IDs.
 
+use crate::crypto::verify;
 use crate::tx::{
-    export_context_is_valid, import_context_is_valid, ClaimMode, SignedTx, TxBody, TxError,
-    CLAIM_ALL,
+    export_context_is_valid, import_context_is_valid, same_hi_domain, ActivationMode, ClaimMode,
+    CosignRole, PolicyAction, PolicyKind, SignedTx, TxBody, TxError, CLAIM_ALL,
 };
 use crate::types::{Account, AccountId};
 use crate::PWM_RAW_SCALE;
@@ -11,6 +12,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const PPM_DENOM: u128 = 1_000_000;
+
+#[derive(Debug)]
+pub enum PolicyDecision {
+    Allow,
+    Reject(TxError),
+    Redirect(AccountId),
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExportProvenance {
@@ -116,6 +124,12 @@ impl State {
         if acc.nonce != tx.nonce {
             return Err(TxError::BadNonce);
         }
+        let mut redir_to = None;
+        match self.evaluate_policy(tx) {
+            PolicyDecision::Allow => {}
+            PolicyDecision::Reject(err) => return Err(err),
+            PolicyDecision::Redirect(to) => redir_to = Some(to),
+        }
 
         match &tx.body {
             TxBody::Init { index, flags } => {
@@ -126,6 +140,24 @@ impl State {
                 a.initialized = true;
                 a.index = *index;
                 a.flags = *flags;
+                if let Some(ext) = &tx.init_v4 {
+                    a.owner_kind = ext.owner_kind.clone();
+                    a.owner_display_name = ext.owner_display_name.clone();
+                    a.owner_country_hint = ext.owner_country_hint.clone();
+                    a.company_metadata_commitment = Some(ext.company_metadata_commitment);
+                    a.external_verification_ref = Some(ext.external_verification_ref.clone());
+                    a.requested_domain_lo = Some(ext.requested_domain_lo);
+                    a.rescue_address = ext.rescue_address;
+                    for row in &ext.initial_policies {
+                        let bit = row.policy.bit();
+                        a.active_policies &= !bit;
+                        a.dormant_policies &= !bit;
+                        match row.activation {
+                            ActivationMode::Dormant => a.dormant_policies |= bit,
+                            ActivationMode::Immediately => a.active_policies |= bit,
+                        }
+                    }
+                }
                 a.nonce += 1;
                 self.accounts.insert(id, a);
             }
@@ -133,8 +165,9 @@ impl State {
                 if !acc.initialized {
                     return Err(TxError::NotInitialized);
                 }
-                if *to != id {
-                    self.require_recipient(to)?;
+                let dst = redir_to.unwrap_or(*to);
+                if dst != id {
+                    self.require_recipient(&dst)?;
                 }
                 let total = amount.checked_add(*fee).ok_or(TxError::Insufficient)?;
                 if acc.balance_pwm < total {
@@ -145,16 +178,16 @@ impl State {
                 from.nonce += 1;
                 self.fee_pool = self.fee_pool.saturating_add(tx.body.fee_amount());
 
-                if *to == id {
+                if dst == id {
                     // Self-transfer must apply debit+credit against the same account.
                     // Previously the receiver stub overwrite could discard the nonce increment.
                     from.balance_pwm = from.balance_pwm.saturating_add(*amount);
                     self.accounts.insert(id, from);
                 } else {
-                    let mut to_acc = self.accounts.get(to).cloned().expect("recipient gated");
+                    let mut to_acc = self.accounts.get(&dst).cloned().expect("recipient gated");
                     to_acc.balance_pwm = to_acc.balance_pwm.saturating_add(*amount);
                     self.accounts.insert(id, from);
-                    self.accounts.insert(*to, to_acc);
+                    self.accounts.insert(dst, to_acc);
                 }
             }
             TxBody::Stake { amount } => {
@@ -360,8 +393,74 @@ impl State {
                 }
                 self.imported_set.insert(*export_id);
             }
+            TxBody::Policy {
+                target_account,
+                action,
+                fee,
+            } => {
+                if !acc.initialized {
+                    return Err(TxError::NotInitialized);
+                }
+                if *target_account != id {
+                    return Err(TxError::PolicyDenied);
+                }
+                if acc.balance_pwm < *fee {
+                    return Err(TxError::Insufficient);
+                }
+                let mut a = acc;
+                validate_pol_action(self, &a, action, tx)?;
+                apply_policy_action(&mut a, action)?;
+                a.balance_pwm -= *fee;
+                a.nonce += 1;
+                self.fee_pool = self.fee_pool.saturating_add(*fee);
+                self.accounts.insert(id, a);
+            }
         }
         Ok(())
+    }
+
+    /// Pure policy evaluator over current state snapshot.
+    pub fn evaluate_policy(&self, tx: &SignedTx) -> PolicyDecision {
+        let sender_id = tx.computed_account_id();
+        let Some(sender_acc) = self.accounts.get(&sender_id) else {
+            return PolicyDecision::Reject(TxError::NoAccount);
+        };
+
+        if sender_acc.finalized && is_finalized_blocked(&tx.body, sender_acc) {
+            return PolicyDecision::Reject(TxError::PolicyAccountFinalized);
+        }
+
+        if let TxBody::Transfer { to, .. } = &tx.body {
+            if let Some(recipient_acc) = self.accounts.get(to).filter(|acc| acc.initialized) {
+                if recipient_acc.finalized
+                    && policy_is_active(recipient_acc, PolicyKind::RoutingEmergencyRedirect)
+                {
+                    return eval_emerg_redirect(self, &sender_id, recipient_acc);
+                }
+                if policy_is_active(recipient_acc, PolicyKind::RoutingSameDomainOnly)
+                    && !same_hi_domain(&sender_id, to)
+                {
+                    return PolicyDecision::Reject(TxError::PolicyRoutingDenied);
+                }
+                if policy_is_active(recipient_acc, PolicyKind::SenderFilter) && sender_id != *to {
+                    return PolicyDecision::Reject(TxError::PolicySenderFiltered);
+                }
+                if policy_is_active(recipient_acc, PolicyKind::DefaultBehavior) {
+                    return PolicyDecision::Reject(TxError::PolicyDenied);
+                }
+            }
+        }
+
+        if let TxBody::Policy { target_account, .. } = &tx.body {
+            if let Some(target_acc) = self.accounts.get(target_account) {
+                if policy_is_active(target_acc, PolicyKind::CosignRequired) && !has_valid_cosign(tx)
+                {
+                    return PolicyDecision::Reject(TxError::PolicyMissingCosign);
+                }
+            }
+        }
+
+        PolicyDecision::Allow
     }
 
     /// Marks from stake per block (`staked * coeff / 1_000_000`).
@@ -435,12 +534,159 @@ fn as_marks_u32(value: u128) -> u32 {
     value.min(u32::MAX as u128) as u32
 }
 
+fn apply_policy_action(acc: &mut Account, action: &PolicyAction) -> Result<(), TxError> {
+    match action {
+        PolicyAction::SetPolicy { policy, activation } => {
+            let bit = policy.bit();
+            acc.active_policies &= !bit;
+            acc.dormant_policies &= !bit;
+            match activation {
+                ActivationMode::Dormant => acc.dormant_policies |= bit,
+                ActivationMode::Immediately => acc.active_policies |= bit,
+            }
+            Ok(())
+        }
+        PolicyAction::ActivatePolicy { policy_id } => {
+            let policy =
+                PolicyKind::from_policy_id(*policy_id).ok_or(TxError::PolicySchemaInvalid)?;
+            let bit = policy.bit();
+            if acc.active_policies & bit != 0 {
+                return Ok(());
+            }
+            if acc.dormant_policies & bit == 0 {
+                return Err(TxError::PolicyNotInstalled);
+            }
+            acc.dormant_policies &= !bit;
+            acc.active_policies |= bit;
+            if matches!(policy, PolicyKind::RoutingEmergencyRedirect) {
+                acc.finalized = true;
+            }
+            Ok(())
+        }
+        PolicyAction::DeactivatePolicy { policy_id } => {
+            let policy =
+                PolicyKind::from_policy_id(*policy_id).ok_or(TxError::PolicySchemaInvalid)?;
+            if !policy.is_reversible() {
+                return Err(TxError::PolicyIrreversible);
+            }
+            let bit = policy.bit();
+            if acc.active_policies & bit == 0 {
+                return Err(TxError::PolicyNotActive);
+            }
+            acc.active_policies &= !bit;
+            acc.dormant_policies |= bit;
+            Ok(())
+        }
+    }
+}
+
+fn policy_is_active(acc: &Account, policy: PolicyKind) -> bool {
+    acc.active_policies & policy.bit() != 0
+}
+
+fn is_finalized_blocked(body: &TxBody, acc: &Account) -> bool {
+    match body {
+        TxBody::Transfer { .. }
+        | TxBody::Stake { .. }
+        | TxBody::Unstake { .. }
+        | TxBody::BurnMark { .. }
+        | TxBody::Claim { .. }
+        | TxBody::Export { .. }
+        | TxBody::Import { .. } => true,
+        TxBody::Policy { action, .. } => !finalized_policy_allowed(acc, action),
+        TxBody::Init { .. } => false,
+    }
+}
+
+fn finalized_policy_allowed(acc: &Account, action: &PolicyAction) -> bool {
+    match action {
+        PolicyAction::ActivatePolicy { policy_id } => {
+            if *policy_id != PolicyKind::RoutingEmergencyRedirect.policy_id() {
+                return false;
+            }
+            let bit = PolicyKind::RoutingEmergencyRedirect.bit();
+            acc.active_policies & bit == 0 && acc.dormant_policies & bit != 0
+        }
+        PolicyAction::SetPolicy { .. } | PolicyAction::DeactivatePolicy { .. } => false,
+    }
+}
+
+fn has_valid_cosign(tx: &SignedTx) -> bool {
+    if tx.cosigns.is_empty() {
+        return false;
+    }
+    let msg = tx.signing_message();
+    tx.cosigns
+        .iter()
+        .any(|row| verify(&row.signer_pk, &msg, &row.signature))
+}
+
+fn has_role_cosign(tx: &SignedTx, role: CosignRole, signer_pk: &[u8; 32]) -> bool {
+    if tx.cosigns.is_empty() {
+        return false;
+    }
+    let msg = tx.signing_message();
+    tx.cosigns.iter().any(|row| {
+        row.role == role
+            && &row.signer_pk == signer_pk
+            && verify(&row.signer_pk, &msg, &row.signature)
+    })
+}
+
+fn validate_pol_action(
+    st: &State,
+    acc: &Account,
+    action: &PolicyAction,
+    tx: &SignedTx,
+) -> Result<(), TxError> {
+    let PolicyAction::ActivatePolicy { policy_id } = action else {
+        return Ok(());
+    };
+    let policy = PolicyKind::from_policy_id(*policy_id).ok_or(TxError::PolicySchemaInvalid)?;
+    if !matches!(policy, PolicyKind::RoutingEmergencyRedirect) {
+        return Ok(());
+    }
+    let rescue_id = acc.rescue_address.ok_or(TxError::PolicyRescueRequired)?;
+    let rescue_pk = st
+        .accounts
+        .get(&rescue_id)
+        .filter(|row| row.initialized)
+        .map(|row| row.signing_pubkey)
+        .ok_or(TxError::PolicyEmergencyCosignRequired)?;
+    if has_role_cosign(tx, CosignRole::Rescue, &rescue_pk) {
+        return Ok(());
+    }
+    Err(TxError::PolicyEmergencyCosignRequired)
+}
+
+fn eval_emerg_redirect(st: &State, sender_id: &AccountId, acc: &Account) -> PolicyDecision {
+    let rescue_id = match acc.rescue_address {
+        Some(id) => id,
+        None => return PolicyDecision::Reject(TxError::PolicyRescueRequired),
+    };
+    let Some(rescue_acc) = st.accounts.get(&rescue_id) else {
+        return PolicyDecision::Reject(TxError::RecipientMissing);
+    };
+    if !rescue_acc.initialized {
+        return PolicyDecision::Reject(TxError::RecipientNotInitialized);
+    }
+    if !same_hi_domain(sender_id, &rescue_id) {
+        return PolicyDecision::Reject(TxError::PolicyRoutingDenied);
+    }
+    PolicyDecision::Redirect(rescue_id)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::PolicyDecision;
     use super::State;
+    use crate::crypto::sign;
     use crate::genesis::dev_net;
     use crate::hd::{account_id_from_parts, domain_of_account_id};
-    use crate::tx::{validate_tx_shape, ClaimMode, SignedTx, TxBody, TxError, CLAIM_ALL};
+    use crate::tx::{
+        validate_tx_shape, ActivationMode, ClaimMode, CosignRole, Cosignature, InitPolicyEntry,
+        InitV4Extension, PolicyAction, PolicyKind, SignedTx, TxBody, TxError, CLAIM_ALL,
+    };
     use crate::types::Account;
     use crate::types::AccountId;
     use crate::PWM_RAW_SCALE;
@@ -454,6 +700,38 @@ mod tests {
         let pk = sk.verifying_key().to_bytes();
         let aid = account_id_from_parts(&pk, i);
         (sk, i, aid)
+    }
+
+    fn user_sk_other_domain(seed_start: u8, sender_hi: u8) -> (SigningKey, u32, AccountId) {
+        let mut seed = seed_start;
+        for _ in 0..1024 {
+            let s = [seed; 32];
+            let (sk, idx, aid) = user_sk0(&s);
+            if domain_of_account_id(&aid).to_be_bytes()[0] != sender_hi {
+                return (sk, idx, aid);
+            }
+            seed = seed.wrapping_add(1);
+        }
+        panic!("failed to find account in other domain");
+    }
+
+    fn user_sk_new_domain(
+        st: &State,
+        seed_start: u8,
+        sender_hi: u8,
+    ) -> (SigningKey, u32, AccountId) {
+        let mut seed = seed_start;
+        for _ in 0..2048 {
+            let s = [seed; 32];
+            let (sk, idx, aid) = user_sk0(&s);
+            if domain_of_account_id(&aid).to_be_bytes()[0] == sender_hi
+                && !st.accounts.contains_key(&aid)
+            {
+                return (sk, idx, aid);
+            }
+            seed = seed.wrapping_add(1);
+        }
+        panic!("failed to find unused account in same domain");
     }
 
     /// Init stub then transfer validator→peer debits fee pool (formerly `apply_tx_init_then_transfer_happy_path`).
@@ -1712,5 +1990,856 @@ mod tests {
         let bal0 = acc.balance_pwm;
         st.reward_producer_v2(&aid, 100, 100_000, 500_000);
         assert_eq!(st.accounts.get(&aid).expect("validator").balance_pwm, bal0);
+    }
+
+    #[test]
+    fn init_v4_ext_sets_account() {
+        let mut st = State::default();
+        let (sk, idx, aid) = user_sk0(&[0xF1; 32]);
+        let dom = domain_of_account_id(&aid);
+        let mut init = SignedTx::sign_body(&sk, dom, idx, 0, TxBody::Init { index: 5, flags: 9 });
+        init.set_init_v4_signed(
+            &sk,
+            Some(InitV4Extension {
+                owner_kind: "company".to_string(),
+                owner_display_name: "Acme Corp".to_string(),
+                owner_country_hint: "CY".to_string(),
+                company_metadata_commitment: [5u8; 32],
+                external_verification_ref: "https://example.org/kyb".to_string(),
+                requested_domain_lo: 0,
+                rescue_address: Some([8u8; 32]),
+                initial_policies: vec![InitPolicyEntry {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Dormant,
+                }],
+                cosign_policy: None,
+            }),
+        );
+        st.apply_tx(&init).expect("init with v4 ext");
+        let acc = st.get(&aid).expect("account");
+        assert_eq!(acc.owner_kind, "company");
+        assert_eq!(acc.requested_domain_lo, Some(0));
+        assert_eq!(acc.rescue_address, Some([8u8; 32]));
+        assert_ne!(acc.dormant_policies & PolicyKind::SenderFilter.bit(), 0);
+    }
+
+    #[test]
+    fn policy_tx_state_lifecycle() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sk = &sks[0];
+        let aid = g.accounts[0].acct;
+        let dom = domain_of_account_id(&aid);
+        let base = st.get(&aid).expect("sender").clone();
+
+        let set = SignedTx::sign_body(
+            sk,
+            dom,
+            g.accounts[0].der_idx,
+            base.nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::CosignRequired,
+                    activation: ActivationMode::Dormant,
+                },
+                fee: 11,
+            },
+        );
+        st.apply_tx(&set).expect("set policy");
+        let after_set = st.get(&aid).expect("after set");
+        assert_ne!(
+            after_set.dormant_policies & PolicyKind::CosignRequired.bit(),
+            0
+        );
+
+        let act = SignedTx::sign_body(
+            sk,
+            dom,
+            g.accounts[0].der_idx,
+            after_set.nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::CosignRequired.policy_id(),
+                },
+                fee: 13,
+            },
+        );
+        st.apply_tx(&act).expect("activate policy");
+        let after_act = st.get(&aid).expect("after act");
+        assert_eq!(
+            after_act.dormant_policies & PolicyKind::CosignRequired.bit(),
+            0
+        );
+        assert_ne!(
+            after_act.active_policies & PolicyKind::CosignRequired.bit(),
+            0
+        );
+        assert_eq!(after_act.balance_pwm, base.balance_pwm - 24);
+    }
+
+    #[test]
+    fn policy_route_deny_no_mut() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (rcpt_sk, rcpt_idx, rcpt_id) = user_sk_other_domain(0xB0, sender_hi);
+        let rcpt_dom = domain_of_account_id(&rcpt_id);
+
+        let init_rcpt = SignedTx::sign_body(
+            &rcpt_sk,
+            rcpt_dom,
+            rcpt_idx,
+            0,
+            TxBody::Init { index: 1, flags: 0 },
+        );
+        st.apply_tx(&init_rcpt).expect("init recipient");
+        st.accounts
+            .get_mut(&rcpt_id)
+            .expect("recipient")
+            .active_policies |= PolicyKind::RoutingSameDomainOnly.bit();
+        let before = st.clone();
+
+        let tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            st.get(&sender_id).expect("sender").nonce,
+            TxBody::Transfer {
+                to: rcpt_id,
+                amount: 10,
+                fee: 1,
+            },
+        );
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("must reject cross-domain route");
+        assert!(matches!(err, TxError::PolicyRoutingDenied));
+        assert_eq!(st.accounts, before.accounts);
+        assert_eq!(st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn policy_finalized_deny() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        st.accounts.get_mut(&sender_id).expect("sender").finalized = true;
+        let tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            0,
+            TxBody::Stake { amount: 1 },
+        );
+        let err = st
+            .apply_tx_with_ctx(&tx, 10, 1_000)
+            .expect_err("finalized sender must be blocked");
+        assert!(matches!(err, TxError::PolicyAccountFinalized));
+    }
+
+    #[test]
+    fn policy_def_beh_xfer_deny() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_nonce = st.get(&sender_id).expect("sender").nonce;
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (rcpt_sk, rcpt_idx, rcpt_id) = user_sk_other_domain(0xD1, sender_hi);
+        let rcpt_dom = domain_of_account_id(&rcpt_id);
+
+        st.apply_tx(&SignedTx::sign_body(
+            &rcpt_sk,
+            rcpt_dom,
+            rcpt_idx,
+            0,
+            TxBody::Init { index: 3, flags: 0 },
+        ))
+        .expect("init recipient");
+        st.accounts
+            .get_mut(&rcpt_id)
+            .expect("recipient")
+            .active_policies |= PolicyKind::DefaultBehavior.bit();
+        let before = st.clone();
+
+        let tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            sender_nonce,
+            TxBody::Transfer {
+                to: rcpt_id,
+                amount: 5,
+                fee: 1,
+            },
+        );
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("default behavior on recipient must deny incoming transfer");
+        assert!(matches!(err, TxError::PolicyDenied));
+        assert_eq!(st.accounts, before.accounts);
+        assert_eq!(st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn policy_cosign_gate_deny_allow() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        st.accounts
+            .get_mut(&sender_id)
+            .expect("sender")
+            .active_policies |= PolicyKind::CosignRequired.bit();
+
+        let tx_no_cosign = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            0,
+            TxBody::Policy {
+                target_account: sender_id,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Dormant,
+                },
+                fee: 1,
+            },
+        );
+        let deny = st
+            .apply_tx(&tx_no_cosign)
+            .expect_err("policy tx must require cosign");
+        assert!(matches!(deny, TxError::PolicyMissingCosign));
+
+        let (cosk, _, _) = user_sk0(&[0xDD; 32]);
+        let mut tx_with_cosign = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            0,
+            TxBody::Policy {
+                target_account: sender_id,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Dormant,
+                },
+                fee: 1,
+            },
+        );
+        let msg = tx_with_cosign.signing_message();
+        tx_with_cosign.cosigns.push(Cosignature {
+            signer_pk: cosk.verifying_key().to_bytes(),
+            role: CosignRole::Witness,
+            signature: sign(&cosk, &msg),
+        });
+        st.apply_tx(&tx_with_cosign)
+            .expect("valid cosign must pass");
+    }
+
+    #[test]
+    fn policy_cosign_bad_sig_deny() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        st.accounts
+            .get_mut(&sender_id)
+            .expect("sender")
+            .active_policies |= PolicyKind::CosignRequired.bit();
+
+        let (cosk, _, _) = user_sk0(&[0xDE; 32]);
+        let mut tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            0,
+            TxBody::Policy {
+                target_account: sender_id,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Dormant,
+                },
+                fee: 1,
+            },
+        );
+        tx.cosigns.push(Cosignature {
+            signer_pk: cosk.verifying_key().to_bytes(),
+            role: CosignRole::Witness,
+            signature: sign(&cosk, b"tampered-cosign-message"),
+        });
+
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("invalid cosign signature must be rejected");
+        assert!(matches!(err, TxError::PolicyMissingCosign));
+    }
+
+    #[test]
+    fn policy_precheck_apply_same_err() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (rcpt_sk, rcpt_idx, rcpt_id) = user_sk_other_domain(0xC0, sender_hi);
+        let rcpt_dom = domain_of_account_id(&rcpt_id);
+
+        st.apply_tx(&SignedTx::sign_body(
+            &rcpt_sk,
+            rcpt_dom,
+            rcpt_idx,
+            0,
+            TxBody::Init { index: 2, flags: 0 },
+        ))
+        .expect("init recipient");
+        st.accounts
+            .get_mut(&rcpt_id)
+            .expect("recipient")
+            .active_policies |= PolicyKind::RoutingSameDomainOnly.bit();
+
+        let tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            0,
+            TxBody::Transfer {
+                to: rcpt_id,
+                amount: 7,
+                fee: 1,
+            },
+        );
+        let pre_err = st
+            .precheck_apply_with_ctx(&tx, 10, 1_000)
+            .expect_err("precheck reject");
+        let app_err = st
+            .apply_tx_with_ctx(&tx, 10, 1_000)
+            .expect_err("apply reject");
+        assert!(matches!(pre_err, TxError::PolicyRoutingDenied));
+        assert!(matches!(app_err, TxError::PolicyRoutingDenied));
+    }
+
+    #[test]
+    fn eval_policy_sender_filter_min() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (rcpt_sk, rcpt_idx, rcpt_id) = user_sk_other_domain(0xA0, sender_hi);
+        let rcpt_dom = domain_of_account_id(&rcpt_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rcpt_sk,
+            rcpt_dom,
+            rcpt_idx,
+            0,
+            TxBody::Init { index: 0, flags: 0 },
+        ))
+        .expect("init recipient");
+        st.accounts
+            .get_mut(&rcpt_id)
+            .expect("recipient")
+            .active_policies |= PolicyKind::SenderFilter.bit();
+
+        let tx = SignedTx::sign_body(
+            &sks[0],
+            sender_dom,
+            g.accounts[0].der_idx,
+            0,
+            TxBody::Transfer {
+                to: rcpt_id,
+                amount: 1,
+                fee: 1,
+            },
+        );
+        let decision = st.evaluate_policy(&tx);
+        assert!(matches!(
+            decision,
+            PolicyDecision::Reject(TxError::PolicySenderFiltered)
+        ));
+    }
+
+    #[test]
+    fn policy_emerg_act_no_rescue() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let owner_sk = &sks[0];
+        let owner_id = g.accounts[0].acct;
+        let owner_dom = domain_of_account_id(&owner_id);
+        st.accounts
+            .get_mut(&owner_id)
+            .expect("owner")
+            .dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+
+        let tx = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            st.get(&owner_id).expect("owner").nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                },
+                fee: 1,
+            },
+        );
+        let err = st.apply_tx(&tx).expect_err("rescue address must exist");
+        assert!(matches!(err, TxError::PolicyRescueRequired));
+    }
+
+    #[test]
+    fn policy_emerg_act_no_cosign() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let owner_sk = &sks[0];
+        let owner_id = g.accounts[0].acct;
+        let owner_dom = domain_of_account_id(&owner_id);
+        let sender_hi = owner_dom.to_be_bytes()[0];
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0x41, sender_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rescue_sk,
+            rescue_dom,
+            rescue_idx,
+            0,
+            TxBody::Init { index: 6, flags: 0 },
+        ))
+        .expect("init rescue");
+        {
+            let owner = st.accounts.get_mut(&owner_id).expect("owner");
+            owner.rescue_address = Some(rescue_id);
+            owner.dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+        }
+
+        let tx = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            st.get(&owner_id).expect("owner").nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                },
+                fee: 1,
+            },
+        );
+        let before = st.clone();
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("rescue cosign is mandatory for emergency activation");
+        assert!(matches!(err, TxError::PolicyEmergencyCosignRequired));
+        assert_eq!(st.accounts, before.accounts);
+        assert_eq!(st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn policy_emerg_act_bad_cosign() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let owner_sk = &sks[0];
+        let owner_id = g.accounts[0].acct;
+        let owner_dom = domain_of_account_id(&owner_id);
+        let sender_hi = owner_dom.to_be_bytes()[0];
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0x42, sender_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rescue_sk,
+            rescue_dom,
+            rescue_idx,
+            0,
+            TxBody::Init { index: 7, flags: 0 },
+        ))
+        .expect("init rescue");
+        {
+            let owner = st.accounts.get_mut(&owner_id).expect("owner");
+            owner.rescue_address = Some(rescue_id);
+            owner.dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+        }
+
+        let mut tx = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            st.get(&owner_id).expect("owner").nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                },
+                fee: 1,
+            },
+        );
+        tx.cosigns.push(Cosignature {
+            signer_pk: rescue_sk.verifying_key().to_bytes(),
+            role: CosignRole::Rescue,
+            signature: sign(&rescue_sk, b"tampered-emerg-cosign"),
+        });
+        let before = st.clone();
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("bad rescue cosign must deny tx");
+        assert!(matches!(err, TxError::PolicyEmergencyCosignRequired));
+        let bit = PolicyKind::RoutingEmergencyRedirect.bit();
+        let owner_before = before.get(&owner_id).expect("owner before");
+        let owner_after = st.get(&owner_id).expect("owner after");
+        assert_eq!(
+            owner_after.active_policies & bit,
+            owner_before.active_policies & bit
+        );
+        assert_eq!(
+            owner_after.dormant_policies & bit,
+            owner_before.dormant_policies & bit
+        );
+        assert_eq!(owner_after.finalized, owner_before.finalized);
+        assert_eq!(owner_after.balance_pwm, owner_before.balance_pwm);
+        assert_eq!(st.accounts, before.accounts);
+        assert_eq!(st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn policy_emerg_act_ok_finalizes() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let owner_sk = &sks[0];
+        let owner_id = g.accounts[0].acct;
+        let owner_dom = domain_of_account_id(&owner_id);
+        let sender_hi = owner_dom.to_be_bytes()[0];
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0x43, sender_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rescue_sk,
+            rescue_dom,
+            rescue_idx,
+            0,
+            TxBody::Init { index: 8, flags: 0 },
+        ))
+        .expect("init rescue");
+        {
+            let owner = st.accounts.get_mut(&owner_id).expect("owner");
+            owner.rescue_address = Some(rescue_id);
+            owner.dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+        }
+        let mut tx = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            st.get(&owner_id).expect("owner").nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                },
+                fee: 1,
+            },
+        );
+        let msg = tx.signing_message();
+        tx.cosigns.push(Cosignature {
+            signer_pk: rescue_sk.verifying_key().to_bytes(),
+            role: CosignRole::Rescue,
+            signature: sign(&rescue_sk, &msg),
+        });
+        st.apply_tx(&tx).expect("valid rescue cosign must pass");
+        let owner = st.get(&owner_id).expect("owner");
+        let bit = PolicyKind::RoutingEmergencyRedirect.bit();
+        assert_ne!(owner.active_policies & bit, 0);
+        assert_eq!(owner.dormant_policies & bit, 0);
+        assert!(owner.finalized);
+    }
+
+    #[test]
+    fn policy_fin_blocks_old_ops() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let owner_sk = &sks[0];
+        let owner_id = g.accounts[0].acct;
+        let owner_dom = domain_of_account_id(&owner_id);
+        let owner_hi = owner_dom.to_be_bytes()[0];
+        let (peer_sk, peer_idx, peer_id) = user_sk_new_domain(&st, 0x40, owner_hi);
+        let peer_dom = domain_of_account_id(&peer_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &peer_sk,
+            peer_dom,
+            peer_idx,
+            0,
+            TxBody::Init { index: 4, flags: 0 },
+        ))
+        .expect("init peer");
+        st.accounts.get_mut(&owner_id).expect("owner").finalized = true;
+        let nonce = st.get(&owner_id).expect("owner").nonce;
+
+        let xfer = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            nonce,
+            TxBody::Transfer {
+                to: peer_id,
+                amount: 1,
+                fee: 1,
+            },
+        );
+        let xfer_err = st
+            .apply_tx(&xfer)
+            .expect_err("finalized transfer must fail");
+        assert!(matches!(xfer_err, TxError::PolicyAccountFinalized));
+
+        let stake = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            nonce,
+            TxBody::Stake { amount: 1 },
+        );
+        let stake_err = st.apply_tx(&stake).expect_err("finalized stake must fail");
+        assert!(matches!(stake_err, TxError::PolicyAccountFinalized));
+
+        let pol = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Dormant,
+                },
+                fee: 1,
+            },
+        );
+        let pol_err = st
+            .apply_tx(&pol)
+            .expect_err("finalized non-emergency policy must fail");
+        assert!(matches!(pol_err, TxError::PolicyAccountFinalized));
+    }
+
+    #[test]
+    fn policy_xfer_rescue_credit() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (target_sk, target_idx, target_id) = user_sk_new_domain(&st, 0x46, sender_hi);
+        let target_dom = domain_of_account_id(&target_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &target_sk,
+            target_dom,
+            target_idx,
+            0,
+            TxBody::Init {
+                index: 10,
+                flags: 0,
+            },
+        ))
+        .expect("init target");
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0x44, sender_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rescue_sk,
+            rescue_dom,
+            rescue_idx,
+            0,
+            TxBody::Init { index: 9, flags: 0 },
+        ))
+        .expect("init rescue");
+        {
+            let target = st.accounts.get_mut(&target_id).expect("target");
+            target.finalized = true;
+            target.rescue_address = Some(rescue_id);
+            target.active_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+        }
+        let sender_bal0 = st.get(&sender_id).expect("sender").balance_pwm;
+        let rescue_bal0 = st.get(&rescue_id).expect("rescue").balance_pwm;
+        let target_bal0 = st.get(&target_id).expect("target").balance_pwm;
+        let tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            st.get(&sender_id).expect("sender").nonce,
+            TxBody::Transfer {
+                to: target_id,
+                amount: 5,
+                fee: 1,
+            },
+        );
+        st.apply_tx(&tx)
+            .expect("incoming transfer should route to rescue");
+        assert_eq!(
+            st.get(&sender_id).expect("sender").balance_pwm,
+            sender_bal0 - 6
+        );
+        assert_eq!(
+            st.get(&rescue_id).expect("rescue").balance_pwm,
+            rescue_bal0 + 5
+        );
+        assert_eq!(st.get(&target_id).expect("target").balance_pwm, target_bal0);
+    }
+
+    #[test]
+    fn policy_xfer_rescue_cross_deny() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_sk = &sks[0];
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (target_sk, target_idx, target_id) = user_sk_new_domain(&st, 0x49, sender_hi);
+        let target_dom = domain_of_account_id(&target_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &target_sk,
+            target_dom,
+            target_idx,
+            0,
+            TxBody::Init {
+                index: 13,
+                flags: 0,
+            },
+        ))
+        .expect("init target");
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_other_domain(0x51, sender_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rescue_sk,
+            rescue_dom,
+            rescue_idx,
+            0,
+            TxBody::Init {
+                index: 14,
+                flags: 0,
+            },
+        ))
+        .expect("init rescue");
+        {
+            let target = st.accounts.get_mut(&target_id).expect("target");
+            target.finalized = true;
+            target.active_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+            target.rescue_address = Some(rescue_id);
+        }
+        let before = st.clone();
+        let tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            g.accounts[0].der_idx,
+            st.get(&sender_id).expect("sender").nonce,
+            TxBody::Transfer {
+                to: target_id,
+                amount: 4,
+                fee: 1,
+            },
+        );
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("cross-domain rescue redirect must reject transfer");
+        assert!(matches!(err, TxError::PolicyRoutingDenied));
+        assert_eq!(st.accounts, before.accounts);
+        assert_eq!(st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn policy_xfer_no_rescue() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (target_sk, target_idx, target_id) = user_sk_new_domain(&st, 0x47, sender_hi);
+        let target_dom = domain_of_account_id(&target_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &target_sk,
+            target_dom,
+            target_idx,
+            0,
+            TxBody::Init {
+                index: 11,
+                flags: 0,
+            },
+        ))
+        .expect("init target");
+        {
+            let target = st.accounts.get_mut(&target_id).expect("target");
+            target.finalized = true;
+            target.active_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+            target.rescue_address = None;
+        }
+        let tx = SignedTx::sign_body(
+            &sks[0],
+            sender_dom,
+            g.accounts[0].der_idx,
+            st.get(&sender_id).expect("sender").nonce,
+            TxBody::Transfer {
+                to: target_id,
+                amount: 2,
+                fee: 1,
+            },
+        );
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("missing rescue address must reject transfer");
+        assert!(matches!(err, TxError::PolicyRescueRequired));
+    }
+
+    #[test]
+    fn policy_xfer_rescue_no_init() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sender_id = g.accounts[0].acct;
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (_, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0x45, sender_hi);
+        st.accounts.insert(
+            rescue_id,
+            Account {
+                derivation_index: rescue_idx,
+                ..Default::default()
+            },
+        );
+        let (target_sk, target_idx, target_id) = user_sk_new_domain(&st, 0x48, sender_hi);
+        let target_dom = domain_of_account_id(&target_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &target_sk,
+            target_dom,
+            target_idx,
+            0,
+            TxBody::Init {
+                index: 12,
+                flags: 0,
+            },
+        ))
+        .expect("init target");
+        {
+            let target = st.accounts.get_mut(&target_id).expect("target");
+            target.finalized = true;
+            target.active_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+            target.rescue_address = Some(rescue_id);
+        }
+        let tx = SignedTx::sign_body(
+            &sks[0],
+            sender_dom,
+            g.accounts[0].der_idx,
+            st.get(&sender_id).expect("sender").nonce,
+            TxBody::Transfer {
+                to: target_id,
+                amount: 3,
+                fee: 1,
+            },
+        );
+        let err = st
+            .apply_tx(&tx)
+            .expect_err("uninitialized rescue account must reject transfer");
+        assert!(matches!(err, TxError::RecipientNotInitialized));
     }
 }

@@ -6,19 +6,20 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ![pwm-tui operator UI (demo)](tui-demo-screenshot.png)
 
-## Current status (MVP v3 foundation closed)
+## Current status (MVP v4 policy runtime closed)
 
-- **MVP v3 foundation for public devnet is closed** (Sprints V3-1..V3-4).
+- **MVP v4 policy runtime is closed** (Sprints V4-1..V4-6, 2026-05-17).
 - **Clean public devnet quickstart exists**: from a clean clone, a deterministic demo genesis path is documented and verified (premine target `21,000,000,000 PWM` = `21_000_000_000_000_000 raw`).
-- **Public API freeze skeleton is documented** in `docs/api-v1.md` for `/v1/*` baseline.
+- **Public `/v1` API baseline includes V4 policy runtime details** in `docs/api-v1.md` (account policy inspection fields, `PolicyTx` submit path, structured `E_POLICY_*` rejects).
 - **Epoch Snapshot schema + replay gate are in place** as the V3 trust baseline for state reload/replay behavior.
 - **ADR package is published** in `docs/adr/` for foundation architecture boundaries.
 - **Runtime log-control RPC is operator/debug-only** and explicitly outside the stable public API contract.
+- **V4 policy runtime contract is live:** dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing with finalized account behavior, and cosign envelope hooks.
 
-**What works today (post-V3 foundation):**
+**What works today (post-V4 closeout):**
 
 - **Integrated public-devnet smoke is covered for read API endpoints:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
-- **`POST /v1/tx` remains in the `/v1` API skeleton**, but was not part of the V3-4 integrated public smoke closeout (follow-up smoke can be added separately).
+- **`POST /v1/tx` carries V4 policy flow** (`PolicyTx` included) with structured rejects per RFC 14 additive policy codes (`E_POLICY_*`).
 - **Operator runtime log-control endpoints** (`/v1/operator/log/override`) are available as an operator/debug surface, not as stable public client API.
 
 - **Two spec-level geo-shards** as two `pwmd` processes with different `domain_hi` (e.g. `0x10` / `0x20`), separate `--state-root`, and a **tested** happy path for peering over **real transport** with reciprocal `--transport-peer-seed` peers.
@@ -95,7 +96,8 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 ## Key docs
 
 - README (Russian): [README-ru.md](README-ru.md)
-- MVP v3 foundation plan: `docs/plans/mvp_v3.md`
+- MVP v4 policy runtime plan (closed): `docs/plans/mvp_v4.md`
+- Concept roadmap / current milestone map: `docs/CONCEPT_ROADMAP.md`
 - API freeze skeleton (`/v1/*`): `docs/api-v1.md`
 - Public devnet quickstart: `docs/runbooks/demo-devnet-quickstart.md`
 - ADR package index: `docs/adr/README.md`
@@ -112,6 +114,9 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 - Node storage and snapshot modes: `docs/guide-node-storage-and-snapshot.md`
 - ClickHouse snapshot runbook: `docs/runbook-store-snapshots.md`
 - CLI/TUI two-shard and cross-shard scenarios: `docs/tester-guide-cli-tui-scenarios.md`
+- `pwmd` operator/API surface: `docs/pwmd.md`
+- CLI policy/operator flows: `docs/pwm-cli.md`
+- TUI account/policy inspection: `docs/pwm-tui.md`
 - Domain clusters dictionary: `docs/DOMAINS.md`
 - Phase 1 checklist: `docs/PHASE1_CHECKLIST.md`
 - Phase 1 release summary: `docs/PHASE1_RELEASE_SUMMARY.md`

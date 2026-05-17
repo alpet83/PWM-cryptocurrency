@@ -17,6 +17,13 @@ pub struct AcctRow {
     pub nonce: u64,
     pub marks: u32,
     pub staked: u128,
+    pub rescue_address: Option<AccountId>,
+    pub active_policies: u16,
+    pub dormant_policies: u16,
+    pub finalized: bool,
+    pub owner_kind: String,
+    pub owner_name: String,
+    pub owner_country: String,
     /// From wallet `address_book` entry (optional).
     pub label: Option<String>,
 }
@@ -36,6 +43,14 @@ pub fn parse_u32(v: &Value) -> u32 {
     match v {
         Value::String(s) => s.parse().unwrap_or(0),
         Value::Number(n) => n.as_u64().and_then(|x| u32::try_from(x).ok()).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+pub fn parse_u16(v: &Value) -> u16 {
+    match v {
+        Value::String(s) => s.parse().unwrap_or(0),
+        Value::Number(n) => n.as_u64().and_then(|x| u16::try_from(x).ok()).unwrap_or(0),
         _ => 0,
     }
 }
@@ -71,6 +86,32 @@ pub fn format_init_cell(r: &AcctRow) -> &'static str {
         "yes"
     } else {
         "no"
+    }
+}
+
+pub fn format_policy_bits(mask: u16) -> String {
+    if mask == 0 {
+        return "-".to_string();
+    }
+    let mut names: Vec<&'static str> = Vec::new();
+    for id in 0..16u8 {
+        let bit = 1u16 << id;
+        if mask & bit == 0 {
+            continue;
+        }
+        names.push(policy_name(id).unwrap_or("unknown"));
+    }
+    names.join(",")
+}
+
+fn policy_name(id: u8) -> Option<&'static str> {
+    match id {
+        0 => Some("same_domain"),
+        1 => Some("emergency_redirect"),
+        2 => Some("sender_filter"),
+        3 => Some("default_behavior"),
+        4 => Some("cosign_required"),
+        _ => None,
     }
 }
 
@@ -147,6 +188,13 @@ mod tests {
             nonce: 0,
             marks: 0,
             staked,
+            rescue_address: None,
+            active_policies: 0,
+            dormant_policies: 0,
+            finalized: false,
+            owner_kind: String::new(),
+            owner_name: String::new(),
+            owner_country: String::new(),
             label: None,
         }
     }

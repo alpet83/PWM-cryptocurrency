@@ -8,6 +8,8 @@ Today's digital world, despite its advantages, faces an exponential increase in 
 
 PayWall Mark (PWM) offers a fundamentally new approach to solving these problems. It is a decentralized IS infrastructure designed to preempt cybercriminal activity and create an economic barrier to attack, while remaining friendly to legitimate users. We focus on creating a transparent and adaptive trust framework that integrates with existing communications platforms, offering a practical solution for corporations, governments, and individual users.
 
+Implementation status note (May 2026): MVP v4 policy runtime is shipped and closed out in the Rust node stack (`pwmd`, `pwm-core`, `pwm`, `pwm-tui`). The implemented scope includes dedicated `PolicyTx`, pure `evaluate_policy` (no VM/DSL), hybrid corporate `INIT` metadata (`init_v4`), rescue-address emergency routing with finalized-account behavior, cosign envelope hooks, and structured `E_POLICY_*` reject semantics.
+
 
 ## 2. Purpose of PayWall Mark: Utility and Anti-Spam
 
@@ -31,7 +33,7 @@ Unlike speculative cryptocurrencies, PWM is positioned as a utilitarian asset wh
 #### Marks:
 
 * Generation: Stamps are generated daily from each PWM coin in the staking.
-* Demurrage: Each stamp has a limited lifetime (e.g., a few days). Unused stamps are "burned" or devalued after this time period. This eliminates the accumulation of stamps, prevents speculation on their value, and ensures their continued use.
+* Accumulation to cap: Stamps accumulate lazily (or periodically) from stake up to a fixed cap (MARKS_CAP / u32::MAX) and do not have individual lifetimes. After saturation, further accrual pauses until part of the balance is spent, preserving utility without TTL lot accounting or forced time-based decay.
 * Purpose: Stamps may be exclusively burned for the benefit of the recipients of messages or services. They serve as "payment for attention" or "proof of intent" for the initiating contact.
 
 
@@ -70,7 +72,7 @@ US-WY-98001.2B87EF.LpQrMtNaXyWeSdCvBg
 #### The dot acts as a separator between the index domain and the remaining parameters, in the basic implementation a field of flags. This structure allows:
 
 * Implement geographic/jurisdictional consensus sharding;
-* encode for an individual wallet address the TTL policy, receipt behavior, acceptability of off-chain transactions, etc.
+* encode for an individual wallet address a policy profile (routing/default behavior/sender filtering/cosign posture), receipt behavior, and acceptability of off-chain transactions.
 
 ### 4.2 Principle of address generation via HD-derivation with filtering
 
@@ -116,7 +118,7 @@ The signature algorithm used in PWM will be chosen from quantum stable families 
 
 #### Full address activation and application of all metadata requires an on-chain transaction with type INIT that commits:
 
-* auxiliary metadata: emergency routing policy, TTL, filtering, default behavior, and other optional parameters
+* auxiliary metadata: emergency routing policy, filtering/default behavior, and other optional parameters
 * demonstrates the signature of the cluster private key owner, in addition to the sender's signature, as is common for corporate addresses
 
 The address is considered inactive until such a transaction is published. Any attempts at replenishment transactions before the address is initialized will be rejected by the protocol. This additionally makes address spoofing scenarios more expensive.
@@ -133,9 +135,10 @@ One of the implementations of "dumb contracts" are policies that establish rules
     2. Revenue sharing between partners or departments.
     3. Automatic taxation, interest to agents and routes in referral chains.
 
-* **TTL (Time-To-Live) policy** - automatically invalidates the address after a specified time, prohibiting any receipts or spending after that time. Can be used to permanently freeze excess liquidity of PWM coins.
+* **Emergency routing + finalize policy** - allows controlled emergency redirection to a rescue address with required cosign and irreversible finalized-account state after activation.
 * **Sender filtering policy** - allows transfers only from specific addresses or according to an approved list, can be applied in private and corporate scenarios.
 * **Default Policy** - determines how unmarked anonymous transfers are handled: rejected, returned, or redirected.
+* **Cosign-required policy** - requires an additional transaction-level cosignature for policy-gated actions.
 
 Such a policy system enables high-level automation and security of financial interactions in the PWM network by configuring the behavior of the address according to the owner's business logic.
 
@@ -184,7 +187,7 @@ Each user receives a digital signature confirming that their brand has been acco
 
 Within large ecosystems (e.g., corporate email servers), you can set up your own economics of burn-in and proxy aggregation without going directly to the public network.
 
-It is allowed to transfer stamps over the API without risk of loss because each burn session is associated with an initiator address and has an internal TTL (time-to-live) policy.
+It is allowed to transfer stamps over the API without risk of loss because each burn session is associated with an initiator address and has bounded session lifecycle controls defined by the service.
 
 #### Mass adoption and trust through public aggregation:
 
@@ -245,7 +248,7 @@ The PWM monetization model is extremely restrained and focused on the long-term 
 
 #### Phase 1: Preparation of Specification and Demonstration (Q3 2025)
 
-* Completion of a white-spec with an accurate description of the address model, TTL and inflationary parameters of stamp reproduction.
+* Completion of a white-spec with an accurate description of the address model, marks accumulation model, and inflationary parameters.
 * Support for basic CLI utilities: address generation, policy visualization, test burn-in.
 * Publishing technical documentation for developers and integrators.
 * Launching a demo environment (svcpool.io) with tokenized stamp simulation on BNB/Solana.
@@ -260,7 +263,7 @@ The PWM monetization model is extremely restrained and focused on the long-term 
 
 #### Phase 3: Ecosystem and Social Adaptation (2026)
 
-* Realization of PoS-stacking and generation of limited validity respectts (stamps).
+* Realization of PoS staking and marks generation with accumulation-to-cap semantics.
 
 * Implementation of "dumb contracts"
 

@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "id": "20260517-v4-sprint4-emergency-routing",
+  "title": "MVP V4-4 emergency routing and finalized account behavior",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v4.md Sprint V4-4",
+    "docs/rfc/6-policy-engine.md emergency routing",
+    "docs/rfc/7-tx-and-state-model.md PolicyTx and cosignatures",
+    "docs/rfc/14-claim-burn-api-error-contract.md V4 policy rejects"
+  ],
+  "brief": "Implement emergency routing activation and finalized account behavior: activation requires target account signature plus valid rescue-address cosign; missing rescue address or one signature rejects; activation finalizes account irreversibly; finalized account cannot spend/unstake/set arbitrary policies with the old key; incoming transfer to finalized account routes deterministically to rescue address or rejects under documented routing rules.",
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "Prepare reuse map for emergency routing activation, rescue cosign, finalized behavior, redirect apply path, risks and tests.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260517-v4-sprint4-emergency-routing-info.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 22700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:05:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement emergency routing activation, rescue-address cosign validation, irreversible finalization, finalized account denies, and incoming transfer redirect to rescue.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 18000,
+        "output": 6500,
+        "total": 24500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:10:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate V4-4 emergency routing and finalized behavior with policy tests, targeted filters, cargo checks, and full pwm-core lib tests.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 20000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:15:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Add explicit no-mutation assertions to bad rescue cosign emergency activation test.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4300,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:20:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Retest bad rescue cosign no-mutation hardening.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:25:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of V4-4 emergency routing implementation and tests.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint4-emergency-routing-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 4800,
+        "total": 16800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:30:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Auto-close PASS_WITH_NITS: add cross-domain rescue redirect deny test and keep V4-4 Transfer-only redirect docs aligned.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs",
+        "docs/rfc/6-policy-engine.md",
+        "docs/plans/mvp_v4.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 5300,
+        "output": 950,
+        "total": 6250,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:35:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Retest cross-domain rescue redirect deny and full policy_ filter after V4-4 nit fix.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1600,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:40:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final re-review after V4-4 docs and cross-domain rescue deny test closed PASS_WITH_NITS.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint4-emergency-routing-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 4500,
+        "output": 3200,
+        "total": 7700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T12:45:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260517-v4-sprint4-emergency-routing-review.md",
+    "info_json": "tasks/20260517-v4-sprint4-emergency-routing-info.json"
+  },
+  "notes": "Security-sensitive slice. Keep evaluator pure; apply path performs deterministic finalization/routing only after evaluator permits. Do not add organization registry or policy DSL. pwm-testing PASS: cargo check -p pwm-core, cargo check -p pwmd, cargo test -p pwm-core policy_ (19 passed), targeted emerg/finalized/rescue filters, cargo test -p pwm-core --lib (133 passed, 1 ignored). Follow-up gap closed: bad rescue cosign test now asserts no state mutation; retest PASS. Review PASS_WITH_NITS: docs clarified V4-4 redirect applies to incoming Transfer only and cross-domain rescue deny test was added; retest PASS with policy_ 20/20."
+}

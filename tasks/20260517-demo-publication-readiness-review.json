@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "20260517-demo-publication-readiness-review",
+  "title": "Демонстрационный срез: готовность к публикации (чеклист + независимое ревью)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/MVP-checklist.md §0v4 (новая строка demo CY policy-matrix harness)"
+  ],
+  "brief": "Владелец фиксирует позицию: публикуется **рабочий демонстратор**, базовые policy-кейсы; multi-user/long soak отложены. Оркестратор обновил **MVP-checklist** §0v4 и **docs/plans/mvp_v4.md**. Нужен **pwm-review**: независимое ревью согласованности документов, отсутствия ложных обещаний о нагрузочном/multi-user охвате, готовность к внешнему читателю; артефакт **docs/reviews/20260517-demo-publication-readiness-review.md**; при необходимости блок **git-handoff** для staging коммита оркестратора (правки этого тикета + checklist + план до коммита субагента — по факту).",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Неизменённые продуктовые crates; только трасса docs + чеклист + публикационная постановка демонстратора",
+      "result": "PASS_WITH_NITS: согласованность MVP-checklist §0v4, mvp_v4.md, runbooks, CHANGELOG и тикета CY-matrix с намерением «демонстратор»; единственный nit — механический cross-link из demo-devnet-quickstart §6.1 на cy-cluster-policy-matrix-e2e.md",
+      "artifacts": [
+        "docs/reviews/20260517-demo-publication-readiness-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 8200,
+        "output": 3100,
+        "total": 9500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T20:00:00Z"
+    }
+  ],
+  "commits": [
+    "21cd589"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260517-demo-publication-readiness-review.md"
+  },
+  "notes": "PASS_WITH_NITS механический nit (cross-link quickstart §6.1) закрыт оркестраторским коммитом вместе с checklist/mvp_v4 CHANGELOG.",
+}

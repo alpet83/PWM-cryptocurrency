@@ -68,3 +68,28 @@ fn key_gen_hex_line() {
         "not hex: {line:?}"
     );
 }
+
+#[test]
+fn help_tx_core_cmds() {
+    for subcmd in [
+        "tx-policy-set",
+        "tx-policy-activate",
+        "tx-policy-deactivate",
+        "tx-init",
+    ] {
+        let out = Command::new(pwm_exe())
+            .args([subcmd, "--help"])
+            .output()
+            .expect("spawn pwm <subcmd> --help");
+        assert!(
+            out.status.success(),
+            "subcmd={subcmd} stderr={}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let s = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            s.contains(subcmd) && s.contains("Usage:"),
+            "subcmd={subcmd} unexpected help: {s}"
+        );
+    }
+}

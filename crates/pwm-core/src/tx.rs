@@ -19,6 +19,122 @@ pub enum ClaimMode {
     Paid,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivationMode {
+    Dormant,
+    Immediately,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PolicyKind {
+    #[serde(rename = "routing.same_domain_only")]
+    RoutingSameDomainOnly,
+    #[serde(rename = "routing.emergency_redirect")]
+    RoutingEmergencyRedirect,
+    #[serde(rename = "sender_filter")]
+    SenderFilter,
+    #[serde(rename = "default_behavior")]
+    DefaultBehavior,
+    #[serde(rename = "cosign_required")]
+    CosignRequired,
+}
+
+impl PolicyKind {
+    pub const fn policy_id(self) -> u8 {
+        match self {
+            Self::RoutingSameDomainOnly => 0,
+            Self::RoutingEmergencyRedirect => 1,
+            Self::SenderFilter => 2,
+            Self::DefaultBehavior => 3,
+            Self::CosignRequired => 4,
+        }
+    }
+
+    pub const fn bit(self) -> u16 {
+        1u16 << self.policy_id()
+    }
+
+    pub const fn from_policy_id(id: u8) -> Option<Self> {
+        match id {
+            0 => Some(Self::RoutingSameDomainOnly),
+            1 => Some(Self::RoutingEmergencyRedirect),
+            2 => Some(Self::SenderFilter),
+            3 => Some(Self::DefaultBehavior),
+            4 => Some(Self::CosignRequired),
+            _ => None,
+        }
+    }
+
+    pub const fn is_reversible(self) -> bool {
+        !matches!(self, Self::RoutingEmergencyRedirect)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PolicyAction {
+    SetPolicy {
+        policy: PolicyKind,
+        activation: ActivationMode,
+    },
+    ActivatePolicy {
+        policy_id: u8,
+    },
+    DeactivatePolicy {
+        policy_id: u8,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CosignRole {
+    Rescue,
+    Organization,
+    Witness,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Cosignature {
+    pub signer_pk: [u8; 32],
+    pub role: CosignRole,
+    #[serde(with = "crate::ser_bin::sig64")]
+    pub signature: [u8; 64],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InitPolicyEntry {
+    pub policy: PolicyKind,
+    pub activation: ActivationMode,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CosignPolicy {
+    pub min_signers: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InitV4Extension {
+    pub owner_kind: String,
+    pub owner_display_name: String,
+    pub owner_country_hint: String,
+    pub company_metadata_commitment: [u8; 32],
+    pub external_verification_ref: String,
+    pub requested_domain_lo: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rescue_address: Option<AccountId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub initial_policies: Vec<InitPolicyEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cosign_policy: Option<CosignPolicy>,
+}
+
+pub const INIT_OWNER_KIND_MAX: usize = 32;
+pub const INIT_OWNER_NAME_MAX: usize = 64;
+pub const INIT_OWNER_COUNTRY_MAX: usize = 8;
+pub const INIT_EXT_REF_MAX: usize = 96;
+pub const INIT_MAX_POLICIES: usize = 16;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TxBody {
@@ -66,6 +182,12 @@ pub enum TxBody {
         amount: u128,
         export_id: [u8; 32],
     },
+    Policy {
+        target_account: AccountId,
+        action: PolicyAction,
+        #[serde(with = "crate::ser_json_u128")]
+        fee: u128,
+    },
 }
 
 impl TxBody {
@@ -75,7 +197,8 @@ impl TxBody {
         match self {
             TxBody::Transfer { fee, .. }
             | TxBody::Export { fee, .. }
-            | TxBody::Claim { fee, .. } => *fee,
+            | TxBody::Claim { fee, .. }
+            | TxBody::Policy { fee, .. } => *fee,
             TxBody::Init { .. }
             | TxBody::Stake { .. }
             | TxBody::Unstake { .. }
@@ -100,6 +223,12 @@ pub struct SignedTx {
     /// Optional embedded provenance for target-side IMPORT replay determinism.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub import_provenance: Option<ExportProvenance>,
+    /// Optional V4 INIT extension fields. Allowed only with `TxBody::Init`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub init_v4: Option<InitV4Extension>,
+    /// Optional additive cosign envelope for policy-gated flows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cosigns: Vec<Cosignature>,
     /// Ed25519 sig, 64 bytes.
     #[serde(with = "crate::ser_bin::sig64")]
     pub signature: [u8; 64],
@@ -124,6 +253,32 @@ impl SignedTx {
                 v.push(1);
                 v.extend_from_slice(&index.to_le_bytes());
                 v.extend_from_slice(&flags.to_le_bytes());
+                if let Some(ext) = &self.init_v4 {
+                    v.push(1);
+                    push_len_prefixed_bytes(&mut v, ext.owner_kind.as_bytes());
+                    push_len_prefixed_bytes(&mut v, ext.owner_display_name.as_bytes());
+                    push_len_prefixed_bytes(&mut v, ext.owner_country_hint.as_bytes());
+                    v.extend_from_slice(&ext.company_metadata_commitment);
+                    push_len_prefixed_bytes(&mut v, ext.external_verification_ref.as_bytes());
+                    v.push(ext.requested_domain_lo);
+                    push_opt_account_id(&mut v, ext.rescue_address.as_ref());
+                    let pol_count = u8::try_from(ext.initial_policies.len()).unwrap_or(u8::MAX);
+                    v.push(pol_count);
+                    for row in ext.initial_policies.iter().take(pol_count as usize) {
+                        v.push(row.policy.policy_id());
+                        v.push(match row.activation {
+                            ActivationMode::Dormant => 0,
+                            ActivationMode::Immediately => 1,
+                        });
+                    }
+                    match &ext.cosign_policy {
+                        Some(cosign) => {
+                            v.push(1);
+                            v.push(cosign.min_signers);
+                        }
+                        None => v.push(0),
+                    }
+                }
             }
             TxBody::Transfer { to, amount, fee } => {
                 v.push(2);
@@ -209,6 +364,16 @@ impl SignedTx {
                     None => v.push(0),
                 }
             }
+            TxBody::Policy {
+                target_account,
+                action,
+                fee,
+            } => {
+                v.push(9);
+                v.extend_from_slice(target_account);
+                push_policy_action_signing(&mut v, action);
+                v.extend_from_slice(&fee.to_le_bytes());
+            }
         }
         v
     }
@@ -253,6 +418,8 @@ impl SignedTx {
             burn_purpose: None,
             import_fee: None,
             import_provenance: None,
+            init_v4: None,
+            cosigns: Vec::new(),
             signature: [0u8; 64],
         };
         match &tx.body {
@@ -286,6 +453,12 @@ impl SignedTx {
         let msg = self.signing_message();
         self.signature = sign(signing_key, &msg);
     }
+
+    pub fn set_init_v4_signed(&mut self, signing_key: &SigningKey, ext: Option<InitV4Extension>) {
+        self.init_v4 = ext;
+        let msg = self.signing_message();
+        self.signature = sign(signing_key, &msg);
+    }
 }
 
 /// Structural checks before state application.
@@ -303,6 +476,12 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
         }
     }
     match &tx.body {
+        TxBody::Init { .. } => {
+            if let Some(ext) = &tx.init_v4 {
+                validate_init_v4_ext(ext)?;
+            }
+        }
+        _ if tx.init_v4.is_some() => return Err(TxError::PolicySchemaInvalid),
         TxBody::BurnMark { .. } => {
             let normalized = tx
                 .burn_purpose
@@ -331,9 +510,95 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
                 return Err(TxError::ImportFeeTooLow);
             }
         }
+        TxBody::Policy {
+            target_account,
+            action,
+            fee,
+        } => {
+            if *target_account != aid {
+                return Err(TxError::PolicySchemaInvalid);
+            }
+            if *fee == 0 {
+                return Err(TxError::PolicySchemaInvalid);
+            }
+            match action {
+                PolicyAction::SetPolicy { .. } => {}
+                PolicyAction::ActivatePolicy { policy_id }
+                | PolicyAction::DeactivatePolicy { policy_id } => {
+                    if PolicyKind::from_policy_id(*policy_id).is_none() {
+                        return Err(TxError::PolicySchemaInvalid);
+                    }
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
+}
+
+fn validate_init_v4_ext(ext: &InitV4Extension) -> Result<(), TxError> {
+    if ext.owner_kind.is_empty() || ext.owner_kind.as_bytes().len() > INIT_OWNER_KIND_MAX {
+        return Err(TxError::PolicySchemaInvalid);
+    }
+    if ext.owner_display_name.is_empty()
+        || ext.owner_display_name.as_bytes().len() > INIT_OWNER_NAME_MAX
+    {
+        return Err(TxError::PolicySchemaInvalid);
+    }
+    if ext.owner_country_hint.is_empty()
+        || ext.owner_country_hint.as_bytes().len() > INIT_OWNER_COUNTRY_MAX
+    {
+        return Err(TxError::PolicySchemaInvalid);
+    }
+    if ext.external_verification_ref.as_bytes().len() > INIT_EXT_REF_MAX {
+        return Err(TxError::PolicySchemaInvalid);
+    }
+    if ext.initial_policies.len() > INIT_MAX_POLICIES {
+        return Err(TxError::PolicySchemaInvalid);
+    }
+    for row in &ext.initial_policies {
+        if row.policy.policy_id() >= 16 {
+            return Err(TxError::PolicySchemaInvalid);
+        }
+    }
+    Ok(())
+}
+
+fn push_len_prefixed_bytes(out: &mut Vec<u8>, payload: &[u8]) {
+    let len = u16::try_from(payload.len()).unwrap_or(u16::MAX);
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(payload);
+}
+
+fn push_opt_account_id(out: &mut Vec<u8>, value: Option<&AccountId>) {
+    match value {
+        Some(id) => {
+            out.push(1);
+            out.extend_from_slice(id);
+        }
+        None => out.push(0),
+    }
+}
+
+fn push_policy_action_signing(out: &mut Vec<u8>, action: &PolicyAction) {
+    match action {
+        PolicyAction::SetPolicy { policy, activation } => {
+            out.push(0);
+            out.push(policy.policy_id());
+            out.push(match activation {
+                ActivationMode::Dormant => 0,
+                ActivationMode::Immediately => 1,
+            });
+        }
+        PolicyAction::ActivatePolicy { policy_id } => {
+            out.push(1);
+            out.push(*policy_id);
+        }
+        PolicyAction::DeactivatePolicy { policy_id } => {
+            out.push(2);
+            out.push(*policy_id);
+        }
+    }
 }
 
 pub fn normalize_burn_purpose(value: &str) -> String {
@@ -442,13 +707,36 @@ pub enum TxError {
     FreeClaimDailyLimit,
     #[error("import fee too low")]
     ImportFeeTooLow,
+    #[error("policy schema invalid")]
+    PolicySchemaInvalid,
+    #[error("policy not installed")]
+    PolicyNotInstalled,
+    #[error("policy not active")]
+    PolicyNotActive,
+    #[error("policy denied")]
+    PolicyDenied,
+    #[error("policy sender filtered")]
+    PolicySenderFiltered,
+    #[error("policy routing denied")]
+    PolicyRoutingDenied,
+    #[error("policy missing cosign")]
+    PolicyMissingCosign,
+    #[error("policy rescue required")]
+    PolicyRescueRequired,
+    #[error("policy emergency cosign required")]
+    PolicyEmergencyCosignRequired,
+    #[error("policy account finalized")]
+    PolicyAccountFinalized,
+    #[error("policy irreversible")]
+    PolicyIrreversible,
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         export_context_is_valid, import_context_is_valid, same_hi_domain, validate_tx_shape,
-        SignedTx, TxBody, TxError, MIN_IMPORT_FEE_UNITS,
+        ActivationMode, InitPolicyEntry, InitV4Extension, PolicyAction, PolicyKind, SignedTx,
+        TxBody, TxError, MIN_IMPORT_FEE_UNITS,
     };
     use crate::hd::domain_of_account_id;
     use ed25519_dalek::SigningKey;
@@ -687,6 +975,98 @@ mod tests {
         );
         let encoded = to_vec(&tx).expect("signed tx json");
         let decoded: SignedTx = from_slice(&encoded).expect("signed tx decode");
+        assert_eq!(decoded, tx);
+    }
+
+    #[test]
+    fn policy_tx_json_fee_str() {
+        let (sk, idx) = signer(&[92u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            3,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Dormant,
+                },
+                fee: (u64::MAX as u128) + 123_456_789,
+            },
+        );
+        let fee_txt = ((u64::MAX as u128) + 123_456_789).to_string();
+        let json = String::from_utf8(to_vec(&tx).expect("json")).expect("utf8");
+        assert!(json.contains(&format!("\"fee\":\"{fee_txt}\"")));
+        let decoded: SignedTx = from_slice(json.as_bytes()).expect("decode");
+        assert_eq!(decoded, tx);
+    }
+
+    #[test]
+    fn policy_signing_changes_by_action() {
+        let (sk, idx) = signer(&[93u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let tx_a = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            4,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::CosignRequired.policy_id(),
+                },
+                fee: 10,
+            },
+        );
+        let tx_b = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            4,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::DeactivatePolicy {
+                    policy_id: PolicyKind::CosignRequired.policy_id(),
+                },
+                fee: 10,
+            },
+        );
+        assert_ne!(tx_a.signing_message(), tx_b.signing_message());
+    }
+
+    #[test]
+    fn init_v4_signing_json() {
+        let (sk, idx) = signer(&[94u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let dom = domain_of_account_id(&probe.computed_account_id());
+        let mut tx = SignedTx::sign_body(&sk, dom, idx, 0, TxBody::Init { index: 1, flags: 2 });
+        let base = tx.signing_message();
+        tx.set_init_v4_signed(
+            &sk,
+            Some(InitV4Extension {
+                owner_kind: "company".to_string(),
+                owner_display_name: "Acme".to_string(),
+                owner_country_hint: "CY".to_string(),
+                company_metadata_commitment: [7u8; 32],
+                external_verification_ref: "https://example.org/ref".to_string(),
+                requested_domain_lo: 0,
+                rescue_address: None,
+                initial_policies: vec![InitPolicyEntry {
+                    policy: PolicyKind::RoutingSameDomainOnly,
+                    activation: ActivationMode::Immediately,
+                }],
+                cosign_policy: None,
+            }),
+        );
+        assert_ne!(base, tx.signing_message());
+        let encoded = to_vec(&tx).expect("json");
+        let decoded: SignedTx = from_slice(&encoded).expect("decode");
         assert_eq!(decoded, tx);
     }
 }

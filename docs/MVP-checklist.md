@@ -10,6 +10,8 @@
 
 Foundation-трек **MVP v3** ведётся отдельно в [plans/mvp_v3.md](plans/mvp_v3.md); ниже добавлен короткий traceability-блок, чтобы общий чеклист ссылался на закрытый public-devnet gate.
 
+Policy runtime-трек **MVP v4** ведётся отдельно в [plans/mvp_v4.md](plans/mvp_v4.md); ниже добавлен короткий traceability-блок по закрытому V4 integrated gate.
+
 ---
 
 ## 0v3. MVP v3 foundation closeout
@@ -21,6 +23,22 @@ Foundation-трек **MVP v3** ведётся отдельно в [plans/mvp_v3.
 | [x] | Demo genesis package с premine 21B PWM и public devnet quickstart: [runbooks/demo-devnet-quickstart.md](runbooks/demo-devnet-quickstart.md), ticket [20260516-v3-sprint3-demo-genesis-devnet.json](../tasks/20260516-v3-sprint3-demo-genesis-devnet.json) |
 | [x] | Integrated V3 public-devnet smoke: clean genesis build/verify, CY 3-node, `/v1/status`, `/v1/head`, `/v1/accounts`, `/v1/account/:id`; финальный review [sprint-v3-4-public-devnet-closeout-review-20260516.md](reviews/sprint-v3-4-public-devnet-closeout-review-20260516.md), ticket [20260516-v3-sprint4-public-devnet-closeout.json](../tasks/20260516-v3-sprint4-public-devnet-closeout.json) |
 | [~] | `POST /v1/tx` остаётся в API freeze skeleton, но не входил в V3-4 integrated smoke; покрыть отдельной smoke-строкой при расширении external integration сценариев. |
+
+---
+
+## 0v4. MVP v4 policy runtime closeout
+
+| Статус | Пункт |
+|--------|--------|
+| [x] | RFC/wire freeze: dedicated `PolicyTx` with embedded `PolicyAction`, lifecycle `Dormant/Immediately`, hybrid corporate `INIT`, rescue address, emergency finalization semantics and additive `E_POLICY_*` rejects; ticket [20260517-v4-sprint1-policy-rfc-freeze.json](../tasks/20260517-v4-sprint1-policy-rfc-freeze.json), review [20260517-v4-sprint1-policy-rfc-freeze-review.md](reviews/20260517-v4-sprint1-policy-rfc-freeze-review.md). |
+| [x] | Core model: `PolicyTx`, `init_v4`, account policy/rescue/finalized fields, snapshot conversion, cosign wire preservation and deterministic signing/serde; ticket [20260517-v4-sprint2-core-model.json](../tasks/20260517-v4-sprint2-core-model.json), review [20260517-v4-sprint2-core-model-review.md](reviews/20260517-v4-sprint2-core-model-review.md). |
+| [x] | Pure evaluator: `evaluate_policy`, structured policy rejects, same-domain routing deny, conservative sender/default deny, generic cosign gate and finalized reject scaffold; ticket [20260517-v4-sprint3-policy-engine.json](../tasks/20260517-v4-sprint3-policy-engine.json), review [20260517-v4-sprint3-policy-engine-review.md](reviews/20260517-v4-sprint3-policy-engine-review.md). |
+| [x] | Emergency routing: rescue-address cosign activation, irreversible finalization, finalized old-key blocks, same-shard incoming `Transfer` redirect to rescue and reject/no-mutation tests; ticket [20260517-v4-sprint4-emergency-routing.json](../tasks/20260517-v4-sprint4-emergency-routing.json), review [20260517-v4-sprint4-emergency-routing-review.md](reviews/20260517-v4-sprint4-emergency-routing-review.md). |
+| [x] | Operator path: CLI `tx-policy-*`, V4 `tx-init` flags, rescue cosign UX, TUI/API inspection fields and docs; ticket [20260517-v4-sprint5-cli-tui.json](../tasks/20260517-v4-sprint5-cli-tui.json), review [20260517-v4-sprint5-cli-tui-review.md](reviews/20260517-v4-sprint5-cli-tui-review.md). |
+| [x] | Integrated V4 gate: `cargo fmt --check`, `cargo check --workspace`, `cargo test -p pwmd --lib`, `cargo test -p pwm-core --lib`, full `pwm-cli`, policy filters and snapshot bench compile; smoke report [20260517-v4-integrated-smoke.md](reviews/20260517-v4-integrated-smoke.md), ticket [20260517-v4-sprint6-closeout.json](../tasks/20260517-v4-sprint6-closeout.json). |
+| [x] | **Demo publication slice (thin operator harness):** live CY policy-matrix smoke **`scripts/cy_cluster_policy_matrix_e2e.ps1`** exercised via **`pwm-testing`** + **`cq_process_ctl`** (**PASS**, **exit 0**); runbook [runbooks/cy-cluster-policy-matrix-e2e.md](runbooks/cy-cluster-policy-matrix-e2e.md), ticket [20260517-cy-cluster-policy-matrix-e2e-live.json](../tasks/20260517-cy-cluster-policy-matrix-e2e-live.json); commit после фиксации harness. Явно **не** многопользовательский/regression/soak-слой: долговременную симуляцию активности и расширенные policy-кейсы оставить на рост протокола / отдельные тикеты. |
+| [~] | **V4.x minimal path (spec only):** черновик [adr/0005-policy-deferred-activation.md](adr/0005-policy-deferred-activation.md) — режим **`Deferred`** по **`activate_at_height`**; реализация и normative RFC — [20260517-v4x-deferred-activation-adr.json](../tasks/20260517-v4x-deferred-activation-adr.json). Связка с address flags / `conservation` — вне ADR 0005 (V5 / protocol freeze). |
+| [~] | Full `cargo test --workspace`, manual TUI operation and long-running devnet soak were not part of V4-6; keep them as optional hardening gates before a public testnet announcement. |
 
 ---
 

@@ -356,11 +356,12 @@ Roaming MVP status contract (Sprint 13) формализован отдельн�
 ## `GET /v1/accounts`
 - Возвращает список аккаунтов из `chain.st.accounts`.
 - Поля балансов сериализуются строками (`u128 -> String`).
+- V4 inspection-поля включены в тот же payload (если заданы в state): `rescue_address`, `active_policies`, `dormant_policies`, `finalized`, `owner_kind`, `owner_display_name`, `owner_country_hint`, `company_metadata_commitment`, `external_verification_ref`, `requested_domain_lo`.
 
 ## `GET /v1/account/:id`
 - `:id` должен быть 32-байтным hex (`parse_id`), иначе `400 BAD_REQUEST`;
 - если аккаунт не найден в state, `404 NOT_FOUND`;
-- на успехе возвращается `AcctOut`.
+- на успехе возвращается `AcctOut` (включая V4 policy/finalized/rescue/meta inspection поля, если они присутствуют в state).
 
 ## `POST /v1/tx`
 
@@ -387,6 +388,18 @@ Roaming MVP status contract (Sprint 13) формализован отдельн�
 - для остальных tx: tx кладется в mempool;
 - возвращается `204 NO_CONTENT`;
 - если настроен `data_file`, нода обязана сохранить snapshot; при ошибке сохранения HTTP-операция отвечает `500` с явной причиной (без silent success).
+
+Structured policy reject examples (в теле reject JSON):
+- `E_POLICY_NOT_INSTALLED`
+- `E_POLICY_NOT_ACTIVE`
+- `E_POLICY_DENIED`
+- `E_POLICY_SENDER_FILTERED`
+- `E_POLICY_ROUTING_DENIED`
+- `E_POLICY_MISSING_COSIGN`
+- `E_POLICY_RESCUE_REQUIRED`
+- `E_POLICY_EMERGENCY_COSIGN_REQUIRED`
+- `E_POLICY_ACCOUNT_FINALIZED`
+- `E_POLICY_IRREVERSIBLE`
 
 Ошибки `apply_tx` для `EXPORT/IMPORT` маппятся в HTTP из `pwm_core::tx::TxError` (plain text body):
 - `DuplicateImport` -> `409 CONFLICT`;

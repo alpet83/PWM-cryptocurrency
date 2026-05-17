@@ -1,12 +1,12 @@
 # RFC 0014: Claim/Burn API error contract
 
 **Status:** Active (V2-1 publication pack)  
-**Version:** 1.0  
+**Version:** 1.1  
 **Slice source:** D (`sprint-v2-1-slice-d-api-contract-freeze.md`)
 
 ## Abstract
 
-RFC фиксирует wire-уровень reject-контракта для Claim/Burn: стабильный mapping `error.code -> response_class`, минимальную JSON-форму отказа и требования симметрии вердиктов между `mempool`, `preflight` и `apply`, включая explicit-claim и auto-claim ветки.
+RFC фиксирует wire-уровень reject-контракта для Claim/Burn и задаёт аддитивное расширение для V4 policy decisions: стабильный mapping `error.code -> response_class`, минимальную JSON-форму отказа и требования симметрии вердиктов между `mempool`, `preflight` и `apply`, включая explicit-claim, auto-claim и policy ветки.
 
 ## Motivation
 
@@ -30,9 +30,9 @@ RFC фиксирует wire-уровень reject-контракта для Clai
 Минимально обязательные коды (adopted from freeze):
 
 - Claim: `E_SCHEMA_INVALID`, `E_MODE_FEE_CONFLICT`, `E_FEE_POLICY_REJECT`, `E_ANCHOR_RANGE_INVALID`, `E_ANCHOR_CONTINUITY_BROKEN`, `E_ANCHOR_STATE_UNAVAILABLE`, `E_CLAIM_UNITS_INVALID`, `E_CLAIM_OVER_MATURED`, `E_FREE_CLAIM_DAILY_LIMIT`, `E_REORG_STATE_MISMATCH`.
-- Claim: `E_SCHEMA_INVALID`, `E_MODE_FEE_CONFLICT`, `E_FEE_POLICY_REJECT`, `E_ANCHOR_RANGE_INVALID`, `E_ANCHOR_CONTINUITY_BROKEN`, `E_ANCHOR_STATE_UNAVAILABLE`, `E_CLAIM_UNITS_INVALID`, `E_CLAIM_OVER_MATURED`, `E_FREE_CLAIM_DAILY_LIMIT`, `E_REORG_STATE_MISMATCH`.
 - Burn: `E_BURN_SCHEMA_INVALID`, `E_BURN_UNITS_INVALID`, `E_BURN_OVER_BALANCE`, `E_BURN_POLICY_REJECT`.
 - Import fee: `E_IMPORT_FEE_TOO_LOW`.
+- Policy V4: `E_POLICY_SCHEMA_INVALID`, `E_POLICY_NOT_INSTALLED`, `E_POLICY_NOT_ACTIVE`, `E_POLICY_DENIED`, `E_POLICY_SENDER_FILTERED`, `E_POLICY_ROUTING_DENIED`, `E_POLICY_MISSING_COSIGN`, `E_POLICY_RESCUE_REQUIRED`, `E_POLICY_EMERGENCY_COSIGN_REQUIRED`, `E_POLICY_ACCOUNT_FINALIZED`, `E_POLICY_IRREVERSIBLE`.
 
 Семантика кодов стабильна; расширение допустимо только аддитивно.
 
@@ -42,7 +42,7 @@ RFC фиксирует wire-уровень reject-контракта для Clai
 
 - `ok=false`
 - `phase` (`mempool|preflight|apply`)
-- `tx_kind` (`claim|burn`)
+- `tx_kind` (`claim|burn|import|policy|transfer|stake|unstake|init|export`)
 - `claim_mode` (`explicit|auto`) для `tx_kind=claim` (для `burn` может отсутствовать)
 - `response_class`
 - `error.code`
@@ -55,6 +55,13 @@ RFC фиксирует wire-уровень reject-контракта для Clai
 - `error.code = "E_IMPORT_FEE_TOO_LOW"`,
 - `response_class = "POLICY_REJECT"`.
 
+Для V4 policy rejects:
+
+- `tx_kind` SHOULD reflect the submitted transaction kind (`policy` for `PolicyTx`, or the original kind for a transfer/stake/init rejected by policy).
+- `policy_code` MAY identify the policy enum variant (`routing.same_domain_only`, `routing.emergency_redirect`, `sender_filter`, `default_behavior`, `cosign_required`).
+- `policy_phase` MAY be `evaluate`, `activate`, `deactivate`, or `apply`.
+- `response_class` MUST be `POLICY_REJECT` for deterministic policy denial and `VALIDATION_ERROR` for malformed policy payloads.
+
 ## Error Semantics
 
 - При одинаковом входе и эквивалентном pre-state `preflight` должен вернуть тот же `error.code`, что и `apply`.
@@ -63,11 +70,15 @@ RFC фиксирует wire-уровень reject-контракта для Clai
 - Для временной недоступности canonical anchor view используется только `E_ANCHOR_STATE_UNAVAILABLE` + `TEMPORARY_UNAVAILABLE`.
 - Для auto-claim reject в составе релевантной транзакции узел обязан возвращать claim-класс ошибки (`E_*`) с явным `claim_mode=auto`; источник можно указывать либо как `tx_kind=claim`, либо как исходный `tx_kind` с дополнительным claim-контекстом, но семантика `error.code` должна оставаться claim-совместимой.
 - Для `IMPORT` policy должен enforce `import_fee >= MIN_IMPORT_FEE_UNITS` (`0.01 PWM` в целевых единицах), и при reject возвращать `E_IMPORT_FEE_TOO_LOW` без state-mutation.
+- Для V4 policy decisions `preflight` и `apply` должны возвращать один и тот же `error.code` при одинаковом pre-state. `evaluate_policy` не мутирует state; если state drift меняет результат к моменту apply, ответ остаётся в стабильном наборе `E_POLICY_*`.
+- `E_POLICY_ACCOUNT_FINALIZED` означает, что старый account key больше не авторизует запрошенное действие после irreversible emergency finalization.
+- `E_POLICY_EMERGENCY_COSIGN_REQUIRED` означает, что emergency routing activation не содержит валидной подписи rescue address.
 
 ## Compatibility
 
 - RFC является API-слоем поверх RFC 0013 и сохраняет трассируемость к его decision classes.
 - Контракт рассчитан на аддитивное расширение без breaking-переопределения существующих `error.code`.
+- V4 policy codes are additive and MUST NOT change the semantics of existing Claim/Burn/Import codes.
 
 ## Out-of-Scope
 

@@ -236,6 +236,51 @@
 
 ---
 
+## MVP V4: policy runtime {#thema-v4-policy}
+
+Короткие определения для закрытого **MVP V4 Policy Engine Runtime**. Подробнее: [план V4](plans/mvp_v4.md), [RFC 6](rfc/6-policy-engine.md), [RFC 7](rfc/7-tx-and-state-model.md), [RFC 14](rfc/14-claim-burn-api-error-contract.md).
+
+### PolicyTx / PolicyAction {#term-policytx}
+
+- **Простыми словами:** отдельная control-plane транзакция для установки, активации и деактивации политик аккаунта. PWM value-transfer через неё не переносится.
+- **Важно:** zero-PWM self-transfer не используется как носитель политик; обычный self-transfer остаётся запрещённым/отклоняемым по правилам value-транзакций.
+
+### `ActivationMode` {#term-activation-mode}
+
+- **Простыми словами:** режим установки политики: **Dormant** означает «положить в аккаунт, но пока не применять», **Immediately** — «сразу включить».
+- **Где встречается:** `SetPolicy { policy, activation }`, `init_v4.initial_policies`.
+
+### `evaluate_policy` {#term-evaluate-policy}
+
+- **Простыми словами:** чистая функция проверки политики: читает транзакцию и состояние, возвращает «разрешить / отказать / перенаправить», но сама ничего не записывает.
+- **Зачем в проекте:** preflight и apply должны давать один и тот же policy reject; мутация балансов и флагов делается только в apply-path после детерминированного решения.
+
+### Hybrid corporate INIT / `init_v4` {#term-init-v4}
+
+- **Простыми словами:** расширение `INIT`: короткие публичные поля owner/company хранятся on-chain, а длинная или изменяемая metadata фиксируется hash/commitment и external verification reference.
+- **Где встречается:** CLI `tx-init` V4 flags, account inspection fields, RFC 6/7.
+
+### Rescue address {#term-rescue-address}
+
+- **Простыми словами:** заранее зарегистрированный адрес восстановления. Он нужен, чтобы активировать emergency routing и принимать перенаправленные входящие `Transfer` после финализации старого аккаунта.
+
+### Emergency routing {#term-emergency-routing}
+
+- **Простыми словами:** аварийная политика: при компрометации/ротации ключа аккаунт активирует маршрутизацию входящих same-shard `Transfer` на rescue address.
+- **Ограничение V4:** redirect применяется к `Transfer`; `Import`/cross-shard ingress parity — backlog до отдельного RFC.
+
+### Finalized account {#term-finalized-account}
+
+- **Простыми словами:** аккаунт после успешной emergency activation. Старый приватный ключ больше не может выполнять обычный spend/control, а входящие transfer уходят на rescue address по правилам политики.
+- **Важно:** финализация emergency routing в V4 необратима.
+
+### Policy reject / `E_POLICY_*` {#term-policy-reject}
+
+- **Простыми словами:** стабильный API-код отказа из RFC 14, например `E_POLICY_ROUTING_DENIED`, `E_POLICY_EMERGENCY_COSIGN_REQUIRED`, `E_POLICY_ACCOUNT_FINALIZED`.
+- **Зачем в проекте:** CLI/API/TUI могут показывать понятную причину отказа и сверять preflight/apply поведение.
+
+---
+
 ## Алфавитный указатель
 
 ### Латиница (A–Z)
@@ -243,6 +288,7 @@
 | Термин / токен | Ссылка |
 |----------------|--------|
 | A ADR (V3 foundation package) | [ADR V3](#term-adr-v3-package) |
+| A `ActivationMode` | [ActivationMode](#term-activation-mode) |
 | A API freeze `/v1/*` | [API freeze V3](#term-api-freeze-v1) |
 | A attester | [Attester](#term-attester) |
 | A auto-attest (incoming propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
@@ -258,6 +304,8 @@
 | K k-of-n | [k-of-n](#term-k-of-n) |
 | N `node_instance_id`, `--node-instance-id` | [membership](#term-membership) |
 | P premine 21B (raw) | [Premine 21B](#term-premine-21b) |
+| P Policy reject / `E_POLICY_*` | [Policy reject](#term-policy-reject) |
+| P PolicyTx / PolicyAction | [PolicyTx](#term-policytx) |
 | P proposer | [Proposer](#term-proposer) |
 | P public devnet | [Public devnet](#term-public-devnet) |
 | P `process-local` (lease backend) | [Аренда в процессе](#term-process-local-lease) |
@@ -265,6 +313,7 @@
 | Q `quorum_pending`, `quorum_timeout` | [quorum_pending](#term-quorum-pending), [quorum_timeout](#term-quorum-timeout) |
 | R replay determinism gate | [Replay gate V3](#term-replay-det-gate-v3) |
 | R `record_cluster_propose_originated` | [зеркало propose](#term-record-cluster-propose-originated) |
+| R rescue address | [Rescue address](#term-rescue-address) |
 | S `send_cluster_prop` | [send_cluster_prop](#term-send-cluster-prop) |
 | S same-shard, seal, source | [same-shard](#term-same-shard), [seal](#term-seal), [follower](#term-source-follower) |
 | S2 lease | [S2](#term-s2-lease) |
@@ -289,6 +338,7 @@
 | Демо genesis | [Demo genesis](#term-demo-genesis) |
 | Догоняющий узел (follower) | [Source и follower](#term-source-follower) |
 | Зеркало propose | [`record_cluster_propose_originated`](#term-record-cluster-propose-originated) |
+| Аварийная маршрутизация | [Emergency routing](#term-emergency-routing) |
 | Cleanup-chain (V3) | [Cleanup-chain](#term-cleanup-chain-v3) |
 | Исходящий ClusterPropose | [`send_cluster_prop`](#term-send-cluster-prop) |
 | Источник (source) | [Source и follower](#term-source-follower) |
@@ -306,7 +356,8 @@
 | Снимок эпох (Epoch Snapshot, V3) | [Epoch Snapshot V3](#term-epoch-snapshot-v3) |
 | Состав кластера (membership) | [membership](#term-membership) |
 | Транспорт по проводу (wire) | [Wire](#term-wire) |
+| Финализированный аккаунт | [Finalized account](#term-finalized-account) |
 
 ---
 
-*Информация согласована с обзорами V2-9, RFC 16 и блоком MVP V3 foundation в этом файле по состоянию на 2026-05; при изменении протокола сверяйте первоисточник в `docs/rfc/16-validator-clone-attestation.md`.*
+*Информация согласована с обзорами V2-9, RFC 16, блоком MVP V3 foundation и блоком MVP V4 policy runtime по состоянию на 2026-05; при изменении протокола сверяйте первоисточники в `docs/rfc/` и актуальных планах `docs/plans/`.*

@@ -948,4 +948,52 @@ mod tests {
             run_b.blocks.last().map(|b| hdr_hash(&b.hdr))
         );
     }
+
+    #[test]
+    fn legacy_snapshot_defaults_policy_fields() {
+        let (cfg, _sks) = pwm_core::dev_net();
+        let snap = SnapshotData {
+            version: SNAPSHOT_VERSION,
+            genesis_accounts: snapshot_genesis_accounts(&cfg),
+            blocks: vec![],
+            state: cfg.state0(),
+            roaming: SnapshotRoamingWire::default(),
+            cross_shard: CrossShardLedger::default(),
+            blocks_stored: BlocksStored::Inline,
+            checkpoint_height: 0,
+        };
+        let txt = encode_snap_data_txt(&snap).expect("encode");
+        let mut raw: Value = serde_json::from_str(&txt).expect("json");
+        let accounts = raw
+            .as_object_mut()
+            .and_then(|x| x.get_mut("state"))
+            .and_then(Value::as_object_mut)
+            .and_then(|x| x.get_mut("accounts"))
+            .and_then(Value::as_array_mut)
+            .expect("state.accounts");
+        let account_obj = accounts
+            .first_mut()
+            .and_then(Value::as_object_mut)
+            .and_then(|x| x.get_mut("account"))
+            .and_then(Value::as_object_mut)
+            .expect("account row");
+        account_obj.remove("rescue_address");
+        account_obj.remove("active_policies");
+        account_obj.remove("dormant_policies");
+        account_obj.remove("finalized");
+        account_obj.remove("owner_kind");
+        account_obj.remove("owner_display_name");
+        account_obj.remove("owner_country_hint");
+        account_obj.remove("company_metadata_commitment");
+        account_obj.remove("external_verification_ref");
+        account_obj.remove("requested_domain_lo");
+        let loaded = decode_snap_raw(&raw.to_string(), &cfg)
+            .expect("decode")
+            .expect("some");
+        let one = loaded.state.accounts.values().next().expect("has account");
+        assert_eq!(one.rescue_address, None);
+        assert_eq!(one.active_policies, 0);
+        assert_eq!(one.dormant_policies, 0);
+        assert!(!one.finalized);
+    }
 }

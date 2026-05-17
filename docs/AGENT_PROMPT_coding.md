@@ -38,8 +38,55 @@ Skip this step for tiny one-line fixes that do not change structure or file set,
 
 ## Micro-modular layout (keep decompositions alive)
 
+The codebase has an **established micro-modular structure** (slice O / O.1): every concern lives in its own focused `*.rs` file or subdirectory with a thin façade `mod.rs`. This layout is the **optimal mode for subagent-driven development** — small, well-bounded modules make handoffs cheaper, reviews faster, and conflicts rarer. **Preserve and extend this structure; never compress it.**
+
 - **Placement:** Prefer new logic in the **smallest focused module** under existing trees (`crates/*/src/<area>/…`). Follow **`docs/CODEBASE_REFACTORING.md`** and completed slice **O / O.1** patterns (directory per concern, thin façade `mod.rs`). Do **not** turn **`main.rs`**, **`lib.rs`**, or a façade `mod.rs` back into a «swiss army knife»—if a file approaches **~800 LOC** or mixes unrelated concerns, extract a sibling `*.rs` or subdir **in the same change** when the task allows.
 - **`//!` module banner (English):** For every `*.rs` you **touch in a meaningful way**, ensure the file opens with **one short `//!` line** stating what the module owns (two lines max if there is an important caveat, e.g. test-only or re-export façade). Tiny pure re-export shims: still one line; generated or vendored paths are out of scope unless the ticket says otherwise.
+
+## Interface and function design
+
+These rules enforce the project's **reliability through simplicity** principle at the code level.
+
+### Function / method size
+
+- **Prefer many small focused functions over large logic-heavy ones.** A function that fits in ~20–30 lines and does one thing is easier to test, review, and understand in subagent context than a 100-line dispatcher.
+- If a function grows past ~40 lines, check whether it can be split into two or three named helpers. The names should make the split obvious in `cargo doc` / `///` without reading the bodies.
+- Avoid deeply nested `match`/`if`/`loop` stacks. Extract inner arms into named helper functions; leave the outer function as a readable coordinator.
+
+### Parameter count
+
+- **Hard cap: ≤ 5 parameters per function / method** (excluding `&self` / `&mut self`).
+- When a call site needs 6 or more arguments, **introduce a context / options struct** instead:
+  ```rust
+  // Anti-pattern — do NOT do this:
+  fn send_sync(peer: PeerId, height: u64, hash: Hash, ttl: Duration, retry: u8, flags: u32) { … }
+
+  // Preferred:
+  struct SyncOpts { height: u64, hash: Hash, ttl: Duration, retry: u8, flags: u32 }
+  fn send_sync(peer: PeerId, opts: SyncOpts) { … }
+  ```
+- Builder pattern (`SyncOpts::default().with_ttl(…)`) is acceptable when most fields have sensible defaults; avoid it when the struct is small and all fields are always set.
+- **Do not** work around the limit by bundling unrelated values into a tuple or a type alias — use a named struct with descriptive fields.
+
+### Return types
+
+- Prefer a named return struct or an existing well-typed enum over returning a tuple of more than 2 elements.
+- If multiple call sites need only a subset of the returned data, split into separate smaller functions rather than adding optional fields to the return type.
+
+### Trait design
+
+- **Keep traits narrow.** A trait with 1–4 methods is usually right. More than 6–7 methods on a single trait is a design smell — consider splitting by responsibility (one trait per capability axis).
+- Avoid required `async fn` / `fn` pairs that duplicate semantics; prefer one canonical form and let callers adapt.
+- Do not add methods to an existing trait just because the implementation happens to share state — favor free functions or a new companion trait instead.
+- If a trait is only used in one `impl`, consider whether a concrete struct with `pub(crate)` methods is simpler.
+
+### Simplicity self-check before finishing
+
+Before marking work done, scan touched functions/traits for:
+- Any function with more than 5 parameters (excluding `self`)? → refactor to context struct.
+- Any function body over ~40 lines? → split into helpers.
+- Any trait with more than 6–7 methods? → consider split.
+- Any new tuple return of 3+ elements? → introduce a named struct.
 
 ## Style and code quality
 

@@ -138,6 +138,142 @@ pub(crate) enum Cmd {
         index: u32,
         #[arg(long, default_value_t = 0)]
         flags: u32,
+        #[arg(long, help = "V4 owner kind (e.g. company, person).")]
+        owner_kind: Option<String>,
+        #[arg(long, help = "V4 short owner display name.")]
+        owner_name: Option<String>,
+        #[arg(long, help = "V4 owner country hint.")]
+        owner_country: Option<String>,
+        #[arg(long, help = "V4 company metadata commitment as 32-byte hex.")]
+        metadata_commitment: Option<String>,
+        #[arg(long, help = "V4 external verification reference.")]
+        verification_ref: Option<String>,
+        #[arg(long, help = "V4 requested low byte for destination domain.")]
+        requested_domain_lo: Option<u8>,
+        #[arg(long, help = "V4 rescue address (pretty/canonical/legacy formats).")]
+        rescue_address: Option<String>,
+        #[arg(
+            long = "initial-policy",
+            help = "V4 initial policy entry, format <kind>[:dormant|immediately]. Repeatable."
+        )]
+        initial_policy: Vec<String>,
+    },
+    /// POST signed POLICY set action.
+    #[command(name = "tx-policy-set")]
+    TxPolicySet {
+        #[arg(
+            long,
+            help = "Wallet YAML path (primary signing source). Used unless --master override is provided.",
+            required_unless_present = "master"
+        )]
+        wallet: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Dev override for signing source. When set, signer is derived from master+domain instead of wallet.",
+            requires = "domain"
+        )]
+        master: Option<String>,
+        #[arg(
+            long,
+            help = "Sender domain for --master override (label/raw as before).",
+            requires = "master"
+        )]
+        domain: Option<String>,
+        #[arg(
+            long,
+            help = "Policy kind: sender_filter, routing.emergency_redirect, routing.same_domain_only, default_behavior, cosign_required."
+        )]
+        policy: String,
+        #[arg(long, help = "Activation mode: dormant or immediately.")]
+        activation: String,
+        #[arg(
+            long,
+            default_value_t = 1,
+            help = "Fee in raw units (1 PWM = 1_000_000 raw)."
+        )]
+        fee: u128,
+    },
+    /// POST signed POLICY activation action.
+    #[command(name = "tx-policy-activate")]
+    TxPolicyActivate {
+        #[arg(
+            long,
+            help = "Wallet YAML path (primary signing source). Used unless --master override is provided.",
+            required_unless_present = "master"
+        )]
+        wallet: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Dev override for signing source. When set, signer is derived from master+domain instead of wallet.",
+            requires = "domain"
+        )]
+        master: Option<String>,
+        #[arg(
+            long,
+            help = "Sender domain for --master override (label/raw as before).",
+            requires = "master"
+        )]
+        domain: Option<String>,
+        #[arg(long, help = "Policy kind alternative to --policy-id.")]
+        policy: Option<String>,
+        #[arg(long, help = "Policy id alternative to --policy.")]
+        policy_id: Option<u8>,
+        #[arg(
+            long,
+            default_value_t = 1,
+            help = "Fee in raw units (1 PWM = 1_000_000 raw)."
+        )]
+        fee: u128,
+        #[arg(long, help = "Rescue signer derivation index in wallet v3.")]
+        rescue_account_index: Option<u32>,
+        #[arg(long, help = "Optional dedicated rescue wallet path.")]
+        rescue_wallet: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Rescue signer dev override master seed (requires --rescue-domain).",
+            requires = "rescue_domain"
+        )]
+        rescue_master: Option<String>,
+        #[arg(
+            long,
+            help = "Rescue signer domain for --rescue-master.",
+            requires = "rescue_master"
+        )]
+        rescue_domain: Option<String>,
+        #[arg(long, help = "Optional passphrase for rescue wallet unlock.")]
+        rescue_passphrase: Option<String>,
+    },
+    /// POST signed POLICY deactivation action.
+    #[command(name = "tx-policy-deactivate")]
+    TxPolicyDeactivate {
+        #[arg(
+            long,
+            help = "Wallet YAML path (primary signing source). Used unless --master override is provided.",
+            required_unless_present = "master"
+        )]
+        wallet: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Dev override for signing source. When set, signer is derived from master+domain instead of wallet.",
+            requires = "domain"
+        )]
+        master: Option<String>,
+        #[arg(
+            long,
+            help = "Sender domain for --master override (label/raw as before).",
+            requires = "master"
+        )]
+        domain: Option<String>,
+        #[arg(long, help = "Policy kind alternative to --policy-id.")]
+        policy: Option<String>,
+        #[arg(long, help = "Policy id alternative to --policy.")]
+        policy_id: Option<u8>,
+        #[arg(
+            long,
+            default_value_t = 1,
+            help = "Fee in raw units (1 PWM = 1_000_000 raw)."
+        )]
+        fee: u128,
     },
     /// Demo: Merkle root over two leaves + provider Ed25519 sig (stdout JSON).
     OffDemo,

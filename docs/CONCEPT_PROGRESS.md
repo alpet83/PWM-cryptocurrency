@@ -113,7 +113,7 @@
 | Floating annual inflation (~5%) | §3 | Фиксированный `block_reward` → policy-gated v2 | 🔶 |
 | Seasonal variation (лето/зима) | §3 | V2-3: `season_coeff_ppm` | ✅ |
 | Marks generation daily from staking | §3 | Per-block accrual, maturity formula | ✅ |
-| Marks demurrage (TTL) | §3 | WHITE_SPEC §5: опционально, не реализовано | ❌ |
+| Lazy marks saturation | Roadmap V5 | Целевая модель: накопление до `u32::MAX` без индивидуального TTL/lot accounting | ⏳ |
 | Marks burn only (no tradeable balance) | §3 | `marks` — отдельный счётчик, не переводимый | ✅ |
 | Unified marks balance (v2) | §3 | V2-2: `marks_quota` → единый `marks` | ✅ |
 
@@ -173,7 +173,7 @@
 | **PQC** — quantum-safe signatures | WP §4.4 | Низкий (defer) |
 | **IPv4 capping** — распределение по адресам | WP §3 | Низкий (defer) |
 | **Full inflation model** — float ~5% annual | WP §3 | Средний (частично через season_coeff) |
-| **Marks demurrage (TTL)** | WP §3 | Низкий (defer) |
+| **Lazy marks saturation polish** | Roadmap V5 | Средний (cap/account-touch semantics, UX насыщения) |
 | **Offchain burning production** | WP §8 | Средний (stub есть) |
 | **X-PWM email header integration** | WP §7 | Низкий (defer) |
 | **AI API integration** | WP §9 | Низкий (defer) |
@@ -189,7 +189,7 @@
 1. **Консенсусный пивот** (multi-sealer → single proposer + cluster attestation) **для спринтового gate закрыт** (V2-9). Остаётся продуктовая полировка и long-run soak на реальных стендах.
 2. **Policy engine gap:** WHITE_SPEC §9 описывает политики (routing, TTL, filter, default), но runtime execution не реализован. Это критический пробел для WP §5 «dumb contracts».
 3. **Масштабирование offchain:** stub batch-burn есть, но нет production-ready API для интеграций (email platforms, messengers).
-4. **TTL марок (demurrage):** ключевой элемент WP §3, не реализован даже как stub.
+4. **Lazy marks cap semantics:** старая WP-модель TTL заменена roadmap-решением: ленивое накопление до потолка без индивидуального срока жизни марок; остаётся уточнить account-touch semantics и UX насыщения.
 5. **Genesis amounts:** текущий devnet genesis ≠ 21B coins из WP; это нормально для dev, но потребует отдельного genesis-файла для демо.
 
 ---
@@ -201,7 +201,7 @@
 | **Реализовано и работает** | ~45% концепта |
 | **MVP-форма / частично** | ~25% (экономика базовая, политики как RFC, offchain stub) |
 | **Запланировано / в работе** | ~10% (расширенные cluster fault tests, policy runtime) |
-| **Defer / не начато** | ~15% (PQC, arbitrator, IPv4 capping, AI integration, demurrage, honeypots) |
+| **Defer / не начато** | ~15% (PQC, arbitrator, IPv4 capping, AI integration, lazy marks saturation polish, honeypots) |
 
 **Общий вывод:** MVP v2 закрывает **основной технический каркас** блокчейн-ядра (консенсус, шардинг, синхронизация, эмиссия, марки, клиенты). Следующие критические шаги к demonstration-ready концепту:
 - Опционально: **расширенный fault-matrix** для cluster (§11) и операторские soak на длинных цепочках

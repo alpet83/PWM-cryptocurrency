@@ -1,7 +1,7 @@
 //! Transaction signing sources (wallet unlock or master+domain override).
 
 use crate::cli_parse::{hex32, master_seed, parse_domain};
-use crate::wallet::{load_wallet_yaml_upgrade, wallet_secrets};
+use crate::wallet::{load_wallet_yaml_upgrade, wallet_account_list, wallet_secrets};
 use ed25519_dalek::SigningKey;
 use pwm_core::hd::{account_id_from_parts, brute_cluster_address};
 use pwm_core::{parse_account_id, AccountId};
@@ -59,6 +59,68 @@ fn load_sender_from_wallet(
         idx: wallet.derivation_index,
         from,
     })
+}
+
+pub(crate) fn load_wallet_account_signer(
+    path: &PathBuf,
+    account_index: u32,
+    wallet_passphrase: Option<&str>,
+    upgrade_wallet: bool,
+) -> Result<TxSignerSource, String> {
+    let wallet = load_wallet_yaml_upgrade(path, upgrade_wallet)
+        .map_err(|e| format!("failed to read wallet '{}': {e}", path.display()))?;
+    let secrets = wallet_secrets(&wallet, wallet_passphrase)
+        .map_err(|e| format!("failed to unlock wallet '{}': {e}", path.display()))?;
+    let seed = hex32(&secrets.master_seed_hex).map_err(|e| {
+        format!(
+            "invalid master_seed_hex in wallet '{}': {e}",
+            path.display()
+        )
+    })?;
+    let (expected_id, expected_dom) = resolve_wallet_account(path, &wallet, account_index)?;
+    let key = slip10_ed25519::derive_ed25519_private_key(&seed, &[0, account_index]);
+    let sk = SigningKey::from_bytes(&key);
+    let derived = account_id_from_parts(&sk.verifying_key().to_bytes(), account_index);
+    if derived != expected_id {
+        return Err(format!(
+            "wallet account mismatch for m/0/{account_index}: derived id does not match wallet account entry"
+        ));
+    }
+    Ok(TxSignerSource {
+        sk,
+        dom: expected_dom,
+        idx: account_index,
+        from: expected_id,
+    })
+}
+
+fn resolve_wallet_account(
+    path: &PathBuf,
+    wallet: &crate::wallet::WalletYaml,
+    account_index: u32,
+) -> Result<(AccountId, u16), String> {
+    if let Ok(entries) = wallet_account_list(path) {
+        let entry = entries
+            .into_iter()
+            .find(|row| row.derivation_index == account_index)
+            .ok_or_else(|| {
+                format!(
+                    "wallet account m/0/{account_index} not found; add it first with `wallet account add --derivation-index {account_index}`"
+                )
+            })?;
+        let id = parse_account_id(&entry.id_hex)
+            .map_err(|e| format!("wallet account id_hex is invalid: {e}"))?;
+        let dom = u16::from_be_bytes([id[0], id[1]]);
+        return Ok((id, dom));
+    }
+    if wallet.derivation_index != account_index {
+        return Err(format!(
+            "wallet account m/0/{account_index} not found in this wallet; multi-account selection requires wallet schema v3"
+        ));
+    }
+    let id = parse_account_id(&wallet.account_id_hex)
+        .map_err(|e| format!("invalid account_id_hex in wallet '{}': {e}", path.display()))?;
+    Ok((id, wallet.domain_u16))
 }
 
 pub(crate) fn load_tx_signer_source(

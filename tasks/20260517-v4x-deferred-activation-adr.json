@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "20260517-v4x-deferred-activation-adr",
+  "title": "V4.x — реализация Deferred activation после ADR 0005/RFC-согласования",
+  "status": "open",
+  "mvp_checklist": [
+    "docs/CONCEPT_ROADMAP.md § Post-V4 (+ ADR 0005)"
+  ],
+  "brief": "Черновик **docs/adr/0005-policy-deferred-activation.md** зафиксирован без кода. Следующий шаг (**pwm-coding**): решить ActivatePolicy vs auto-height; обновить **RFC 7/6** normative; расширить `Account`/snapshot; `pwm-core` evaluator + apply; **pwmd**/REST; **pwm-cli**/INIT+V4 harness; регрессия policy-тестов и минимальный live smoke. **Вне scope:** address flags, mandatory non-disableable, `conservation`, pruning origin set.",
+  "delegations": [],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Оркестратор 2026-05-17: только ADR + перекрёстные примечания RFC/roadmap/plan + этот тикет."
+}

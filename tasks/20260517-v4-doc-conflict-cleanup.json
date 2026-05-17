@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "20260517-v4-doc-conflict-cleanup",
+  "title": "V4 prep: cleanup stale marks demurrage references",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/CONCEPT_ROADMAP.md MVP V4/V5 boundary",
+    "docs/plans/mvp_v3.md plan style before MVP V4 plan generation"
+  ],
+  "brief": "Перед генерацией плана MVP v4 вычистить конфликтные doc-формулировки, где старая модель TTL/demurrage марок всё ещё описана как будущая или желательная. Актуальный контракт: марки лениво накапливаются до фиксированного потолка, без индивидуального срока жизни, TTL-buckets, marks_expiry_block и demurrage-prune.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Точечно обновить root `DRAFT_WHITEPAPER-ru.md` и `DRAFT_WHITEPAPER.md`: заменить активную модель individual TTL/demurrage марок на lazy accumulation/saturation до фиксированного cap, без изменений кода и соседних разделов.",
+      "result": "PASS",
+      "artifacts": [
+        "DRAFT_WHITEPAPER-ru.md",
+        "DRAFT_WHITEPAPER.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 5200,
+        "output": 800,
+        "total": 6000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T09:57:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Initial grep found stale normative references in docs/CONCEPT_ROADMAP.md, docs/WHITE_SPEC_v0.md, docs/CONCEPT_PROGRESS.md, plus root DRAFT_WHITEPAPER*.md. Orchestrator cleaned docs/* directly and delegated root whitepaper bullet replacements to pwm-coding because AGENTS.md limits orchestrator edits to docs/, scripts/, tasks/. Current normative direction: lazy marks accumulation/saturation to cap, no individual TTL/demurrage, no marks_expiry_block, no TTL-buckets."
+}

@@ -1,0 +1,98 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-17T08:05:00Z",
+  "title": "V4-4 Emergency Routing and Finalized Account Behavior - Reuse Map",
+  "research_question": "Identify all code paths, symbols, and dependencies required to implement emergency routing activation (requires target account signature + rescue-address cosign), finalized account behavior (old key cannot spend/unstake/set policies), and deterministic incoming transfer routing to rescue address. Focus on evaluator purity and apply path determinism.",
+  "parent_ticket": "tasks/20260517-v4-sprint4-emergency-routing.json",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {
+        "pattern": "rescue|emergency|finalized|RoutingEmergencyRedirect",
+        "paths_glob": "crates/**/*.rs",
+        "summary": "Found rescue_address field in Account, finalized flag, RoutingEmergencyRedirect policy kind, and related error codes (PolicyRescueRequired, PolicyEmergencyCosignRequired, PolicyAccountFinalized)"
+      },
+      {
+        "pattern": "evaluate_policy|PolicyDecision|has_valid_cosign",
+        "paths_glob": "crates/**/*.rs",
+        "summary": "Pure policy evaluator in state.rs, cosign validation scaffold, PolicyDecision enum with Allow/Reject/Redirect variants"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "crates/pwm-core/src/types.rs",
+      "why": "match",
+      "note": "Account struct with rescue_address: Option<AccountId>, finalized: bool, active_policies/dormant_policies bitfields; V4 metadata fields"
+    },
+    {
+      "path": "crates/pwm-core/src/tx.rs",
+      "why": "match",
+      "note": "PolicyKind enum (RoutingEmergencyRedirect, CosignRequired, etc), PolicyAction enum, CosignRole enum (Rescue, Organization, Witness), Cosignature struct, InitV4Extension with rescue_address, TxError policy codes (PolicyRescueRequired, PolicyEmergencyCosignRequired, PolicyAccountFinalized, PolicyIrreversible)"
+    },
+    {
+      "path": "crates/pwm-core/src/state.rs",
+      "why": "match",
+      "note": "State::evaluate_policy() pure evaluator, PolicyDecision enum (Allow, Reject, Redirect), is_finalized_blocked() tx filter, has_valid_cosign() generic validation, apply_policy_action() lifecycle, policy_is_active() bit test"
+    },
+    {
+      "path": "crates/pwmd/src/tx_policy.rs",
+      "why": "import",
+      "note": "Preflight guards for tx routing, recipient validation; may need extension for emergency routing preflight checks"
+    },
+    {
+      "path": "crates/pwmd/src/api/common.rs",
+      "why": "spec",
+      "note": "tx_err_wire() maps TxError to stable E_POLICY_* codes per RFC 14; already has mappings for finalized/rescue/emergency cosign errors"
+    },
+    {
+      "path": "docs/rfc/6-policy-engine.md",
+      "why": "spec",
+      "note": "RFC 6 §7.3.3 System policies and emergency routing - activation requires rescue_address cosign, finalizes account irreversibly, incoming transfers route to rescue"
+    },
+    {
+      "path": "docs/rfc/7-tx-and-state-model.md",
+      "why": "spec",
+      "note": "PolicyTx structure, InitV4Extension with rescue_address, cosign envelope for policy-gated flows"
+    },
+    {
+      "path": "docs/rfc/14-claim-burn-api-error-contract.md",
+      "why": "spec",
+      "note": "RFC 14 - stable error codes: E_POLICY_ACCOUNT_FINALIZED, E_POLICY_RESCUE_REQUIRED, E_POLICY_EMERGENCY_COSIGN_REQUIRED"
+    },
+    {
+      "path": "docs/plans/mvp_v4.md",
+      "why": "spec",
+      "note": "Sprint V4-4 scope: emergency routing activation with cosign, finalized account behavior, deterministic routing"
+    },
+    {
+      "path": "docs/reviews/20260517-v4-sprint3-policy-engine-review.md",
+      "why": "other",
+      "note": "V4-3 review - PASS; notes on cosign scaffold (role not checked), Redirect stub, finalized sender blocking already scaffolded"
+    }
+  ],
+  "digest": "## V4-4 Emergency Routing Implementation Map\n\n### Core Data Model (already in V4-2)\n- `Account.rescue_address: Option<AccountId>` - set during Init with V4 extension\n- `Account.finalized: bool` - irreversible flag, blocks old key operations\n- `PolicyKind::RoutingEmergencyRedirect` - policy bit (id=1), irreversible per `is_reversible()`\n\n### Transaction / Cosign Envelope (V4-2/V4-3)\n- `CosignRole::Rescue` - dedicated role for rescue address cosign\n- `Cosignature` struct with signer_pk, role, signature\n- `SignedTx.cosigns: Vec<Cosignature>` - additive envelope\n\n### Evaluator Path (V4-3 scaffold, V4-4 extends)\n- `State::evaluate_policy(&self, tx)` - pure read-only evaluator\n- `PolicyDecision::Redirect(AccountId)` - variant exists but returns PolicyDenied in V4-3\n- `is_finalized_blocked(body)` - blocks Transfer/Stake/Unstake/BurnMark/Claim/Export/Import/Policy for finalized accounts\n\n### Implementation Gaps for V4-4\n\n#### 1. Emergency Activation Logic\nLocation: `crates/pwm-core/src/state.rs` - `apply_policy_action()` or new helper\n- New `PolicyAction` variant or special handling for `ActivatePolicy { policy_id: 1 }` (RoutingEmergencyRedirect)\n- Check: `acc.rescue_address.is_some()` → `TxError::PolicyRescueRequired` if missing\n- Check: `has_rescue_cosign(tx, rescue_address)` → `TxError::PolicyEmergencyCosignRequired` if missing/invalid\n- Action: set `finalized = true`, move policy bit from dormant to active\n\n#### 2. Rescue-Aware Cosign Validation\nLocation: `crates/pwm-core/src/state.rs`\n- Extend `has_valid_cosign()` to optionally check role: `has_cosign_with_role(tx, role, expected_pk)`\n- For emergency: verify `CosignRole::Rescue` signature matches `account.rescue_address`\n\n#### 3. Finalized Account Restrictions\nLocation: `crates/pwm-core/src/state.rs` - `is_finalized_blocked()`\n- Already scaffolded; may need extension for PolicyTx that tries to set non-emergency policies\n- Allow only: emergency activation itself (if not already finalized), no other operations\n\n#### 4. Incoming Transfer Routing\nLocation: `crates/pwm-core/src/state.rs` - `evaluate_policy()` and `apply_tx_with_ctx()`\n- In evaluator: check recipient `finalized && rescue_address.is_some()` → return `PolicyDecision::Redirect(rescue_address)`\n- In apply path: handle `Redirect(to)` variant → credit `to` instead of recipient, or reject if same-shard/routing constraints violated\n\n#### 5. Same-Shard/Routing Constraints\n- RFC 6: routing may reject if rescue address is on different shard and cross-shard routing disabled\n- Policy error: `PolicyRoutingDenied` if domain rules prevent redirect\n\n### Symbol Reference\n\n```rust\n// In crates/pwm-core/src/tx.rs\npub enum PolicyKind {\n    RoutingEmergencyRedirect = 1,  // target of V4-4\n    // ... others\n}\n\npub enum CosignRole {\n    Rescue,        // V4-4 cosign role\n    Organization,\n    Witness,\n}\n\n// In crates/pwm-core/src/state.rs\npub enum PolicyDecision {\n    Allow,\n    Reject(TxError),\n    Redirect(AccountId),  // V4-4: actually use this\n}\n\n// Error codes already defined (TxError)\nPolicyRescueRequired,           // rescue address not set\nPolicyEmergencyCosignRequired,  // missing/invalid rescue cosign\nPolicyAccountFinalized,         // old key blocked\n```\n\n### Test Coverage Needed\n1. Emergency activation without rescue_address → Err(PolicyRescueRequired)\n2. Emergency activation with only owner sig (no rescue cosign) → Err(PolicyEmergencyCosignRequired)\n3. Emergency activation with rescue cosign but bad signature → Err(PolicyEmergencyCosignRequired)\n4. Emergency activation with both valid sigs → Ok, finalized=true, policy active\n5. After finalization: owner cannot Transfer/Stake/Unstake/SetPolicy → Err(PolicyAccountFinalized)\n6. After finalization: incoming Transfer routes to rescue address\n7. After finalization: incoming Transfer to finalized account when rescue is cross-shard → routing rules (Allow or Reject per spec)\n8. Double emergency activation attempt → Err(PolicyNotActive) or policy already active handling\n9. Non-emergency policy activation on finalized account → Err(PolicyAccountFinalized)\n10. Rescue address can still operate normally (not blocked)\n\n### Risks\n- R1: Cosign role validation bypass - if `has_valid_cosign` ignores `CosignRole::Rescue`, any cosigner could authorize emergency activation\n- R2: Redirect not implemented in apply path - evaluator returns Redirect but apply treats as Reject (V4-3 behavior)\n- R3: Cross-shard routing ambiguity - redirect to rescue on different shard may violate domain constraints\n- R4: Finalization bypass via Init - ensure Init cannot reset finalized flag\n- R5: Nonce management - ensure emergency activation tx properly increments nonce before finalization\n\n### Purity / Determinism Notes\n- Evaluator must remain read-only: no state mutation in `evaluate_policy`\n- Apply path must interpret `PolicyDecision::Redirect` deterministically\n- Routing decision must depend only on chain state (recipient.finalized, recipient.rescue_address), not external/oracle data\n",
+  "log_digest": [],
+  "open_questions": [
+    "Should emergency activation be a dedicated PolicyAction variant (ActivateEmergencyRouting) or reuse ActivatePolicy with policy_id=1?",
+    "Should Redirect apply path create rescue account stub if uninitialized (like Init does for recipients)?",
+    "Should cross-shard rescue addresses be rejected at activation time or at each incoming transfer?",
+    "What is the exact semantics of RoutingEmergencyRedirect when rescue_address is same as account owner?"
+  ],
+  "warnings": [
+    "CQDS search encountered errors; used local rg fallback - results may be incomplete if project indexing is stale",
+    "V4-4 touches both evaluator (pure) and apply path (mutation) - careful coordination needed to keep separation",
+    "PolicyDecision::Redirect currently returns PolicyDenied in V4-3; V4-4 must implement actual redirect logic"
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "estimate",
+      "input": 18500,
+      "output": 4200,
+      "total": 22700,
+      "confidence": "medium"
+    }
+  }
+}

@@ -1,0 +1,242 @@
+{
+  "id": "20260517-v4-sprint3-policy-engine",
+  "schema_version": 1,
+  "pwm_info_schema": 1,
+  "title": "V4-3: Pure policy evaluator and structured rejects",
+  "status": "info_ready",
+  "created_at": "2026-05-17T10:53:00+03:00",
+  "sprint": "V4-3",
+  "scope": "Pure read-only policy evaluation layer: evaluate_policy returning PolicyDecision, sender_filter, same-domain routing, default behavior, cosign_required; preflight/apply alignment; stable E_POLICY_* reject codes from RFC 14",
+  "files": [
+    "crates/pwm-core/src/tx.rs",
+    "crates/pwm-core/src/types.rs",
+    "crates/pwm-core/src/state.rs",
+    "crates/pwm-core/src/reject_wire.rs",
+    "crates/pwmd/src/tx_policy.rs",
+    "crates/pwmd/src/api/handlers_tx.rs",
+    "crates/pwmd/src/api/common.rs",
+    "crates/pwmd/src/snapshot/types.rs",
+    "docs/rfc/6-policy-engine.md",
+    "docs/rfc/14-claim-burn-api-error-contract.md"
+  ],
+  "symbols": [
+    {
+      "name": "PolicyDecision",
+      "kind": "enum",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "V4-3 new enum: Allow, Reject(PolicyRejectCode), Redirect(AccountId) for pure evaluator output"
+    },
+    {
+      "name": "PolicyRejectCode",
+      "kind": "enum",
+      "location": "crates/pwm-core/src/tx.rs or state.rs (new)",
+      "notes": "Stable codes mapping to RFC 14: SenderFiltered, RoutingDenied, MissingCosign, AccountFinalized, RescueRequired, EmergencyCosignRequired, DefaultDeny"
+    },
+    {
+      "name": "evaluate_policy",
+      "kind": "function",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "Pure fn: evaluate_policy(tx, sender_account, recipient_account_opt) -> PolicyDecision; no state mutation, no IO, deterministic"
+    },
+    {
+      "name": "ReadOnlyState",
+      "kind": "struct",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "Minimal read-only view for evaluator: account lookups without mutation capability"
+    },
+    {
+      "name": "PolicyEvaluator",
+      "kind": "struct",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "Optional struct holding policy evaluation context: sender domain, sender policies, recipient policies"
+    },
+    {
+      "name": "enforce_sender_filter",
+      "kind": "function",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "Checks if sender matches allowed senders list when SenderFilter policy active"
+    },
+    {
+      "name": "enforce_same_domain_routing",
+      "kind": "function",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "Rejects cross-domain transfers when RoutingSameDomainOnly policy active"
+    },
+    {
+      "name": "enforce_cosign_required",
+      "kind": "function",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "Validates cosign envelope when CosignRequired policy active for selected actions"
+    },
+    {
+      "name": "check_finalized_account",
+      "kind": "function",
+      "location": "crates/pwm-core/src/state.rs (new)",
+      "notes": "Returns PolicyAccountFinalized for non-allowed actions on finalized accounts; scaffold for V4-4 emergency routing"
+    },
+    {
+      "name": "State::apply_tx_with_ctx",
+      "kind": "method",
+      "location": "crates/pwm-core/src/state.rs:83-407",
+      "notes": "Extend match arms to call evaluate_policy before state mutation; apply PolicyDecision; maintain no-mutation-on-reject guarantee"
+    },
+    {
+      "name": "apply_policy_action",
+      "kind": "function",
+      "location": "crates/pwm-core/src/state.rs:480-521",
+      "notes": "V4-2 existing; handles SetPolicy/ActivatePolicy/DeactivatePolicy; remains unchanged in V4-3"
+    },
+    {
+      "name": "TxError",
+      "kind": "enum",
+      "location": "crates/pwm-core/src/tx.rs:662-728",
+      "notes": "V4-2 already has all policy errors: PolicySchemaInvalid, PolicyNotInstalled, PolicyNotActive, PolicyDenied, PolicyMissingCosign, PolicyRescueRequired, PolicyEmergencyCosignRequired, PolicyAccountFinalized, PolicyIrreversible"
+    },
+    {
+      "name": "PolicyKind::is_reversible",
+      "kind": "method",
+      "location": "crates/pwm-core/src/tx.rs:69-72",
+      "notes": "Returns false for RoutingEmergencyRedirect (irreversible); used in deactivate validation"
+    },
+    {
+      "name": "PolicyKind::bit",
+      "kind": "method",
+      "location": "crates/pwm-core/src/tx.rs:54-56",
+      "notes": "u16 bitset position for account active_policies/dormant_policies; max 16 policies per account"
+    },
+    {
+      "name": "Account::active_policies",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs:284",
+      "notes": "u16 bitset; checked by evaluate_policy for active policy enforcement"
+    },
+    {
+      "name": "Account::dormant_policies",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs:286",
+      "notes": "u16 bitset; not checked by evaluator, used for activation lifecycle"
+    },
+    {
+      "name": "Account::finalized",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs:288",
+      "notes": "bool flag; V4-3 returns PolicyAccountFinalized error for unauthorized actions; V4-4 will add emergency routing redirect logic"
+    },
+    {
+      "name": "Account::rescue_address",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs:282",
+      "notes": "Optional AccountId; V4-3 validates presence for emergency policy activation; V4-4 will use for redirect routing"
+    },
+    {
+      "name": "Cosignature",
+      "kind": "struct",
+      "location": "crates/pwm-core/src/tx.rs:97-103",
+      "notes": "V4-2 existing; signer_pk, role (Rescue/Organization/Witness), signature; used by cosign_required policy"
+    },
+    {
+      "name": "SignedTx::cosigns",
+      "kind": "field",
+      "location": "crates/pwm-core/src/tx.rs:231",
+      "notes": "Vec<Cosignature>; V4-3 evaluator validates cosign signatures and roles against policies"
+    },
+    {
+      "name": "enforce_local_tx_guards",
+      "kind": "function",
+      "location": "crates/pwmd/src/tx_policy.rs:188-334",
+      "notes": "pwmd preflight guards; V4-3 must align with State::evaluate_policy verdicts for consistency"
+    },
+    {
+      "name": "tx_err_wire",
+      "kind": "function",
+      "location": "crates/pwmd/src/api/common.rs:262-296",
+      "notes": "Maps TxError to stable RFC 14 codes; V4-3 policy errors already mapped: E_POLICY_*"
+    },
+    {
+      "name": "tx_reject_json",
+      "kind": "function",
+      "location": "crates/pwmd/src/api/common.rs:298-319",
+      "notes": "Builds RFC 14 compliant JSON reject; V4-3 uses existing function unchanged"
+    },
+    {
+      "name": "v1_tx",
+      "kind": "function",
+      "location": "crates/pwmd/src/api/handlers_tx.rs:35-252",
+      "notes": "HTTP handler; V4-3 must ensure preflight (precheck_apply_with_ctx) and apply use same evaluate_policy logic"
+    },
+    {
+      "name": "SnapshotAccountV2::active_policies",
+      "kind": "field",
+      "location": "crates/pwmd/src/snapshot/types.rs:315",
+      "notes": "u16 wire format; snapshot already supports policy fields from V4-2"
+    },
+    {
+      "name": "SnapshotAccountV2::finalized",
+      "kind": "field",
+      "location": "crates/pwmd/src/snapshot/types.rs:319",
+      "notes": "bool wire format; persists finalized state across restarts"
+    }
+  ],
+  "digest": "V4-3 implements the pure read-only policy evaluation layer on top of V4-2 data model. The core addition is `evaluate_policy(tx, &ReadOnlyState) -> PolicyDecision` - a deterministic, side-effect-free function that returns Allow, Reject(code), or Redirect(rescue_address). Key policies enforced: sender_filter (whitelist-based), same-domain routing restriction (blocks cross-domain TRANSFER when RoutingSameDomainOnly active), default_behavior (deny/allow), and cosign_required (validates embedded cosign signatures for sensitive actions). The evaluator runs in both preflight (pwmd) and apply (State::apply_tx_with_ctx) paths with identical verdicts, ensuring alignment per RFC 14. Structured rejects use stable E_POLICY_* codes already defined in TxError and mapped in tx_err_wire. Account finalized flag blocks ordinary operations but V4-3 does NOT implement emergency routing balance redirection - that behavior is reserved for V4-4 with proper rescue cosign validation. No VM, no DSL, no callbacks, no dynamic dispatch - just bounded enum-based policy matching.",
+  "risks": [
+    {
+      "id": "R1",
+      "severity": "high",
+      "description": "Preflight/apply misalignment: pwmd precheck and state apply return different verdicts for same input",
+      "mitigation": "Implement single evaluate_policy function used by both paths; add explicit test matrix covering all policy kinds in both preflight and apply contexts"
+    },
+    {
+      "id": "R2",
+      "severity": "high",
+      "description": "Evaluator mutation side effects: policy evaluation accidentally mutates account state",
+      "mitigation": "ReadOnlyState view restricts API to immutable references only; evaluate_policy returns Decision without &mut State"
+    },
+    {
+      "id": "R3",
+      "severity": "medium",
+      "description": "Cosign verification bypass: cosign_required policy not properly validating embedded cosignatures",
+      "mitigation": "Reuse Tx::verify_sig pattern; validate cosign signer matches policy role; reject unknown cosign roles"
+    },
+    {
+      "id": "R4",
+      "severity": "medium",
+      "description": "Sender filter list storage: no on-chain list structure exists for sender_filter policy",
+      "mitigation": "V4-3 implements minimal sender_filter as single allowed sender stored in account metadata; multi-sender list deferred to V5"
+    },
+    {
+      "id": "R5",
+      "severity": "medium",
+      "description": "Emergency routing scope creep: implementing balance redirection in V4-3 instead of V4-4",
+      "mitigation": "Explicit boundary: evaluate_policy returns Redirect decision but apply path treats it as Reject in V4-3; V4-4 will implement actual routing"
+    },
+    {
+      "id": "R6",
+      "severity": "low",
+      "description": "Default behavior ambiguity: DefaultBehavior policy semantics unclear for tx types not explicitly covered",
+      "mitigation": "DefaultBehavior = Allow permits all non-explicitly-forbidden actions; DefaultBehavior = Deny rejects all non-explicitly-permitted actions; document in RFC 6"
+    }
+  ],
+  "suggested_acceptance_tests": [
+    "evaluate_policy returns Allow for Transfer with no active policies",
+    "evaluate_policy returns Reject(SenderFiltered) for Transfer when SenderFilter active and sender not in list",
+    "evaluate_policy returns Reject(RoutingDenied) for cross-domain Transfer when RoutingSameDomainOnly active",
+    "evaluate_policy returns Reject(MissingCosign) for sensitive action when CosignRequired active and no valid cosign",
+    "evaluate_policy returns same verdict for identical input in preflight and apply paths (determinism)",
+    "apply_tx_with_ctx does not mutate state when evaluate_policy returns Reject",
+    "preflight in pwmd returns same E_POLICY_* error code as apply for same tx and pre-state",
+    "finalized account returns PolicyAccountFinalized for Transfer, Stake, Unstake attempts",
+    "cosign_required policy validates cosignature signer_pk matches expected rescue/organization role",
+    "snapshot roundtrip preserves active_policies bitset and finalized flag deterministically",
+    "State::precheck_apply_with_ctx and State::apply_tx_with_ctx show identical policy reject behavior",
+    "tx_err_wire maps PolicyRejectCode to correct RFC 14 E_POLICY_* stable codes"
+  ],
+  "tokens": 4800,
+  "notes": {
+    "handoff_to": "pwm-coding",
+    "priority_files": ["crates/pwm-core/src/state.rs", "crates/pwm-core/src/tx.rs"],
+    "v4_3_boundary": "DO NOT implement emergency routing balance redirection or rescue_address balance finalization - these are V4-4 scope. V4-3 only returns PolicyDecision::Redirect as Reject scaffolding.",
+    "v4_4_prep": "PolicyDecision::Redirect(rescue_address) enum variant reserved for V4-4; V4-3 may define but not implement the actual balance routing in apply path.",
+    "dependencies": "Sprint V4-2 completed; no blockers",
+    "conway_ready": true
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "id": "20260517-v4-sprint6-closeout",
+  "title": "MVP V4-6 integrated devnet gate and closeout",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v4.md Sprint V4-6",
+    "docs/MVP-checklist.md",
+    "docs/CONCEPT_ROADMAP.md",
+    "docs/GLOSSARY.md",
+    "CHANGELOG.md"
+  ],
+  "brief": "Close MVP V4 as a coherent policy runtime release: run integrated smoke for V4 init, policy set/activate/deactivate, emergency activation/finalization/structured rejects; update checklist/roadmap/glossary/changelog; separate V5/backlog items; run final pwm-review.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Run V4 integrated smoke gate: workspace check, core policy/emergency tests, CLI tests, snapshot bench compile, pwmd lib tests, fmt check.",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260517-v4-integrated-smoke.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 45000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T13:40:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix pwmd integrated smoke blocker: restore JSON field names for genesis mismatch status and transport counters expected by transport_peer tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/src/transport/metrics.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T13:45:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Retest integrated V4 gate after pwmd JSON contract fix: fmt check, workspace check, pwmd/core/cli tests, policy filters, snapshot bench compile.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-integrated-smoke.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 8000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T13:55:00+03:00"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Update V4 closeout documentation: MVP checklist, roadmap criteria, glossary, changelog.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/MVP-checklist.md",
+        "docs/CONCEPT_ROADMAP.md",
+        "docs/GLOSSARY.md",
+        "CHANGELOG.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T14:00:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final V4-6 closeout review across smoke, plan, checklist, roadmap, glossary, changelog, and backlog separation.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-final-closeout-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 28000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T14:05:00+03:00"
+    },
+    {
+      "agent": "orchestrator",
+      "prompt_summary": "Auto-close final review nits: smoke top verdict PASS, plan sprint6 completed, ActivationMode glossary index.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-integrated-smoke.md",
+        "docs/plans/mvp_v4.md",
+        "docs/GLOSSARY.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 1000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T14:10:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final re-review after V4-6 PASS_WITH_NITS auto-close.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-final-closeout-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 6500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T14:15:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260517-v4-final-closeout-review.md",
+    "smoke_report": "docs/reviews/20260517-v4-integrated-smoke.md"
+  },
+  "notes": "Final closeout slice. Do not add new feature scope. Docs/checklist/changelog may be edited by orchestrator; product-code fixes must go through pwm-coding -> pwm-testing -> pwm-review. Initial integrated smoke PARTIAL: V4/core/CLI checks passed, but cargo test -p pwmd --lib failed in two transport_peer JSON status/dev-peers tests with null fields. pwm-coding restored JSON field names; retest integrated gate PASS. Full cargo test --workspace and manual TUI/soak were not run. Final review PASS_WITH_NITS mechanical nits auto-closed."
+}

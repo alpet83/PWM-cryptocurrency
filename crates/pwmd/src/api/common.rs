@@ -241,6 +241,7 @@ pub(super) fn tx_kind(tx: &SignedTx) -> &'static str {
         TxBody::Claim { .. } => "claim",
         TxBody::Export { .. } => "export",
         TxBody::Import { .. } => "import",
+        TxBody::Policy { .. } => "policy",
     }
 }
 
@@ -254,6 +255,7 @@ pub(crate) fn reject_tx_kind(tx: &SignedTx) -> &'static str {
         TxBody::Init { .. } => "init",
         TxBody::Stake { .. } => "stake",
         TxBody::Unstake { .. } => "unstake",
+        TxBody::Policy { .. } => "policy",
     }
 }
 
@@ -277,6 +279,18 @@ pub(crate) fn tx_err_wire(e: &TxError, tx_kind: &str) -> (&'static str, &'static
 
         // Import fee baseline.
         ImportFeeTooLow => ("E_IMPORT_FEE_TOO_LOW", "POLICY_REJECT"),
+
+        PolicySchemaInvalid => ("E_POLICY_SCHEMA_INVALID", "VALIDATION_ERROR"),
+        PolicyNotInstalled => ("E_POLICY_NOT_INSTALLED", "POLICY_REJECT"),
+        PolicyNotActive => ("E_POLICY_NOT_ACTIVE", "POLICY_REJECT"),
+        PolicyDenied => ("E_POLICY_DENIED", "POLICY_REJECT"),
+        PolicySenderFiltered => ("E_POLICY_SENDER_FILTERED", "POLICY_REJECT"),
+        PolicyRoutingDenied => ("E_POLICY_ROUTING_DENIED", "POLICY_REJECT"),
+        PolicyMissingCosign => ("E_POLICY_MISSING_COSIGN", "POLICY_REJECT"),
+        PolicyRescueRequired => ("E_POLICY_RESCUE_REQUIRED", "POLICY_REJECT"),
+        PolicyEmergencyCosignRequired => ("E_POLICY_EMERGENCY_COSIGN_REQUIRED", "POLICY_REJECT"),
+        PolicyAccountFinalized => ("E_POLICY_ACCOUNT_FINALIZED", "POLICY_REJECT"),
+        PolicyIrreversible => ("E_POLICY_IRREVERSIBLE", "POLICY_REJECT"),
 
         // Keep fixed fallback for non-freeze, generic schema failures.
         _ => ("E_SCHEMA_INVALID", "VALIDATION_ERROR"),
@@ -487,6 +501,16 @@ pub(super) fn acct_out_for_runtime(
         marks: ac.marks,
         initialized: ac.initialized,
         nonce: ac.nonce,
+        rescue_address: ac.rescue_address.as_ref().map(hex::encode),
+        active_policies: ac.active_policies,
+        dormant_policies: ac.dormant_policies,
+        finalized: ac.finalized,
+        owner_kind: ac.owner_kind.clone(),
+        owner_display_name: ac.owner_display_name.clone(),
+        owner_country_hint: ac.owner_country_hint.clone(),
+        company_metadata_commitment: ac.company_metadata_commitment.as_ref().map(hex::encode),
+        external_verification_ref: ac.external_verification_ref.clone(),
+        requested_domain_lo: ac.requested_domain_lo,
     }
 }
 

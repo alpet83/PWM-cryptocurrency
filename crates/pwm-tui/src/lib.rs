@@ -28,9 +28,9 @@ mod models;
 
 #[allow(unused_imports)]
 pub(crate) use models::{
-    format_balance_cell, format_init_cell, parse_hex_account_id, parse_u128, parse_u32, AcctRow,
-    BookRecipient, OwnedWalletAccount, WalletIdentity, WalletV3Meta, UNKNOWN_BALANCE_SENTINEL,
-    UNKNOWN_INIT_NONCE_SENTINEL,
+    format_balance_cell, format_init_cell, format_policy_bits, parse_hex_account_id, parse_u128,
+    parse_u16, parse_u32, AcctRow, BookRecipient, OwnedWalletAccount, WalletIdentity, WalletV3Meta,
+    UNKNOWN_BALANCE_SENTINEL, UNKNOWN_INIT_NONCE_SENTINEL,
 };
 
 mod modals;

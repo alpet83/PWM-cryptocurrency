@@ -2,7 +2,7 @@
 
 use crate::config::{base_url, http_client, parse_status_shard_label, DEBUG_FETCH_INTERVAL};
 use crate::models::{
-    parse_hex_account_id, parse_u128, parse_u32, AcctRow, UNKNOWN_BALANCE_SENTINEL,
+    parse_hex_account_id, parse_u128, parse_u16, parse_u32, AcctRow, UNKNOWN_BALANCE_SENTINEL,
     UNKNOWN_INIT_NONCE_SENTINEL,
 };
 use crate::roaming::submit_roaming_intent;
@@ -136,6 +136,13 @@ pub fn acct_row_for_id(rows: &[AcctRow], id: &AccountId, label: Option<String>) 
             nonce: 0,
             marks: 0,
             staked: 0,
+            rescue_address: None,
+            active_policies: 0,
+            dormant_policies: 0,
+            finalized: false,
+            owner_kind: String::new(),
+            owner_name: String::new(),
+            owner_country: String::new(),
             label: None,
         });
     if label.is_some() {
@@ -262,6 +269,21 @@ pub fn poll_snapshot(client: &reqwest::blocking::Client) -> PollSnapshot {
                                     .as_str()
                                     .and_then(|s| s.parse::<u128>().ok())
                                     .unwrap_or(0),
+                                rescue_address: x["rescue_address"]
+                                    .as_str()
+                                    .and_then(parse_hex_account_id),
+                                active_policies: parse_u16(&x["active_policies"]),
+                                dormant_policies: parse_u16(&x["dormant_policies"]),
+                                finalized: x["finalized"].as_bool().unwrap_or(false),
+                                owner_kind: x["owner_kind"].as_str().unwrap_or("").to_string(),
+                                owner_name: x["owner_display_name"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .to_string(),
+                                owner_country: x["owner_country_hint"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .to_string(),
                                 label: None,
                             })
                         })

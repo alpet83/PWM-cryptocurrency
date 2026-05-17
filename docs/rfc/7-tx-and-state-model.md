@@ -208,13 +208,84 @@ MarkBurnTx {
 
 ---
 
-### 5.5 PolicyTx (Future)
+### 5.5 PolicyTx (MVP V4)
+
+`PolicyTx` is the dedicated control-plane transaction for account policy updates. It is intentionally separate from `TransferTx`: zero-PWM self-transfer MUST NOT be used as a policy carrier, and ordinary self-transfer remains invalid.
 
 Used to update:
 
-* membership
-* permissions
-* overrides
+* per-account policies
+* policy activation state
+* reversible policy deactivation
+* emergency-routing activation when the required rescue cosign is present
+
+```text
+PolicyTx {
+  target_account: AccountId,
+  action: PolicyAction,
+  fee: u128,
+  nonce: u64,
+  signatures[]
+}
+
+PolicyAction {
+  SetPolicy { policy, activation }
+  ActivatePolicy { policy_id }
+  DeactivatePolicy { policy_id }
+}
+
+ActivationMode = Dormant | Immediately
+```
+
+> **Draft extension (not normative until implemented):** [ADR 0005](../adr/0005-policy-deferred-activation.md) describes a minimal third mode **`Deferred { activate_at_height }`**: policies become evaluator-active when `chain_tip_height >= activate_at_height`, without delayed execution of ordinary `Transfer` and without address flags or «conservation» semantics. The grammar in this subsection remains **baseline V4 shipped** until a normative RFC/PR lands.
+
+Rules:
+
+* `target_account` MUST sign every `PolicyTx`.
+* `PolicyTx` pays a fee and increments the target account nonce.
+* `PolicyTx` MUST NOT debit or credit PWM value except for fees.
+* JSON/API encoding for `fee: u128` follows the existing PWM convention for large integer wire values: decimal string on public JSON surfaces, with binary/canonical signing preimage unchanged.
+* `SetPolicy { activation = Immediately }` installs and activates in one transition.
+* `SetPolicy { activation = Dormant }` stores the policy until `ActivatePolicy`.
+* `DeactivatePolicy` is valid only for policies marked reversible.
+* Emergency-routing activation additionally requires a signature from the `rescue_address` and finalizes the target account.
+
+Initial policies may also appear in an extended `InitTx`, but post-init updates use `PolicyTx`.
+
+### 5.6 Extended InitTx fields (MVP V4)
+
+The legacy MVP fields remain valid:
+
+```text
+InitTx {
+  index: u32,
+  flags: u32,
+}
+```
+
+MVP V4 may append an optional extension:
+
+```text
+InitV4Extension {
+  owner_kind,
+  owner_display_name,
+  owner_country_hint,
+  company_metadata_commitment,
+  external_verification_ref,
+  requested_domain_lo,
+  rescue_address?,
+  initial_policies[],
+  cosign_policy?
+}
+```
+
+Semantics:
+
+* short owner/company text is canonical on-chain text with strict byte limits;
+* long or mutable metadata is committed by hash and referenced externally;
+* `requested_domain_lo = 0` is root/generic corporate registration, not a leased namespace;
+* `rescue_address` enables emergency routing activation but does not activate it by itself;
+* `initial_policies[]` follows the same `ActivationMode` lifecycle as `PolicyTx`.
 
 ---
 
@@ -355,6 +426,9 @@ Examples:
 
 * organization cosign
 * witness cosign
+* rescue-address cosign for emergency routing activation
+
+For MVP V4, cosignatures are part of the signed transaction envelope for `PolicyTx` or another transaction whose policy explicitly requires them. A cosignature signs the same canonical transaction intent plus its signer role; it is not a side-channel approval and it is not fetched during validation.
 
 ---
 

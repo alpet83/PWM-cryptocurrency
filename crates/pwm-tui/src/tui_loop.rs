@@ -4,13 +4,13 @@ use crate::{
     account_id_to_human, append_addr_book, base_url, burn_replay_guard_status, centered_rect,
     choose_identity, clamp_sel, debug_json, f5_build_burn_form, f5_burn_hint_needed,
     f6_build_send_form, f7_build_stake_form, format_acct_cell, format_balance_cell, format_hms_utc,
-    format_init_cell, handle_submit_done_history, http_client, identity_f3_action_label,
-    identity_lock_status_suffix, inter_shard_status_short, is_cross_domain_route,
-    masked_with_caret, merge_rpc_health, move_selection_down, move_selection_up, now_unix_secs,
-    owner_and_receivers, poll_snapshot, preflight_sel_init_auto, preflight_xfer_dst,
-    push_op_history, receiver_table_len, selected_row_for_panel, send_replay_guard_status,
-    start_rpc_worker, status_footer_line, submit_claim, submit_stake, submit_unstake,
-    validate_burn_form, validate_encrypt_passphrase_inputs, validate_send_form,
+    format_init_cell, format_policy_bits, handle_submit_done_history, http_client,
+    identity_f3_action_label, identity_lock_status_suffix, inter_shard_status_short,
+    is_cross_domain_route, masked_with_caret, merge_rpc_health, move_selection_down,
+    move_selection_up, now_unix_secs, owner_and_receivers, poll_snapshot, preflight_sel_init_auto,
+    preflight_xfer_dst, push_op_history, receiver_table_len, selected_row_for_panel,
+    send_replay_guard_status, start_rpc_worker, status_footer_line, submit_claim, submit_stake,
+    submit_unstake, validate_burn_form, validate_encrypt_passphrase_inputs, validate_send_form,
     validate_stake_form, value_with_caret, wallet_apply_auto_lock, wallet_lock_now, wallet_rekey,
     wallet_unlock, wallet_unlock_secs_clamped, AcctRow, Args, BookPromptModal, BurnField, BurnForm,
     DebugCache, EncryptField, EncryptModal, IdentitySource, OpStatus, OperationHistoryEntry, Panel,
@@ -799,8 +799,13 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
         let selected_row =
             selected_row_for_panel(active, &owner_rows, owner_sel, &receiver_rows, recv_sel);
         if let Some(r) = selected_row {
+            let rescue_txt = r
+                .rescue_address
+                .as_ref()
+                .map(account_id_to_human)
+                .unwrap_or_else(|| "-".to_string());
             ui.detail_line = format!(
-                "selected: {} | init={} | nonce={}\nPWM: {}\nStaked: {}\nMarks: {}",
+                "selected: {} | init={} | nonce={}\nPWM: {}\nStaked: {}\nMarks: {}\nPolicy active: {}\nPolicy dormant: {}\nFinalized: {}\nRescue: {}\nOwner: {}/{}/{}",
                 format_acct_cell(r),
                 format_init_cell(r),
                 if r.nonce == UNKNOWN_INIT_NONCE_SENTINEL {
@@ -810,7 +815,26 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                 },
                 format_balance_cell(r),
                 r.staked,
-                r.marks
+                r.marks,
+                format_policy_bits(r.active_policies),
+                format_policy_bits(r.dormant_policies),
+                if r.finalized { "yes" } else { "no" },
+                rescue_txt,
+                if r.owner_kind.is_empty() {
+                    "-"
+                } else {
+                    r.owner_kind.as_str()
+                },
+                if r.owner_name.is_empty() {
+                    "-"
+                } else {
+                    r.owner_name.as_str()
+                },
+                if r.owner_country.is_empty() {
+                    "-"
+                } else {
+                    r.owner_country.as_str()
+                },
             );
             if dbg {
                 let selected_hex = r.id_hex.clone();
@@ -1593,6 +1617,13 @@ mod tests {
             nonce: 0,
             marks,
             staked: 0,
+            rescue_address: None,
+            active_policies: 0,
+            dormant_policies: 0,
+            finalized: false,
+            owner_kind: String::new(),
+            owner_name: String::new(),
+            owner_country: String::new(),
             label: None,
         }
     }

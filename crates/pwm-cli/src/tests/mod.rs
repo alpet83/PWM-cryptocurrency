@@ -1975,6 +1975,214 @@ fn tx_init_no_sign_src() {
 }
 
 #[test]
+fn tx_init_v4_cli_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-init",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "1",
+        "--flags",
+        "7",
+        "--owner-kind",
+        "company",
+        "--owner-name",
+        "Acme",
+        "--owner-country",
+        "CY",
+        "--metadata-commitment",
+        &"aa".repeat(32),
+        "--verification-ref",
+        "kyc:acme",
+        "--requested-domain-lo",
+        "5",
+        "--rescue-address",
+        &account_id_to_human(&[4u8; 32]),
+        "--initial-policy",
+        "sender_filter:dormant",
+    ])
+    .expect("must parse tx-init v4 args");
+    match cli.cmd {
+        Cmd::TxInit {
+            owner_kind,
+            owner_name,
+            owner_country,
+            metadata_commitment,
+            verification_ref,
+            requested_domain_lo,
+            rescue_address,
+            initial_policy,
+            ..
+        } => {
+            let expected_commitment = "aa".repeat(32);
+            assert_eq!(owner_kind.as_deref(), Some("company"));
+            assert_eq!(owner_name.as_deref(), Some("Acme"));
+            assert_eq!(owner_country.as_deref(), Some("CY"));
+            assert_eq!(
+                metadata_commitment.as_deref(),
+                Some(expected_commitment.as_str())
+            );
+            assert_eq!(verification_ref.as_deref(), Some("kyc:acme"));
+            assert_eq!(requested_domain_lo, Some(5));
+            assert!(rescue_address.is_some());
+            assert_eq!(initial_policy, vec!["sender_filter:dormant".to_string()]);
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_policy_set_cli_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-set",
+        "--wallet",
+        "wallet.yaml",
+        "--policy",
+        "sender_filter",
+        "--activation",
+        "dormant",
+        "--fee",
+        "10",
+    ])
+    .expect("must parse tx-policy-set");
+    match cli.cmd {
+        Cmd::TxPolicySet {
+            policy,
+            activation,
+            fee,
+            ..
+        } => {
+            assert_eq!(policy, "sender_filter");
+            assert_eq!(activation, "dormant");
+            assert_eq!(fee, 10);
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_pol_act_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-activate",
+        "--wallet",
+        "wallet.yaml",
+        "--policy-id",
+        "1",
+        "--rescue-account-index",
+        "7",
+        "--fee",
+        "99",
+    ])
+    .expect("must parse tx-policy-activate");
+    match cli.cmd {
+        Cmd::TxPolicyActivate {
+            policy_id,
+            rescue_account_index,
+            fee,
+            ..
+        } => {
+            assert_eq!(policy_id, Some(1));
+            assert_eq!(rescue_account_index, Some(7));
+            assert_eq!(fee, 99);
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_pol_act_rescue_wallet() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-activate",
+        "--wallet",
+        "wallet.yaml",
+        "--policy",
+        "sender_filter",
+        "--rescue-wallet",
+        "rescue.yaml",
+    ])
+    .expect("must parse tx-policy-activate with rescue wallet path");
+    match cli.cmd {
+        Cmd::TxPolicyActivate {
+            policy,
+            rescue_wallet,
+            rescue_master,
+            rescue_domain,
+            ..
+        } => {
+            assert_eq!(policy.as_deref(), Some("sender_filter"));
+            assert_eq!(rescue_wallet, Some(PathBuf::from("rescue.yaml")));
+            assert!(rescue_master.is_none());
+            assert!(rescue_domain.is_none());
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_pol_act_rescue_seed() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-activate",
+        "--wallet",
+        "wallet.yaml",
+        "--policy-id",
+        "2",
+        "--rescue-master",
+        &"11".repeat(32),
+        "--rescue-domain",
+        "CY",
+    ])
+    .expect("must parse tx-policy-activate with rescue master+domain");
+    match cli.cmd {
+        Cmd::TxPolicyActivate {
+            policy_id,
+            rescue_master,
+            rescue_domain,
+            rescue_wallet,
+            ..
+        } => {
+            assert_eq!(policy_id, Some(2));
+            assert_eq!(rescue_master, Some("11".repeat(32)));
+            assert_eq!(rescue_domain.as_deref(), Some("CY"));
+            assert!(rescue_wallet.is_none());
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_pol_deact_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-deactivate",
+        "--wallet",
+        "wallet.yaml",
+        "--policy-id",
+        "1",
+        "--fee",
+        "33",
+    ])
+    .expect("must parse tx-policy-deactivate");
+    match cli.cmd {
+        Cmd::TxPolicyDeactivate {
+            policy_id,
+            policy,
+            fee,
+            ..
+        } => {
+            assert_eq!(policy_id, Some(1));
+            assert!(policy.is_none());
+            assert_eq!(fee, 33);
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
 /// `tx-stake` parses wallet-only signing.
 fn tx_stake_cli_wallet_only() {
     let cli = Cli::try_parse_from([

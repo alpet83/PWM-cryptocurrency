@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260517-v4-sprint1-policy-rfc-freeze",
+  "title": "MVP V4-1 policy RFC freeze",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/CONCEPT_ROADMAP.md MVP V4 — Policy Engine Runtime",
+    "docs/rfc/6-policy-engine.md",
+    "docs/rfc/7-tx-and-state-model.md",
+    "docs/rfc/14-claim-burn-api-error-contract.md"
+  ],
+  "brief": "Freeze the implementable MVP V4 policy contract before product-code slices: dedicated PolicyTx/PolicyActionTx instead of zero-PWM self-transfer, activation lifecycle, hybrid corporate INIT metadata/rescue address, emergency routing finalization, and additive policy reject codes.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of V4-1 doc-only RFC freeze across RFC 6/7/14, roadmap, mvp_v4 plan, and task traceability.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint1-policy-rfc-freeze-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 38000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T10:22:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260517-v4-sprint1-policy-rfc-freeze-review.md"
+  },
+  "notes": "Owner decisions: use dedicated PolicyTx with embedded PolicyAction and keep normal self-transfer rejected; INIT metadata uses hybrid on-chain short public fields plus commitment for long/mutable text. PASS_WITH_NITS review mechanical nits were auto-closed: roadmap no longer defers INIT format to a future RFC/ADR, naming is aligned to routing.emergency_redirect / PolicyTx+PolicyAction, and RFC 7 states decimal-string JSON/API encoding for PolicyTx fee u128. Product code changes in later sprints must go through pwm-coding -> pwm-testing -> pwm-review."
+}

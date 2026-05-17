@@ -1,0 +1,158 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-17T08:16:00Z",
+  "title": "V4-5 CLI/TUI/wallet operator policy path reuse map",
+  "research_question": "Prepare reuse context for CLI commands (init_v4, tx-policy-*), wallet/cosign UX for owner+rescue signing, TUI inspection for policy states, and API docs for structured policy rejects. Scope: minimal mutation UX, no governance/member registry/DSL.",
+  "parent_ticket": "20260517-v4-sprint5-cli-tui",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {
+        "pattern": "init_v4|PolicyTx|PolicyAction|rescue_address|cosign",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Core policy types and V4 init extension fields"
+      },
+      {
+        "pattern": "tx-policy|tx_init|run_tx_",
+        "paths_glob_optional": "crates/pwm-cli/src/**/*.rs",
+        "summary": "CLI transaction command implementations"
+      },
+      {
+        "pattern": "finalized|active_policies|dormant_policies",
+        "paths_glob_optional": "crates/**/*.rs",
+        "summary": "Policy state inspection points"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "docs/plans/mvp_v4.md",
+      "why": "spec",
+      "note": "Sprint V4-5 scope definition: CLI commands for init extension and policy lifecycle, wallet v3 cosign UX, TUI inspection"
+    },
+    {
+      "path": "docs/rfc/6-policy-engine.md",
+      "why": "spec",
+      "note": "Policy engine baseline: PolicyTx, PolicyAction, activation lifecycle, emergency routing, error model with E_POLICY_* codes"
+    },
+    {
+      "path": "docs/rfc/7-tx-and-state-model.md",
+      "why": "spec",
+      "note": "TxBody::Policy variant, InitV4Extension fields, cosignature envelope structure"
+    },
+    {
+      "path": "docs/rfc/10-wallet-file-format-v3.md",
+      "why": "spec",
+      "note": "Multi-address wallet schema v3: accounts[] array for owner+rescue selection"
+    },
+    {
+      "path": "docs/rfc/14-claim-burn-api-error-contract.md",
+      "why": "spec",
+      "note": "Structured reject baseline extended by V4 policy codes"
+    },
+    {
+      "path": "docs/pwm-cli.md",
+      "why": "spec",
+      "note": "CLI documentation: existing tx-* commands, wallet account operations, --master/--domain/--wallet flows"
+    },
+    {
+      "path": "docs/pwm-tui.md",
+      "why": "spec",
+      "note": "TUI documentation: account_view panels, debug JSON mode, F6 send form pattern"
+    },
+    {
+      "path": "docs/pwmd.md",
+      "why": "spec",
+      "note": "API documentation: POST /v1/tx, error mapping from TxError to HTTP status"
+    },
+    {
+      "path": "crates/pwm-core/src/tx.rs",
+      "why": "match",
+      "note": "Core tx types: PolicyKind, PolicyAction, ActivationMode, Cosignature, InitV4Extension, TxBody::Policy, tx signing with init_v4/cosigns"
+    },
+    {
+      "path": "crates/pwm-core/src/state.rs",
+      "why": "match",
+      "note": "evaluate_policy() returns PolicyDecision; finalized account checks; policy activation/deactivation logic"
+    },
+    {
+      "path": "crates/pwm-core/src/types.rs",
+      "why": "match",
+      "note": "Account struct with rescue_address, active_policies, dormant_policies, finalized flags, owner metadata fields"
+    },
+    {
+      "path": "crates/pwm-cli/src/cli_cmd.rs",
+      "why": "match",
+      "note": "Clap command definitions: Cmd enum with TxInit, TxSend, etc.; WalletCmd subcommands; argument patterns"
+    },
+    {
+      "path": "crates/pwm-cli/src/cmd_tx.rs",
+      "why": "match",
+      "note": "Transaction command implementations: run_tx_init, run_tx_send, run_tx_stake, etc.; pattern for loading signer and posting tx"
+    },
+    {
+      "path": "crates/pwm-cli/src/signer.rs",
+      "why": "match",
+      "note": "TxSignerSource loading: wallet vs --master override; derive_sender from seed+domain"
+    },
+    {
+      "path": "crates/pwm-cli/src/wallet/mod.rs",
+      "why": "match",
+      "note": "Wallet operations facade: account list/add/remove, address book, secrets loading"
+    },
+    {
+      "path": "crates/pwm-cli/src/wallet/account.rs",
+      "why": "match",
+      "note": "Wallet v3 account operations: list, add, remove with deterministic active fallback"
+    },
+    {
+      "path": "crates/pwm-cli/src/rpc_helpers.rs",
+      "why": "match",
+      "note": "HTTP helpers: fetch_nonce, post_signed_tx, preflight checks; reusable for policy tx submission"
+    },
+    {
+      "path": "crates/pwm-tui/src/account_view.rs",
+      "why": "match",
+      "note": "TUI account display: AcctRow with policy state fields (to add), fetch_debug_account for detailed view"
+    },
+    {
+      "path": "crates/pwm-tui/src/models.rs",
+      "why": "match",
+      "note": "TUI data models: parse functions for u128/u32, AcctRow structure for UI binding"
+    },
+    {
+      "path": "crates/pwm-tui/src/tui_loop.rs",
+      "why": "match",
+      "note": "Main TUI event loop: RpcTask/RpcEvent enum, panel switching, modal handling pattern"
+    },
+    {
+      "path": "crates/pwmd/src/api/common.rs",
+      "why": "match",
+      "note": "API types: TxError to HTTP status mapping, structured error response format"
+    }
+  ],
+  "digest": "## V4-5 CLI/TUI Operator Path Reuse Map\n\n### Core Data Structures (pwm-core)\n\n**Policy Types (tx.rs:29-87)**\n- `PolicyKind` enum: RoutingSameDomainOnly, RoutingEmergencyRedirect, SenderFilter, DefaultBehavior, CosignRequired\n- `PolicyAction` enum: SetPolicy { policy, activation }, ActivatePolicy { policy_id }, DeactivatePolicy { policy_id }\n- `ActivationMode`: Dormant | Immediately\n- `Cosignature` struct: signer_pk, role (Rescue|Organization|Witness), signature\n- `InitV4Extension`: owner_kind, owner_display_name, owner_country_hint, company_metadata_commitment, external_verification_ref, requested_domain_lo, rescue_address, initial_policies[], cosign_policy\n\n**Account State (types.rs:261-301)**\n- `rescue_address: Option<AccountId>` - set at INIT time\n- `active_policies: u16` - bitfield of active policies\n- `dormant_policies: u16` - bitfield of dormant policies\n- `finalized: bool` - irreversible emergency state\n- Owner metadata: owner_kind, owner_display_name, owner_country_hint\n\n**TxBody (tx.rs:140-191)**\n- `TxBody::Policy { target_account, action, fee }` - dedicated policy transaction\n- `SignedTx` has `init_v4: Option<InitV4Extension>` and `cosigns: Vec<Cosignature>`\n\n### Policy Evaluation (state.rs:422-464)\n\n- `evaluate_policy(&self, tx) -> PolicyDecision` - pure function\n- Returns: Allow, Reject(TxError), Redirect(AccountId)\n- Checks: finalized account blocks, emergency redirect, same_domain_only, sender_filter, default_behavior\n- CosignRequired validation via `has_valid_cosign(tx)`\n\n### CLI Extension Points (pwm-cli)\n\n**New Commands Needed (cli_cmd.rs pattern)**\n- `TxPolicySet { wallet, master, domain, policy, activation, fee }`\n- `TxPolicyActivate { wallet, master, domain, policy_id, fee }`\n- `TxPolicyDeactivate { wallet, master, domain, policy_id, fee }`\n- `TxInitV4 { wallet, master, domain, index, flags, owner_kind, owner_name, owner_country, metadata_commitment, ext_ref, rescue_address, initial_policies }`\n\n**Cosign Flow (signer.rs pattern)**\n- For emergency activation: load owner wallet account + rescue wallet account\n- Two-phase signing: owner signs first, then rescue cosigns same tx intent\n- `SignedTx.cosigns` carries additional signatures\n\n**Implementation Pattern (cmd_tx.rs:15-36)**\n```rust\nlet source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)?;\nlet c = http_client_for_rpc();\nlet nonce = fetch_nonce(&c, rpc_base, source.from)?;\nlet tx = SignedTx::sign_body(&source.sk, source.dom, source.idx, nonce, TxBody::Policy { ... });\n// For cosign: tx.cosigns.push(Cosignature { ... });\npost_signed_tx(&c, rpc_base, &tx)?;\n```\n\n### TUI Extension Points (pwm-tui)\n\n**Account Display (account_view.rs:220-266)**\n- `AcctRow` currently shows: balance_pwm, initialized, nonce, marks, staked\n- **Add**: active_policies (u16 bits), dormant_policies, finalized flag, rescue_address if set\n\n**Debug Panel (tui_loop.rs)**\n- `fetch_debug_account()` returns JSON from `/v1/account/:id`\n- Already shows full account state including V4 fields\n\n**New Modal Pattern (tui_loop.rs:63-92)**\n- `RpcTask::SubmitPolicy { req_id, from, action, identity }`\n- Minimal policy set/activate forms (follow F6 send_form pattern)\n\n### API Error Mapping (pwmd docs/rfc14)\n\n**Structured Policy Rejects**\n- `E_POLICY_NOT_INSTALLED` / `TxError::PolicyNotInstalled` -> HTTP 409\n- `E_POLICY_NOT_ACTIVE` / `TxError::PolicyNotActive` -> HTTP 409\n- `E_POLICY_DENIED` / `TxError::PolicyDenied` -> HTTP 400\n- `E_POLICY_SENDER_FILTERED` / `TxError::PolicySenderFiltered` -> HTTP 400\n- `E_POLICY_ROUTING_DENIED` / `TxError::PolicyRoutingDenied` -> HTTP 400\n- `E_POLICY_MISSING_COSIGN` / `TxError::PolicyMissingCosign` -> HTTP 400\n- `E_POLICY_RESCUE_REQUIRED` / `TxError::PolicyRescueRequired` -> HTTP 400\n- `E_POLICY_EMERGENCY_COSIGN_REQUIRED` / `TxError::PolicyEmergencyCosignRequired` -> HTTP 400\n- `E_POLICY_ACCOUNT_FINALIZED` / `TxError::PolicyAccountFinalized` -> HTTP 409\n- `E_POLICY_IRREVERSIBLE` / `TxError::PolicyIrreversible` -> HTTP 409\n\n### Wallet v3 Multi-Account for Cosign (rfc10 + wallet/mod.rs)\n\n**Owner + Rescue in One Wallet**\n- Wallet v3 `accounts[]` can hold multiple derived accounts\n- Owner account: derivation index N, known domain\n- Rescue account: derivation index M, any domain (may differ from owner)\n- CLI flag `--rescue-account-index` or `--rescue-wallet` for external path\n\n**Minimal External Path**\n- If rescue not in same wallet: `--rescue-master` + `--rescue-domain` flags\n- Or: `--rescue-cosign-file` with pre-signed Cosignature JSON\n\n### Suggested Test Commands\n\n```bash\n# 1. Init with V4 metadata and rescue\npwm tx-init --wallet owner.yaml --index 0 --flags 0 \\\n  --owner-kind company --owner-name \"Acme Inc\" --owner-country CY \\\n  --metadata-commitment <32-byte-hex> --rescue-address <rescue-id>\n\n# 2. Set dormant policy\npwm tx-policy-set --wallet owner.yaml \\\n  --policy sender_filter --activation dormant --fee 10\n\n# 3. Activate policy\npwm tx-policy-activate --wallet owner.yaml \\\n  --policy-id 2 --fee 10\n\n# 4. Emergency activation with rescue cosign (same wallet)\npwm tx-policy-activate --wallet owner.yaml \\\n  --policy-id 1 --emergency --rescue-account-index 5 --fee 100\n\n# 5. Check policy state\ncurl http://127.0.0.1:3030/v1/account/<id> | jq '.active_policies, .dormant_policies, .finalized, .rescue_address'\n```\n\n### Risks and Guardrails\n\n1. **Cosign overgeneralization**: Keep minimal - only Rescue role for V4, don't build full multisig\n2. **Policy reject clarity**: Ensure CLI shows structured error codes from RFC 14 extensions\n3. **Finalization irreversibility**: TUI must warn prominently when emergency routing would finalize account\n4. **Wallet v2 compatibility**: V4 init extension requires v3 wallet; reject with clear message for v2\n5. **Rescue address missing**: Emergency activation attempt without rescue_address must fail early with clear error\n",
+  "log_digest": [],
+  "open_questions": [
+    "Should tx-policy-* commands support --dry-run to show policy evaluation result without submitting?",
+    "TUI policy mutation: should F6 send form show policy warnings (e.g., recipient has sender_filter) before confirm?",
+    "CLI cosign UX: prefer --rescue-wallet-path or unified --cosign-wallet with role selection?",
+    "Should we add GET /v1/account/:id/policies endpoint for cleaner TUI policy inspection?"
+  ],
+  "warnings": [
+    "state.rs file was truncated at 100KB; policy action validation logic may extend beyond read limit",
+    "TUI mutation forms not yet designed - scope intentionally limited to inspection first",
+    "Wallet cosign flow for external rescue (different wallet file) needs UX design decision"
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "pwm-info context gathering",
+      "confidence": "high",
+      "files_reviewed": 20,
+      "token_estimate_input": 45000,
+      "token_estimate_output": 8000
+    }
+  }
+}

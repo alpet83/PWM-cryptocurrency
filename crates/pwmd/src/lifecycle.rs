@@ -58,6 +58,7 @@ fn tx_kind(tx: &SignedTx) -> &'static str {
         TxBody::Claim { .. } => "claim",
         TxBody::Export { .. } => "export",
         TxBody::Import { .. } => "import",
+        TxBody::Policy { .. } => "policy",
     }
 }
 
@@ -67,6 +68,7 @@ fn tx_addrs(tx: &SignedTx) -> Vec<[u8; 32]> {
         TxBody::Transfer { to, .. } | TxBody::Import { to, .. } | TxBody::Export { to, .. } => {
             vec![signer, to]
         }
+        TxBody::Policy { target_account, .. } => vec![signer, target_account],
         _ => vec![signer],
     }
 }

@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "id": "20260517-v4-sprint3-policy-engine",
+  "title": "MVP V4-3 pure policy evaluator and structured rejects",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v4.md Sprint V4-3",
+    "docs/rfc/6-policy-engine.md Policy Evaluation",
+    "docs/rfc/14-claim-burn-api-error-contract.md Policy V4"
+  ],
+  "brief": "Implement the pure policy evaluation layer on top of the V4-2 data model: read-only policy view, PolicyDecision enum, sender_filter, same-domain routing restriction, default behavior, cosign_required for selected policy actions, and stable structured policy rejects aligned between preflight and apply. Do not implement emergency routing balance redirection/finalization behavior beyond reject/decision scaffolding reserved for V4-4.",
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "Prepare reuse map for pure V4 policy evaluator, preflight/apply alignment, structured rejects, risks, and tests.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260517-v4-sprint3-policy-engine-info.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:30:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement pure V4-3 policy evaluator and structured rejects: PolicyDecision, evaluate_policy, policy gate before mutation, routing/sender/default/cosign/finalized rejects, and focused tests.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs",
+        "crates/pwm-core/src/tx.rs",
+        "crates/pwmd/src/api/common.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:35:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate V4-3 policy evaluator with cargo checks and policy_ tests.",
+      "result": "PARTIAL",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 22000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T11:40:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Add missing V4-3 focused tests for default_behavior incoming transfer default-deny and tampered cosign negative.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 23000,
+        "output": 2200,
+        "total": 25200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:45:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Retest V4-3 after added default_behavior and tampered cosign tests.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 40000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T11:50:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of V4-3 pure policy evaluator, structured rejects, and semantic boundary versus V4-4.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint3-policy-engine-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T11:55:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Re-review after docs clarified V4-3 minimal sender_filter/default_behavior/cosign semantics.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint3-policy-engine-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T12:00:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260517-v4-sprint3-policy-engine-review.md",
+    "info_json": "tasks/20260517-v4-sprint3-policy-engine-info.json"
+  },
+  "notes": "Simplicity constraints: evaluator must be pure/read-only; no VM/DSL/callbacks/dynamic dispatch; no new background task/channel. Existing ReadLints diagnostics on snapshot/types.rs appear stale after V4-2 cargo checks/reviews. Initial pwm-testing PARTIAL found missing default_behavior incoming transfer test and tampered cosign negative; pwm-coding added both; retest PASS: cargo check -p pwm-core, cargo check -p pwmd, cargo test -p pwm-core policy_ (11/11), and both named tests individually. Review PASS_WITH_NITS flagged semantic scaffolds for sender_filter/default_behavior/cosign role; docs/rfc/6-policy-engine.md and docs/plans/mvp_v4.md now explicitly mark these as V4-3 minimal semantics, with rescue-address cosign and membership semantics deferred to V4-4/V4-5. Re-review PASS; final cosmetic wording aligned."
+}

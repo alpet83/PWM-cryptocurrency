@@ -216,8 +216,53 @@ Post-action UX для `addr-bruteforce`:
 - `--domain <hex-u16|label>` (только вместе с `--master`)
 - `--index <u32>` (default `0`)
 - `--flags <u32>` (default `0`)
+- V4 extension (опционально, включается при передаче хотя бы одного V4-флага):
+  - `--owner-kind <text>`
+  - `--owner-name <text>`
+  - `--owner-country <text>`
+  - `--metadata-commitment <hex32>`
+  - `--verification-ref <text>`
+  - `--requested-domain-lo <u8>`
+  - `--rescue-address <account>`
+  - `--initial-policy <kind[:dormant|immediately]>` (repeatable)
 
 Особенность: nonce фиксированно `0` (инициализация аккаунта).
+
+## `tx-policy-set`
+Назначение: подписать и отправить `TxBody::Policy` с действием `SetPolicy`.
+
+Ключевые аргументы:
+- `--wallet <path>` (основной путь подписи)
+- `--master <hex32>` + `--domain <hex-u16|label>` (dev-override)
+- `--policy <kind>` (`sender_filter`, `routing.emergency_redirect`, `routing.same_domain_only`, `default_behavior`, `cosign_required`)
+- `--activation <dormant|immediately>`
+- `--fee <u128>` (default `1`)
+
+## `tx-policy-activate`
+Назначение: подписать и отправить `TxBody::Policy` с действием `ActivatePolicy`.
+
+Ключевые аргументы:
+- `--wallet <path>` (основной путь подписи)
+- `--master <hex32>` + `--domain <hex-u16|label>` (dev-override)
+- селектор policy: `--policy <kind>` или `--policy-id <u8>` (можно вместе, значения должны совпадать)
+- `--fee <u128>` (default `1`)
+
+Emergency rescue cosign (MVP путь):
+- same-wallet: `--rescue-account-index <u32>` (берёт rescue-аккаунт из wallet v3 и добавляет `Cosignature { role: rescue }`);
+- optional external wallet: `--rescue-wallet <path>` + `--rescue-account-index <u32>`;
+- minimal external signer override: `--rescue-master <hex32> --rescue-domain <hex-u16|label>`;
+- optional passphrase override: `--rescue-passphrase <text>` (иначе используется глобальный `--wallet-passphrase`/`PWM_WALLET_PASSPHRASE`).
+
+Rescue cosign flags are accepted only when activating `routing.emergency_redirect`; for ordinary policies the CLI rejects them to avoid implying generic governance multisig. When `--rescue-wallet` is used without `--rescue-account-index`, the command falls back to that wallet's default signer, so production operators should pass the index explicitly.
+
+## `tx-policy-deactivate`
+Назначение: подписать и отправить `TxBody::Policy` с действием `DeactivatePolicy`.
+
+Ключевые аргументы:
+- `--wallet <path>` (основной путь подписи)
+- `--master <hex32>` + `--domain <hex-u16|label>` (dev-override)
+- селектор policy: `--policy <kind>` или `--policy-id <u8>`
+- `--fee <u128>` (default `1`)
 
 ## `tx-send`
 Назначение: one-window send через native/source node.
@@ -259,7 +304,7 @@ Post-action UX для `addr-bruteforce`:
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` (dev-override; при использовании требует `--domain`)
 - `--domain <hex-u16|label>` (только вместе с `--master`)
-- `--mark-amount <u128>`
+- `--mark-amount <u32>`
 - `--beneficiary <hex32>` (optional)
 
 ## `tx-export`
@@ -357,6 +402,7 @@ MVP operator note:
 
 - **Неверный RPC URL**: ошибка сети (`http`) или неожиданный статус. Проверить `--rpc`/`PWM_RPC`, доступность `pwmd`.
 - **`400 BAD_REQUEST` на `POST /v1/tx`**: tx не прошла `validate_tx_shape` (например, domain mismatch).
+- **Policy rejects (`400/409`)**: CLI выводит структурированный код из reject JSON (например `E_POLICY_NOT_INSTALLED`, `E_POLICY_MISSING_COSIGN`, `E_POLICY_EMERGENCY_COSIGN_REQUIRED`, `E_POLICY_ACCOUNT_FINALIZED`).
 - **`400 BAD_REQUEST` на `tx-import`**: invalid/unknown provenance (неизвестный `export_id`, mismatch `to/amount/target_domain`, либо неверная target-нода) или recipient не сделал `tx-init` на target.
 - **`507 INSUFFICIENT_STORAGE`**: mempool переполнен, повторить позже.
 - **`409 CONFLICT` на `tx-import`**: duplicate import для уже использованного `export_id` (ожидаемый idempotent reject при повторе).

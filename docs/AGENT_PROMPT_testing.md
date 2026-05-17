@@ -174,6 +174,35 @@ if (Test-Path $inc) {
 - For a **single delegated task**, spend at most **15 minutes of wall-clock time** on environment or tooling rabbit-holes (e.g. TUI text capture vs alternate screen, PowerShell stdout quirks, ad-hoc Docker layers, repeated “try another terminal” loops).
 - **After 15 minutes:** **stop** further autonomous experimentation. **Escalate** to the parent orchestrator / **user** with a short handoff: goal, what you already tried (bullets), last meaningful output or error, and **one concrete ask** (e.g. “please run this under Git Bash and paste 20 lines”, or “confirm pwmd is on this port”).
 - Do **not** spend the bulk of the budget on approaches the user already flagged as unreliable (e.g. long PowerShell-only capture sessions) when **`cq_process_ctl`** / **`git_bash_exec`** / **Git Bash** on the host would satisfy the same check.
+- When the ticket **explicitly** asks for **`scripts/devnet_v4_policy_e2e.ps1`** or comparable **long CQDS-hosted runs** (`-BruteMaxTry 1000000`, live `-CleanState` smoke), the **15 min** ceiling applies to **debugging tooling failures**, not to the intended wall-clock **`wait`** of the spawned job—the latter is governed by the harness timeouts above.
+
+### Devnet V4 policy E2E harness (`scripts/devnet_v4_policy_e2e.ps1`)
+
+Use when backlog or owner asks for **live or offline policy smoke** beyond `cargo test` (see `docs/reviews/20260517-v4-policy-devnet-e2e-notes.md`).
+
+**Offline address bruteforce (long-running)**
+
+- Typical host invocation:
+
+```powershell
+Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\devnet_v4_policy_e2e.ps1 -BruteDemoOnly -BruteMaxTry 1000000
+```
+
+- Default **`BruteMaxTry`** in the script is **1000000** (confident brute for the PWM phase1 path with `pwm-cli addr-bruteforce` defaults `--flags-mask 1023 --expected-flags 0` and domain **`CY`**). Bump **`-BruteMaxTry`** if a host flakes with `no match`.
+- Prefer **`cq_process_ctl`** (**`host=true`**) **`spawn`** for that PowerShell command, repo root as Windows **`cwd`**, and pass **`CARGO_TARGET_DIR`** / **`PWM_TEST_TARGET_ROOT`** in the process env per Windows section above.
+- **`wait`** timeout must exceed cold **`cargo run`** plus ~1 M derivation trials (often **many minutes**; start with **900–3600 s** and tune from host CPU). Use **`io`** / **`status`** for tails; **`kill`** on hang and report partial stderr.
+
+**Live smoke (spawn `pwmd` via CY proposer + attester)**
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\devnet_v4_policy_e2e.ps1 -CleanState
+```
+
+- Same tooling: **`spawn`** → **`wait`** with timeout covering the script knobs `StatusWaitSeconds` plus `SmokeSeconds` and build slack (recommended **≥ 900 s** on cold cache).
+- Mandatory **`pwmd` cleanup** after **`wait`** (see Process cleanup).
+
+**Contract details:** MCP payload keys for **`spawn` / `wait` / `io` / `kill`** come from **`cq_help`** **`tool_ref=cq_process_ctl#<action>`** — do not mine MCP descriptors as primary source beyond `cq_help`.
 
 ### `cq_process_ctl` quick flow (avoid extra calls)
 

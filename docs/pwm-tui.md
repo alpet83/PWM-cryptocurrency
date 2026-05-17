@@ -7,7 +7,7 @@
 **Роль `pwm-tui`**
 - интерактивный read-mostly клиент поверх HTTP API;
 - визуализация аккаунтов сети в таблицах `Owner`/`Receivers`;
-- быстрый доступ к выбранному аккаунту и его полям (`id`, `nonce`, `initialized`), опционально raw JSON.
+- быстрый доступ к выбранному аккаунту и его полям (`id`, `nonce`, `initialized`, `active/dormant policies`, `finalized`, `rescue`, owner metadata), опционально raw JSON.
 
 **Граница с `pwmd`**
 - `pwm-tui` не хранит chain-state и не запечатывает блоки;
@@ -38,7 +38,7 @@
    - поля чисел читаются tolerant-образом (строка или число, иначе `0`);
    - при ошибке (если `err` еще пустой) ставится `err = "accounts: offline"`.
 4. Для выбранной строки:
-   - всегда обновляется `detail_line` (`selected`, `init`, `nonce`);
+   - всегда обновляется `detail_line`: `selected`, `init`, `nonce`, `active_policies`, `dormant_policies`, `finalized`, `rescue`, owner metadata summary;
    - в debug-режиме дополнительно вызывается `GET /v1/account/:id`, результат форматируется в pretty JSON.
 
 ## Архитектура UI

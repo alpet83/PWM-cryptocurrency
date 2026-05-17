@@ -117,6 +117,28 @@ $id = $resp.accounts[0].id
 Invoke-RestMethod -Uri "http://127.0.0.1:3030/v1/account/$id"
 ```
 
+### 6.1) Опционально: V4 policy (живой конвейер tx → state → GET account)
+
+Интегрированный gate V4 закрывался в основном юнит-тестами и `cargo test`; **отдельного длительного policy soak в план не входило**.
+
+Для операторской проверки политик на демо-стенде используйте скрипт (после шага 3 и запуска хотя бы proposer+attester):
+
+```powershell
+./scripts/devnet_v4_policy_e2e.ps1 -CleanState
+```
+
+Скрипт выполняет `tx-init`, жизненный цикл `PolicyTx` на обратимой политике (`routing.same_domain_only`), читает поля policy в JSON аккаунта и завершает `tx-policy-deactivate`. Ограничения и сценарии без второго аккаунта — см. шапку скрипта и `docs/reviews/20260517-v4-policy-devnet-e2e-notes.md`.
+
+Отдельно, офлайн-проверка перебора адреса (долго, по умолчанию **до 1 000 000 попыток** под маску phase1):
+
+```powershell
+./scripts/devnet_v4_policy_e2e.ps1 -BruteDemoOnly
+```
+
+Для **pwm-testing** на хосте Windows предпочтительно запускать эту же команду через **`cq_process_ctl`** (**`spawn` + длинный `wait`**), см. `docs/AGENT_PROMPT_testing.md`.
+
+**Другой операторский путь (рядом, не эквивалент интегрированному unit-gate):** живая **матрица** нескольких политик на **двухнодовом CY-кластере** — см. **`docs/runbooks/cy-cluster-policy-matrix-e2e.md`**, **`scripts/cy_cluster_policy_matrix_e2e.ps1`** и **`tasks/20260517-cy-cluster-policy-matrix-e2e-live.json`**.
+
 ## 7) Troubleshooting (коротко)
 
 - `Missing genesis file`: сначала выполните `./scripts/demo-devnet-start.ps1` или `./scripts/demo-genesis-build.ps1`.

@@ -6,19 +6,20 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ![Интерфейс оператора pwm-tui (демо)](tui-demo-screenshot.png)
 
-## Текущий статус (MVP v3 foundation закрыт)
+## Текущий статус (MVP v4 policy runtime закрыт)
 
-- **Foundation-этап MVP v3 для public devnet закрыт** (спринты V3-1..V3-4).
+- **MVP v4 policy runtime закрыт** (спринты V4-1..V4-6, 2026-05-17).
 - **Есть чистый public-devnet quickstart**: из clean clone документирован детерминированный demo genesis path с проверкой premine (`21_000_000_000 PWM` = `21_000_000_000_000_000 raw`).
-- **`/v1` API freeze skeleton зафиксирован** в `docs/api-v1.md` как baseline публичного контракта.
+- **`/v1` API baseline включает детали V4 policy runtime** в `docs/api-v1.md` (inspection-поля аккаунта, путь отправки `PolicyTx`, структурированные `E_POLICY_*` reject).
 - **Схема Epoch Snapshot и replay-determinism gate зафиксированы** как V3-база доверия для загрузки/реплея состояния.
 - **ADR-пакет опубликован** в `docs/adr/` и задаёт архитектурные границы foundation-слоя.
 - **Runtime log-control RPC относится к operator/debug поверхности** и явно не входит в стабильный public API.
+- **Контракт V4 policy runtime в рантайме активен:** dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing с finalized-поведением аккаунта и cosign-envelope.
 
-**Что уже работает (после закрытия V3 foundation):**
+**Что уже работает (после закрытия V4):**
 
 - **Интегрированный public-devnet smoke покрывает read API:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
-- **`POST /v1/tx` остаётся в `/v1` API skeleton**, но не входил в интегрированный smoke Sprint V3-4 (отдельный smoke можно добить follow-up слайсом).
+- **`POST /v1/tx` покрывает V4 policy flow** (включая `PolicyTx`) и возвращает структурированные policy rejects из RFC 14 (`E_POLICY_*`).
 - **Operator runtime log-control endpoints** (`/v1/operator/log/override`) доступны как operator/debug surface, а не как стабильный клиентский public API.
 
 - **Два spec-level geo-шарда** — два процесса `pwmd` с разным `domain_hi` (например `0x10` / `0x20`), отдельный `--state-root` у каждого и **отработанный** happy path для связи по **реальному транспорту** с взаимными `--transport-peer-seed`.
@@ -95,7 +96,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 ## Ключевые документы
 
 - README (English): [README.md](README.md)
-- План foundation MVP v3: `docs/plans/mvp_v3.md`
+- План MVP v4 policy runtime (закрыт): `docs/plans/mvp_v4.md`
+- Концептуальный roadmap / актуальная карта версий: `docs/CONCEPT_ROADMAP.md`
 - API freeze skeleton (`/v1/*`): `docs/api-v1.md`
 - Quickstart public devnet: `docs/runbooks/demo-devnet-quickstart.md`
 - Индекс ADR-пакета: `docs/adr/README.md`
@@ -112,6 +114,9 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 - Хранилище ноды и режимы снапшота: `docs/guide-node-storage-and-snapshot.md`
 - Runbook снапшотов ClickHouse: `docs/runbook-store-snapshots.md`
 - CLI/TUI: два шарда и кросс-шард: `docs/tester-guide-cli-tui-scenarios.md`
+- `pwmd`: операторская/API-поверхность: `docs/pwmd.md`
+- CLI policy/operator сценарии: `docs/pwm-cli.md`
+- TUI inspection аккаунта/политик: `docs/pwm-tui.md`
 - Словарь доменных кластеров: `docs/DOMAINS.md`
 - Phase 1 checklist: `docs/PHASE1_CHECKLIST.md`
 - Phase 1 release summary: `docs/PHASE1_RELEASE_SUMMARY.md`

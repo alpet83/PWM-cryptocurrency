@@ -12,7 +12,6 @@ pub(crate) struct HandshakeMetrics {
 
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
 pub struct TransportCounters {
-    #[serde(rename = "dial_attempt_by_class_result")]
     pub dial_attempt_class_result: HashMap<String, u64>,
     pub peer_close_by_reason: HashMap<String, u64>,
     pub reconnect_decision_by_reason: HashMap<String, u64>,

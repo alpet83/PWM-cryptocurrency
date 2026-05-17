@@ -4,6 +4,75 @@ Notable behavior and documentation changes. Section timestamps are **UTC**, deri
 
 ---
 
+## 2026-05-17T11:00Z — MVP v4 policy engine runtime closeout (`tasks/20260517-v4-sprint6-closeout.json`)
+
+### Added
+
+- **Policy runtime:** dedicated `PolicyTx` with embedded `PolicyAction`, `ActivationMode`, V4 `init_v4` metadata/rescue fields, per-account policy/finalized state, pure `evaluate_policy`, structured `E_POLICY_*` rejects, emergency rescue activation and same-shard `Transfer` redirect to rescue.
+- **Operator path:** `pwm` CLI `tx-policy-set`, `tx-policy-activate`, `tx-policy-deactivate`, V4 `tx-init` flags, rescue cosign UX, TUI/API inspection fields, and docs for policy rejects.
+
+### Changed
+
+- **Docs:** roadmap/checklist/glossary/changelog trace V4 closeout and explicitly defer policy DSL, governance/member registry, domain auctions, `Import` emergency redirect parity, full `cargo test --workspace`, manual TUI smoke and long-running soak to later hardening/backlog.
+- **Gate:** integrated V4 smoke passed `cargo fmt --check`, `cargo check --workspace`, `cargo test -p pwmd --lib`, `cargo test -p pwm-core --lib`, full `pwm-cli`, policy filters and snapshot bench compile; report: `docs/reviews/20260517-v4-integrated-smoke.md`.
+
+---
+
+## 2026-05-17T12:45Z — devnet policy E2E harness for pwm-testing (CQDS-friendly)
+
+### Added
+
+- **`scripts/devnet_v4_policy_e2e.ps1`:** параметр **`BruteMaxTry`** (default **1000000**) для уверенного `addr-bruteforce` под phase1 маску; живой смок двух CY-нод без изменений.
+- **`docs/AGENT_PROMPT_testing.md`:** секция harness + явное исключение 15 min troubleshooting budget только для отладки, не для **`wait`** длительного **`cq_process_ctl`** прогона; пример **`spawn`**/таймаутов.
+
+### Changed
+
+- **`docs/runbooks/demo-devnet-quickstart.md`**, **`docs/reviews/20260517-v4-policy-devnet-e2e-notes.md`:** синхронизация с дефолтом **`BruteMaxTry`** и паттерном **pwm-testing** / **`cq_process_ctl`**.
+
+---
+
+## 2026-05-17T17:00Z — CY cluster policy-matrix operator E2E (`tasks/20260517-cy-cluster-policy-matrix-e2e-live.json`)
+
+### Added
+
+- **`scripts/cy_cluster_policy_matrix_e2e.ps1`:** живой двухнодовый CY-кластер; офлайн **`addr-bruteforce`** на «мёртвом» **`--rpc`** (блокирует успешный on-chain **`try_auto_init`**); затем **`tx-init`** премайна и CY-кошельков с V4 / **`--rescue-address`** / начальными политиками; **`default_behavior`**, **`routing.same_domain_only`**, **`routing.emergency_redirect`** + активация с rescue-подписью; **`Invoke-CargoRunLog`** под PowerShell **5.1** вместо пайпа **`cargo`**→**`Tee-Object`** (**`NativeCommandError`** при **`Stop`**).
+- **`docs/runbooks/cy-cluster-policy-matrix-e2e.md`:** предусловия, сценарий, делегирование **pwm-testing** через **`cq_process_ctl`** (**`host: true`**).
+
+### Verified (operator harness)
+
+- **pwm-testing (`cq_process_ctl` host):** финальный прогон **`cy_cluster_policy_matrix_e2e.ps1 -CleanState`** → **PASS** (**exit code 0**); артефакты и делегирования зафиксированы в тикете.
+
+---
+
+## 2026-05-17T21:15Z — ADR draft: policy `Deferred` activation by chain height (V4.x minimal path)
+
+### Added
+
+- **`docs/adr/0005-policy-deferred-activation.md`:** третий режим **`ActivationMode::Deferred`** с **`activate_at_height`**; детерминизм через высоту цепи; явные **out of scope** (address flags, conservation delayed `Transfer`, rolled policy origin / pruning).
+- **`tasks/20260517-v4x-deferred-activation-adr.json`:** открытый тикет на будущую реализацию после нормализации RFC.
+
+### Changed
+
+- **`docs/adr/README.md`:** индекс ADR 0005 + вводный абзац.
+- **`docs/rfc/6-policy-engine.md`**, **`docs/rfc/7-tx-and-state-model.md`:** черновые примечания со ссылкой на ADR 0005 (baseline V4 grammar unchanged).
+- **`docs/CONCEPT_ROADMAP.md`**, **`docs/plans/mvp_v4.md`:** трассировка минимального подпути от Post‑V4 extensions.
+
+---
+
+## 2026-05-17T20:10Z — demo publication traceability (checklist + independent review)
+
+### Changed
+
+- **`docs/MVP-checklist.md` §0v4:** строка **`[x]`** — демонстрационный операторский harness CY policy-matrix (**не** многопользовательский/soak-слой; расширение кейсов позже).
+- **`docs/plans/mvp_v4.md`:** пометка о демосрезе против backlog soak/multi-user.
+- **`docs/runbooks/demo-devnet-quickstart.md` §6.1:** cross-link на **`cy-cluster-policy-matrix-e2e`** / **`cy_cluster_policy_matrix_e2e.ps1`**.
+
+### Added
+
+- **`docs/reviews/20260517-demo-publication-readiness-review.md`**, **`tasks/20260517-demo-publication-readiness-review.json`:** независимое **`pwm-review`** — **PASS_WITH_NITS** (механический nit закрыт кросс-линком).
+
+---
+
 ## 2026-05-16T22:00Z — old task backlog cleanup (`tasks/20260516-old-task-backlog-triage.json`)
 
 ### Changed

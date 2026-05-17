@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "id": "20260517-v4-sprint2-core-model",
+  "title": "MVP V4-2 core policy tx/account/snapshot model",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v4.md Sprint V4-2",
+    "docs/rfc/6-policy-engine.md V4 policy lifecycle",
+    "docs/rfc/7-tx-and-state-model.md PolicyTx and InitV4Extension",
+    "docs/rfc/14-claim-burn-api-error-contract.md V4 policy rejects"
+  ],
+  "brief": "Implement the minimal consensus data model for V4 policies: dedicated PolicyTx with embedded PolicyAction, V4 INIT extension fields, compact account policy/finalization/rescue state, canonical signing/serde coverage, and snapshot/schema conversion. This slice must not implement the full evaluator or emergency routing behavior beyond model/storage invariants required by later sprints.",
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "Prepare a reuse map for V4-2 core policy model files, symbols, risks, and acceptance tests.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260517-v4-sprint2-core-model-info.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T10:30:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement V4-2 minimal consensus data model: PolicyTx with embedded PolicyAction, V4 INIT extension, account policy/rescue/finalized fields, snapshot conversion, signing/serde coverage, and policy reject mapping without evaluator/emergency routing behavior.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/tx.rs",
+        "crates/pwm-core/src/types.rs",
+        "crates/pwm-core/src/state.rs",
+        "crates/pwmd/src/snapshot/types.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/api/common.rs",
+        "crates/pwmd/src/lifecycle.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 29000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T10:35:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix V4-2 snapshot/types diagnostics: remove direct runtime Account.free_claim_utc_day references while preserving legacy wire field compatibility.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/types.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 5200,
+        "output": 1200,
+        "total": 6400,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T10:40:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Second targeted fix-up: remove remaining `free_claim_utc_day: None` from runtime Account initializers in snapshot/types.rs while keeping legacy snapshot wire fields.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/types.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3000,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T10:45:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Validate V4-2 core model slice: PolicyTx/PolicyAction serde/signing, V4 INIT/account fields, snapshot legacy defaults, policy reject mapping, and compile checks.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 4200,
+        "output": 2100,
+        "total": 6300,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T10:50:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review of V4-2 core model implementation across tx/account/state/snapshot/API lifecycle artifacts.",
+      "result": "REQUEST_CHANGES",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint2-core-model-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T10:55:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix V4-2 review blocker: preserve Account.free_claim_utc_day across Account <-> SnapshotAccountWire/V2 conversions and add focused roundtrip test.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/types.rs"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 2400,
+        "total": 14400,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:00:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Retest V4-2 after free_claim_utc_day snapshot fix: focused roundtrip test, pwmd check, and pwm-core lib regression.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:05:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Re-review V4-2 after free_claim_utc_day snapshot fix.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint2-core-model-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 4200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:10:00+03:00"
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Auto-close PASS_WITH_NITS: preserve non-empty cosigns in snapshot v2/wire conversion and add focused cosign roundtrip test; keep snapshot version additive.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/types.rs",
+        "tasks/20260517-v4-sprint2-core-model-info.json"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 11500,
+        "output": 2200,
+        "total": 13700,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:15:00+03:00"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Retest after cosigns snapshot conversion nit fix: cosign roundtrip, pwmd check, and free_claim roundtrip.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 15000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T11:20:00+03:00"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Final re-review after cosigns snapshot and info-map nit fixes.",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260517-v4-sprint2-core-model-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 3800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-17T11:25:00+03:00"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260517-v4-sprint2-core-model-review.md",
+    "info_json": "tasks/20260517-v4-sprint2-core-model-info.json"
+  },
+  "notes": "Simplicity constraints: one compact PolicyAction enum and one bounded Policy enum; no VM/DSL/dynamic dispatch; no separate tx type per policy; no self-transfer policy carrier. pwm-testing PASS used CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency; initial full cargo test -p pwm-core/-p pwmd was not run, but targeted tests + cargo check + snapshot bench compile passed. Initial review REQUEST_CHANGES found loss of Account.free_claim_utc_day in snapshot conversion; pwm-coding fixed preservation and added acct_free_claim_day_rt. Retest PASS: acct_free_claim_day_rt, cargo check -p pwmd, cargo test -p pwm-core --lib (118 passed, 1 ignored). PASS_WITH_NITS auto-close added cosigns snapshot roundtrip and corrected info-map wording to additive snapshot v2."
+}

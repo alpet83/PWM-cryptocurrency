@@ -1,0 +1,174 @@
+{
+  "id": "20260517-v4-sprint2-core-model",
+  "schema_version": 1,
+  "pwm_info_schema": 1,
+  "title": "V4-2: Core consensus data model for policies and INIT extension",
+  "status": "info_ready",
+  "created_at": "2026-05-17T10:30:00+03:00",
+  "sprint": "V4-2",
+  "scope": "Minimal consensus data structures without policy behavior explosion: TxBody Policy variant, Account policy state, V4 INIT extension, snapshot conversion, canonical signing",
+  "files": [
+    "crates/pwm-core/src/tx.rs",
+    "crates/pwm-core/src/types.rs",
+    "crates/pwm-core/src/state.rs",
+    "crates/pwm-core/src/reject_wire.rs",
+    "crates/pwmd/src/snapshot/types.rs",
+    "crates/pwmd/src/api/handlers_tx.rs",
+    "crates/pwmd/src/api/types.rs",
+    "crates/pwm-cli/src/cmd_tx.rs",
+    "docs/rfc/6-policy-engine.md",
+    "docs/rfc/7-tx-and-state-model.md",
+    "docs/rfc/14-claim-burn-api-error-contract.md"
+  ],
+  "symbols": [
+    {
+      "name": "TxBody::Policy",
+      "kind": "enum_variant",
+      "location": "crates/pwm-core/src/tx.rs:24-69",
+      "notes": "New variant for PolicyTx with embedded PolicyAction; adds discriminant 9 to signing_message"
+    },
+    {
+      "name": "PolicyAction",
+      "kind": "enum",
+      "location": "crates/pwm-core/src/tx.rs (new)",
+      "notes": "SetPolicy { policy, activation }, ActivatePolicy { policy_id }, DeactivatePolicy { policy_id }"
+    },
+    {
+      "name": "ActivationMode",
+      "kind": "enum",
+      "location": "crates/pwm-core/src/tx.rs (new)",
+      "notes": "Dormant | Immediately - controls policy lifecycle at install time"
+    },
+    {
+      "name": "Policy",
+      "kind": "enum",
+      "location": "crates/pwm-core/src/tx.rs or new policy.rs",
+      "notes": "V4 system policy set: SameDomainOnly, EmergencyRedirect { rescue_address }, SenderFilter, DefaultBehavior, CosignRequired"
+    },
+    {
+      "name": "Account::rescue_address",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs:261-281",
+      "notes": "Optional [u8;32] from INIT V4 extension; enables emergency routing"
+    },
+    {
+      "name": "Account::active_policies",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs (new)",
+      "notes": "Vec<PolicyId> or compact bitset for active policies affecting this account"
+    },
+    {
+      "name": "Account::dormant_policies",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs (new)",
+      "notes": "Vec<PolicyId> or compact bitset for installed but inactive policies"
+    },
+    {
+      "name": "Account::finalized",
+      "kind": "field",
+      "location": "crates/pwm-core/src/types.rs (new)",
+      "notes": "bool flag set by irreversible emergency routing activation"
+    },
+    {
+      "name": "InitV4Extension",
+      "kind": "struct",
+      "location": "crates/pwm-core/src/tx.rs (new)",
+      "notes": "owner_kind, owner_display_name, owner_country_hint, company_metadata_commitment, external_verification_ref, requested_domain_lo, rescue_address, initial_policies, cosign_policy"
+    },
+    {
+      "name": "State::apply_tx_with_ctx",
+      "kind": "method",
+      "location": "crates/pwm-core/src/state.rs:83-365",
+      "notes": "Extend match arms to handle TxBody::Policy - validates target_account signature, applies policy state changes"
+    },
+    {
+      "name": "validate_tx_shape",
+      "kind": "function",
+      "location": "crates/pwm-core/src/tx.rs:292-337",
+      "notes": "Extend with PolicyTx validation: fee>0, nonce check, target_account exists"
+    },
+    {
+      "name": "SignedTx::signing_message",
+      "kind": "method",
+      "location": "crates/pwm-core/src/tx.rs:115-214",
+      "notes": "Add Policy variant canonical serialization for signing preimage"
+    },
+    {
+      "name": "SnapshotAccountV2",
+      "kind": "struct",
+      "location": "crates/pwmd/src/snapshot/types.rs:240-258",
+      "notes": "Add policy fields for snapshot wire format: rescue_address_hex, active_policies_mask, dormant_policies_mask, finalized_bool"
+    },
+    {
+      "name": "SnapshotAccountWire",
+      "kind": "struct",
+      "location": "crates/pwmd/src/snapshot/types.rs:430-448",
+      "notes": "Add policy fields additively to the current snapshot serialization"
+    },
+    {
+      "name": "TxError",
+      "kind": "enum",
+      "location": "crates/pwm-core/src/tx.rs:397-445",
+      "notes": "Extend with policy errors: PolicySchemaInvalid, PolicyNotInstalled, PolicyNotActive, PolicyDenied, PolicyMissingCosign, PolicyRescueRequired, PolicyEmergencyCosignRequired, PolicyAccountFinalized, PolicyIrreversible"
+    },
+    {
+      "name": "SNAPSHOT_VERSION",
+      "kind": "constant",
+      "location": "crates/pwmd/src/snapshot/types.rs:48",
+      "notes": "Keep current snapshot version additive for V4 policy state unless a later wire-breaking change requires a bump"
+    }
+  ],
+  "digest": "V4-2 implements the minimal consensus data model for policy engine runtime. The scope is intentionally bounded: we add PolicyTx as a dedicated TxBody variant (not self-transfer), extend Account with compact policy state fields (rescue_address, active_policies bitset, dormant_policies bitset, finalized flag), and introduce the V4 INIT extension for hybrid corporate metadata. Key serialization changes: TxBody gets discriminant 9 for Policy with embedded PolicyAction enum; Account gets optional rescue_address and policy bitsets; snapshot serialization is extended additively while preserving the current v2 read path. The canonical signing preimage covers all policy fields to prevent malleability. No policy evaluator logic in this slice - only data structures and deterministic (de)serialization. Minimal cosign envelope data is present for later V4-4 validation. The goal is a stable wire format that V4-3 evaluator and V4-4 emergency routing can rely on.",
+  "risks": [
+    {
+      "id": "R1",
+      "severity": "high",
+      "description": "Additive snapshot fields breaking old devnet state load",
+      "mitigation": "Keep serde defaults for new fields; new policy fields default to empty/zero on legacy load; bump snapshot version only for future breaking wire changes"
+    },
+    {
+      "id": "R2",
+      "severity": "medium",
+      "description": "INIT extension field size limits not enforced",
+      "mitigation": "Add byte limit constants (owner_display_name <= 64 bytes, company_metadata_commitment = 32 bytes hash) and validation in Init tx processing"
+    },
+    {
+      "id": "R3",
+      "severity": "medium",
+      "description": "Policy bitset size explosion if policy enum grows unbounded",
+      "mitigation": "Hard cap at 16 policies per account (u16 bitset); V4 only uses 5 system policies; overflow rejects with PolicyTooMany"
+    },
+    {
+      "id": "R4",
+      "severity": "medium",
+      "description": "JSON u128 encoding inconsistency for PolicyTx.fee",
+      "mitigation": "Reuse #[serde(with = \"crate::ser_json_u128\")] pattern from Transfer; document in RFC 7"
+    },
+    {
+      "id": "R5",
+      "severity": "low",
+      "description": "Migration from legacy Account marks field (u128->u32) conflicts with new policy field placement",
+      "mitigation": "Policy fields use serde(default); de_marks_compat already handles legacy wire; new fields won't conflict"
+    }
+  ],
+  "suggested_acceptance_tests": [
+    "TxBody::Policy JSON roundtrip with u128 fee as decimal string",
+    "SignedTx::signing_message stable hash for PolicyTx with SetPolicy, ActivatePolicy, DeactivatePolicy variants",
+    "Account serialization roundtrip with rescue_address, active_policies=0b101, dormant_policies=0b010, finalized=true",
+    "Snapshot V2 load succeeds: v2 account without policy fields defaults to no rescue, empty policies, not finalized",
+    "Snapshot V3 save includes policy fields in wire format",
+    "InitTx with V4 extension fields roundtrips through JSON and bincode",
+    "TxBody::Policy fee_amount() returns correct fee for mempool ordering",
+    "validate_tx_shape rejects PolicyTx with target_account == sender (policy on self allowed, but not self-target confusion)",
+    "State::apply_tx_with_ctx rejects PolicyTx when target_account not initialized",
+    "TxError JSON shape for new policy errors matches RFC 14 response_class + error.code structure"
+  ],
+  "tokens": 3200,
+  "notes": {
+    "handoff_to": "pwm-coding",
+    "priority_files": ["crates/pwm-core/src/tx.rs", "crates/pwm-core/src/types.rs"],
+    "test_harness": "Extend crates/pwm-core/src/state.rs tests and crates/pwmd/src/tests/snapshot_backend_replay.rs",
+    "dependencies": "Sprint V4-1 RFC freeze completed; no blockers",
+    "conway_ready": true
+  }
+}

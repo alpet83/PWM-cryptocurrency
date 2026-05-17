@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "20260517-cy-cluster-policy-matrix-e2e-live",
+  "title": "Live CY cluster policy matrix E2E via pwm-testing + cq_process_ctl",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Прогон scripts/cy_cluster_policy_matrix_e2e.ps1 (-CleanState) на хосте Windows через MCP cq_process_ctl (host=true): spawn PowerShell, длинный wait/polling status+io, корректная уборка pwmd, отчёт PASS/FAIL и артефакты под tmp/.",
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cq_process_ctl host spawn+warp cy_cluster_policy_matrix_e2e.ps1 -CleanState; cq_help payloads; CARGO_TARGET_DIR; cleanup pwmd",
+      "result": "FAIL exit=1: addr-bruteforce step (PS pipeline + stderr / LASTEXITCODE); no cy_policy_matrix md written",
+      "artifacts": [
+        "tmp/cy-matrix-e2e-20260517_132500/ (empty; run)",
+        "Partial console output via cq_process_ctl io (matrix job 3612b017-0da8-4ce7-9e4f-973e0472ce44)",
+        "Preflight: target/debug 226464982 bytes, under threshold (job 08185b28-a90d-40fa-a951-0d39abb6f1a7)"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 13500,
+        "output": 4200,
+        "total": 17700,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T13:31:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "RETRY после Invoke-CargoRunLog; тот же cy_cluster_policy_matrix_e2e.ps1 -CleanState + cq_process_ctl host",
+      "result": "FAIL exit=1: Select-String 'id_hex=(\\w+)' — нет совпадений при реальном выводе `id_hex <hex>` (пробел) в brute-1.log; addr-bruteforce+cargo через Invoke-CargoRunLog без PS5.1 NativeCommandError на этом прогоне; кластер/отчёт не достигнуты",
+      "artifacts": [
+        "tmp/cy-matrix-e2e-20260517_144622/brute-1.log (match + id_hex line present)",
+        "tmp/cy-matrix-e2e-20260517_144622/ (matrix run dir)",
+        "MCP cq_process_ctl host spawn/wait/status/io — process_guid 7836a341-a7c8-492c-bb25-3a1633de5e0f, pid 53428, runtime_ms ~46084"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 5500,
+        "total": 33500,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T11:47:20Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Retry 3: owner обновил cy_cluster_policy_matrix_e2e.ps1; cq_process_ctl host -CleanState",
+      "result": "PASS exit=0: offline addr-bruteforce (RpcBruteDead) + live tx-init/rescue после старта кластера; отчёт и логи matrix; runtime_ms ~201499; Get-Process pwmd — пусто",
+      "artifacts": [
+        "tmp/cy_policy_matrix_e2e_20260517_161554.md",
+        "tmp/cy-matrix-e2e-20260517_161554/ (brute-*.log, proposer/attester stdout+stderr, prem-accounts.txt, cy-lab-peers.yaml)",
+        "MCP cq_process_ctl host: cq_help cq_process_ctl#spawn|wait|status|io|kill; spawn timeout 7200s env CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency PWM_TEST_TARGET_ROOT=F:\\pwm-test; process_guid 3b7e6a89-e76f-4e25-8ee4-bab6734a1fa1 pid 66688"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 12000,
+        "output": 3800,
+        "total": 15800,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-17T13:19:36Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Brute harness + парсинг id_hex правки в скрипте владельцем/агентами. Brute RPC dead: см. делегирование pwm-testing. После run 3: закрыть status тикета."
+}

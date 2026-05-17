@@ -278,6 +278,34 @@ pub struct Account {
     pub free_claim_utc_day: Option<u64>,
     #[serde(default)]
     pub last_stake_change_height: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rescue_address: Option<AccountId>,
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub active_policies: u16,
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub dormant_policies: u16,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub finalized: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner_kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner_display_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner_country_hint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub company_metadata_commitment: Option<[u8; 32]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_verification_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_domain_lo: Option<u8>,
+}
+
+fn is_zero_u16(v: &u16) -> bool {
+    *v == 0
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 fn migrate_marks_legacy(raw: u128) -> u32 {
@@ -329,6 +357,16 @@ impl Account {
             last_claim_anchor_ref: 0,
             free_claim_utc_day: None,
             last_stake_change_height: 0,
+            rescue_address: None,
+            active_policies: 0,
+            dormant_policies: 0,
+            finalized: false,
+            owner_kind: String::new(),
+            owner_display_name: String::new(),
+            owner_country_hint: String::new(),
+            company_metadata_commitment: None,
+            external_verification_ref: None,
+            requested_domain_lo: None,
         }
     }
 }

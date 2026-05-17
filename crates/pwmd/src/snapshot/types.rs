@@ -3,7 +3,10 @@
 use crate::ledger::{CrossShardFact, CrossShardLedger, CrossShardOrigin, CrossShardStatus};
 use crate::roaming::{IntentStatus, RoamingIntent, RoamingPool};
 use pwm_core::block::{Block, BlockHdr};
-use pwm_core::tx::{SignedTx, TxBody};
+use pwm_core::tx::{
+    ActivationMode, CosignPolicy, CosignRole, Cosignature, InitPolicyEntry, InitV4Extension,
+    PolicyAction, PolicyKind, SignedTx, TxBody,
+};
 use pwm_core::types::Account;
 use pwm_core::State as ChainState;
 use serde::Deserialize;
@@ -109,6 +112,17 @@ struct SignedTxV2 {
     import_fee: Option<String>,
     #[serde(default)]
     import_provenance: Option<ImportProvV2>,
+    #[serde(default)]
+    init_v4: Option<InitV4ExtV2>,
+    #[serde(default)]
+    cosigns: Vec<CosignatureV2>,
+    signature: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CosignatureV2 {
+    signer_pk: String,
+    role: CosignRole,
     signature: String,
 }
 
@@ -117,6 +131,33 @@ struct ImportProvV2 {
     to: String,
     target_domain: u16,
     amount: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InitV4ExtV2 {
+    owner_kind: String,
+    owner_display_name: String,
+    owner_country_hint: String,
+    company_metadata_commitment: String,
+    external_verification_ref: String,
+    requested_domain_lo: u8,
+    #[serde(default)]
+    rescue_address: Option<String>,
+    #[serde(default)]
+    initial_policies: Vec<InitPolicyV2>,
+    #[serde(default)]
+    cosign_policy: Option<CosignPolicyV2>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InitPolicyV2 {
+    policy: String,
+    activation: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CosignPolicyV2 {
+    min_signers: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -158,6 +199,19 @@ enum TxBodyV2 {
         amount: String,
         export_id: String,
     },
+    Policy {
+        target_account: String,
+        action: PolicyActionV2,
+        fee: String,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PolicyActionV2 {
+    SetPolicy { policy: String, activation: String },
+    ActivatePolicy { policy_id: u8 },
+    DeactivatePolicy { policy_id: u8 },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -236,7 +290,7 @@ struct SnapshotQuotaRowV2 {
     quota: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct SnapshotAccountV2 {
     signing_pubkey: String,
     derivation_index: u32,
@@ -255,6 +309,26 @@ struct SnapshotAccountV2 {
     free_claim_utc_day: Option<u64>,
     #[serde(default)]
     last_stake_change_height: u64,
+    #[serde(default)]
+    rescue_address: Option<String>,
+    #[serde(default)]
+    active_policies: u16,
+    #[serde(default)]
+    dormant_policies: u16,
+    #[serde(default)]
+    finalized: bool,
+    #[serde(default)]
+    owner_kind: String,
+    #[serde(default)]
+    owner_display_name: String,
+    #[serde(default)]
+    owner_country_hint: String,
+    #[serde(default)]
+    company_metadata_commitment: Option<String>,
+    #[serde(default)]
+    external_verification_ref: Option<String>,
+    #[serde(default)]
+    requested_domain_lo: Option<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -426,7 +500,7 @@ struct SnapshotStateWire {
     exported_registry: Vec<SnapshotExportRow>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct SnapshotAccountWire {
     signing_pubkey: [u8; 32],
     derivation_index: u32,
@@ -445,6 +519,26 @@ struct SnapshotAccountWire {
     free_claim_utc_day: Option<u64>,
     #[serde(default)]
     last_stake_change_height: u64,
+    #[serde(default)]
+    rescue_address: Option<[u8; 32]>,
+    #[serde(default)]
+    active_policies: u16,
+    #[serde(default)]
+    dormant_policies: u16,
+    #[serde(default)]
+    finalized: bool,
+    #[serde(default)]
+    owner_kind: String,
+    #[serde(default)]
+    owner_display_name: String,
+    #[serde(default)]
+    owner_country_hint: String,
+    #[serde(default)]
+    company_metadata_commitment: Option<[u8; 32]>,
+    #[serde(default)]
+    external_verification_ref: Option<String>,
+    #[serde(default)]
+    requested_domain_lo: Option<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -471,6 +565,17 @@ impl From<Account> for SnapshotAccountWire {
             last_claim_anchor_ref: value.last_claim_anchor_ref,
             free_claim_utc_day: value.free_claim_utc_day,
             last_stake_change_height: value.last_stake_change_height,
+            rescue_address: value.rescue_address,
+            active_policies: value.active_policies,
+            dormant_policies: value.dormant_policies,
+            finalized: value.finalized,
+            owner_kind: value.owner_kind,
+            owner_display_name: value.owner_display_name,
+            owner_country_hint: value.owner_country_hint,
+            company_metadata_commitment: value.company_metadata_commitment,
+            external_verification_ref: value.external_verification_ref,
+            requested_domain_lo: value.requested_domain_lo,
+            ..Default::default()
         }
     }
 }
@@ -491,6 +596,17 @@ impl From<SnapshotAccountWire> for Account {
             last_claim_anchor_ref: value.last_claim_anchor_ref,
             free_claim_utc_day: value.free_claim_utc_day,
             last_stake_change_height: value.last_stake_change_height,
+            rescue_address: value.rescue_address,
+            active_policies: value.active_policies,
+            dormant_policies: value.dormant_policies,
+            finalized: value.finalized,
+            owner_kind: value.owner_kind,
+            owner_display_name: value.owner_display_name,
+            owner_country_hint: value.owner_country_hint,
+            company_metadata_commitment: value.company_metadata_commitment,
+            external_verification_ref: value.external_verification_ref,
+            requested_domain_lo: value.requested_domain_lo,
+            ..Account::default()
         }
     }
 }
@@ -645,6 +761,134 @@ fn dec_v2_u32(value: &str, field: &str) -> Result<u32, String> {
     Ok(raw.min(u32::MAX as u128) as u32)
 }
 
+fn policy_kind_to_str(kind: PolicyKind) -> &'static str {
+    match kind {
+        PolicyKind::RoutingSameDomainOnly => "routing.same_domain_only",
+        PolicyKind::RoutingEmergencyRedirect => "routing.emergency_redirect",
+        PolicyKind::SenderFilter => "sender_filter",
+        PolicyKind::DefaultBehavior => "default_behavior",
+        PolicyKind::CosignRequired => "cosign_required",
+    }
+}
+
+fn policy_kind_from_str(raw: &str, path: &str) -> Result<PolicyKind, String> {
+    match raw {
+        "routing.same_domain_only" => Ok(PolicyKind::RoutingSameDomainOnly),
+        "routing.emergency_redirect" => Ok(PolicyKind::RoutingEmergencyRedirect),
+        "sender_filter" => Ok(PolicyKind::SenderFilter),
+        "default_behavior" => Ok(PolicyKind::DefaultBehavior),
+        "cosign_required" => Ok(PolicyKind::CosignRequired),
+        _ => Err(format!("{path}: unknown policy kind '{raw}'")),
+    }
+}
+
+fn activation_to_str(mode: ActivationMode) -> &'static str {
+    match mode {
+        ActivationMode::Dormant => "dormant",
+        ActivationMode::Immediately => "immediately",
+    }
+}
+
+fn activation_from_str(raw: &str, path: &str) -> Result<ActivationMode, String> {
+    match raw {
+        "dormant" => Ok(ActivationMode::Dormant),
+        "immediately" => Ok(ActivationMode::Immediately),
+        _ => Err(format!("{path}: expected dormant|immediately")),
+    }
+}
+
+fn policy_action_to_v2(value: &PolicyAction) -> PolicyActionV2 {
+    match value {
+        PolicyAction::SetPolicy { policy, activation } => PolicyActionV2::SetPolicy {
+            policy: policy_kind_to_str(*policy).to_string(),
+            activation: activation_to_str(*activation).to_string(),
+        },
+        PolicyAction::ActivatePolicy { policy_id } => PolicyActionV2::ActivatePolicy {
+            policy_id: *policy_id,
+        },
+        PolicyAction::DeactivatePolicy { policy_id } => PolicyActionV2::DeactivatePolicy {
+            policy_id: *policy_id,
+        },
+    }
+}
+
+fn policy_action_from_v2(value: PolicyActionV2, path: &str) -> Result<PolicyAction, String> {
+    match value {
+        PolicyActionV2::SetPolicy { policy, activation } => Ok(PolicyAction::SetPolicy {
+            policy: policy_kind_from_str(&policy, &format!("{path}.policy"))?,
+            activation: activation_from_str(&activation, &format!("{path}.activation"))?,
+        }),
+        PolicyActionV2::ActivatePolicy { policy_id } => {
+            Ok(PolicyAction::ActivatePolicy { policy_id })
+        }
+        PolicyActionV2::DeactivatePolicy { policy_id } => {
+            Ok(PolicyAction::DeactivatePolicy { policy_id })
+        }
+    }
+}
+
+fn init_v4_to_v2(value: &InitV4Extension) -> InitV4ExtV2 {
+    InitV4ExtV2 {
+        owner_kind: value.owner_kind.clone(),
+        owner_display_name: value.owner_display_name.clone(),
+        owner_country_hint: value.owner_country_hint.clone(),
+        company_metadata_commitment: hex_of(&value.company_metadata_commitment),
+        external_verification_ref: value.external_verification_ref.clone(),
+        requested_domain_lo: value.requested_domain_lo,
+        rescue_address: value.rescue_address.as_ref().map(hex_of),
+        initial_policies: value
+            .initial_policies
+            .iter()
+            .map(|row| InitPolicyV2 {
+                policy: policy_kind_to_str(row.policy).to_string(),
+                activation: activation_to_str(row.activation).to_string(),
+            })
+            .collect(),
+        cosign_policy: value.cosign_policy.as_ref().map(|x| CosignPolicyV2 {
+            min_signers: x.min_signers,
+        }),
+    }
+}
+
+fn init_v4_from_v2(value: InitV4ExtV2, path: &str) -> Result<InitV4Extension, String> {
+    Ok(InitV4Extension {
+        owner_kind: value.owner_kind,
+        owner_display_name: value.owner_display_name,
+        owner_country_hint: value.owner_country_hint,
+        company_metadata_commitment: hex_v2(
+            &value.company_metadata_commitment,
+            &format!("{path}.company_metadata_commitment"),
+        )?,
+        external_verification_ref: value.external_verification_ref,
+        requested_domain_lo: value.requested_domain_lo,
+        rescue_address: value
+            .rescue_address
+            .as_deref()
+            .map(|v| hex_v2(v, &format!("{path}.rescue_address")))
+            .transpose()?,
+        initial_policies: value
+            .initial_policies
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| {
+                Ok(InitPolicyEntry {
+                    policy: policy_kind_from_str(
+                        &row.policy,
+                        &format!("{path}.initial_policies[{i}].policy"),
+                    )?,
+                    activation: activation_from_str(
+                        &row.activation,
+                        &format!("{path}.initial_policies[{i}].activation"),
+                    )?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+        cosign_policy: value.cosign_policy.map(|x| CosignPolicy {
+            min_signers: x.min_signers,
+        }),
+    })
+}
+
 fn validate_quota_rows(
     rows: Vec<SnapshotQuotaRow>,
     accounts: &BTreeMap<[u8; 32], Account>,
@@ -788,6 +1032,8 @@ fn tx_to_v2(value: &SignedTx) -> SignedTxV2 {
             target_domain: prov.target_domain,
             amount: dec_of(prov.amount),
         }),
+        init_v4: value.init_v4.as_ref().map(init_v4_to_v2),
+        cosigns: value.cosigns.iter().map(cosign_to_v2).collect(),
         signature: hex_of(&value.signature),
     }
 }
@@ -813,6 +1059,32 @@ fn tx_from_v2(value: SignedTxV2, path: &str) -> Result<SignedTx, String> {
             }),
             None => None,
         },
+        init_v4: value
+            .init_v4
+            .map(|v| init_v4_from_v2(v, &format!("{path}.init_v4")))
+            .transpose()?,
+        cosigns: value
+            .cosigns
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| cosign_from_v2(row, &format!("{path}.cosigns[{i}]")))
+            .collect::<Result<Vec<_>, String>>()?,
+        signature: hex_v2(&value.signature, &format!("{path}.signature"))?,
+    })
+}
+
+fn cosign_to_v2(value: &Cosignature) -> CosignatureV2 {
+    CosignatureV2 {
+        signer_pk: hex_of(&value.signer_pk),
+        role: value.role,
+        signature: hex_of(&value.signature),
+    }
+}
+
+fn cosign_from_v2(value: CosignatureV2, path: &str) -> Result<Cosignature, String> {
+    Ok(Cosignature {
+        signer_pk: hex_v2(&value.signer_pk, &format!("{path}.signer_pk"))?,
+        role: value.role,
         signature: hex_v2(&value.signature, &format!("{path}.signature"))?,
     })
 }
@@ -875,6 +1147,15 @@ fn body_to_v2(value: &TxBody) -> TxBodyV2 {
             amount: dec_of(*amount),
             export_id: hex_of(export_id),
         },
+        TxBody::Policy {
+            target_account,
+            action,
+            fee,
+        } => TxBodyV2::Policy {
+            target_account: hex_of(target_account),
+            action: policy_action_to_v2(action),
+            fee: dec_of(*fee),
+        },
     }
 }
 
@@ -936,6 +1217,15 @@ fn body_from_v2(value: TxBodyV2, path: &str) -> Result<TxBody, String> {
             to: hex_v2(&to, &format!("{path}.to"))?,
             amount: dec_v2(&amount, &format!("{path}.amount"))?,
             export_id: hex_v2(&export_id, &format!("{path}.export_id"))?,
+        }),
+        TxBodyV2::Policy {
+            target_account,
+            action,
+            fee,
+        } => Ok(TxBody::Policy {
+            target_account: hex_v2(&target_account, &format!("{path}.target_account"))?,
+            action: policy_action_from_v2(action, &format!("{path}.action"))?,
+            fee: dec_v2(&fee, &format!("{path}.fee"))?,
         }),
     }
 }
@@ -1039,6 +1329,17 @@ fn account_to_v2(value: &Account) -> SnapshotAccountV2 {
         last_claim_anchor_ref: value.last_claim_anchor_ref,
         free_claim_utc_day: value.free_claim_utc_day,
         last_stake_change_height: value.last_stake_change_height,
+        rescue_address: value.rescue_address.as_ref().map(hex_of),
+        active_policies: value.active_policies,
+        dormant_policies: value.dormant_policies,
+        finalized: value.finalized,
+        owner_kind: value.owner_kind.clone(),
+        owner_display_name: value.owner_display_name.clone(),
+        owner_country_hint: value.owner_country_hint.clone(),
+        company_metadata_commitment: value.company_metadata_commitment.as_ref().map(hex_of),
+        external_verification_ref: value.external_verification_ref.clone(),
+        requested_domain_lo: value.requested_domain_lo,
+        ..Default::default()
     }
 }
 
@@ -1057,6 +1358,24 @@ fn account_from_v2(value: SnapshotAccountV2, path: &str) -> Result<SnapshotAccou
         last_claim_anchor_ref: value.last_claim_anchor_ref,
         free_claim_utc_day: value.free_claim_utc_day,
         last_stake_change_height: value.last_stake_change_height,
+        rescue_address: value
+            .rescue_address
+            .as_deref()
+            .map(|v| hex_v2(v, &format!("{path}.rescue_address")))
+            .transpose()?,
+        active_policies: value.active_policies,
+        dormant_policies: value.dormant_policies,
+        finalized: value.finalized,
+        owner_kind: value.owner_kind,
+        owner_display_name: value.owner_display_name,
+        owner_country_hint: value.owner_country_hint,
+        company_metadata_commitment: value
+            .company_metadata_commitment
+            .as_deref()
+            .map(|v| hex_v2(v, &format!("{path}.company_metadata_commitment")))
+            .transpose()?,
+        external_verification_ref: value.external_verification_ref,
+        requested_domain_lo: value.requested_domain_lo,
     })
 }
 
@@ -1178,5 +1497,78 @@ impl SnapshotData {
     ) -> Result<(Vec<Block>, ChainState, RoamingPool, CrossShardLedger), String> {
         let roaming_pool = roaming_from_wire(self.roaming)?;
         Ok((self.blocks, self.state, roaming_pool, self.cross_shard))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        account_from_v2, account_to_v2, tx_from_v2, tx_to_v2, Account, CosignatureV2, SignedTxV2,
+        SnapshotAccountWire,
+    };
+    use pwm_core::tx::{CosignRole, Cosignature, SignedTx, TxBody};
+
+    #[test]
+    fn acct_free_claim_day_rt() {
+        let expected_day = 20_510;
+        let account = Account {
+            free_claim_utc_day: Some(expected_day),
+            ..Account::default()
+        };
+
+        let wire: SnapshotAccountWire = account.clone().into();
+        assert_eq!(wire.free_claim_utc_day, Some(expected_day));
+
+        let from_wire: Account = wire.into();
+        assert_eq!(from_wire.free_claim_utc_day, Some(expected_day));
+
+        let v2 = account_to_v2(&from_wire);
+        assert_eq!(v2.free_claim_utc_day, Some(expected_day));
+
+        let from_v2 = account_from_v2(v2, "state.accounts[0].account").expect("v2 account parse");
+        assert_eq!(from_v2.free_claim_utc_day, Some(expected_day));
+    }
+
+    #[test]
+    fn tx_cosigns_rt_v2_wire() {
+        let mut tx = SignedTx {
+            domain_code: 1,
+            signer_pk: [1u8; 32],
+            derivation_index: 2,
+            nonce: 3,
+            body: TxBody::Stake { amount: 10 },
+            burn_purpose: None,
+            import_fee: None,
+            import_provenance: None,
+            init_v4: None,
+            cosigns: vec![Cosignature {
+                signer_pk: [2u8; 32],
+                role: CosignRole::Organization,
+                signature: [3u8; 64],
+            }],
+            signature: [4u8; 64],
+        };
+
+        let wire = tx_to_v2(&tx);
+        assert_eq!(wire.cosigns.len(), 1);
+        let decoded = tx_from_v2(wire, "blocks[0].txs[0]").expect("tx from v2");
+        assert_eq!(decoded.cosigns, tx.cosigns);
+
+        tx.cosigns.clear();
+        let legacy = SignedTxV2 {
+            domain_code: tx.domain_code,
+            signer_pk: hex::encode(tx.signer_pk),
+            derivation_index: tx.derivation_index,
+            nonce: tx.nonce,
+            body: super::body_to_v2(&tx.body),
+            burn_purpose: tx.burn_purpose,
+            import_fee: None,
+            import_provenance: None,
+            init_v4: None,
+            cosigns: Vec::<CosignatureV2>::new(),
+            signature: hex::encode(tx.signature),
+        };
+        let legacy_decoded = tx_from_v2(legacy, "blocks[0].txs[0]").expect("legacy tx from v2");
+        assert!(legacy_decoded.cosigns.is_empty());
     }
 }

@@ -77,12 +77,10 @@ pub struct StatusOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genesis_mismatch_received_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "genesis_mismatch_peer_node_id")]
     pub genesis_mismatch_peer_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genesis_mismatch_peer_hint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "genesis_mismatch_at_unix_ms")]
     pub genesis_mismatch_unix_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genesis_guard_recovery_hint: Option<&'static str>,
@@ -358,11 +356,39 @@ pub struct AcctOut {
     pub marks: u32,
     pub initialized: bool,
     pub nonce: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rescue_address: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub active_policies: u16,
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub dormant_policies: u16,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub finalized: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner_kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner_display_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner_country_hint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub company_metadata_commitment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_verification_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_domain_lo: Option<u8>,
 }
 
 #[derive(Serialize)]
 pub struct AcctListOut {
     pub accounts: Vec<AcctOut>,
+}
+
+fn is_zero_u16(v: &u16) -> bool {
+    *v == 0
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 #[derive(Serialize)]

@@ -6,10 +6,10 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ![pwm-tui operator UI (demo)](tui-demo-screenshot.png)
 
-## Current status (MVP v5 — implementation complete; release sign-off pending)
+## Current status (MVP v5 — release sign-off complete)
 
 - **MVP v4 policy runtime remains the closed baseline** (Sprints V4-1..V4-6, 2026-05-17): dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing with finalized account behavior, and cosign envelope hooks.
-- **Active publication milestone is MVP v5** (tokenomics hardening + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02). **Owner sign-off / public release tag may still be pending** — treat as implementation-complete devnet, not a fully shipped product announcement.
+- **Published milestone: MVP v5** (tokenomics hardening + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02); **owner sign-off complete** (2026-06-02). This repository reflects an **implementation-complete devnet** — PoA lab topology, not a production mainnet product launch.
 - **Clean public devnet quickstart exists**: from a clean clone, a deterministic demo genesis path is documented and verified (premine target `21,000,000,000 PWM` = `21_000_000_000_000_000 raw`).
 - **Public `/v1` API baseline** in `docs/api-v1.md` covers V4 policy runtime (`PolicyTx`, structured `E_POLICY_*` rejects) and V5 additive account fields (`marks_last_block`, lazy marks semantics).
 - **Epoch Snapshot schema v3 + genesis anchor light (ADR 0008)** in the pwmd snapshot stack — trust baseline for state reload/replay with light genesis binding.

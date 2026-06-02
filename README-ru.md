@@ -6,10 +6,10 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ![Интерфейс оператора pwm-tui (демо)](tui-demo-screenshot.png)
 
-## Текущий статус (MVP v5 — реализация завершена; sign-off релиза pending)
+## Текущий статус (MVP v5 — sign-off релиза завершён)
 
 - **MVP v4 policy runtime остаётся закрытым baseline** (спринты V4-1..V4-6, 2026-05-17): dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing с finalized-поведением аккаунта и cosign-envelope.
-- **Активный publication milestone — MVP v5** (укрепление токеномики + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02). **Owner sign-off / public release tag могут быть ещё pending** — это implementation-complete devnet, а не объявление полностью отгруженного продукта.
+- **Опубликованный milestone — MVP v5** (укрепление токеномики + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02); **owner sign-off завершён** (2026-06-02). Репозиторий отражает **implementation-complete devnet** — PoA lab-топология, а не запуск production mainnet.
 - **Есть чистый public-devnet quickstart**: из clean clone документирован детерминированный demo genesis path с проверкой premine (`21_000_000_000 PWM` = `21_000_000_000_000_000 raw`).
 - **`/v1` API baseline** в `docs/api-v1.md` покрывает V4 policy runtime (`PolicyTx`, структурированные `E_POLICY_*` reject) и V5 additive поля аккаунта (`marks_last_block`, семантика lazy marks).
 - **Epoch Snapshot schema v3 + genesis anchor light (ADR 0008)** в стеке снапшотов pwmd — trust baseline для загрузки/реплея с лёгкой привязкой к genesis.

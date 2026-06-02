@@ -166,7 +166,7 @@
 | **V5-9** | CY cluster E2E (bootstrap, marks soak, mass burn) | ✅ | `tasks/done/20260530-v5-sprint-final-closeout.json` |
 | **Pre-publish** | TUI operator UX, genesis anchor land, `marks_quota` cleanup | ✅ | [reviews/20260602-v5-prepublish-polish-integrated-review.md](reviews/20260602-v5-prepublish-polish-integrated-review.md); ADR [0008](adr/0008-snapshot-genesis-anchor-light.md) |
 
-**Owner sign-off:** сводные критерии V5 в [CONCEPT_ROADMAP.md](CONCEPT_ROADMAP.md) (§ MVP V5) — часть чекбоксов остаётся pending до явного owner close.
+**Owner sign-off:** сводные критерии V5 закрыты владельцем (2026-06-02); детальный чеклист — [CONCEPT_ROADMAP.md](CONCEPT_ROADMAP.md) (§ MVP V5, внутренний документ).
 
 ---
 
@@ -197,14 +197,13 @@
 | **Arbitrator** — зональный арбитр, freeze/reversal | WP §6 | Низкий (defer) |
 | **PQC** — quantum-safe signatures | WP §4.4 | Низкий (defer) |
 | **IPv4 capping (production registry + фазы)** | WP §3 | Средний (on-chain batch есть; off-chain registry/bootstrap — defer) |
-| **Owner sign-off V5 сводных критериев** | [CONCEPT_ROADMAP.md](CONCEPT_ROADMAP.md) § MVP V5 | Средний (gates V5-1…V5-9 ✅; чеклисты owner pending) |
-| **Offchain burning production** | WP §8 | Средний (stub есть) |
+| **21B coin genesis (runtime amounts)** | WP §3 | Низкий (дизайн задокументирован; devnet amounts) |
 | **X-PWM email header integration** | WP §7 | Низкий (defer) |
 | **AI API integration** | WP §9 | Низкий (defer) |
 | **Honeypot addresses** | WP §4.3 | Низкий (defer) |
 | **Corporate multisig/cosign INIT** | WP §5 | Средний |
 | **CLTV scheduling** | WP §5 | Низкий (defer) |
-| **21B coin genesis** | WP §3 | Низкий (сейчас devnet amounts) |
+| **Offchain burning production** | WP §8 | Средний (stub есть) |
 
 ---
 
@@ -224,7 +223,7 @@
 |---|---|
 | **Реализовано и работает** | ~50% концепта (рост за счёт V5 tokenomics: lazy marks, float seal, IPv4 batch, genesis anchor) |
 | **MVP-форма / частично** | ~25% (21B genesis amounts, IPv4 registry фазы, dumb contracts runtime, offchain stub) |
-| **Запланировано / в работе** | ~8% (owner V5 sign-off, расширенные cluster fault tests) |
+| **Запланировано / в работе** | ~8% (расширенные cluster fault tests, live-genesis TUI accrual hint) |
 | **Defer / не начато** | ~15% (PQC, arbitrator, production IPv4 registry, AI integration, honeypots) |
 
 **Общий вывод:** MVP v2 + **закрытый спринтовый gate V5** дают **основной технический каркас** и **токеномику марок/инфляции** в devnet-форме. Следующие критические шаги к demonstration-ready концепту:
@@ -232,4 +231,4 @@
 - Реализация **policy engine runtime** для dumb contracts (§5 WP)
 - Минимальная **offchain burn API** для демо интеграций (§7–8 WP)
 - Подготовка **демо genesis** с реалистичными amounts и валидаторами (дизайн: [genesis-21b-design.md](genesis-21b-design.md); runtime 21B — open)
-- **Owner sign-off** сводных критериев V5 и live-genesis TUI accrual hint (опционально)
+- Опционально: live-genesis **TUI accrual hint** (`DEF_BLOCKS_PER_HOUR` → `/v1/status` params)

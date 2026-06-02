@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-tui-marks-display-compact",
+  "title": "V5 TUI: compact marks balance display (drop sat %/CAP)",
+  "status": "in_progress",
+  "depends_on": ["20260524-v5-sprint6-tui-marks-saturation"],
+  "brief": "Replace noisy marks cell `{balance}/{MARKS_CAP} (N%)` with compact auto-scaled balance; red style only when saturated (MARKS_CAP).",
+  "acceptance_criteria": [
+    "Marks column shows scaled balance only (no /MARKS_CAP, no percent, no SAT suffix).",
+    "Scaling: value < 1000 plain integer; >= 1000 x.xxK; >= 1_000_000 x.xxM; >= 1_000_000_000 x.xxB (two decimal places).",
+    "When effective_marks == MARKS_CAP (saturation): cell text uses red foreground; otherwise default style.",
+    "Column header renamed from Marks (sat) to Marks.",
+    "marks_sat_pct may remain internal for AcctRow/API sync but not shown in table cell.",
+    "Unit tests for format function: 999, 1500, 2_500_000, 3_000_000_000, MARKS_CAP.",
+    "cargo test -p pwm-tui --lib marks_display PASS; cargo check -p pwm-tui PASS."
+  ],
+  "artifacts": {
+    "primary_files": [
+      "crates/pwm-tui/src/marks_display.rs",
+      "crates/pwm-tui/src/tui_loop.rs"
+    ],
+    "current_format": "format_marks_sat_cell in marks_display.rs: {effective}/{MARKS_CAP} ({pct}%)",
+    "rfc": "docs/rfc/12-claim-maturity-and-state-model.md"
+  },
+  "notes": "Owner feedback during CY soak: 0/4294967295 (0%) unreadable; saturation highlight only via color.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "TUI marks display UX fix.\n\nProblem: marks_cell uses format_marks_sat_cell -> \"{n}/4294967295 (0%)\" — ugly at low values.\n\nImplement format_marks_compact(n: u32) -> String:\n- n < 1000: display n as-is\n- n >= 1_000: x.xxK\n- n >= 1_000_000: x.xxM\n- n >= 1_000_000_000: x.xxB\n\nReplace format_marks_sat_cell usage in tui_loop marks_cell; remove \" SAT\" suffix.\n\nStyling: in render_owner_panel/render_recv_panel apply Style::fg(Color::Red) to marks Cell when effective == MARKS_CAP only (per-cell, not whole row).\n\nHeader: Marks (sat) -> Marks.\n\nKeep marks_sat_pct() for account_view row fill if needed; do not render % in table.\n\nTests: update marks_display.rs tests.\n\nGates: cargo test -p pwm-tui --lib marks_display; cargo check -p pwm-tui.\n\nSkill: colloquium-cqds-mcp; project_id: 5. Minimal diff."
+  }
+}

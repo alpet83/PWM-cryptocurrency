@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-cy-cluster-attest-rtt-debug",
+  "title": "V5 debug: cluster attest RTT vs seal cadence (got=0 every height)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-cy-cluster-gate-pending-log-consolidate-coding"
+  ],
+  "brief": "Diagnose why proposer logs got=0 pre_timeout once per height and steady seal ~2-3s vs nominal 1s while head advances. Measure propose_sent -> attest_accepted latency; attester inbound/sync competition. Hand off coding slice if fix needed.",
+  "verbosity_focus": "transport:cluster",
+  "hypotheses": [
+    "Wire propose only on heartbeat; seal tick opens local state before attester sees propose",
+    "Attester read loop sync-first delays ClusterAttest",
+    "Multiple ticks per height in some windows (not visible in short snippet)",
+    "Drift window includes suppressed ticks inflating actual_ms"
+  ],
+  "acceptance_criteria": [
+    "docs/debug/20260530-v5-cy-cluster-attest-rtt-debug.md with evidence and p50/p95 RTT if measurable from logs",
+    "Repro recipe for owner: proposer+attester log paths, grep patterns",
+    "Root cause paragraph + recommend coding ticket ID or close as expected",
+    "instrumentation.reverted: yes unless owner approves keep",
+    "No product behavior change in this ticket"
+  ],
+  "artifacts": {
+    "code_read": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/transport/peer_session/mod.rs",
+      "crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs"
+    ],
+    "prior_reviews": [
+      "docs/reviews/20260530-v5-cy-cluster-suppression-r3-review.md",
+      "docs/reviews/20260513-cy-lab-sync-vs-cluster-priority-review.md"
+    ]
+  },
+  "notes": "Optional parallel to log consolidate; fixes go to pwm-coding.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-debug",
+    "worker_class": "debug",
+    "invite_note": "CY CLUSTER ATTEST RTT — pwm-debug only.\n\nOwner: got=0 pre_timeout each height; seal ~2-3s; nominal 1s.\nverbosity-focus: transport:cluster\n\nTasks:\n1) Correlate proposer cluster propose sent / suppress / sealed height timestamps.\n2) Attester: cluster propose accepted -> attest path delay.\n3) Compare seal tick vs heartbeat propose cadence.\n4) Recommend: wire-nudge coding OR expected RTT OR attester sync throttle.\n\nDeliverable: docs/debug/20260530-v5-cy-cluster-attest-rtt-debug.md\nNo permanent product fixes; RUST_LOG scoped only.\n\nSkill: colloquium-cqds-mcp; project_id: 5."
+  }
+}

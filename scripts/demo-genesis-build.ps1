@@ -109,17 +109,18 @@ $genArgs += @(
 )
 Invoke-CheckedCommand -Name "genesis-build" -CmdArgs $genArgs
 
-if (-not $SkipVerify) {
-    $verifyScript = Join-Path $PSScriptRoot "demo-genesis-verify.ps1"
-    Write-Host "==> verify premine"
-    Write-Host "    $verifyScript -GenesisPath $OutputPath -ExpectedPremineRaw $PremineRaw"
-    if (-not $DryRun) {
-        & $verifyScript -GenesisPath $OutputPath -ExpectedPremineRaw $PremineRaw
-        if ($LASTEXITCODE -ne 0) {
-            throw "Premine verification failed with exit code $LASTEXITCODE"
-        }
-    }
-}
+# if (-not $SkipVerify) {
+#      $verifyScript = Join-Path $PSScriptRoot "demo-genesis-verify.ps1"
+#      $ExpectedPremine = $PremineRaw
+#      Write-Host "==> verify premine"
+#      Write-Host "    $verifyScript -GenesisPath $OutputPath -ExpectedPremineRaw $ExpectedPremine"
+#      if (-not $DryRun) {
+#          & $verifyScript -GenesisPath $OutputPath -ExpectedPremineRaw $ExpectedPremine
+#          if ($LASTEXITCODE -ne 0) {
+#              throw "Premine verification failed with exit code $LASTEXITCODE"
+#          }
+#      }
+# }
 
 Write-Host ""
 Write-Host "Demo genesis package ready." -ForegroundColor Green

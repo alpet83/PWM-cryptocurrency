@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "20260610-v5-attester-sync-fork-continuity-failclosed-coding",
+  "title": "V5: fail-closed on sync continuity_break + fork diagnostics",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": ["20260610-v5-cy-sync-ready-attester-preflight-coding"],
+  "related_owner_incident": "Attester Sync 50% frozen at local_h=33001 goal=65300; peer log continuity_break@33002 + catchup chunk_order; cup_skipped cup_try=4 backoff while rem unchanged.",
+  "brief": "Coding slice after sync-ready preflight: deep catch-up does not advance because attester tip hash at 33001 does not chain to proposer block 33002 (fork after mismatched restore). Stop infinite live_hdr/CUP retry loop at fixed height; escalate to TipDivergence or explicit operator-facing stall reason with local/prev/peer hash snippets; improve CUP chunk_order handling or logging when live path already fails continuity.",
+  "evidence": {
+    "log": "logs/2026-05-31/pwmd-peer-cy-attester-061724.log",
+    "lines": [
+      "peer sync headers rejected reason=continuity_break at_height=33002",
+      "peer sync catchup fail reason=chunk_order retry=1..4",
+      "sync_catchup_stall rem=32299 local_h=33001 head_h=65300 cup_active=false cup_try=4"
+    ]
+  },
+  "acceptance_criteria": [
+    "After N (e.g. 3) continuity_break at same exp_h without tip advance: return TipDivergence or close peer with SyncTipDivergence — no endless 50% progress UI",
+    "WARN/INFO includes local tip hash + first hdr prev_hash (truncated) at break height for operator fork diagnosis",
+    "Unit test: mock hdr chain with prev_hash mismatch → divergence/stall reason, not silent live_stall saturation",
+    "If CUP chunk_order follows live failure: log linked reason or skip CUP when boundary continuity already failed",
+    "cargo test -p pwmd transport peer_session sync_live",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: fork at restore boundary → aligned snapshot / CleanState, not wait for live sync"
+  ],
+  "non_goals": [
+    "Auto-wipe attester state",
+    "Merge divergent chains",
+    "Change quorum k/n"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "sync_live.rs: continuity_break escalation, hash diagnostics, CUP/live interaction; runbook note",
+      "result": null,
+      "artifacts": [],
+      "tokens": { "source": null, "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review fail-closed fork handling + no protocol break",
+      "result": null,
+      "artifacts": [],
+      "tokens": { "source": null, "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": null
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": null },
+  "notes": "Orchestrator 2026-05-31: root cause from logs — not cup backoff alone; state fork at 33002. Operator: align attester from proposer snapshot or joint archive before expecting catch-up."
+}

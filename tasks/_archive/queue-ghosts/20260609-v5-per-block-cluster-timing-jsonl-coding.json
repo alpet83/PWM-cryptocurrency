@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "id": "20260609-v5-per-block-cluster-timing-jsonl-coding",
+  "title": "V5: per-block cluster timing JSONL (cross-node, file-locked)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260606-v5-cy-wall-overhead-iterative-debug",
+    "20260609-v5-seal-log-analytics-parser-review"
+  ],
+  "blocks": [],
+  "brief": "Owner needs one JSONL row per sealed block with a single anchor timestamp (production start) and named wall-clock deltas (ms) to each subsequent step in the RFC16 cluster path (propose → attester RX/process/send → proposer RX attest → gate-ready → seal). Proposer and attester are separate processes: use a shared timing path under repo tmp plus fs2 exclusive lock with blocking wait. Enable via env/CLI; CY lab launchers point both nodes at the same file. Complements post-hoc log parser (review ticket 20260609 parser).",
+  "design": {
+    "shared_path": {
+      "default": "tmp/cy-lab-block-timing.jsonl",
+      "pending_sidecar": "tmp/cy-lab-block-timing.pending.json",
+      "lock_file": "tmp/cy-lab-block-timing.lock",
+      "note": "Must be identical for proposer and attester (not under per-node state-root). Set in cy-cluster-common.ps1: PWM_BLOCK_TIMING_PATH / PWM_BLOCK_TIMING_ENABLED."
+    },
+    "lock": {
+      "crate": "fs2 (already in pwmd Cargo.toml)",
+      "policy": "exclusive lock on .lock; blocking acquire with bounded timeout (e.g. 30s) then warn+skip write; release on drop"
+    },
+    "correlation_key": "(cluster_id, height, round) — round 0 for current lab",
+    "anchor": {
+      "field": "t0_ms",
+      "definition": "Proposer: wall ms when production for height H starts — first open of grid slot for target_h=H (begin_slot new + record_cluster_prop_tick), or first record_cluster_propose_originated for (H,0) if earlier hook unavailable"
+    },
+    "d_ms_schema": {
+      "prop_round_open": "0 by definition (anchor)",
+      "prop_first_wire_send": "t0 → first successful write_wire_msg ClusterPropose to attester peer",
+      "prop_wire_resend_total": "count of propose wire sends for (H,0) — metric, not delta",
+      "att_rx_propose": "t0 → attester cluster propose accepted (inbound)",
+      "att_proc_start": "att_rx → start mk_cluster_attest / signing",
+      "att_proc": "signing duration on attester",
+      "att_wire_send": "proc_start → attest write_wire_msg completed",
+      "prop_rx_attest": "t0 → proposer cluster attest accepted (quorum slice k=1)",
+      "prop_gate_ready": "t0 → first run_cluster_gate Ok for target_h in seal loop (same deadline iteration optional flag)",
+      "prop_seal_commit": "t0 → chain.seal Ok for height H",
+      "wall_total": "t0 → prop_seal_commit (redundant sanity)"
+    },
+    "extra_fields": {
+      "schema_v": 1,
+      "height": "u64",
+      "round": "u32",
+      "sealed_h": "tip after seal",
+      "cluster_id": "string",
+      "proposer_instance_id": "string",
+      "attester_instance_id": "string from last attest",
+      "pending_ticks_at_seal": "from seal loop counter",
+      "gate_recheck_used": "bool",
+      "autosnapshot_checkpoint": "bool — persist_back on this seal",
+      "suppress_strike": "bool — slot got suppression strike before seal",
+      "attest_timeout": "bool — quorum_timeout seen for this height",
+      "nominal_seal_ms": "from cluster cfg",
+      "grid_deadline_ms": "next_seal_time_ms at slot open",
+      "seal_slip_ms": "prop_seal_commit instant minus grid_deadline_ms",
+      "pwmd_marker": "build control string"
+    },
+    "write_protocol": {
+      "steps": [
+        "1) Under lock: load pending JSON map keyed by 'height:round'.",
+        "2) Proposer/attester merge their milestone absolute timestamps (t_*_ms) into pending entry.",
+        "3) On proposer seal Ok: compute all d_ms from stored absolutes; append one JSON line to jsonl; remove pending key; unlock.",
+        "4) If attester writes after seal (late): append orphan line with flag late_attester=true OR drop with debug log — prefer strict seal-time finalize only."
+      ]
+    },
+    "module_layout": {
+      "new": "crates/pwmd/src/block_timing.rs",
+      "wire": "App field BlockTimingCfg; init from CLI/env in main.rs",
+      "hooks": [
+        "lifecycle.rs: begin_slot+record_cluster_prop_tick → mark t0 / pending",
+        "peer_session/mod.rs: send_cluster_prop after write → prop_first_wire_send, resend count",
+        "peer_session/mod.rs: route_cluster ClusterPropose accepted → att_* on attester role",
+        "peer_session/mod.rs: mk_cluster_attest timing → att_proc_start, att_proc",
+        "peer_session/mod.rs: attest wire send path → att_wire_send",
+        "peer_session/mod.rs: ClusterAttest accepted → prop_rx_attest",
+        "lifecycle.rs: run_cluster_gate Ok → prop_gate_ready (once per height)",
+        "lifecycle.rs: chain.seal Ok → finalize jsonl row"
+      ]
+    },
+    "references": [
+      "crates/pwmd/src/transport/handshake_state.rs ClusterRoundState.propose_opened_at_ms",
+      "docs/debug/20260606-v5-cy-wall-overhead-iterative-debug.md",
+      "tasks/queue/20260609-v5-seal-log-analytics-parser-review.json"
+    ]
+  },
+  "acceptance_criteria": [
+    "CY 2-node run with PWM_BLOCK_TIMING_ENABLED=1 produces append-only tmp/cy-lab-block-timing.jsonl with ≥10 lines after short soak",
+    "Each line: valid JSON, schema_v=1, t0_ms, d_ms object with all defined keys (null allowed only if step never reached)",
+    "Concurrent proposer+attester writes do not corrupt pending/jsonl (manual or unit test with two threads + temp dir)",
+    "fs2 lock: second writer blocks then succeeds (test or documented soak)",
+    "cy-cluster-common.ps1 (or proposer/attester launchers) sets shared PWM_BLOCK_TIMING_PATH for lab",
+    "Unit tests: d_ms derivation from absolutes; pending merge; lock timeout path",
+    "cargo test -p pwmd block_timing — —nocapture",
+    "cargo fmt/clippy on touched pwmd files",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: short § block timing JSONL"
+  ],
+  "non_goals": [
+    "Change RFC16 wire messages",
+    "ClickHouse export of timing rows",
+    "Replace seal_suppression_summary logging"
+  ],
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 PER-BLOCK CLUSTER TIMING JSONL — pwm-coding.\n\nDeliver block_timing.rs: shared tmp/cy-lab-block-timing.jsonl + .lock + .pending.json; fs2 exclusive lock; one row per sealed block with t0_ms + d_ms deltas (propose→attest→seal).\n\nHooks: lifecycle seal loop + peer_session cluster propose/attest. Both CY nodes same PWM_BLOCK_TIMING_PATH via cy-cluster-common.ps1.\n\nSee tasks/queue/20260609-v5-per-block-cluster-timing-jsonl-coding.json design section.\n\nSkill colloquium-cqds-mcp. project_id 5. Self-run cargo test -p pwmd.\n# git-handoff"
+  }
+}

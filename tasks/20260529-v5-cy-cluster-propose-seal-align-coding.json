@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-cy-cluster-propose-seal-align-coding",
+  "title": "V5: seal-align cluster propose (steady_session + seal loop)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-cy-cluster-suppression-r2-review",
+    "20260529-v5-cy-cluster-attest-timing-align-coding"
+  ],
+  "brief": "R2 review: timing-align partial — propose still after sync in steady_session; seal loop does not open round state. Align local propose record with seal tick and move wire propose before sync outbound work.",
+  "design": {
+    "review": "docs/reviews/20260529-v5-cy-cluster-suppression-r2-review.md",
+    "p0_fixes": [
+      "spawn_seal_loop proposer: record_cluster_propose_originated before run_cluster_gate",
+      "steady_session: send_cluster_prop immediately after heartbeat, before sync batch"
+    ],
+    "explicit_non_goals": [
+      "No new consensus cadence CLI",
+      "No revert of genesis-derived 1s seal for BPH=3600"
+    ]
+  },
+  "acceptance_criteria": [
+    "Proposer opens round state for tip_h+1 on each seal tick before cluster gate (local record).",
+    "steady_session emits ClusterPropose before send_sync_tx_batch on outbound path.",
+    "CY soak: sustained missing_round_state absent while head advances (startup burst OK).",
+    "cargo test -p pwmd --lib lifecycle; peer_session/production cluster tests if touched.",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md updated."
+  ],
+  "artifacts": {
+    "files": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs",
+      "crates/pwmd/src/transport/peer_session/mod.rs"
+    ]
+  },
+  "notes": "Queued after R2 review; owner partial improvement on timing-align only.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "Implement docs/reviews/20260529-v5-cy-cluster-suppression-r2-review.md §8.\n\nP0:\n1) lifecycle spawn_seal_loop: proposer records propose before run_cluster_gate.\n2) steady_session: send_cluster_prop right after heartbeat, before sync outbound.\n\nValidate CY or production cluster tests; scan suppressions.\nSkill: colloquium-cqds-mcp; project_id: 5."
+  }
+}

@@ -16,6 +16,8 @@
 # Lease backend in this lab is process-local to avoid stale shared file-lease CAS conflicts across
 # repeated local runs. This is lab-only and assumes single active sealer + non-sealing attester.
 
+$env:PWM_TUI_WALLET=".\tmp\demo-genesis-wallet.yaml"
+
 $script:CyGenesis = if ($env:PWM_DEMO_GENESIS_PATH) { $env:PWM_DEMO_GENESIS_PATH } else { Join-Path $PSScriptRoot 'tmp\genesis-custom.json' }
 $script:CyGenesisPass = if ($env:PWM_DEMO_GENESIS_PASSPHRASE) { $env:PWM_DEMO_GENESIS_PASSPHRASE } else { '12345' }
 $script:CyNetwork = 'testnet-qa'
@@ -47,6 +49,9 @@ $script:CyStateFollower = Join-Path $PSScriptRoot 'tmp\state-cy-follower'
 
 # Shared multishard peers file (v2 YAML under tmp/ — gitignored with genesis/state).
 $script:CyPeersFile = Join-Path $PSScriptRoot 'tmp\cy-lab-peers.yaml'
+$script:CyBlockTimingPath = Join-Path $PSScriptRoot 'tmp\cy-lab-block-timing.jsonl'
+$env:PWM_BLOCK_TIMING_ENABLED = '1'
+$env:PWM_BLOCK_TIMING_PATH = $CyBlockTimingPath
 
 function Initialize-CyLabPeersFile {
     $tmpRoot = Split-Path -Parent $CyPeersFile

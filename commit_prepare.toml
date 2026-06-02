@@ -3,12 +3,15 @@ dirs = [
   ".git",
   ".cursor",
   ".idea",
+  ".cqds",
+  ".grok",
   "__pycache__",
   ".pytest_cache",
   ".mypy_cache",
   ".ruff_cache",
   ".tox",
   ".venv",
+  "logs",
   "node_modules",
   "target",
   "target_verify",
@@ -24,6 +27,7 @@ file_patterns = [
   "tmp_*",
   "commit_prepare_report.json",
   "**/commit_prepare_report.json",
+  "docs/mcp_index*"
 ]
 
 [scan]
@@ -43,9 +47,18 @@ exclude_globs = [
   "target_verify/**",
   "tmp/**",
   ".tmp-test/**",
+  "logs/**",
+  "state/**",
+  ".cqds/**",
+  ".cqds_mcp_active.pid",
+  ".grok/**",
+  "build.rs",
+  "MANIFEST.txt",
+  "NUL",
   "commit_prepare_report.json",
   "**/commit_prepare_report.json",
   "docs/CONCEPT_ROADMAP.md",
+  "docs/mcp_index*",
   ".cursor/**",
   ".idea/**",
 ]

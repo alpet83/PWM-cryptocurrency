@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "id": "20260524-v5-sprint8-operator-closeout",
+  "title": "Sprint V5-8 operator smoke + MVP v5 closeout (umbrella)",
+  "status": "done",
+  "mvp_checklist": [
+    "docs/plans/mvp_v5.md#sprint-v5-8-integrated-devnet-gate-и-closeout",
+    "docs/MVP-checklist.md §0v5 V5-8"
+  ],
+  "brief": "Umbrella V5-8: operator smoke harness for all V5 features (slices 1–4), then doc closeout (slice 5). Intro: tasks/introductory/20260524-v5-s8-operator-closeout.md.",
+  "slices": [
+    "20260524-v5-s8-slice1-op-smoke-marks",
+    "20260524-v5-s8-slice2-op-smoke-deferred",
+    "20260524-v5-s8-slice3-op-smoke-ipv4-claim",
+    "20260524-v5-s8-slice4-op-smoke-cli-account",
+    "20260524-v5-s8-slice5-closeout"
+  ],
+  "acceptance_criteria": [
+    "devnet_v5_operator_smoke.ps1 covers marks, deferred, ipv4 claim, account-info.",
+    "Operator runbook + testing PASS on live smoke.",
+    "MVP-checklist, GLOSSARY, CHANGELOG, final V5 review."
+  ],
+  "delegations": [
+    {
+      "slice": "20260524-v5-s8-slice1-op-smoke-marks",
+      "agent": "pwm-coding",
+      "result": "PASS"
+    },
+    {
+      "slice": "20260524-v5-s8-slice1-op-smoke-marks-debug",
+      "agent": "pwm-debug",
+      "result": "PARTIAL",
+      "artifact": "docs/debug/20260524-v5-s8-slice1-op-smoke-marks-rca.md"
+    },
+    {
+      "slice": "20260524-v5-s8-slice1-op-smoke-marks-testing-rerun2",
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "artifact": "tmp/devnet_v5_operator_smoke_20260524_192234.md"
+    },
+    {
+      "slice": "20260524-v5-s8-slice2-op-smoke-deferred",
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "artifact": "scripts/devnet_v5_operator_smoke.ps1"
+    },
+    {
+      "slice": "20260524-v5-s8-slice2-op-smoke-deferred-review",
+      "agent": "pwm-review",
+      "result": "PASS",
+      "artifact": "docs/reviews/20260524-v5-s8-slice2-op-smoke-deferred-review.md"
+    },
+    {
+      "slice": "20260524-v5-s8-slice2-op-smoke-deferred-testing-rerun",
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "artifact": "tmp/devnet_v5_operator_smoke_20260525_143518.md"
+    },
+    {
+      "slice": "20260524-v5-s8-slice3-op-smoke-ipv4-claim-testing-rerun2",
+      "agent": "pwm-testing",
+      "result": "FAIL",
+      "artifact": "tmp/devnet_v5_operator_smoke_20260527_173057.md",
+      "detail": "Phase A cargo PASS; live smoke E_POLICY_SCHEMA_INVALID on ClaimIPv4Batch POST /v1/tx"
+    },
+    {
+      "slice": "20260524-v5-s8-slice3-op-smoke-ipv4-claim-smoke-fix",
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "artifact": "tmp/devnet_v5_operator_smoke_20260527_183601.md",
+      "detail": "genesis ipv4 phases loader + registry wallet + ipv4_claimed_phase API; smoke PASS uncommitted"
+    },
+    {
+      "slice": "20260524-v5-s8-slice3-op-smoke-ipv4-claim-testing-rerun3",
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "artifact": "tmp/devnet_v5_operator_smoke_20260528_080852.md",
+      "detail": "gen_ipv4_phases_load + claim-ipv4-batch check + live Ipv4ClaimOnly PASS"
+    },
+    {
+      "slice": "20260524-v5-s8-slice4-op-smoke-cli-account",
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "artifact": "tmp/devnet_v5_operator_smoke_20260528_085451.md",
+      "detail": "AccountInfoOnly live smoke PASS with account-info field asserts and PASS_EVIDENCE"
+    },
+    {
+      "slice": "20260524-v5-s8-slice5-closeout",
+      "agent": "pwm-review",
+      "result": "PASS",
+      "artifact": "docs/reviews/20260524-v5-sprint8-closeout-review.md",
+      "detail": "Checklist/changelog/glossary updated; sprint-final review verdict APPROVE"
+    }
+  ],
+  "verification": [],
+  "commits": [
+    "fd94191",
+    "c930024",
+    "f5d4535",
+    "f21f243"
+  ],
+  "artifacts": {
+    "intro_md": "tasks/introductory/20260524-v5-s8-operator-closeout.md",
+    "info_json": "tasks/20260524-v5-s8-closeout-info.json",
+    "baseline_sprint": "tasks/done/20260524-v5-sprint7-cli-genesis-doc.json"
+  },
+  "notes": "Slice4 committed and pushed (f21f243). Slice5 closeout done: checklist/changelog/glossary updated, final review written at docs/reviews/20260524-v5-sprint8-closeout-review.md. Verdict: APPROVE.",
+  "current_slice": "20260524-v5-s8-slice5-closeout",
+  "closeout_status": "done",
+  "closeout_at": "2026-05-28"
+}

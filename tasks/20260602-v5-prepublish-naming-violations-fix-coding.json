@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-prepublish-naming-violations-fix-coding",
+  "planned_for": null,
+  "title": "V5 pre-publish: fix entity naming segment violations",
+  "status": "done",
+  "parent_ticket": "20260602-v5-prepublish-polish-umbrella",
+  "depends_on": [
+    "20260602-v5-prepublish-naming-style-sweep-review"
+  ],
+  "brief": "Rename identifiers flagged by check_entity_name_segments.py to ≤4 prod / ≤5 test segments. Prescan list (2026-06-02): block_timing.rs 5 test fns; inbound.rs const INBOUND_SOCKET_READ_LOG_SLOW_MS.",
+  "known_violations": [
+    { "file": "crates/pwmd/src/block_timing.rs", "names": ["profile_time_json_stats_merges_schema", "trim_jsonl_tail_keeps_latest_rows", "pendrec_ms_fields_serialize_with_two_decimals", "pendrec_ms_fields_parse_string_float_and_int", "trim_pending_map_tail_keeps_latest_by_height"], "kind": "test" },
+    { "file": "crates/pwmd/src/transport/peer_session/inbound.rs", "name": "INBOUND_SOCKET_READ_LOG_SLOW_MS", "kind": "prod" }
+  ],
+  "acceptance_criteria": [
+    "python scripts/check_entity_name_segments.py on pwm-* crates → 0 violations (or documented waiver in review)",
+    "cargo test -p pwmd --lib block_timing (or affected modules)",
+    "cargo check -p pwmd",
+    "No behavior change — rename only"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Rename 6 prescan violations; re-run scanner clean.",
+      "result": null,
+      "artifacts": [],
+      "tokens": { "source": null, "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Confirm rename-only diff.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260602-v5-prepublish-polish-integrated-review.md"],
+      "tokens": { "source": "estimate", "input": 12000, "output": 3500, "total": 15500, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "pwmd lib tests for block_timing + quick check.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": 8000, "output": 1200, "total": 9200, "confidence": "medium" },
+      "done_at": "2026-06-02",
+      "notes": "cargo test -p pwmd --lib block_timing: 9 passed. json_stats_merge_schema: 1 passed (rel_ms 25/40 at start_ms=1000)."
+    }
+  ],
+  "artifacts": { "review_md": "docs/reviews/20260602-v5-prepublish-polish-integrated-review.md" },
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "NAMING VIOLATIONS FIX — pwm-coding\n\nRename only (≤4 prod / ≤5 test segments). See tasks/20260602-v5-prepublish-naming-violations-fix-coding.json known_violations[] and review report when ready.\n\nRe-run: python scripts/check_entity_name_segments.py crates/pwm-core/src crates/pwm-cli/src crates/pwmd/src crates/pwm-tui/src ...\n\ncargo test -p pwmd --lib\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

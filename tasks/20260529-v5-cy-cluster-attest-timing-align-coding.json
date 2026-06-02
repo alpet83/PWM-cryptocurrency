@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-cy-cluster-attest-timing-align-coding",
+  "title": "V5: align RFC16 cluster timing with genesis seal cadence",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-cy-cluster-attest-suppression-review",
+    "20260529-v5-genesis-seal-cadence-align-coding"
+  ],
+  "brief": "Fix CY cluster seal_suppressed_by_cluster storm after 1s seal cadence: derive cluster attest/catchup timing from blocks_per_hour; ensure ClusterPropose cadence keeps up with seal gate; no new consensus CLI knobs.",
+  "design": {
+    "review": "docs/reviews/20260529-v5-cy-cluster-attest-suppression-review.md",
+    "root_cause": "Seal gate every seal_interval_ms (~1000) but ClusterPropose on heartbeat (~1500ms); attest_timeout_ms=1000 equals one tick",
+    "formula_hints": {
+      "seal_interval_ms": "3_600_000 / blocks_per_hour (existing)",
+      "attest_timeout_ms": "code-derived e.g. max(2 * seal_interval_ms, seal_interval_ms + 500) — document in code",
+      "tx_catchup_ms": "derive from seal_interval or wire into cluster path if currently unused",
+      "cluster_propose_cadence": "<= seal_interval_ms when cluster.enabled on proposer"
+    },
+    "explicit_non_goals": [
+      "No --seal-interval-ms or new operator cadence CLI",
+      "Do not reintroduce hard-coded 2s seal",
+      "Do not make cluster timing independently tunable via new env flags"
+    ]
+  },
+  "acceptance_criteria": [
+    "When cluster enabled on proposer: attest_timeout_ms and related windows derived at startup from chain GenCfg.blocks_per_hour (same source as seal_interval_ms).",
+    "ClusterPropose emission cadence is not slower than seal_interval_ms on healthy proposer (decouple from default 1500ms heartbeat-only path or add seal-aligned propose trigger).",
+    "CY soak: scan_pwmd_log_counters shows no sustained missing_round_state/attestations_missing while head advances (startup burst acceptable).",
+    "tx_catchup_ms either used in cluster catch-up path OR removed from misleading defaults/docs with comment.",
+    "Startup log records derived cluster_attest_timeout_ms, seal_interval_ms, blocks_per_hour.",
+    "Unit/integration tests: BPH=3600 timing helpers; cluster gate not starved with mocked round state.",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md updated (suppression vs healthy).",
+    "cargo test -p pwmd --lib lifecycle; cargo test -p pwmd --lib peer_session or production cluster tests if touched."
+  ],
+  "artifacts": {
+    "files": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/config.rs",
+      "crates/pwmd/src/main.rs",
+      "crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs",
+      "crates/pwmd/src/transport/peer_session/mod.rs"
+    ],
+    "launchers_unchanged_unless_needed": [
+      "cy-cluster-proposer.ps1",
+      "cy-cluster-attester.ps1"
+    ]
+  },
+  "notes": "Review REQUEST_CHANGES; owner requires genesis/code-locked consensus timing only.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "Implement 20260529-v5-cy-cluster-attest-suppression-review recommendations.\n\nRead:\n- docs/reviews/20260529-v5-cy-cluster-attest-suppression-review.md\n- lifecycle::seal_interval_ms (already from blocks_per_hour)\n- run_cluster_gate, send_cluster_prop, steady_session heartbeat loop\n\nFix:\n1) Derive cluster_attest_timeout_ms (and tx_catchup if kept) from blocks_per_hour at App init — NOT new CLI.\n2) Propose cadence >= seal cadence on cluster proposer (key fix).\n3) Tests + runbook update.\n\nValidate: CY 2-node or pwmd production cluster tests; scan suppressions.\n\nSkill: colloquium-cqds-mcp; project_id: 5. Minimal focused diff."
+  }
+}

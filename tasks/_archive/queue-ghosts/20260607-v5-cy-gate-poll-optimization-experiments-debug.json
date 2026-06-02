@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v5-cy-gate-poll-optimization-experiments-debug",
+  "title": "V5 debug: gate-poll optimization experiments — code toggles + 200s CY matrix",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260606-v5-cy-wall-overhead-iterative-debug"
+  ],
+  "runs_after": [
+    "20260607-v5-resumed-state-seal-throughput-coding"
+  ],
+  "brief": "Follow-on to iterative depth debug and pwm-coding baseline fix. Owner grants pwm-debug temporary LOGIC changes in pwmd (feature flags / env toggles / #[cfg(debug_assertions)] — no commit required per owner) to A/B test alternative optimizations against 20260606 V0/V1 baselines. Run new 200s CY smoke cycles on RESUMED (~34k) and optionally FRESH; up to 10 labeled variants combining toggles. Compare T100_est, pending p50/p95, propose/seal ratio, struck%. Pick winner or confirm coding track; hand diff to pwm-coding for formalization or revert all.",
+  "owner_permissions": {
+    "logic_patches_allowed": true,
+    "commit_required": false,
+    "revert_before_handoff_default": true,
+    "keep_winner_diff": "optional — document path for pwm-coding formalization"
+  },
+  "requested_fix_under_test": {
+    "ticket": "20260607-v5-resumed-state-seal-throughput-coding",
+    "tracks": ["propose_coalesce", "attest_wake"]
+  },
+  "methodology": {
+    "smoke_seconds": 200,
+    "max_variants": 10,
+    "mandatory_runs": [
+      "E0: coding baseline on resumed state (after coding lands)",
+      "E1: coding baseline fresh (regression guard)"
+    ],
+    "experimental_toggles_examples": [
+      "coalesce_strict vs coalesce_lazy",
+      "wake_on_attest vs wake_on_attest+debounce_ms",
+      "ahead_off + coding fix",
+      "poll_ms=10 vs event-only post-deadline",
+      "skip redundant record_cluster_prop_tick on deadline if ahead fired",
+      "combined best 2 toggles"
+    ],
+    "metrics": [
+      "T100_est",
+      "pending_ticks p50/p95",
+      "propose_per_seal",
+      "seal_cadence_drift %",
+      "slots_struck %"
+    ],
+    "evidence_dir": "tmp/cy-opt-experiments-<ts>/"
+  },
+  "verbosity_focus": "seal:loop",
+  "acceptance_criteria": [
+    "≥2 valid runs on resumed state with coding fix (E0) measured vs 20260606 V0 (158s / pending 330)",
+    "≤8 additional experimental variants documented (toggle name + code location)",
+    "docs/debug/20260607-v5-cy-gate-poll-optimization-experiments-debug.md with results matrix",
+    "Explicit winner or tie-break rationale; ms attribution per top toggle",
+    "git status clean OR single documented patch left for pwm-coding with file list",
+    "Process cleanup: no stray pwmd after runs"
+  ],
+  "non_goals": [
+    "Permanent ungated production behavior without coding/review",
+    "RFC16 protocol change",
+    "Full 10-variant depth curve (500/5k) unless time permits — optional"
+  ],
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-debug",
+    "worker_lane": "debug",
+    "invite_note": "V5 GATE-POLL OPT EXPERIMENTS — pwm-debug.\n\nOwner ALLOWS temporary pwmd logic patches (flags/env) WITHOUT commit — test alternatives; revert default; 200s CY smokes.\n\nBaselines: docs/debug/20260606 (V0 resumed T100~158 pending~330; V1 fresh ~108).\n\nValidate coding fix: 20260607-v5-resumed-state-seal-throughput-coding.\n\nThen A/B toggles (coalesce strict/lazy, wake debounce, ahead off combos, etc.) ≤10 variants.\n\nDeliver: docs/debug/20260607-v5-cy-gate-poll-optimization-experiments-debug.md\n\nSkill: colloquium-cqds-mcp; cq_help; project_id 5.\n# git-handoff"
+  },
+  "notes": {
+    "orchestrator": "2026-05-30: debug runs after coding baseline; owner authorized experimental code edits in working tree."
+  },
+  "artifacts": {
+    "issues_report": "issues-report.md",
+    "timing_jsonl": "tmp/cy-lab-block-timing.jsonl",
+    "timing_pending": "tmp/cy-lab-block-timing.pending.json"
+  },
+  "closure": {
+    "closed_at": "2026-06-02",
+    "result": "PASS",
+    "summary": "Long-run CY data confirms stable gate/seal cadence and no recurrence of inbound handshake stall; pending timing precision now uses microsecond-derived ms with 2-decimal output.",
+    "metrics": {
+      "rows": 1500,
+      "height_from": 35499,
+      "height_to": 36998,
+      "blocks_generated": 1499,
+      "span_ms": 1499000,
+      "bps": 1.0,
+      "attest_timeout_count": 0,
+      "suppress_strike_count": 0,
+      "gate_recheck_count": 0,
+      "seal_commit_ms_p50": 8,
+      "seal_commit_ms_p95": 9,
+      "wall_total_ms_p50": 8.47,
+      "wall_total_ms_p95": 9.2,
+      "seal_slip_ms_p50": 18,
+      "seal_slip_ms_p95": 25
+    },
+    "precision_evidence": {
+      "pending_fractional_examples": [
+        "att_rx_ms=1780385810004.79",
+        "att_proc_ms=0.27",
+        "att_wire_ms=1780385810005.14"
+      ]
+    }
+  }
+}

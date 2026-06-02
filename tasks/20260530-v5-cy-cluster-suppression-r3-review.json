@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-cy-cluster-suppression-r3-review",
+  "title": "V5 review R3: steady-state cluster suppressions after propose-align + drift",
+  "status": "done",
+  "notes": "PASS_WITH_REQUESTED_FOLLOWUP. Follow-up coding: 20260530-v5-cy-cluster-pending-log-throttle-coding",
+  "result": "PASS_WITH_REQUESTED_FOLLOWUP",
+  "artifacts": {
+    "review": "docs/reviews/20260530-v5-cy-cluster-suppression-r3-review.md",
+    "next_coding": "20260530-v5-cy-cluster-pending-log-throttle-coding"
+  }
+}

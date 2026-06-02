@@ -1,0 +1,52 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "orchestrator",
+  "project_id": 5,
+  "generated_at": "2026-05-24T18:00:00Z",
+  "title": "V5-5 Sprint: IPv4 Claim On-chain",
+  "research_question": "Kickoff map for ClaimIPv4Batch full validate/apply in pwm-core after V5-2 tx shape stub.",
+  "parent_ticket": "20260524-v5-sprint5-ipv4-claim-onchain",
+  "files": [
+    {
+      "path": "docs/plans/mvp_v5.md",
+      "why": "spec",
+      "note": "Sprint V5-5 scope and acceptance"
+    },
+    {
+      "path": "docs/adr/0002-ipv4-claiming-design.md",
+      "why": "spec",
+      "note": "Off-chain registry + on-chain batch commitment architecture"
+    },
+    {
+      "path": "tasks/done/20260524-v5-s2-slice4-ipv4-batch.json",
+      "why": "other",
+      "note": "Tx shape done; apply deferred to V5-5"
+    },
+    {
+      "path": "crates/pwm-core/src/tx.rs",
+      "why": "match",
+      "note": "ClaimIPv4Batch variant; validate_tx_shape zero-sig stub; signing tag 8"
+    },
+    {
+      "path": "crates/pwm-core/src/state.rs",
+      "why": "match",
+      "note": "apply_tx_with_ctx ClaimIPv4Batch -> UnsupportedTxKind (~241)"
+    },
+    {
+      "path": "crates/pwm-core/src/genesis.rs",
+      "why": "match",
+      "note": "ClaimPhaseConfig, GenCfg.ipv4_claim_phases; test fixture pattern in gen_cfg_json_round_trip"
+    },
+    {
+      "path": "crates/pwm-core/src/types.rs",
+      "why": "match",
+      "note": "Account.ipv4_claimed_phase: Option<u8>"
+    },
+    {
+      "path": "crates/pwm-core/src/crypto.rs",
+      "why": "match",
+      "note": "verify(pubkey, message, sig) for registry ed25519"
+    }
+  ],
+  "digest": "V5-5 replaces UnsupportedTxKind with phase lookup from GenCfg.ipv4_claim_phases, registry_sig verify against registry_address pubkey, and happy-path credit of allocation to claimant signer. Double-claim via ipv4_claimed_phase. Two slices: (1) apply+happy, (2) rejects+fixture. batch_root is commitment-only on-chain."
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-prepublish-polish-umbrella",
+  "planned_for": null,
+  "title": "MVP v5 pre-publish polish umbrella",
+  "status": "done",
+  "brief": "Корзина мелочей перед публикацией MVP v5: операторский TUI, DRY тестов, naming/style sweep, land genesis_anchor если не в git. Не расширять scope V6/protocol.",
+  "children": [
+    "20260602-v5-tui-prepublish-operator-ux-coding",
+    "20260602-v5-tui-test-support-mk-acct-row-coding",
+    "20260602-v5-prepublish-naming-style-sweep-review",
+    "20260602-v5-prepublish-naming-violations-fix-coding",
+    "20260602-v5-snapshot-genesis-anchor-land-coding",
+    "20260602-v5-pwmd-remove-legacy-marks-quota-coding"
+  ],
+  "acceptance_criteria": [
+    "Все child tickets done или явно deferred в notes с owner rationale",
+    "Оркестратор: CONCEPT_ROADMAP сводные критерии + CHANGELOG — отдельно или owner"
+  ],
+  "notes": "Orchestrator pre-scan 2026-06-02: check_entity_name_segments on pwm-* crates → 6 violations (5 test fn in block_timing.rs, 1 prod const inbound.rs). genesis_anchor anchor.rs still untracked.\n\npwm-testing 2026-06-02: all slice targets PASS. pwm-tui lib 38; send_form 42 + wallet_roaming 45; pwmd snapshot 60; block_timing 9; json_stats_merge_schema 1; anch_ 2. Harness fix: footer_rpc_online_one (testing-issues.md). Review PASS_WITH_NITS — no slice blockers. NIT-INTEG-1 out-of-scope state.rs/transport still orchestrator-owned.\n\npwm-coding 2026-06-02: CONCEPT_PROGRESS.md актуализирован под V5 closeout + pre-publish (§3b, §2/§4/§6/§7)."
+}

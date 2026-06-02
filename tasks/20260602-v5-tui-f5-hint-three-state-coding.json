@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-tui-f5-hint-three-state-coding",
+  "planned_for": null,
+  "title": "V5 TUI: F5 hint 3-state + operator copy polish",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260602-v5-pwm-tui-build-regression-coding"
+  ],
+  "related_docs": [
+    "docs/reviews/20260602-v5-pwm-tui-build-regression-review.md",
+    "docs/reviews/20260530-v5-tui-marks-operator-journey-review.md",
+    "docs/runbooks/v5-tui-marks-operator-path.md"
+  ],
+  "brief": "Закрыть review NIT #1–#2 после build-regression слайса: восстановить трёхсостояние F5 hint (stake-first / wait-accrual / allow-burn) и вернуть action-oriented copy для F5_BURN_V5_STATUS. Без ClaimTx path и без submit_claim.",
+  "design": {
+    "f5_burn_hint_text": {
+      "signature": "f5_burn_hint_text(staked, marks, effective_marks: Option<u32>) -> Option<&'static str>",
+      "states": [
+        "effective.unwrap_or(marks) > 0 → None (open burn modal)",
+        "staked == 0 → stake-first (S, wait head, then F5) — align docs/runbooks/v5-tui-marks-operator-path.md",
+        "staked > 0 && effective.unwrap_or(marks) == 0 → wait lazy accrual / head advance"
+      ],
+      "call_site": "tui_loop KeyCode::F(5): pass row.effective_marks"
+    },
+    "optional_in_modal": "If burn modal opens with marks_available==0 after hint gate relaxed, optional status line in BurnForm — only if needed; prefer blocking hint before modal",
+    "f5_burn_v5_status": "Restore prior reviewed wording: V5 marks: stake PWM with S, wait for blocks, then burn materialized marks with F5."
+  },
+  "acceptance_criteria": [
+    "Unit tests in lib.rs or tui_loop for all three f5_burn_hint_text branches",
+    "F5 still opens f5_build_burn_form only; no submit_claim / ClaimTx copy",
+    "F5_BURN_V5_STATUS matches operator journey (positive path, not retirement jargon)",
+    "cargo check -p pwm-tui && cargo test -p pwm-tui --lib",
+    "python scripts/check_entity_name_segments.py on touched pwm-tui src"
+  ],
+  "code_touchpoints": [
+    "crates/pwm-tui/src/lib.rs",
+    "crates/pwm-tui/src/tui_loop.rs",
+    "crates/pwm-tui/src/burn_form.rs"
+  ],
+  "non_goals": [
+    "format_marks_detail / detail pane observability",
+    "Integration test AcctRow repair (separate ticket)",
+    "F7 stake % hint parity"
+  ],
+  "mvp_checklist": ["§6 operator / TUI devnet"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement 3-state f5_burn_hint_text + restore F5_BURN_V5_STATUS operator copy; tests.",
+      "result": "PASS",
+      "artifacts": [
+        ".cqds/team-tasks/done/20260602-v5-tui-f5-hint-three-state-coding.json",
+        "crates/pwm-tui/src/lib.rs",
+        "crates/pwm-tui/src/tui_loop.rs"
+      ],
+      "tokens": { "source": "bridge", "input": null, "output": null, "total": null, "confidence": "low" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Verify hint matrix vs operator journey review; no Claim path.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260602-v5-tui-f5-hint-three-state-review.md"],
+      "tokens": { "source": "estimate", "input": 22000, "output": 1800, "total": 23800, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo test -p pwm-tui --lib; preflight + isolated CARGO_TARGET_DIR on Windows.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": 12000, "output": 2000, "total": 14000, "confidence": "low" },
+      "done_at": "2026-06-02",
+      "notes": "preflight: no target/debug (clean). cargo check -p pwm-tui OK. cargo test -p pwm-tui --lib: 36/36 PASS incl. f5_hint_allow_burn, f5_hint_stake_first, f5_hint_wait_accrue, tui_loop::f5_retired_claim_no_submit. check_entity_name_segments: 0 violations (burn_form, lib, tui_loop). CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency."
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260602-v5-tui-f5-hint-three-state-review.md" },
+  "notes": "Conveyor closed 2026-06-02: coding/review/testing PASS (review PASS_WITH_NITS: burn_form.rs default status still mentions Claim — optional micro-fix).",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "TUI F5 HINT 3-STATE — pwm-coding\n\nParent: 20260602-v5-pwm-tui-build-regression-coding (done). Review NIT: f5_burn_hint_text only handles staked==0 && marks==0.\n\nImplement:\n1) f5_burn_hint_text(staked, marks, effective_marks: Option<u32>) with three branches per docs/runbooks/v5-tui-marks-operator-path.md\n2) tui_loop F5 passes owner.effective_marks\n3) Restore F5_BURN_V5_STATUS to action-oriented copy (see 20260530 operator journey review)\n4) lib/tui_loop unit tests for all branches\n5) cargo test -p pwm-tui --lib; check_entity_name_segments on touched files\n\nNo submit_claim. No ClaimTx user strings.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

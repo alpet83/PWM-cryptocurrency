@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "id": "20260601-v5-proposer-seal-deadline-scheduler-coding",
+  "title": "V5: proposer seal deadline scheduler (grid-aligned next_seal, fast poll)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260531-v5-cy-cluster-heartbeat-align-coding",
+    "20260531-v5-seal-cadence-reanchor-envelope-clamp-coding",
+    "20260531-v5-cy-proposer-quorum-wait-root-cause-debug"
+  ],
+  "brief": "Replace proposer sleep-first seal cadence (sleep(effective_ms) then work) with variant C: short poll interval (default 10ms) until wall-clock deadline, grid-aligned next_seal_time_ms on nominal interval boundaries (e.g. bph=3600 → second boundaries). On a loaded cluster the 10ms sleep often fires only a few times per second or not at all (work/deadline-bound). Compute next_seal_time_ms immediately before seal (not after) so post-seal operational delay does not stack. Failed/suppressed attest paths must NOT advance the deadline — next attempt may occur as soon as gate opens. No new CLI cadence knobs; nominal from genesis blocks_per_hour only.",
+  "context": {
+    "analysis": "Orchestrator chat 2026-06-01 — variant C preferred over work-subtract; debug RCA docs/debug/20260531-v5-cy-proposer-quorum-wait-root-cause.md",
+    "current_code": "crates/pwmd/src/lifecycle.rs spawn_seal_loop — tokio::sleep(effective_ms) at loop head; run_cluster_gate fail → continue with full sleep again",
+    "owner_invariants": [
+      "Reliability through simplicity — one scheduler model on proposer, no parallel drift+sleep regulators fighting",
+      "Genesis/code-locked timing only (seal_interval_ms from blocks_per_hour)",
+      "Grid pulse: operators see seals on shared second boundaries when nominal divides 1000ms wall grid"
+    ]
+  },
+  "design": {
+    "scope_roles": {
+      "proposer": "full deadline scheduler",
+      "attester_follower": "unchanged (no local seal loop commit path)",
+      "solo_non_cluster": "use same deadline scheduler when debug_disable_seal_loop is false (consistent cadence)"
+    },
+    "constants": {
+      "SEAL_POLL_INTERVAL_MS": 10,
+      "note": "const in lifecycle.rs; not CLI/env cadence override per V5 owner rule"
+    },
+    "state": {
+      "next_seal_time_ms": "u64 wall ms (current_time_ms); next grid boundary at/after decision point",
+      "init": "on seal loop start: next_seal_time_ms = align_next_seal_time_ms(now_ms, nominal_ms)"
+    },
+    "align_next_seal_time_ms": {
+      "formula": "nominal = seal_interval_ms(bph).max(1); next = ((now_ms / nominal) + 1) * nominal",
+      "example_bph_3600": "now=10035 → next=11000 (start of next second grid)",
+      "when_computed": "immediately before chain.seal when lease+cluster gates pass and node will attempt commit — not after seal returns",
+      "when_committed": "only after Ok(seal) — assign next_seal_time_ms = precomputed value"
+    },
+    "loop_semantics": {
+      "each_iteration": [
+        "now_ms = current_time_ms()",
+        "if now_ms >= next_seal_time_ms && allows_chain_progress && lease OK: run cluster gate; if gate OK compute scheduled_next = align_next_seal_time_ms(now_ms, nominal_ms); attempt seal",
+        "on seal Ok: next_seal_time_ms = scheduled_next (precomputed); run existing post-seal paths (autosnap, drift log window, stop height)",
+        "on seal Err or gate fail or suppression: do NOT change next_seal_time_ms — retry on next poll (may be immediate if still past deadline)",
+        "sleep_ms = min(SEAL_POLL_INTERVAL_MS, max(1, next_seal_time_ms.saturating_sub(now_ms))) — under load often 0–few polls/sec"
+      ],
+      "cluster_gate": "poll gate every iteration while past deadline instead of sleeping full nominal between gate checks"
+    },
+    "drift_envelope": {
+      "policy": "Proposer loop must not use sleep(effective_ms) as primary cadence driver",
+      "seal_cadence_drift": "Keep 100-block window log (actual vs expected wall over blocks) for operator soak; do not mutate poll interval or next_seal grid from drift adjust — avoid dual regulators. If effective_ms unused, remove its mutation on proposer path or document dead field until cleanup slice."
+    },
+    "non_goals": [
+      "RFC16 pipeline attest / attest-after-seal (V6+)",
+      "New --seal-interval-ms or heartbeat CLI overrides",
+      "Change blocks_per_hour, quorum k/n, attest_timeout formula",
+      "Work-subtract sleep hybrid (separate rejected approach)",
+      "Autosnapshot / peer-count performance (separate tickets)"
+    ]
+  },
+  "acceptance_criteria": [
+    "Proposer seal loop uses deadline + SEAL_POLL_INTERVAL_MS poll; no sleep(nominal_ms) at loop head",
+    "align_next_seal_time_ms unit tests: bph=3600 grid; edge now=0, now=nominal-1",
+    "Failed cluster gate / seal Err does not advance next_seal_time_ms (unit or integration test with mocked gate)",
+    "Successful seal advances next_seal_time_ms to value computed pre-seal (grid aligned), not now+nominal post-work",
+    "Startup/info log line documents scheduler mode: poll_ms, nominal_ms, grid alignment note",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: seal cadence row updated (deadline grid, suppression expectations after heartbeat-align)",
+    "cargo test -p pwmd --lib lifecycle (existing + new tests)",
+    "CY live (operator): inter-seal wall deltas cluster near 1.0s boundaries; suppression_pct low when heartbeat aligned; no regression on envelope_pct owner invariant"
+  ],
+  "artifacts": {
+    "primary": ["crates/pwmd/src/lifecycle.rs"],
+    "docs": ["docs/runbooks/v5-cy-cluster-precloseout-soak.md"],
+    "optional_review_followup": "docs/reviews/20260601-v5-proposer-seal-deadline-scheduler-review.md"
+  },
+  "operator_verify": "CY proposer+attester up; grep sealed height timestamps / seal_cadence / seal_suppression_summary 3–5 min — blocks/sec ~1, suppression low, seal times align to second ticks",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 PROPOSER SEAL DEADLINE SCHEDULER (variant C) — pwm-coding.\n\nReplace sleep-first proposer loop in lifecycle.rs spawn_seal_loop with:\n- SEAL_POLL_INTERVAL_MS=10 const poll until wall now >= next_seal_time_ms\n- align_next_seal_time_ms: next = ((now/nominal)+1)*nominal from seal_interval_ms(bph)\n- Compute scheduled next ONLY immediately before seal attempt (gates OK); commit to next_seal_time_ms only on Ok(seal)\n- Gate fail / seal Err: do NOT advance deadline (retry sooner)\n- Loaded cluster: often few or zero 10ms sleeps per second\n- Do not use effective_ms sleep as cadence driver; keep 100-block drift as log-only if useful\n\nDepends: heartbeat-align on CY. Tests + runbook. Then pwm-review.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  },
+  "pipeline": {
+    "coding": "pwm-coding",
+    "review": "pwm-review",
+    "testing": "pwm-testing if review PASS and harness touch"
+  }
+}

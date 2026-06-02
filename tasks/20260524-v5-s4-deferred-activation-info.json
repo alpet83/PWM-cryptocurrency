@@ -1,0 +1,114 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-24T10:35:00Z",
+  "title": "V5-4 Sprint: Deferred Policy Activation Implementation",
+  "research_question": "Prepare kickoff artifacts for bridge coding workers implementing ActivationMode::Deferred with activate_at_height, per ADR 0005. Scope: extend ActivationMode enum, update SetPolicy/apply to store deferred_policies, implement height-gated auto-activate in evaluate_policy, reject ActivatePolicy before height, RFC 6/7 normative updates, snapshot/genesis replay tests.",
+  "parent_ticket": "20260524-v5-sprint4-deferred-activation",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {
+        "pattern": "ActivationMode|DeferredPolicyEntry|deferred_policies|evaluate_policy|apply_policy_action",
+        "paths_glob_optional": "crates/pwm-core/src/*.rs",
+        "summary": "Core policy activation types and evaluator functions in pwm-core"
+      },
+      {
+        "pattern": "deferred_policies|SnapshotAccountV3|state_to_v3",
+        "paths_glob_optional": "crates/pwmd/src/snapshot/types.rs",
+        "summary": "Snapshot v3 schema with deferred_policies persistence"
+      },
+      {
+        "pattern": "SetPolicy|ActivatePolicy|DeactivatePolicy",
+        "paths_glob_optional": "crates/pwm-core/src/tx.rs",
+        "summary": "PolicyAction enum variants for policy lifecycle"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "docs/adr/0005-policy-deferred-activation.md",
+      "why": "spec",
+      "note": "Normative ADR for Deferred activation mode; source of truth for V5-4 contract"
+    },
+    {
+      "path": "docs/plans/mvp_v5.md",
+      "why": "spec",
+      "note": "Sprint V5-4 scope and acceptance criteria from MVP v5 plan"
+    },
+    {
+      "path": "docs/rfc/6-policy-engine.md",
+      "why": "spec",
+      "note": "RFC 6 §7.3.2: ActivationMode = Dormant | Immediately | Deferred { activate_at_height }"
+    },
+    {
+      "path": "docs/rfc/7-tx-and-state-model.md",
+      "why": "spec",
+      "note": "RFC 7 §5.5: PolicyTx with Deferred activation semantics"
+    },
+    {
+      "path": "tasks/done/20260524-v5-sprint3-lazy-marks-inflation.json",
+      "why": "other",
+      "note": "Baseline closed V5-3; dependency before V5-4 (state.rs evaluate_policy signature stable)"
+    },
+    {
+      "path": "tasks/introductory/20260524-v5-s3-lazy-marks-inflation.md",
+      "why": "other",
+      "note": "Template structure for introductory brief (model for V5-4 brief)"
+    },
+    {
+      "path": "crates/pwm-core/src/tx.rs",
+      "why": "match",
+      "note": "ActivationMode enum (lines 15-18: Dormant, Immediately only — need Deferred variant); PolicyAction::SetPolicy; signing message encoding for policy actions"
+    },
+    {
+      "path": "crates/pwm-core/src/types.rs",
+      "why": "match",
+      "note": "DeferredPolicyEntry struct (lines 263-266); Account.deferred_policies field (line 290); AccountV5 fields ready"
+    },
+    {
+      "path": "crates/pwm-core/src/state.rs",
+      "why": "match",
+      "note": "evaluate_policy (line 376) — needs height parameter for deferred check; apply_policy_action (line 475) — needs SetPolicy Deferred handling; touch_acct_mrks integration point"
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/types.rs",
+      "why": "match",
+      "note": "SnapshotAccountV3.deferred_policies (line 391); state_to_v3/state_from_v3; activation_to_str/activation_from_str need Deferred arm"
+    },
+    {
+      "path": "crates/pwm-core/src/genesis.rs",
+      "why": "import",
+      "note": "GenCfg defaults; potential initial_policies with Deferred for genesis accounts"
+    },
+    {
+      "path": "crates/pwm-core/src/chain.rs",
+      "why": "import",
+      "note": "Chain::seal provides current height for evaluate_policy calls"
+    },
+    {
+      "path": "crates/pwm-core/src/reject_wire.rs",
+      "why": "import",
+      "note": "TxError variants; potential new E_POLICY_NOT_ACTIVE error code for ActivatePolicy before height"
+    }
+  ],
+  "digest": "# V5-4 Deferred Activation Context Digest\n\n## Current State (Post-V5-3 Baseline)\n\n### ActivationMode Enum (tx.rs lines 15-18)\nCurrent variants: `Dormant`, `Immediately`. **Missing:** `Deferred { activate_at_height: u64 }`.\n\n### DeferredPolicyEntry (types.rs lines 263-266)\n```rust\npub struct DeferredPolicyEntry {\n    pub policy: PolicyKind,\n    pub activate_at_height: u64,\n}\n```\nAlready defined; used in `Account.deferred_policies: Vec<DeferredPolicyEntry>` (types.rs line 290).\n\n### Account State Fields (types.rs Account struct)\n- `active_policies: u16` — bitset for active policies\n- `dormant_policies: u16` — bitset for dormant policies  \n- `deferred_policies: Vec<DeferredPolicyEntry>` — **NEW in V5-2**, needs V5-4 logic\n\n## Gaps to Close for V5-4\n\n### 1. ActivationMode::Deferred Variant (Slice 1)\n**File:** `crates/pwm-core/src/tx.rs`\n- Add `Deferred { activate_at_height: u64 }` to `ActivationMode` enum\n- Update serde serialization (snake_case: `deferred`)\n- Update `signing_message` encoding in `SignedTx::signing_message` (push_policy_action_signing)\n- Update snapshot v2 wire conversion in `crates/pwmd/src/snapshot/types.rs` (`activation_to_str`, `activation_from_str`)\n\n### 2. SetPolicy Apply Path (Slice 1)\n**File:** `crates/pwm-core/src/state.rs`\nCurrent `apply_policy_action` (lines 475-518) handles:\n- `SetPolicy { policy, activation }` — only stores Dormant (dormant_policies bitset) or Immediately (active_policies bitset)\n\n**Need:** When `activation = Deferred { activate_at_height }`, push to `account.deferred_policies` instead of setting bitset.\n\n### 3. evaluate_policy Height-Gated Check (Slice 2)\n**File:** `crates/pwm-core/src/state.rs`\nCurrent `evaluate_policy(&self, tx: &SignedTx)` (line 376) has no chain height parameter.\n\n**Need:**\n- Add `chain_tip_height: u64` parameter\n- For deferred policies: check `chain_tip_height >= activate_at_height` to treat as active\n- For `ActivatePolicy` action before height: reject with `E_POLICY_NOT_ACTIVE`\n- For `ActivatePolicy` at/after height: reject with `E_POLICY_DENIED` (already active via auto-activate)\n\n### 4. ActivatePolicy/DeactivatePolicy Reject Rules (Slice 2)\n**Per ADR 0005 Normative Rules:**\n- `ActivatePolicy` before `activate_at_height` → `E_POLICY_NOT_ACTIVE`\n- `ActivatePolicy` at or after `activate_at_height` → `E_POLICY_DENIED` (auto-activated, no explicit activate needed)\n- `DeactivatePolicy` before height → Allowed, removes pending deferred entry\n\n### 5. RFC 6/7 Normative Updates (Slice 3)\n**Files:** `docs/rfc/6-policy-engine.md`, `docs/rfc/7-tx-and-state-model.md`\n- Update ActivationMode spec to include Deferred variant\n- Document auto-activate semantics\n- Document ActivatePolicy conflict rules\n\n### 6. Snapshot/Genesis Replay Tests (Slice 3)\n**File:** `crates/pwmd/src/snapshot/types.rs`\n- `activation_to_str`/`activation_from_str` must handle `Deferred`\n- Test: genesis account with `initial_policies = [Deferred { activate_at_height: 100 }]` replays correctly\n- Test: snapshot roundtrip preserves deferred_policies\n\n## Slice Decomposition (Strict Order)\n\n| Slice | Ticket Slug | Scope | Acceptance Criteria |\n|-------|-------------|-------|---------------------|\n| 1 | `v5-s4-slice1-activation-mode` | ActivationMode::Deferred + tx validate/serde + SetPolicy stores deferred_policies | `cargo check` clean; serde roundtrip; SetPolicy Deferred stores entry |\n| 2 | `v5-s4-slice2-evaluator` | evaluate_policy height param + auto-activate + ActivatePolicy/DeactivatePolicy rejects | Tests: `policy_deferred_auto_activates_at_height`, `policy_deferred_activate_before_height_rejected` |\n| 3 | `v5-s4-slice3-spec-tests` | RFC 6/7 normative doc update + snapshot/genesis replay tests | Doc PR merged; snapshot v3 roundtrip with deferred; genesis deferred policy test |\n\n## Out-of-Scope (Not V5-4)\n- Address flags runtime enforcement (V6/ADR 0006)\n- Conservation flag delayed Transfer (V6)\n- ClaimIPv4Batch validation/apply (V5-5)\n- TUI marks saturation (V5-6)\n- CLI `--activation deferred` flags (V5-7)\n- Policy DSL or VM extensions\n\n## Error Codes (Potential Additions)\n| Code | Usage |\n|------|-------|\n| `E_POLICY_NOT_ACTIVE` | ActivatePolicy called before `activate_at_height` |\n| `E_POLICY_ALREADY_ACTIVE` (use E_POLICY_DENIED) | ActivatePolicy at/after height (auto-active) |\n\n## Implementation Hints\n1. **Height source:** `Chain::seal` has `height: u64` from `self.head.height + 1`; pass through to `evaluate_policy`\n2. **Pure evaluator:** `evaluate_policy` must remain pure (no state mutation), only returns `PolicyDecision`\n3. **Apply side:** `apply_policy_action` mutates `deferred_policies` vector\n4. **Auto-activate:** In `evaluate_policy`, check deferred entries against height; if `>= activate_at_height`, treat as active bit (without removing from vector — removal happens on explicit ActivatePolicy reject or DeactivatePolicy)\n5. **Snapshot wire:** Use string representation for `activate_at_height` in JSON snapshot (decimal string for u64)",
+  "log_digest": [],
+  "open_questions": [
+    "Should we add explicit E_POLICY_NOT_ACTIVE error code or reuse existing E_POLICY_NOT_ACTIVE?",
+    "Should deferred_policies be removed from Vec when auto-activated (moved to active_policies bitset) or kept for replay determinism?",
+    "Does evaluate_policy need the full ChainState or just height parameter?"
+  ],
+  "warnings": [
+    "CQDS MCP server unavailable; using rg fallback search",
+    "V5-3 baseline has marks.rs with compute_lazy_marks; ensure no merge conflicts in state.rs evaluate_policy signature change"
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "pwm-info subagent run",
+      "confidence": "high",
+      "notes": "Based on direct file reads of tx.rs, types.rs, state.rs, snapshot/types.rs; no speculative codegen"
+    }
+  }
+}

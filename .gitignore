@@ -24,3 +24,18 @@ pwm-data.json
 /.wave-build-target/
 **/__pycache__/
 /*.code-workspace
+
+# Team bridge runtime (cq_team_bridge_ctl); versioned tickets: tasks/*.json, tasks/done/
+/.cqds/
+/tasks/workers/
+/tasks/events/
+
+# Local IDE / agent scratch (not versioned)
+/.grok/
+/NUL
+/MANIFEST.txt
+/build.rs
+
+# Ad-hoc exports (keep markdown canonical)
+/docs/*.docx
+/docs/*.pdf

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "title": "V5 pre-closeout: CY cluster multi-hour E2E soak (umbrella)",
+  "status": "in_progress",
+  "depends_on": [
+    "20260528-v5-audit-warn-fixes-testing",
+    "20260524-v5-sprint8-operator-closeout"
+  ],
+  "brief": "Before final V5 closeout: live CY cluster (root cy-cluster-*.ps1) for hours — cluster stability, marks saturation over time, mass BurnMark batches simulating offchain aggregation.",
+  "acceptance_criteria": [
+    "All child slices s1..s3 report PASS with artifacts under tmp/.",
+    "Operator runbook followed: docs/runbooks/v5-cy-cluster-precloseout-soak.md.",
+    "No blocking seal/quorum/sync regressions during soak windows.",
+    "Umbrella closed only after s1+s2+s3 done and owner sign-off on soak logs."
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v5-cy-cluster-precloseout-soak.md",
+    "cluster_launchers": [
+      "cy-cluster-proposer.ps1",
+      "cy-cluster-attester.ps1",
+      "cy-cluster-follower.ps1",
+      "cy-cluster-common.ps1"
+    ],
+    "reference_smoke": "scripts/cy_cluster_two_node_smoke.ps1"
+  },
+  "child_tickets": [
+    "20260529-v5-cy-e2e-s1-cluster-bootstrap-stability",
+    "20260529-v5-cy-e2e-s2-marks-saturation-soak",
+    "20260529-v5-cy-e2e-s3-mass-burn-batches",
+    "20260529-v5-cy-cluster-seal-cadence-review",
+    "20260529-v5-genesis-runtime-consensus-audit-review",
+    "20260529-v5-genesis-seal-cadence-align-coding",
+    "20260529-v5-cy-cluster-attest-suppression-review",
+    "20260529-v5-cy-cluster-attest-timing-align-coding"
+  ],
+  "notes": "s1 done PASS. s2 in progress — operator soak; cluster must stay up.",
+  "child_status": {
+    "20260529-v5-cy-e2e-s1-cluster-bootstrap-stability": "done",
+    "20260529-v5-cy-e2e-s2-marks-saturation-soak": "in_progress",
+    "20260529-v5-cy-e2e-s3-mass-burn-batches": "pending"
+  },
+  "delegations": []
+}

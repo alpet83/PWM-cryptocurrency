@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "id": "20260611-v5-lab-seal-console-python-json-window-coding",
+  "title": "V5 lab: Python seal console — RPC steps + dual-node log JSON window",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260610-v5-lab-cluster-seal-manual-rpc-stepmode-coding"
+  ],
+  "related_tickets": [
+    "20260610-v5-cy-proposer-attest-gap-iter2-debug",
+    "20260610-v5-lab-cluster-seal-manual-rpc-stepmode-coding"
+  ],
+  "brief": "Separate from pwmd Rust slice: external Python harness (MCP-friendly) that agents/operators invoke instead of raw curl. One command returns a unified JSON document: RPC response from proposer lab/seal API plus structured log events from proposer AND attester captured in the same time window as the step. Stdlib-only; JSON/JSONL on stdout for tooling and subagents.",
+  "design": {
+    "name": "cy_lab_seal_console",
+    "script_path": "scripts/cy_lab_seal_console.py",
+    "doc_path": "docs/runbooks/v5-cy-lab-seal-console.md",
+    "problem": "Manual RPC step debug still forces agents to correlate three surfaces: HTTP response, proposer log, attester log. Owner restarts cluster; agents need a single machine-readable window per step, not grep across terminals.",
+    "single_window_contract": {
+      "description": "Every invocation emits one top-level JSON object (pretty optional) with stable schema_version",
+      "schema_version": 1,
+      "top_level_fields": {
+        "ok": "bool — RPC ok AND parse success",
+        "cmd": "status | control | step | watch_tick | discover",
+        "step": "optional step name",
+        "ts_utc": "ISO8601 wall start",
+        "duration_ms": "end-start",
+        "rpc": "parsed JSON body from proposer HTTP (or error envelope)",
+        "rpc_meta": "url, status_code, elapsed_ms",
+        "window": {
+          "t0_ms": "monotonic/wall bracket start",
+          "t1_ms": "bracket end",
+          "proposer": {
+            "log_path": "resolved file",
+            "byte_offset_before": "int",
+            "byte_offset_after": "int",
+            "lines_read": "int",
+            "events": "structured[]"
+          },
+          "attester": "same shape"
+        },
+        "summary": "short human hint + counts by event kind",
+        "warnings": "string[]"
+      }
+    },
+    "log_event_model": {
+      "event_id": "stable hash or increment per line",
+      "ts_log": "HH:MM:SS.mmm from line",
+      "level": "INFO|WARN|ERROR",
+      "kind": "manual_seal|cluster_attest|cluster_gate|seal_suppress|sync|peer_cluster|peer_sync|sealed|other",
+      "fields": "key-value dict parsed from line (regex tables, extensible)",
+      "raw": "optional truncated line if kind=other"
+    },
+    "parser_reuse": "Extend patterns from scripts/_review_seal_log_analytics.py; add manual_seal_*, cluster_attest_*, waiting_sync, quorum_timeout, continuity_break, ClusterPropose/Attest peer lines",
+    "log_discovery": {
+      "default_glob": "logs/<today>/pwmd-cy-{proposer,attester}-*.log and pwmd-peer-cy-*",
+      "override": "--proposer-log --attester-log paths",
+      "policy": "latest mtime among matches; warn if multiple active"
+    },
+    "rpc_client": {
+      "proposer_base": "http://127.0.0.1:3030 default (CY lab)",
+      "endpoints": "Maps to /v1/lab/seal/* from depends_on ticket",
+      "http": "urllib.request stdlib only",
+      "timeout_sec": 120,
+      "timeout_note": "gate_wait step may use up to 120s"
+    },
+    "cli_surface": {
+      "style": "MCP-adjacent: subcommand + --json (default on) + optional --jsonl for watch",
+      "examples": [
+        "python scripts/cy_lab_seal_console.py discover",
+        "python scripts/cy_lab_seal_console.py status",
+        "python scripts/cy_lab_seal_console.py control --mode manual_rpc --verbose-default",
+        "python scripts/cy_lab_seal_console.py step preflight --verbose",
+        "python scripts/cy_lab_seal_console.py step propose --verbose",
+        "python scripts/cy_lab_seal_console.py step gate_wait --timeout-ms 5000 --verbose",
+        "python scripts/cy_lab_seal_console.py watch --interval-ms 500 --max-ticks 120"
+      ]
+    },
+    "watch_mode": {
+      "purpose": "Agent loop: emit JSONL lines {type: log_event|heartbeat} from both tails without blocking on RPC",
+      "merge": "Multiplex proposer+attester tails; tag node_id",
+      "stop": "SIGINT or --max-ticks"
+    },
+    "stdio_jsonl_protocol": {
+      "optional_phase": "Document in runbook for future MCP wrapper: stdin one JSON cmd per line, stdout one JSON response per line (same schema as CLI step)",
+      "commands": ["status", "step", "control", "discover", "ping"],
+      "note": "Phase 1: argparse CLI; Phase 2 (non-blocking nits): thin scripts/cy_lab_seal_mcp_stdio.py shim if owner wants Cursor MCP tool"
+    },
+    "agent_ergonomics": {
+      "no_powershell_required": "Python 3.10+ cross-platform",
+      "exit_code": "0 ok, 1 rpc fail, 2 log missing, 3 parse/config",
+      "artifacts": "optional --out tmp/lab-seal-window/<step>-<ts>.json for bridge handoff"
+    },
+    "non_goals": [
+      "Replace pwmd manual_seal implementation",
+      "Full MCP server in Rust",
+      "LLDB integration",
+      "Production metrics pipeline"
+    ]
+  },
+  "acceptance_criteria": [
+    "After depends_on RPC lands: step preflight --verbose returns one JSON with rpc.* and window.proposer/attester.events non-empty when cluster running",
+    "Events in window bracket match wall time of RPC call (no unbounded full-file read; byte offset or line cursor persisted in optional state file tmp/cy-lab-seal-console.state.json)",
+    "discover subcommand returns JSON with resolved log paths + rpc reachability",
+    "watch emits valid JSONL; kinds include cluster_attest and manual_seal when verbose RPC used",
+    "stdlib only; python -m py_compile scripts/cy_lab_seal_console.py",
+    "docs/runbooks/v5-cy-lab-seal-console.md with agent copy-paste flow (attester first, manual_rpc, step chain)",
+    "Unit tests: scripts/_test_cy_lab_seal_console.py — parser fixtures from snippets (no live cluster required)"
+  ],
+  "mvp_checklist": ["§6 CY lab operator / agent tooling"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement cy_lab_seal_console.py + runbook + parser tests; JSON window over RPC + dual-node logs",
+      "result": "done",
+      "artifacts": [".cqds/team-tasks/done/20260611-v5-lab-seal-console-python-json-window-coding.json"],
+      "tokens": { "source": "bridge", "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": "2026-05-31"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review schema stability, no secrets in JSON output, safe localhost-only assumptions documented",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md"],
+      "tokens": { "source": "estimate", "input": 52000, "output": 4500, "total": 56500, "confidence": "medium" },
+      "done_at": "2026-05-31"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Verify Python console py_compile + 6 unit tests (including test_normalize_seal_control_mode NIT-3 fix)",
+      "result": "PASS",
+      "artifacts": [],
+      "commands": [
+        "python -m py_compile scripts/cy_lab_seal_console.py → OK",
+        "python scripts/_test_cy_lab_seal_console.py -v → 6 passed (incl. test_normalize_seal_control_mode)"
+      ],
+      "tokens": { "source": "estimate", "input": 18000, "output": 2500, "total": 20500, "confidence": "medium" },
+      "done_at": "2026-05-31"
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md" },
+  "notes": "Orchestrator 2026-05-31: coding/review/testing PASS; NIT-3 mode normalize in cy_lab_seal_console.py (orchestrator). Report: docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md."
+}

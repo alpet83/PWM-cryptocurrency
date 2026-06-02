@@ -13,6 +13,190 @@
 
 ## Entries
 
+- Дата: 2026-06-02 (snapshot anchor landing trap: file existed but was not tracked)
+- Контекст/файлы: `crates/pwmd/src/snapshot/anchor.rs`, тикет `20260602-v5-snapshot-genesis-anchor-land-coding`.
+- Симптом: код `genesis_anchor` присутствовал и участвовал в сборке/тестах, но `git ls-files --error-unmatch crates/pwmd/src/snapshot/anchor.rs` падал (`pathspec ... did not match`), то есть файл не был в индексе.
+- Причина: предыдущий coding slice отметил фичу как done, но новый файл не был `git add`-нут (classic "works locally, not landed" trap).
+- Фикс/обход: выполнен `git add crates/pwmd/src/snapshot/anchor.rs`, после чего файл стал отслеживаемым (`A` в `git status`), и ADR 0008 переведён в Implemented.
+- Что проверить потом: перед закрытием security-relevant slices делать обязательный `git ls-files --error-unmatch <new-file>` для каждого нового исходника, чтобы исключить silent untracked состояния.
+
+- Дата: 2026-06-02 (naming-fix slice: unrelated `block_timing` test failure)
+- Контекст/файлы: `crates/pwmd/src/block_timing.rs` (`tests::json_stats_merge_schema`), тикет `20260602-v5-prepublish-naming-violations-fix-coding`.
+- Симптом: после rename-only правок (1 prod const + 5 test fn names) `cargo test -p pwmd --lib block_timing` падает на `assert_eq!(v["checkpoints_rel_ms"]["gate_ok"], 25)` с фактическим `0.0`.
+- Причина: не связана с переименованиями (тело теста/логика `json_stats` не менялись в этом слайсе); по факту это pre-existing behavioral/test drift в `block_timing`.
+- Фикс/обход: naming scanner очищен до 0 violations и `cargo check -p pwmd` проходит; падение `json_stats_merge_schema` фиксируется как blocker вне scope rename-only тикета.
+- Что проверить потом: отдельным тикетом разобрать контракт `ProfileTime::json_stats` vs ожидания теста `json_stats_merge_schema` и обновить либо реализацию, либо assertion под текущую схему.
+
+- Дата: 2026-06-02 (pwm-tui integration tests: `AcctRow` fixture drift)
+- Контекст/файлы: `crates/pwm-tui/tests/{send_form.rs,wallet_roaming.rs}`, `crates/pwm-tui/src/models.rs`.
+- Симптом: `cargo test -p pwm-tui send_form` компилирует integration test crates и падает на множестве `E0063` (старые инициализации `AcctRow` без новых полей).
+- Причина: тестовые фикстуры в `tests/*.rs` остались в старом shape после расширения `AcctRow` (`effective_marks`, policy/owner metadata, rescue и т.д.).
+- Фикс/обход: для coding-среза использовать scoped `--lib` проверки (`cargo test -p pwm-tui --lib ...`) + `cargo check -p pwm-tui`; полноценный ремонт integration fixtures вынести отдельным тестовым слайсом.
+- Что проверить потом: синхронизировать все `AcctRow { ... }` в integration tests с текущей моделью или ввести единый helper-builder, чтобы future schema drift не ронял фильтрованные `cargo test` прогоны.
+
+- Дата: 2026-06-02 (proposer inbound handshake stall, lock-upgrade deadlock)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`run_cluster_gate`), `crates/pwmd/src/transport/peer_session/inbound.rs`, `crates/pwmd/src/transport/peer_session/seed/{connect.rs,handshake.rs}`.
+- Симптом: proposer стабильно доходил до `validate_remote_hello` на inbound, но не переходил к `validate_state_lock_acquired` и не отправлял `hello_ack_sent`; attester видел повторяющиеся handshake timeout/retry.
+- Причина: в `run_cluster_gate` держался `handshake` read-lock и внутри той же секции вызывался `maybe_retry_round(...).await`, который требует write-lock того же состояния. Получался lock-upgrade deadlock (read держится, write не может войти). Дополнительно в seed retry-path были ветки с `sleep` при живом write-lock, что усиливало starvation.
+- Фикс/обход: в `run_cluster_gate` сохранён нужный `propose_opened_at_ms`, затем `drop(hs)` до `maybe_retry_round(...).await`; в seed connect/handshake добавлен `drop(hs)` перед retry `sleep`. Верификация на live CY: появились `validate_state_lock_acquired`, `send_hello_ack_accept`, `hello_ack_sent` в proposer log (`logs/2026-06-01/pwmd-peer-cy-proposer-190938.log`).
+- Что проверить потом: в soak/long-run не должно быть повторного зависания inbound handshake на стадии validate; lock-трейс должен оставаться тихим (логироваться только при wait/held >=100ms), а quorum/propose cadence — без регресса.
+- Статус: CLOSED (2026-06-02, long-run подтверждён)
+- Закрывающие факты:
+  - `tmp/cy-lab-block-timing.jsonl`: 1500 последних sealed-row (height 35499 -> 36998), 1499 блоков за 1_499_000ms (~1.00 блок/с).
+  - Timeout/шумы: `attest_timeout_count=0`, `suppress_strike_count=0`, `gate_recheck_count=0`.
+  - Latency steady-state: `prop_seal_commit` p50/p95 = 8/9 ms; `profile.wall_total_ms` p50/p95 = 8.47/9.20 ms.
+  - Precision-подтверждение: `tmp/cy-lab-block-timing.pending.json` содержит ненулевые дробные значения (`att_rx_ms`/`att_proc_ms`/`att_wire_ms`, например `...0004.79`, `0.27`, `...0005.14`), то есть источник времени больше не ограничен целым ms.
+
+- Дата: 2026-06-12 (snapshot `genesis_anchor` migration и fail-closed trust load)
+- Контекст/файлы: `crates/pwmd/src/snapshot/{anchor.rs,types.rs,io.rs,incremental.rs,ch_http.rs,repair.rs}`, `crates/pwmd/src/lifecycle.rs`.
+- Симптом: после добавления `genesis_anchor` trust-default startup ломается на legacy snapshot без anchor или на prune-tree без доступного block@1; также легко получить compile-break в тестах/constructor paths из-за нового поля в `SnapshotData`.
+- Причина: новая fail-closed валидация требует commitments + block@1 preflight и сквозного заполнения `genesis_anchor` во всех save/load/migration ветках.
+- Фикс/обход: добавлены preflight и anchor-check в trust path, migrate-on-load при наличии signer key, persist anchor в JsonFile summary/full save, canonical decode с optional `genesis_anchor`, инициализация `genesis_anchor: None` во всех legacy constructors/tests.
+- Что проверить потом: на старом `pwm-data.json` без anchor ожидаем либо controlled migrate (если signer доступен), либо детерминированный fail-closed; на tampered block@1 / tampered genesis commitments startup должен падать до запуска сетевых циклов.
+
+- Дата: 2026-06-12 (Epoch Snapshot: подмена genesis без привязки к `--genesis-file`)
+- Контекст/файлы: `crates/pwmd/src/snapshot/io.rs` (`validate_snapshot`, `validate_snapshot_trusted`), `pwm-data.json` + `epochs/`, `--genesis-file`; ADR [0008](docs/adr/0008-snapshot-genesis-anchor-light.md), RFC [0020](docs/rfc/20-bootstrap-snapshot-pruned-distribution.md), тикет `tasks/20260612-v5-snapshot-genesis-anchor-light-coding.json`.
+- Симптом: можно подменить genesis-слой в локальном snapshot (state / ранние epoch / согласованный tail), оставив тот же genesis JSON на диске — при trust-default load нода поднимается и продолжает seal на чужой ветке. `expected_genesis_hash` из genesis file действует на peer hello, но не обязателен при load snapshot.
+- Причина: trust-default не replay'ит genesis→tip; проверяется в основном совпадение `genesis_accounts` с `GenCfg` и self-consistency tail + `state_root` на tip, без обязательной привязки checkpoint state к `digest(state0())` и block@1 при `checkpoint_height > 0`.
+- Фикс/обход (принято, impl в очереди): **ADR 0008** — в wire snapshot поле `genesis_anchor` (`genesis_state_root`, `gencfg_digest`, `block1_hdr_hash`, одна Ed25519-подпись validator как fool-guard); на trust load fail-closed по commitments; preflight block height=1 (`prev_gen`, hdr hash, PoA sig, лёгкий replay txs→`state_root`); migrate-on-load для legacy snapshot без anchor; при prune без block@1 на диске — отказ. Полный replay только `--snapshot-verify-chain` / audit. **Будущее (pruned distribution):** те же дайджесты + k-of-n подписи активных validators шарда в Bootstrap Snapshot — RFC 0020, ADR 0004.
+- Что проверить потом: после coding — подмена только `state` в `pwm-data.json` → startup error; подмена block@1 в `epochs/` при том же genesis file → error; легитимный CY restart без регрессии времени старта; миграция старого state выдаёт один `warn` и пишет anchor на следующем autosnapshot.
+
+- Дата: 2026-06-11 (cy_lab_seal_console first-run window seeding)
+- Контекст/файлы: `scripts/cy_lab_seal_console.py`, `docs/runbooks/v5-cy-lab-seal-console.md`.
+- Симптом: console-harness мог бы перечитать весь proposer/attester log history на первом запуске, что делало бы окно noisy и дорогим.
+- Причина: без persisted byte offsets первый read начинает с начала файла, а не с текущего tail.
+- Фикс/обход: state-file now seeds offsets at current file size on first sight of a log path; subsequent invocations read only appended tail bytes. Rotation resets the offset when the file path changes.
+- Что проверить потом: `discover` / first `status` on fresh state should emit empty or near-empty windows, while `step` after RPC captures only the new manual_seal / cluster_attest lines.
+
+- Дата: 2026-06-10 (cluster propose timeout anchored to wire-send + bounded got=0 reopen)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs`, `crates/pwmd/src/transport/peer_session/mod.rs`, `crates/pwmd/src/transport/handshake_state.rs`, `crates/pwmd/src/transport.rs`, `crates/pwmd/src/transport/tests/production.rs`.
+- Симптом: proposer иногда входил в `quorum_timeout` слишком рано (таймер стартовал до фактической отправки wire `ClusterPropose`) и мог «залипать» в round при `got=0` без явного мягкого reopen.
+- Причина: timeout anchor начинался от локального tick/record, а не от подтверждённого wire send; для `got=0` не было ограниченного механизма сброса round send-key/timeout anchor перед финальным timeout.
+- Фикс/обход: timeout anchor перенесён на успешный wire send (`propose_opened_at_ms` выставляется после `write_wire_msg`), локальный tick больше не стартует timeout. Для `got=0` добавлен bounded reopen (retry cap=2): сбрасываются `propose_opened_at_ms` и `sent_key_by_node`, выставляется `cluster_prop_nudge`, лог `cluster_gate_round_reopen`.
+- Что проверить потом: в CY soak при временной потере attest не должно быть ранних false-timeout до первого wire send; при `got=0` ожидаем не более 2 reopen перед обычным timeout-path, без бесконечного churn по одному `(height,round)`.
+
+- Дата: 2026-06-10 (cluster preflight: apply-aware attest readiness)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs`, `docs/debug/20260610-v5-cy-proposer-attest-gap-iter2-root-cause.md`.
+- Симптом: proposer preflight флапал между ready/waiting при стабильном `lag=2` (attester живой и подписывает attest), что раздувало `pending_ticks` и давало ложный stall.
+- Причина: readiness был жёстко привязан к `sync_live.tip_h` (apply/announce pipeline), а не к фактической готовности attest path; это смешивало разные контуры протокола.
+- Фикс/обход: preflight decouple от hard lag-gate: sync-ready считается по live/fork-lock сигналам, без блокировки по 1–2 block phase lag; fork-lock остаётся fail-closed guard. `PWM_CLUSTER_ATTEST_MAX_TIP_LAG` сохранён как операторский параметр/наблюдаемость, но не как primary readiness gate.
+- Что проверить потом: CY repro из debug iter-2 — `cluster_attest_waiting_sync lag=2` должен резко сократиться, `pending_ticks` в окне снижается без workaround `max_tip_lag=2`.
+
+- Дата: 2026-06-10 (attester sync continuity_break fail-closed)
+- Контекст/файлы: `crates/pwmd/src/transport/peer_session/sync_live.rs`, `crates/pwmd/src/transport/peer_session/mod.rs`, `crates/pwmd/src/transport/handshake_state.rs`.
+- Симптом: attester мог бесконечно висеть на `Sync progress 50%` при фиксированном `continuity_break` на одном height (restore boundary), а затем крутить CUP `chunk_order` retries без реального прогресса.
+- Причина: live hdr path только увеличивал `live_stall` и логировал общий WARN, не эскалируя повторный break в divergence/disconnect; CUP стартовал поверх уже известного boundary fork.
+- Фикс/обход: добавлен fail-closed порог повторов continuity break на одном `(height, local_tip)` с эскалацией в `TipDivergence`/`SyncTipDivergence`; WARN теперь содержит `local_hash` и `peer_prev_hash` (short tags) + streak. При активном fork-lock CUP не стартует (`cup_skipped reason=live_continuity_break`), чтобы не маскировать root cause.
+- Что проверить потом: CY сценарий с намеренно несинхронным restore — после 3 break ожидаем disconnect с `sync_hdr_divergence`; после `CleanState`/aligned snapshot sync должен идти без повторных break на том же boundary.
+
+- Дата: 2026-06-10 (sync-ready attester preflight + deep catch-up stall)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs`, `crates/pwmd/src/transport/peer_session/sync_live.rs`, `crates/pwmd/src/config.rs`, `crates/pwmd/src/main.rs`.
+- Симптом: proposer считал attester "живым" по TCP и пытался quorum/seal даже когда attester сильно отстал по цепи (пример: 33k vs 65k), что давало carpet-логи suppression на одном height и видимость cluster-stall.
+- Причина: preflight учитывал только connected/liveish статус без проверки sync readiness (tip lag + active CUP), а CUP retries в deep lag могли выгорать в состояние без дальнейшего прогресса.
+- Фикс/обход: preflight переведён на `live_synced_attesters` (heartbeat tip + lag <= `PWM_CLUSTER_ATTEST_MAX_TIP_LAG`, default=1, и без deep CUP), добавлен `cluster_attest_waiting_sync` WARN dedup per-height; pre-timeout `quorum_pending` debug также dedup per-height. В sync-live убран hard stop по `cup_try`, добавлен периодический `sync_catchup_stall` (30s) при неизменном rem.
+- Что проверить потом: CY сценарий с attester restart на глубоком lag — rem должен убывать, `cluster_attest_ready` появляется только после догонки, и нет per-poll suppression-flood по одному height.
+
+- Дата: 2026-06-10 (block_timing nonblocking deferred flush)
+- Контекст/файлы: `crates/pwmd/src/block_timing.rs`, `crates/pwmd/src/lifecycle.rs`.
+- Симптом: при включённом `PWM_BLOCK_TIMING_ENABLED` proposer/attester hot path деградировал по latency и throughput; под нагрузкой наблюдались lock-contention хвосты вплоть до near-deadlock ощущений.
+- Причина: timing hook пытался взять file-lock с retry+sleep внутри рабочих путей propose/attest/seal, блокируя async петли на I/O contention.
+- Фикс/обход: модуль переведён на deferred queue: `note_*` только enqueue в память (O(1), без sleep/lock), запись в pending/jsonl идёт через `try_lock_exclusive` в `try_flush_once` (single-attempt, nonblocking). Seal-loop делает периодический try-flush; seal событие также триггерит flush. При I/O ошибке операции ре-очередятся, sealed-row не теряется.
+- Что проверить потом: CY soak с включённым timing — нет блокирующих пауз в proposer/attester loop, queue depth не растёт безгранично, JSONL rows продолжают формироваться под конкуренцией процессов.
+
+- Дата: 2026-06-09 (per-block cluster timing JSONL)
+- Контекст/файлы: `crates/pwmd/src/block_timing.rs`, hooks in `lifecycle.rs` and `transport/peer_session/*`, CY common launcher env.
+- Симптом: пост-хок лог-парсеру не хватало единой on-line корреляции proposer+attester по этапам RFC16 на каждый sealed block; сложно стабильно разложить wall-lag на propose/attest/gate/seal без ручного merge.
+- Причина: тайминг-события размазаны по разным процессам и файлам логов, без общего pending-store/lock вокруг одной строки результата на block key.
+- Фикс/обход: добавлен `block_timing` модуль с shared JSONL (`tmp/cy-lab-block-timing.jsonl`) + sidecar pending JSON + `.lock` на `fs2` exclusive lock с bounded wait. Хуки: slot-open (`t0`), proposer wire send, attester RX/proc/wire-send, proposer attest RX, gate-ready, seal finalize (одна строка на block). Лаунчеры CY задают общий путь через `PWM_BLOCK_TIMING_ENABLED/PWM_BLOCK_TIMING_PATH`. Build marker `pwmd` 0.1.65 → 0.1.66.
+- Что проверить потом: короткий CY soak даёт десятки валидных JSONL строк; нет порчи файла при двух процессах; дельты `d_ms.*` выглядят монотонно и коррелируют с parser review 20260609.
+
+- Дата: 2026-06-07 (resumed-state throughput: propose coalesce + attest wake)
+- Контекст/файлы: `crates/pwmd/src/transport/peer_session/mod.rs`, `crates/pwmd/src/transport/handshake_state.rs`, `crates/pwmd/src/lifecycle.rs`, `crates/pwmd/src/state.rs`, `crates/pwmd/src/bootstrap.rs`.
+- Симптом: на resumed-state CY у proposer сохранялся depth-amplified wall overhead: высокий `pending_ticks` и churn `cluster propose sent` (исторически до ~23x на один sealed), даже после seal-on-gate-ready.
+- Причина: (1) wire propose отправлялся по нескольким путям без coalesce по `(height,round,node)`; (2) seal loop ожидал poll/sleep ветку даже когда attest уже пришёл, что растягивало ready-to-seal latency в глубоком стейте.
+- Фикс/обход: добавлен per-node propose coalescing (`ClusterAttestState.sent_key_by_node`) — повторная отправка того же `(height,round)` в тот же remote node подавляется; на `ClusterAttest accepted` добавлен wake (`app.seal_wake.notify_waiters()`), а proposer pre-deadline wait ветка использует `tokio::select!` sleep-or-wake без нарушения инварианта `no seal before deadline`. Ahead-window остаётся propose-only.
+- Что проверить потом: resumed CY smoke (220s) — `propose_sent/sealed < 5x`, `pending_ticks` p50 заметно ниже baseline (~330), `T100_est` улучшается к целевому диапазону; нет раннего seal до `next_seal_time_ms`.
+
+- Дата: 2026-06-04 (seal-on-gate-ready after deadline)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`spawn_seal_loop`, gate path near `run_cluster_gate`), CY proposer residual overhead.
+- Симптом: после interval/observability фиксов сохранялся остаточный wall overhead и ACK→seal tail (до ~800ms+) — gate мог стать Ready, но seal откладывался минимум на следующий poll-cycle.
+- Причина: в deadline-ветке loop при `run_cluster_gate=false` происходил `sleep(poll_pause)` и только следующий цикл видел ready-path; это добавляло лишние 10ms шаги и хвосты в загруженном кластере.
+- Фикс/обход: добавлен gate fast-path recheck в **том же** deadline-iteration: после первого `run_cluster_gate` fail для proposer делается повторный probe сразу; если второй probe даёт OK — loop идёт на seal без `poll_pause`. Инвариант сохранён: recheck выполняется только после `should_attempt_seal(now >= next_seal_time_ms)`, ahead-window по-прежнему propose-only (без раннего seal). Build marker `pwmd` 0.1.64 → 0.1.65.
+- Что проверить потом: CY soak — снижение ACK→seal p50/p95, `pending_ticks` median ниже baseline, `slots_struck` steady <15%, при этом нет seal до deadline.
+
+- Дата: 2026-06-04 (seal observability split: wait vs timeout vs strike)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`SealSuppressWindow`, `emit_suppress_summary`, `run_gate_obs`), CY proposer seal diagnostics.
+- Симптом: операторская строка `seal_suppression_summary` путала «здоровое ожидание attest внутри timeout» с реальными strike/timeout случаями; по одной метрике сложно понять, что деградирует: RTT path, timeout path или strike path.
+- Причина: в summary был только агрегат `suppressed`, без явного разреза A/B/C из debug RCA (`wait pre-timeout`, `quorum_timeout`, `interval strike`).
+- Фикс/обход: добавлены отдельные counters в окно 100s: `slots_waited_att` (A), `slots_timeout` (B), `slots_struck` (C). `suppression_pct` теперь явно считается как `slots_struck / slots` и не включает wait/timeout counters. В proposer loop на gate-fail добавлена лёгкая классификация `run_gate_obs()` (`Wait|Timeout`) без изменения gate/cadence/timeout поведения; strike-логика (`eval_supp`) сохранена. Build marker `pwmd` 0.1.63 → 0.1.64.
+- Что проверить потом: CY soak — видеть раздельно A/B/C в каждом 100s summary; `slots_waited_att` может быть заметным при healthy работе, но `slots_timeout` должен быть близок к нулю в steady режиме; `slots_struck` в порядке десятков, не тысяч.
+
+- Дата: 2026-06-03 (interval-based seal suppression counting)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`SealSuppressWindow`, `spawn_seal_loop`, gate fail paths), CY proposer soak.
+- Симптом: после предыдущих фиксов proposer уже seal'ил корректно, но `seal_suppression_summary` показывал аномально большие значения (`suppressed ~2200/100s`) при `sealed_in_window ~35-40`.
+- Причина: в hot loop suppression закрывался на каждом poll-fail (`close_supp` на lease/cluster gate при `poll_ms=10`), что превращало один grid deadline в десятки «ложных» suppress strikes до наступления следующего nominal interval.
+- Фикс/обход: введена interval-семантика «one strike per slot». `SealSuppressWindow` теперь ведёт `active_deadline_ms`, `attempt_start_ms`, `supp_marked`; `begin_slot(deadline, now)` открывает слот, `eval_supp(now, nominal, reason)` даёт strike только когда `now-start > nominal` и только один раз для этого deadline, затем переносит `attempt_start_ms` на `now+poll_ms` для paced reevaluate. Убрано per-poll `close_supp` в `spawn_seal_loop`; `record_cluster_prop_tick` ограничен началом нового deadline-слота (не 100/s). Добавлены тесты на 0 strikes в 200ms, 1 strike после nominal+1ms, seal-внутри-nominal без suppression.
+- Что проверить потом: CY 5min — `slots ~90–110`, `suppressed` в порядке десятков (не тысяч), `sealed_in_window ~35–40`, без burst warn-флуда после `cluster_attest_ready`.
+
+- Дата: 2026-06-02 (live attester preflight member-id hotfix)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`count_live_cluster_attesters` → `count_live_attesters_hs`, `trusted_member_id`, `member_in_cfg`), CY cluster preflight.
+- Симптом: proposer бесконечно писал `waiting_for_attester live_attesters=0`, хотя attester подключён; preflight не переходил в Ready, пока не делали ручные обходы.
+- Причина: подсчёт живых attester сравнивал `cluster_cfg.members` с wire `node_id` (`hs.trusted_peers` key / `trusted.node_id`). В CY members заданы как `node_instance_id` (`cy-quorum-attester`), а wire id отличается (`cy-attester`). Дополнительно liveness смотрел только `PeerStatus::Connected`, игнорируя `Accepted|Retrying` liveish-состояния.
+- Фикс/обход: member-id теперь берётся из `TrustedPeer.instance_id` (trimmed) через `trusted_member_id` — это тот же canonical id, который использует RFC16 attest path. Local proposer исключается по `app.node_instance_id.trim()`. Liveness — через `crate::transport::is_peer_liveish(&status)` + окно `ATTESTER_LIVE_WINDOW_MS`. Добавлены unit-тесты: `live_attester_count_uses_instance`, `live_attester_no_instance`, `live_attester_excludes_local`, `live_attester_retrying_counts`. Build marker `pwmd` 0.1.61 → 0.1.62.
+- Что проверить потом: на CY после старта attester+proposer в течение connect window появляется `cluster_attest_ready live_attesters=1 quorum_k=1`, а `waiting_for_attester` прекращается; `seal_suppression_summary` остаётся в sane-диапазоне slots-модели.
+
+- Дата: 2026-06-02 (seal-slot suppression metrics + attester preflight)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`SealSuppressWindow`, `SuppressReason`, `SealPreflight`, `cluster_seal_preflight`, `count_live_cluster_attesters`, `attester_alive`), V5 CY proposer.
+- Симптом: после variant C deadline scheduler `seal_suppression_summary suppression_pct ~97%`, `sealed_in_window ~37/100s` — операторам казалось, что quorum держит проход в 97% случаев; реально seal'ов было примерно столько же, что и до scheduler'а. Дополнительно при старте CY: вал WARN `seal_suppressed_by_cluster missing_round_state` до первого подключения attester'а.
+- Причина: счётчики `SealSuppressWindow` считали **каждую** poll-итерацию proposer'а как один `tick` и каждую отрицательную `run_cluster_gate` — как одну `cluster_inc`. С `SEAL_POLL_INTERVAL_MS=10` это ~100 ticks/s против ~1 seal/s, поэтому `suppression_pct` инфлейтировался к ~95%. Параллельно `record_cluster_prop_tick` + `run_cluster_gate` вызывались без проверки наличия живых attester-пиров → quorum_pending логировался на каждом тике до connect.
+- Фикс/обход: переход на **slot-based metrics** + **attester preflight**.
+  - `SealSuppressWindow` теперь хранит `slots / slot_supp / sealed_in / open_slot_deadline_ms / last_reason`. Методы `open_slot(deadline)` (idempotent на тот же deadline), `close_supp(SuppressReason)`, `close_sealed()`. Если deadline сменился без закрытия — старый slot закрывается с `SuppressReason::SlotSkipped`.
+  - Лог `seal_suppression_summary` теперь печатает `slots=` вместо `ticks=` и `last_reason=` вместо `fence_suppressed/cluster_suppressed` split (атрибуция последним событием).
+  - Pure helpers: `attester_alive(connected, last_seen_ms, now_ms, live_window_ms)`, `cluster_seal_preflight(cluster_enabled, live_attesters, quorum_k) -> SealPreflight::{Ready, WaitingAttester}`. Async-инегратор `count_live_cluster_attesters(app)` обходит `hs.trusted_peers` ∩ `hs.peers`, считает только Connected с `last_seen_ms` в окне `ATTESTER_LIVE_WINDOW_MS=5_000`.
+  - В `spawn_seal_loop` для proposer перед `open_slot`/lease/gate вызывается preflight. `WaitingAttester` → `sleep SEAL_WAIT_PEER_MS=500ms`, slot не открывается, gate не вызывается. Лог `waiting_for_attester` throttled до раз в 5s; при переходе в Ready — однократная `cluster_attest_ready` строка.
+  - Build marker `pwmd` 0.1.60 → 0.1.61 (новый формат `seal_suppression_summary` с `slots`/`last_reason`, новые периодические `waiting_for_attester`/`cluster_attest_ready` строки — operator-observable).
+- Что проверить потом: CY soak 5 мин — `slots` примерно 100 за окно (на `bph=3600`), `suppression_pct` в диапазоне ~30–70% на нагруженном кластере, `sealed_in_window ~35–40`. До первого attester'а в логах proposer'а тихо, кроме периодической `waiting_for_attester` info-строки раз в 5s. Если `slots ≪ 100` — scheduler не успевает доходить до точки seal (надо разбираться с perf, не с этой логикой). Если `suppression_pct > 80%` после `cluster_attest_ready` — проверять attester wire path и quorum_k vs реально живые ACK'и.
+
+- Дата: 2026-06-01 (proposer seal deadline scheduler — variant C)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`spawn_seal_loop`, `align_next_seal_ms`, `should_attempt_seal`, `poll_sleep_ms`, `SEAL_POLL_INTERVAL_MS=10`), V5 CY proposer + solo non-cluster.
+- Симптом: на нагруженном CY proposer старый `tokio::sleep(effective_ms)` вверху seal-loop диктовал cadence через `effective_ms`, а cluster gate suppressed ~50% ticks → cadence уплывала, log-grep суппрессий вырастал, и `sleep(effective_ms)` мог фактически срабатывать намного реже, чем 1/s (work/deadline-bound). Параллельно `seal_drift_adjust_ms` пытался гонять envelope, фактически дублируя регулятор cadence.
+- Причина: sleep-first cadence — реакция на «прошедшее реальное время», не на «момент следующей seal-границы». Любая operational задержка (write-lock, seal cost) накапливалась в `effective_ms` и/или сдвигала фактические seal-tick’и относительно wall-second grid; suppress-итерации тоже спали полный nominal, увеличивая retry latency.
+- Фикс/обход: variant C deadline scheduler.
+  - Новые pure helpers: `align_next_seal_ms(now_ms, nominal_ms) = ((now/nominal)+1)*nominal`, `should_attempt_seal(now, deadline)`, `poll_sleep_ms(now, deadline, poll_ms)`. Все три юнит-протестированы (5 новых тестов + `deadline_holds_on_suppress`).
+  - В `spawn_seal_loop` инициализируется `next_seal_time_ms = align_next_seal_ms(now, nominal_ms)`; в каждой итерации `now_ms = current_time_ms()` и `if !should_attempt_seal { sleep poll; continue }`. Стартовый INFO: `seal_scheduler mode=deadline_poll poll_ms=10 nominal_ms=M grid=multiples_of_nominal next_seal_time_ms=…`.
+  - Перед `chain.seal(txs)` вычисляется `scheduled_next = align_next_seal_ms(now, nominal_ms)`. Присваивается `next_seal_time_ms = scheduled_next` **только** на `Ok(seal)`. Suppression (init/disable/attester/lease/cluster) и `Err(seal)` deadline не двигают — retry на следующем poll'е (под нагрузкой — каждые `SEAL_POLL_INTERVAL_MS=10ms`).
+  - `effective_ms` сохранён как pure observable для `seal_cadence_drift` лог-строки (без управления cadence): operator soak ещё видит wall vs expected по 100-блочному окну, но envelope clamp больше не корректирует sleep — теперь cadence жёстко защёлкнута wall-second grid.
+  - Build marker `pwmd` 0.1.59 → 0.1.60 (новая стартовая строка `seal_scheduler` + изменение наблюдаемой cadence: seal'ы лежат на second-boundaries при `bph=3600`).
+- Что проверить потом: CY soak — `inter-seal wall delta` group around grid boundaries (для `M=1000ms` — second-ticks); `seal_suppression_summary` опускается ниже 15% после heartbeat-align; `envelope_pct` не выходит за ±1% (drift-лог должен показывать `clamp_applied=false` чаще, чем до фикса, поскольку cadence сам по себе не дрейфует). Если seal cadence заметно ловит «пропуски» (head двигается ритмично, но кратно `nominal_ms`), не пугаемся: это работа cluster gate, а не scheduler'а.
+
+- Дата: 2026-05-30 (CY heartbeat align)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`apply_cluster_timing`), V5 CY proposer+attester.
+- Симптом: после правильного `seal_interval_ms=1000` (bph=3600) proposer всё равно показывал ~50% `seal_suppression_summary` и ~1.57 s/block; в стартовых логах `cluster_attest ... heartbeat_interval_ms=1500` у attester и `=1000` у proposer (RCA: `docs/debug/20260531-v5-cy-proposer-quorum-wait-root-cause.md`).
+- Причина: `apply_cluster_timing` кэпал `transport.heartbeat_interval_ms` через `cluster_prop_ms(seal_ms, …)` только для `ClusterRole::Proposer`. Attester жил с дефолтным `1500ms`, поэтому его ACK приходили реже, чем proposer успевал тикать seal-цикл → quorum_pending каждый второй tick.
+- Фикс/обход: убран `if matches!(role, Proposer)` — heartbeat теперь капается **для всех ролей**, когда `cluster.enabled = true`. Формула `cluster_prop_ms = min(heartbeat_ms, seal_ms)` не менялась, поэтому configured короткий heartbeat сохраняется (см. unit-тесты `cluster_apply_attester_hb`, `cluster_apply_proposer_hb`, `cluster_apply_disabled_noop`, `cluster_apply_keeps_short_hb`). Build marker `pwmd` 0.1.58 → 0.1.59 (heartbeat alignment изменяет observed `cluster_attest` строку attester'а; live-наблюдаемое поведение).
+- Что проверить потом: оператор рестартит attester и proposer; в стартовых логах **обеих** нод должно быть `heartbeat_interval_ms=1000` (при `bph=3600`); через 2–3 окна `seal_suppression_summary` ожидаем `suppression_pct < 15%` и cadence ~1/s. Если suppression > 15% и `cluster_suppressed >> fence_suppressed` — копать quorum/attest pipeline, не heartbeat.
+
+- Дата: 2026-05-30 (seal suppression observability)
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`spawn_seal_loop`, `SealSuppressWindow`, `emit_suppress_summary`).
+- Симптом: оператор не видит, что seal loop ~93% итераций суппрессит (`run_cluster_gate` пишет `quorum_pending` на `debug!`), консольные грепы по `seal_suppressed_by_cluster` не отражали реальную загрузку очереди seal.
+- Причина: WARN-канал пишется только на `quorum_timeout`; per-tick `quorum_pending` остаётся в DEBUG, который оператор по умолчанию не видит. Review throughput считал log-grep, в котором DEBUG-строки тоже учитывались, отсюда расхождение между «лог говорит N suppressions» и «consoles тишина».
+- Фикс/обход: добавлен агрегат `seal_suppression_summary` каждые 100s wall-clock proposer-only (после `tokio::time::sleep`). Считаем `ticks` (итерации после фильтра attester/disable/init, доходящие до lease-check), `fence_suppressed` (lease fail), `cluster_suppressed` (cluster fail), `sealed_in_window`. Уровень: `error!` при `suppression_pct > 1.0`, иначе `info!`; в ERROR-варианте дописываем fence/cluster split. Pure helpers `compute_suppress_pct` / `is_suppress_alert` тестируются юнит-тестами. Build marker `pwmd` 0.1.57 → 0.1.58 (новая периодическая operator-visible log line).
+- Что проверить потом: при следующем soak в CY console proposer строка должна появляться раз в ~100s; если живёт ERROR несколько окон подряд — проверять `pending_ticks_since_last_sealed` и `cluster_gate_pending_summary`, а также attester `ClusterAttest` поток. Атрибуция: `fence_suppressed >> cluster_suppressed` указывает на lease-fence (lease backend off / TTL), наоборот — на quorum stall.
+
+- Дата: 2026-05-30
+- Контекст/файлы: `crates/pwmd/src/lifecycle.rs` (`seal_drift_adjust_ms`, `spawn_seal_loop`), V5 CY proposer.
+- Симптом: live `seal_cadence_drift` показывал windup `effective_ms 1000→257ms` (−74.3%), 158/161 строк нарушали ±1% vs `nominal_ms` (см. `docs/reviews/20260531-v5-seal-cadence-drift-oscillation-log-review.md`).
+- Причина: per-step adjust капится **относительно текущего `effective_ms`**, и при устойчивом `actual_ms > expected_ms` шаги монотонно уменьшают `effective`, а вместе с ним и сам cap → классический windup без верхней/нижней привязки к `nominal_ms`.
+- Фикс/обход: введён owner-инвариант — после `seal_drift_adjust_ms` всегда clamp `effective_ms` в диапазон `[nominal*990/1000, nominal*1010/1000]` (`seal_drift_clamp_envelope`), плюс deadband 0.1% (`seal_drift_in_deadband`) против jitter-осцилляций; лог расширен `envelope_pct` / `clamp_applied`; `effective_ms = nominal_ms` re-anchor при старте процесса. Build marker `pwmd` 0.1.56 → 0.1.57 (наблюдаемый формат `seal_cadence_drift` изменился).
+- Что проверить потом: после деплоя оператор обязан рестартнуть CY proposer, чтобы сбросить in-memory windup; в новых логах `|envelope_pct| <= 1.0`, длительный `clamp_applied=true` в одну сторону без стабилизации — повод для отдельного PID/decay-исследования (out of scope этого slice).
+
+- Дата: 2026-05-22 (обновлено под схему bridge v2)
+- Контекст/файлы: bridge worker loop, `cq_team_bridge_ctl`, вызов без `project_id` → дефолт `cqds/tasks`
+- Симптом: PWM coding worker забирал `debug/demo/smoke` тикеты из общей очереди установки CQDS, хотя workspace был `PWM-cryptocurrency`; оркестратор создавал `create_ticket` без `project_id`, полагаясь на `project_ref` или явный `tasks_root`.
+- Причина: legacy-дефолт MCP (`tasks_root` → `…/cqds/tasks`), если **`project_id` не передан**; `project_ref` не участвует в резолве очереди; bridge матчит по `agent_name`/`worker_lane`, не фильтрует чужие smoke-тикеты во внешней очереди.
+- Фикс/обход: **все** вызовы `cq_team_bridge_ctl` для PWM — с **`project_id: 5`**; **`tasks_root` не указывать** (только advanced override). Оркестратор: `share_ticket` на `tasks/<slice-id>.json`. Воркер: см. `.github/agents/pwm-coding-worker.agent.md`. Промпт: `docs/AGENT_PROMPT_orchestrator.md` § Team bridge.
+- Что проверить потом: перезапуск MCP после обновления `cq_help` (warning obsolete server); orphan `t-*` в `cqds/tasks/queue` — не трогать как PWM-очередь.
+
 - Дата: 2026-05-14
 - Контекст/файлы: `crates/pwmd/src/transport/peer_session/sync_live.rs` (`sync_prog_tick`, константы `SYNC_PROG_*`).
 - Симптом: строки «Sync progress 99%/100%» кажутся признаком застрявшей синхронизации во время живого следования за proposer при `lag=1`.

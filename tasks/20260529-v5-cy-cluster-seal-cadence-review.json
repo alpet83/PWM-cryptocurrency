@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-cy-cluster-seal-cadence-review",
+  "title": "V5 review: CY cluster slow block generation (~2s/block)",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-cy-e2e-s1-cluster-bootstrap-stability"
+  ],
+  "brief": "Owner observes ~20s for 10 blocks on CY proposer (≈2s/block, ~2× slower than expected). Review-only: classify root cause, intentional vs regression, and recommend fix location.",
+  "observation": {
+    "symptom": "~20 seconds wall time for 10 sealed blocks on cy-cluster-proposer",
+    "implied_rate": "~2.0 s/block",
+    "environment": "CY lab: cy-cluster-proposer.ps1 + cy-cluster-attester.ps1, long-running soak",
+    "log_anchor": "sealed height=N (every 10 blocks in pwmd INFO)"
+  },
+  "acceptance_criteria": [
+    "docs/reviews/20260529-v5-cy-cluster-seal-cadence-review.md with verdict and fix recommendation.",
+    "Establish expected block cadence: single-sealer vs CY cluster (RFC16 quorum path).",
+    "Quantify contributors: seal loop interval, cluster gate (quorum_pending/timeout), lease gate, maybe_align_mid, snapshot persist, V5 apply_tx cost.",
+    "Map finding to fix locus: config/CLI, lifecycle.rs seal loop, cluster attest timing, operator docs, or no-fix (by design).",
+    "If intentional 2s tick: document for CY runbook; if bug: propose minimal coding ticket scope.",
+    "No product Rust edits in this review ticket."
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v5-cy-cluster-precloseout-soak.md",
+    "cluster_launchers": [
+      "cy-cluster-proposer.ps1",
+      "cy-cluster-attester.ps1",
+      "cy-cluster-common.ps1"
+    ],
+    "primary_code": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/config.rs",
+      "crates/pwmd/src/main.rs"
+    ],
+    "seed_hypothesis": "spawn_seal_loop uses tokio::time::interval(Duration::from_secs(2)) — may explain ~2s/block if gate passes each tick",
+    "log_patterns": [
+      "sealed height=",
+      "seal_suppressed_by_cluster",
+      "reason=quorum_pending",
+      "reason=quorum_timeout",
+      "seal_lease_renewed"
+    ],
+    "scanner": "scripts/scan_pwmd_log_counters.ps1",
+    "s1_report": "tmp/cy-e2e-s1-*.md"
+  },
+  "notes": "Owner report during CY soak; not blocking s2 if rate is by-design — but needs clarity before tuning or closeout.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-review",
+    "worker_class": "review",
+    "invite_note": "CY CLUSTER SEAL CADENCE — review only (no product edits).\n\nSymptom: proposer logs show ~20s per 10 blocks (~2s/block); owner expects ~2× faster.\n\nRead:\n- docs/AGENT_PROMPT_review.md\n- docs/runbooks/v5-cy-cluster-precloseout-soak.md\n- crates/pwmd/src/lifecycle.rs (spawn_seal_loop interval, run_cluster_gate, run_lease_gate, maybe_align_mid)\n- crates/pwmd/src/config.rs cluster_cfg defaults (tx_catchup_ms, attest_timeout_ms)\n- cy-cluster-*.ps1 flags\n\nTasks:\n1) Derive theoretical max seal rate from seal loop interval + gate outcomes.\n2) Grep/read whether 2s interval is documented or accidental legacy.\n3) Check if cluster RFC16 path adds extra waits beyond interval (attest round, missing_round_state storms).\n4) Check V5 state.rs apply path for per-block slowdown vs pre-V5 baseline if commit range available.\n5) Recommend: document | config flag | reduce interval | fix cluster attest latency — with file/line pointers.\n\nDeliverable: docs/reviews/20260529-v5-cy-cluster-seal-cadence-review.md\nEnd with # git-handoff.\n\nSkill: colloquium-cqds-mcp; project_id: 5."
+  }
+}

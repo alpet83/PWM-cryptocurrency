@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-marks-mechanics-tui-observability-coding",
+  "title": "V5 TUI: marks observability (effective in detail, accrual hint)",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-tui-v5-marks-copy-operator-path-coding",
+    "docs/reviews/20260530-v5-marks-mechanics-proposer-log-review.md"
+  ],
+  "brief": "Owner sees no marks after stake. Mechanics review shows lazy accrual needs ~3600 blocks and detail pane shows stored_marks only. Improve TUI: detail uses effective_marks; when staked>0 and effective==stored show blocks-until-next-mark-hour hint using head and marks_last_block (DEF_BLOCKS_PER_HOUR until status exposes genesis).",
+  "acceptance_criteria": [
+    "Detail pane Marks line shows effective_marks (and optional stored sub-label)",
+    "When staked_pwm >= 1 whole PWM and effective==stored, status/hint shows approximate blocks remaining until +1 mark at current head",
+    "Unit tests in pwm-tui for detail formatting and hint thresholds",
+    "cargo test -p pwm-tui --lib; cargo check -p pwm-tui",
+    "No change to pwm-core touch order in this ticket (optional follow-up)"
+  ],
+  "artifacts": {
+    "review": "docs/reviews/20260530-v5-marks-mechanics-proposer-log-review.md",
+    "code": [
+      "crates/pwm-tui/src/tui_loop.rs",
+      "crates/pwm-tui/src/account_view.rs",
+      "crates/pwm-tui/src/marks_display.rs"
+    ]
+  },
+  "notes": "Orchestrator slice from owner feedback + proposer log correlation. Touch-order fix in pwm-core is out of scope unless owner requests protocol change.",
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 MARKS TUI OBSERVABILITY\n\nRead docs/reviews/20260530-v5-marks-mechanics-proposer-log-review.md\n\nProblem: after Stake, owner sees no marks change. Root cause: lazy marks need ~blocks_per_hour blocks; detail pane shows stored not effective.\n\nImplement:\n1) Detail Marks: effective_marks (from row.effective_marks)\n2) Hint when staked>=1 PWM and effective==stored: blocks until next mark hour using head, marks_last_block, DEF_BLOCKS_PER_HOUR\n3) Tests\n\nCan combine with 20260530-v5-tui-v5-marks-copy-operator-path-coding if same files.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

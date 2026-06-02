@@ -17,6 +17,8 @@ param(
     [int]$ProposerLeadSeconds = 12,
     [int]$StatusWaitSeconds = 180,
     [switch]$CleanState,
+    [switch]$SkipArchive,
+    [int]$MaxStateArchives = 30,
     [switch]$SkipGenesis,
     [switch]$SkipCluster,
     [string]$RpcBruteDead = 'http://127.0.0.1:59999',
@@ -152,14 +154,12 @@ if (-not (Test-Path -LiteralPath $GENESIS) -or -not (Test-Path -LiteralPath $PRE
 }
 
 if ($CleanState) {
-    foreach ($p in @(
-            (Join-Path $tmp 'state-cy-proposer'), (Join-Path $tmp 'state-cy-attester'),
-            (Join-Path $tmp 'state-cy-follower'), (Join-Path $tmp 'cy-lab-peers.yaml'))) {
-        if (Test-Path -LiteralPath $p) {
-            Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue
-            Add-R "cleaned $p"
-        }
-    }
+    Add-R "## CleanState"
+    . (Join-Path $PSScriptRoot '_devnet_clean_state.ps1')
+    $cleanPatterns = Get-DevnetCleanStatePatterns -RepoRoot $RepoRoot -Profile CyCluster
+    $null = Invoke-DevnetCleanStateWithArchive -RepoRoot $RepoRoot -PathPatterns $cleanPatterns `
+        -Label 'cy_cluster_policy_matrix_e2e' -MaxArchives $MaxStateArchives -SkipArchive:$SkipArchive `
+        -Log { param($m) Add-R $m }
 }
 
 $childWallets = @()

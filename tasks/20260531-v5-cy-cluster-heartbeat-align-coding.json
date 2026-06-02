@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "20260531-v5-cy-cluster-heartbeat-align-coding",
+  "title": "V5: align cluster transport heartbeat to seal_interval (attester 1500→1000)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260531-v5-cy-proposer-quorum-wait-root-cause-debug",
+    "20260531-v5-seal-suppression-rate-console-observability-coding",
+    "20260531-v5-cy-cluster-attest-timing-align-coding"
+  ],
+  "brief": "Debug root cause (docs/debug/20260531-v5-cy-proposer-quorum-wait-root-cause.md): proposer seal_interval_ms=1000 but attester keeps transport default heartbeat_interval_ms=1500 because apply_cluster_timing only adjusts heartbeat for ClusterRole::Proposer. Proposer wastes ~2 ticks/seal in quorum_pending (~50% suppression, ~1.57s/block). Fix: when cluster.enabled, cap heartbeat_interval_ms via cluster_prop_ms(seal_ms, …) for ALL roles (proposer, attester, follower).",
+  "evidence": {
+    "debug": "docs/debug/20260531-v5-cy-proposer-quorum-wait-root-cause.md",
+    "post_fix_log": "logs/2026-05-30/pwmd-cy-proposer-123837.log — suppression_pct 55%→48%, s/block ~1.57 improving",
+    "startup_mismatch": "Proposer cluster_attest heartbeat_interval_ms=1000; Attester heartbeat_interval_ms=1500"
+  },
+  "design": {
+    "primary_change": {
+      "file": "crates/pwmd/src/lifecycle.rs",
+      "function": "apply_cluster_timing",
+      "before": "heartbeat cap only if matches!(role, Proposer)",
+      "after": "if cluster.enabled { transport.heartbeat_interval_ms = cluster_prop_ms(seal_ms, transport.heartbeat_interval_ms); }"
+    },
+    "formula_unchanged": "cluster_prop_ms = min(heartbeat_ms, seal_ms) — with seal_ms=1000 and default 1500 → 1000",
+    "expected_operator_signals": [
+      "Attester startup: cluster_attest … heartbeat_interval_ms=1000",
+      "Proposer seal_suppression_summary: suppression_pct < 15% (target), s/block ~1.0–1.1s",
+      "Inter-seal delta approaches effective_ms"
+    ],
+    "non_goals": [
+      "RFC16 pipeline attest / decouple seal from attest (V6+)",
+      "Change quorum k/n or attest_timeout formula",
+      "Autosnapshot optimization (separate ticket)"
+    ]
+  },
+  "acceptance_criteria": [
+    "apply_cluster_timing sets heartbeat_interval_ms for attester role to seal_ms when bph=3600",
+    "Unit test: cluster enabled + Attester → heartbeat_interval_ms == 1000",
+    "cargo test -p pwmd --lib lifecycle",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: heartbeat must match seal_interval on all CY nodes",
+    "Optional live verify: restart attester+proposer; grep cluster_attest on both logs for heartbeat_interval_ms=1000"
+  ],
+  "operator_verify": "Restart CY attester then proposer; within 2–3 min watch seal_suppression_summary suppression_pct drop and sealed height cadence ~1/s",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 CY HEARTBEAT ALIGN — pwm-coding (preliminary fix from debug RCA).\n\nRoot cause: docs/debug/20260531-v5-cy-proposer-quorum-wait-root-cause.md — attester heartbeat 1500ms vs proposer seal 1000ms; apply_cluster_timing only fixes proposer.\n\nFix lifecycle.rs apply_cluster_timing: when cluster.enabled, always set transport.heartbeat_interval_ms = cluster_prop_ms(seal_ms, transport.heartbeat_interval_ms) (remove Proposer-only guard).\n\nTest + runbook. Live: both nodes log heartbeat_interval_ms=1000; suppression_pct should fall.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

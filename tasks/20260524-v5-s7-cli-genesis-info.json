@@ -1,0 +1,47 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "orchestrator",
+  "project_id": 5,
+  "generated_at": "2026-05-24T22:00:00Z",
+  "title": "V5-7 Sprint: CLI + 21B genesis design",
+  "research_question": "Kickoff map for pwm-cli account-info marks detail, tx-policy-set deferred flags, genesis-21b-design.md.",
+  "parent_ticket": "20260524-v5-sprint7-cli-genesis-doc",
+  "files": [
+    {
+      "path": "docs/plans/mvp_v5.md",
+      "why": "spec",
+      "note": "Sprint V5-7 scope"
+    },
+    {
+      "path": "crates/pwm-tui/src/marks_display.rs",
+      "why": "match",
+      "note": "Reuse pattern for effective_marks + GenCfg defaults"
+    },
+    {
+      "path": "crates/pwm-cli/src/cmd_tx.rs",
+      "why": "match",
+      "note": "parse_activation_mode — extend for deferred"
+    },
+    {
+      "path": "crates/pwm-cli/src/cli_cmd.rs",
+      "why": "match",
+      "note": "TxPolicySet flags; add AccountInfo subcommand"
+    },
+    {
+      "path": "crates/pwm-cli/src/rpc_helpers.rs",
+      "why": "match",
+      "note": "fetch_marks, /v1/account JSON parse patterns"
+    },
+    {
+      "path": "crates/pwm-core/src/tx.rs",
+      "why": "spec",
+      "note": "ActivationMode::Deferred"
+    },
+    {
+      "path": "docs/adr/0002-ipv4-claiming-design.md",
+      "why": "spec",
+      "note": "Genesis doc cross-ref"
+    }
+  ],
+  "digest": "V5-7: (1) new pwm account-info with effective marks at head height; (2) tx-policy-set --activation deferred --activate-at-height; (3) docs/genesis-21b-design.md. Three independent coding slices, all queued to bridge."
+}

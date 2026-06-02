@@ -6,8 +6,14 @@
 param(
     [int] $SmokeSeconds = 120,
     [int] $ProposerLeadSeconds = 8,
+    [int] $StatusWaitSeconds = 180,
+    [int] $MinBlocks = 5,
+    [int] $QuorumTimeoutMax = 5,
+    [string] $RpcUrl = 'http://127.0.0.1:3030',
     [string] $RepoRoot = '',
-    [switch] $RequireQuietTail
+    [switch] $RequireQuietTail,
+    [switch] $SkipCluster,
+    [switch] $NoStopCluster
 )
 $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot) {
@@ -16,7 +22,7 @@ if (-not $RepoRoot) {
 Set-Location -LiteralPath $RepoRoot
 
 $ts = Get-Date -Format 'yyyyMMdd_HHmmss'
-$logDir = Join-Path $RepoRoot ("tmp\cy-smoke-$ts")
+$logDir = Join-Path $RepoRoot ("tmp\cy-e2e-s1-$ts")
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 
 $proposerPs1 = Join-Path $RepoRoot 'cy-cluster-proposer.ps1'
@@ -28,65 +34,144 @@ if (-not (Test-Path -LiteralPath $attesterPs1)) {
     Write-Error "Missing $attesterPs1"
 }
 
+function Wait-RPCReady([string] $Url, [int] $MaxSec) {
+    $deadline = (Get-Date).AddSeconds($MaxSec)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $null = Invoke-RestMethod -Uri "$Url/v1/status" -TimeoutSec 5
+            return $true
+        }
+        catch {
+            Start-Sleep -Seconds 2
+        }
+    }
+    return $false
+}
+
+function Get-HeadHeight([string] $Url) {
+    try {
+        $resp = Invoke-RestMethod -Uri "$Url/v1/head" -TimeoutSec 10
+        if ($null -ne $resp.height) {
+            return [int64]$resp.height
+        }
+    }
+    catch { }
+    try {
+        $resp = Invoke-RestMethod -Uri "$Url/v1/status" -TimeoutSec 10
+        foreach ($key in @('head_height', 'height')) {
+            if ($null -ne $resp.$key) {
+                return [int64]$resp.$key
+            }
+        }
+    }
+    catch { }
+    return [int64]-1
+}
+
+function Get-LatestClusterLogDir([string] $Root) {
+    if (-not (Test-Path -LiteralPath $Root)) { return $null }
+    $dir = Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($null -eq $dir) { return $null }
+    return $dir.FullName
+}
+
+function Stop-CyLabPwmd([object] $ProposerProc, [object] $AttesterProc) {
+    & taskkill.exe /F /IM pwmd.exe /T 2>$null | Out-Null
+    Start-Sleep -Milliseconds 500
+    foreach ($proc in @($ProposerProc, $AttesterProc)) {
+        if ($null -ne $proc -and -not $proc.HasExited) {
+            try { $proc.Kill() } catch { }
+        }
+    }
+}
+
 $proposerOut = Join-Path $logDir 'proposer.stdout.log'
 $proposerErr = Join-Path $logDir 'proposer.stderr.log'
 $attesterOut = Join-Path $logDir 'attester.stdout.log'
 $attesterErr = Join-Path $logDir 'attester.stderr.log'
 
-Write-Host "cy_cluster_two_node_smoke: logDir=$logDir smoke=${SmokeSeconds}s lead=${ProposerLeadSeconds}s"
+Write-Host "cy_cluster_two_node_smoke: logDir=$logDir smoke=${SmokeSeconds}s lead=${ProposerLeadSeconds}s statusWait=${StatusWaitSeconds}s minBlocks=$MinBlocks skipCluster=$SkipCluster noStopCluster=$NoStopCluster"
 
-$pArgs = @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $proposerPs1
-)
-$p = Start-Process -FilePath 'powershell.exe' -ArgumentList $pArgs `
-    -WorkingDirectory $RepoRoot -PassThru -WindowStyle Hidden `
-    -RedirectStandardOutput $proposerOut -RedirectStandardError $proposerErr
-
-Start-Sleep -Seconds $ProposerLeadSeconds
-
-$aArgs = @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $attesterPs1
-)
-$a = Start-Process -FilePath 'powershell.exe' -ArgumentList $aArgs `
-    -WorkingDirectory $RepoRoot -PassThru -WindowStyle Hidden `
-    -RedirectStandardOutput $attesterOut -RedirectStandardError $attesterErr
-
-Start-Sleep -Seconds $SmokeSeconds
-
-# Stop pwmd trees (cargo run children); ignore errors.
-& taskkill.exe /F /IM pwmd.exe /T 2>$null | Out-Null
-Start-Sleep -Milliseconds 500
-# Wrapper PowerShell may still be running; close if possible
-foreach ($proc in @($p, $a)) {
-    if ($null -ne $proc -and -not $proc.HasExited) {
-        try { $proc.Kill() } catch { }
-    }
-}
-
-Write-Host "--- attester: Sync progress lines ---"
-Select-String -Path $attesterOut, $attesterErr -Pattern 'Sync progress' -ErrorAction SilentlyContinue |
-    ForEach-Object { $_.Line }
-
-Write-Host "--- attester: snapshot + wait-for-init (if any) ---"
-Select-String -Path $attesterOut, $attesterErr -Pattern 'snapshot startup load ok|loading_snapshot|peer session waiting for init ready|standby sync checkpoint' -ErrorAction SilentlyContinue |
-    ForEach-Object { $_.Line }
-
-Write-Host "--- attester stderr tail (pwmd often here) ---"
-Get-Content -LiteralPath $attesterErr -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { $_ }
-Write-Host "--- attester stdout tail ---"
-Get-Content -LiteralPath $attesterOut -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { $_ }
-
+$p = $null
+$a = $null
+$attesterReady = $false
+$proposerListen = $false
+$headHeightStart = [int64]-1
+$headHeightEnd = [int64]-1
 $maxPct = 0
-foreach ($line in (Select-String -Path $attesterOut, $attesterErr -Pattern 'Sync progress (\d+)%' -ErrorAction SilentlyContinue)) {
-    if ($line.Matches.Count -gt 0) {
-        $v = [int]$line.Matches[0].Groups[1].Value
-        if ($v -gt $maxPct) { $maxPct = $v }
-    }
-}
-Write-Host "--- SUMMARY max Sync progress % observed: $maxPct (attester; 0 expected for Standby) (logDir=$logDir) ---"
+$rpcReady = $false
 
-$attesterReady = $null -ne (Select-String -Path $attesterOut, $attesterErr -Pattern 'snapshot startup load ok|pwmd startup phase: ready \(snapshot loaded\)' -ErrorAction SilentlyContinue | Select-Object -First 1)
-$proposerListen = $null -ne (Select-String -Path $proposerOut, $proposerErr -Pattern 'pwmd listening on http://' -ErrorAction SilentlyContinue | Select-Object -First 1)
+if (-not $SkipCluster) {
+    $pArgs = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $proposerPs1
+    )
+    $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $pArgs `
+        -WorkingDirectory $RepoRoot -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $proposerOut -RedirectStandardError $proposerErr
+
+    Start-Sleep -Seconds $ProposerLeadSeconds
+
+    $aArgs = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $attesterPs1
+    )
+    $a = Start-Process -FilePath 'powershell.exe' -ArgumentList $aArgs `
+        -WorkingDirectory $RepoRoot -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $attesterOut -RedirectStandardError $attesterErr
+}
+
+Write-Host "## wait RPC $RpcUrl"
+if (-not (Wait-RPCReady $RpcUrl $StatusWaitSeconds)) {
+    Write-Host 'SMOKE_PARTIAL: RPC not ready'
+    if (-not $SkipCluster -and -not $NoStopCluster) {
+        Stop-CyLabPwmd $p $a
+    }
+    exit 2
+}
+
+try {
+    $rpcReady = $true
+    $headHeightStart = Get-HeadHeight $RpcUrl
+    if ($headHeightStart -lt 0) {
+        Write-Host 'SMOKE_PARTIAL: could not read initial head_height'
+    }
+    else {
+        Write-Host "initial head_height=$headHeightStart"
+    }
+
+    Start-Sleep -Seconds $SmokeSeconds
+    $headHeightEnd = Get-HeadHeight $RpcUrl
+    if ($headHeightEnd -ge 0) {
+        Write-Host "final head_height=$headHeightEnd delta=$([int64]($headHeightEnd - $headHeightStart))"
+    }
+} catch {
+    Write-Host "SMOKE_WARN: status sampling failed: $($_.Exception.Message)"
+}
+
+if (-not $SkipCluster) {
+    Write-Host "--- attester: Sync progress lines ---"
+    Select-String -Path $attesterOut, $attesterErr -Pattern 'Sync progress' -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.Line }
+
+    Write-Host "--- attester: snapshot + wait-for-init (if any) ---"
+    Select-String -Path $attesterOut, $attesterErr -Pattern 'snapshot startup load ok|loading_snapshot|peer session waiting for init ready|standby sync checkpoint' -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.Line }
+
+    Write-Host "--- attester stderr tail (pwmd often here) ---"
+    Get-Content -LiteralPath $attesterErr -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { $_ }
+    Write-Host "--- attester stdout tail ---"
+    Get-Content -LiteralPath $attesterOut -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { $_ }
+    foreach ($line in (Select-String -Path $attesterOut, $attesterErr -Pattern 'Sync progress (\d+)%' -ErrorAction SilentlyContinue)) {
+        if ($line.Matches.Count -gt 0) {
+            $v = [int]$line.Matches[0].Groups[1].Value
+            if ($v -gt $maxPct) { $maxPct = $v }
+        }
+    }
+    Write-Host "--- SUMMARY max Sync progress % observed: $maxPct (attester; 0 expected for Standby) (logDir=$logDir) ---"
+
+    $attesterReady = $null -ne (Select-String -Path $attesterOut, $attesterErr -Pattern 'snapshot startup load ok|pwmd startup phase: ready \(snapshot loaded\)' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $proposerListen = $null -ne (Select-String -Path $proposerOut, $proposerErr -Pattern 'pwmd listening on http://' -ErrorAction SilentlyContinue | Select-Object -First 1)
+}
 
 if ($RequireQuietTail) {
     $tailLines = 28
@@ -110,28 +195,37 @@ if ($RequireQuietTail) {
     }
 }
 
-$logRoot = Join-Path $RepoRoot 'logs'
-if (Test-Path -LiteralPath $logRoot) {
-    $peerAtt = Get-ChildItem -LiteralPath $logRoot -Recurse -Filter 'pwmd-peer-cy-attester*.log' -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($null -ne $peerAtt) {
-        Write-Host "--- latest peer log: $($peerAtt.FullName) ---"
-        Select-String -LiteralPath $peerAtt.FullName -Pattern 'wire_decode_failed|u128 is not supported|peer sync on_tip|catchup|nack node_id' -ErrorAction SilentlyContinue |
-            Select-Object -Last 25 | ForEach-Object { $_.Line }
-    }
+$scanRoot = if ($SkipCluster) { Get-LatestClusterLogDir (Join-Path $RepoRoot 'logs') } else { $logDir }
+if ($null -ne $scanRoot) {
+    Write-Host "--- log counters: $scanRoot ---"
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'scan_pwmd_log_counters.ps1') -LogDir $scanRoot
+} else {
+    Write-Host 'SMOKE_WARN: no log dir found for counter scan'
 }
 
-if ($attesterReady -and $proposerListen) {
-    Write-Host 'SMOKE_PASS: attester snapshot/ready + proposer listening (Standby has no Sync progress by design)'
+if ($SkipCluster) {
+    $delta = [int64]($headHeightEnd - $headHeightStart)
+    if ($headHeightStart -lt 0 -or $headHeightEnd -lt 0) {
+        Write-Host 'SMOKE_PARTIAL: head height unavailable in verify-only mode'
+        exit 2
+    }
+    if ($delta -lt $MinBlocks) {
+        Write-Host "SMOKE_PARTIAL: head_height delta $delta < MinBlocks $MinBlocks"
+        exit 2
+    }
+    Write-Host "SMOKE_PASS: verify-only mode head_height delta=$delta MinBlocks=$MinBlocks"
     exit 0
 }
-if ($maxPct -ge 5) {
-    if ($RequireQuietTail) {
-        Write-Host 'SMOKE_PASS: ge 5% and quiet-tail / near-full criteria met'
-    } else {
-        Write-Host 'SMOKE_PASS: reached ge 5% sync progress (legacy attester criterion)'
+
+if ($attesterReady -and $proposerListen -and ($headHeightEnd -ge $headHeightStart) -and (($headHeightEnd - $headHeightStart) -ge $MinBlocks)) {
+    Write-Host 'SMOKE_PASS: attester snapshot/ready + proposer listening + head_height advanced'
+    if (-not $SkipCluster -and -not $NoStopCluster) {
+        Stop-CyLabPwmd $p $a
     }
     exit 0
+}
+if (($headHeightEnd - $headHeightStart) -lt $MinBlocks) {
+    Write-Host "SMOKE_PARTIAL: head_height delta $([int64]($headHeightEnd - $headHeightStart)) < MinBlocks $MinBlocks"
 }
 if (-not $attesterReady) {
     Write-Host 'SMOKE_PARTIAL: attester did not reach snapshot ready (inspect logs)'
@@ -140,4 +234,7 @@ if (-not $proposerListen) {
     Write-Host 'SMOKE_PARTIAL: proposer did not show listening line (inspect logs)'
 }
 Write-Host 'SMOKE_PARTIAL: smoke criteria not met (inspect logs)'
+if (-not $NoStopCluster) {
+    Stop-CyLabPwmd $p $a
+}
 exit 2

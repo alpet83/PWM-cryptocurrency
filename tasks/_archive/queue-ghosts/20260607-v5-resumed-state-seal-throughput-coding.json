@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v5-resumed-state-seal-throughput-coding",
+  "title": "V5: resumed-state seal throughput — propose coalesce + attest wake (depth fix)",
+  "status": "blocked",
+  "verdict": "rolled_back_coalesce_wake_20260608",
+  "notes": "Owner: suppression stats worsened on 0.1.66 (543c997). Rolled back coalesce+attest_wake in tree; see docs/debug/20260608-v5-rollback-coalesce-wake.md. Re-queue only after resumed-state A/B."
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260606-v5-cy-wall-overhead-iterative-debug",
+    "20260605-v5-cy-proposer-residual-10pct-overhead-debug"
+  ],
+  "blocks": [
+    "20260607-v5-cy-gate-poll-optimization-experiments-debug"
+  ],
+  "brief": "Iterative debug (docs/debug/20260606): resumed ~34k state T100~158s vs fresh ~108s; pending_ticks p50 330 vs 45 — depth-amplified gate/poll + propose churn (~23x/seal prior). seal-on-gate-ready insufficient. Implement production fixes: (1) propose coalescing — at most one effective wire propose per (next_h, round) until seal or height advance; dedupe ahead+deadline tick+heartbeat paths; (2) attest wake — after grid deadline, notify seal loop on ClusterAttest so gate-ready does not wait poll_ms×N; preserve invariants: no seal before next_seal_time_ms, ahead=propose-only. Target resumed CY: T100 ≤115s, pending p50 <80, struck <5% steady.",
+  "design": {
+    "references": [
+      "docs/debug/20260606-v5-cy-wall-overhead-iterative-debug.md",
+      "docs/debug/20260605-v5-cy-proposer-residual-10pct-overhead-debug.md"
+    ],
+    "owner_invariants": [
+      "No chain.seal when now_ms < next_seal_time_ms",
+      "seal_ahead_ms: propose only before deadline",
+      "RFC16 quorum semantics unchanged"
+    ],
+    "track_a_coalesce": {
+      "scope": "send_cluster_prop / steady_session / record_cluster_prop_tick",
+      "goal": "Stop ~20+ propose per sealed block on deep resumed state"
+    },
+    "track_b_wake": {
+      "scope": "handshake ClusterAttest ingest + seal loop notify",
+      "goal": "Seal within one scheduler turn after quorum without 300+ pending_ticks"
+    },
+    "non_goals": [
+      "RFC16 pipeline attest V6",
+      "Cadence formula / bph changes",
+      "Early seal before grid deadline"
+    ]
+  },
+  "acceptance_criteria": [
+    "Unit tests: coalesce suppresses duplicate propose for same (height, round); wake triggers seal path after deadline when gate becomes true",
+    "cargo test -p pwmd --lib lifecycle transport",
+    "CY smoke 220s resumed state (existing tmp/state-cy-*): T100_est ≤115s OR ≥25% improvement vs 20260606 V0 baseline (158s)",
+    "pending_ticks p50 <80 on resumed run (vs ~330 baseline)",
+    "propose_sent/sealed ratio <5x (vs ~23x baseline)",
+    "No regression: fresh-chain V1-like T100 ≤112s; cluster_attest_ready; height-dedup logs",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md — operator notes for new behavior"
+  ],
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 RESUMED STATE SEAL THROUGHPUT — pwm-coding.\n\nRCA: docs/debug/20260606 (V0 resumed vs V1 fresh). Implement propose coalesce + attest wake. Owner invariants mandatory.\n\nParallel ok: 20260604 observability-split if not done.\n\nConveyor: coding → review → testing. CY verify: scripts/cy_cluster_two_node_smoke.ps1 -SmokeSeconds 220 on RESUMED state.\n\nSkill: colloquium-cqds-mcp; project_id 5.\n# git-handoff"
+  },
+  "notes": {
+    "orchestrator": "2026-05-30: owner-approved coding slice after iterative debug. Debug experiments ticket follows for A/B variants."
+  }
+}

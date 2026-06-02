@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-tui-form-amount-pct-hint-coding",
+  "title": "V5 TUI: live % hint beside amount fields (F5 burn, F6 send)",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-tui-v5-marks-copy-operator-path-coding",
+    "20260530-v5-marks-mechanics-tui-observability-coding"
+  ],
+  "brief": "Owner UX: while typing amount in TUI modals, show immediately to the right of the input what % of the available limit that value represents. F5 burn marks field vs marks_available; F6 send amount field vs owner balance_pwm (raw). Update on every keystroke via existing modal re-render.",
+  "design": {
+    "f5_burn": {
+      "field": "mark_amount (BurnField::MarkAmount)",
+      "denominator": "BurnForm.marks_available (u32 whole mark units)",
+      "display": "suffix on same Line as input, e.g. `  (42.5% of marks)` — hide or show em-dash when empty/unparseable/zero denominator"
+    },
+    "f6_send": {
+      "field": "amount (SendField::Amount)",
+      "denominator": "owner balance_pwm raw at form open — add SendForm.balance_units: u128 populated in f6_build_send_form from selected AcctRow.balance_pwm (respect UNKNOWN sentinel as no hint)",
+      "display": "suffix e.g. `  (12.3% of balance)` using parse_decimal_pwm_units on current amount text"
+    },
+    "fee_field": "optional same-line % of balance for fee if trivial; not required for PASS",
+    "stake_s_u": "out of scope (F7 stake modal); note as follow-up if owner wants parity",
+    "helper": "shared fn in pwm-tui (e.g. form_amount_hint.rs or send_form.rs): format_pct_of_limit(parsed: u128, limit: u128) -> Option<String>; use saturating math, 1 decimal for >=10% else 2 decimals, cap display at 100%+ with `100%+` when exceeds limit"
+  },
+  "acceptance_criteria": [
+    "F5 render_burn_modal: marks amount line shows live % of marks_available while typing",
+    "F6 render_send_modal: amount line shows live % of owner balance while typing",
+    "f6_build_send_form / SendForm carry balance_units from selected owner row",
+    "Unit tests for pct formatter (empty input, partial parse fail, zero limit, 100%, >100%)",
+    "cargo test -p pwm-tui --lib; cargo test -p pwm-tui form_amount or send_form as applicable",
+    "cargo check -p pwm-tui; python scripts/check_entity_name_segments.py on touched files"
+  ],
+  "artifacts": {
+    "code": [
+      "crates/pwm-tui/src/tui_loop.rs",
+      "crates/pwm-tui/src/send_form.rs",
+      "crates/pwm-tui/src/lib.rs",
+      "crates/pwm-tui/src/burn_form.rs"
+    ],
+    "prior_done": [
+      "tasks/done/20260530-v5-tui-v5-marks-copy-operator-path-coding.json",
+      "tasks/done/20260530-v5-marks-mechanics-tui-observability-coding.json"
+    ]
+  },
+  "notes": "Owner request after marks observability slice. Render-only UX; no wire/protocol changes.",
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "TUI FORM AMOUNT % HINT — pwm-coding\n\nGoal: F5 burn + F6 send modals show live percentage to the RIGHT of the amount input while user types.\n\nF5: mark_amount / marks_available (BurnForm already has marks_available).\nF6: amount / owner balance — add balance_units to SendForm in f6_build_send_form from AcctRow.balance_pwm (skip hint if unknown balance sentinel).\n\nImplement shared pct formatter + unit tests.\nUpdate render_burn_modal and render_send_modal Lines (Span suffix after styled input).\n\nOut of scope: stake/unstake modal (S/U).\n\ncargo test -p pwm-tui\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

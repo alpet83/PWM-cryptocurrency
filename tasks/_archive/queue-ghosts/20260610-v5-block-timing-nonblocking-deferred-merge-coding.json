@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "id": "20260610-v5-block-timing-nonblocking-deferred-merge-coding",
+  "title": "V5 fix: block timing — nonblocking deferred merge (no lock wait)",
+  "status": "queue",
+  "parent_ticket": "20260609-v5-per-block-cluster-timing-jsonl-coding",
+  "depends_on": [
+    "20260609-v5-per-block-cluster-timing-jsonl-coding"
+  ],
+  "blocks": [],
+  "brief": "Owner: with PWM_BLOCK_TIMING_ENABLED both CY nodes exhibit near-deadlock — seal/peer hot paths call block_timing::with_lock which spins up to 30s (20ms sleep) on fs2 exclusive lock. Fix: zero blocking on note_*; per-process in-memory deferred queue keyed by height:round (anchor t0_ms); single try_lock_exclusive per fast cycle (seal loop iteration / optional flush hook) to merge queue→pending.json and append jsonl on seal. If lock busy: drop disk write this cycle, keep queue — never sleep, never block proposer/attester.",
+  "root_cause": {
+    "file": "crates/pwmd/src/block_timing.rs",
+    "function": "with_lock",
+    "issues": [
+      "LOCK_RETRY_MS=20 + lock_wait_ms=30000 → synchronous stall on seal loop and every cluster wire hook",
+      "proposer+attester contend on same .lock → mutual delay looks like cluster freeze",
+      "note_* ignores lock timeout silently → missing rows AND lost throughput"
+    ]
+  },
+  "design": {
+    "principles": [
+      "Hot path note_*: O(1) push to process-local queue only — never open lock file",
+      "Disk: at most one try_lock per seal-loop poll tick (or end of iteration) — WouldBlock → return immediately",
+      "No std::thread::sleep in block_timing",
+      "Seal finalize: queue SealOp; flush attempts until row written or process exit (do not lose sealed row silently)"
+    ],
+    "queue": {
+      "scope": "Arc<Mutex<DeferredQueue>> on App (per process — proposer and attester separate queues)",
+      "key": "height:round string; PendRec carries t0_ms as canonical sort/merge key once set",
+      "ops": "enum: T0, Send, AttRx, AttProc, AttWire, AttOk, GateOk, SealFinalize",
+      "merge": "apply ops in enqueue order into PendRec fields (same semantics as today)"
+    },
+    "flush": {
+      "entry_points": [
+        "lifecycle seal loop: end of each iteration (after poll sleep branch) — try_flush_once",
+        "note_seal: push SealFinalize then try_flush_once (mandatory path)"
+      ],
+      "steps_under_lock": [
+        "drain local queue into BTreeMap",
+        "read pending.json, merge, write pending.json",
+        "for each SealFinalize in batch: append jsonl line, remove pending key"
+      ],
+      "on_lock_busy": "leave queue intact; optional trace counter lock_busy_skipped++"
+    },
+    "observability": {
+      "debug_info_every_N_flushes": "queue_depth, flushed_ops, lock_busy_skips",
+      "remove_or_zero": "lock_wait_ms, LOCK_RETRY_MS"
+    },
+    "config": {
+      "remove_cli": "block_timing_lock_wait_ms or hardcode 0",
+      "cy_cluster": "re-enable PWM_BLOCK_TIMING_ENABLED=true in cy-cluster-common.ps1 after fix verified"
+    }
+  },
+  "acceptance_criteria": [
+    "CY proposer+attester with timing enabled: steady seal continues (head advances, no 20ms+ stalls attributable to block_timing)",
+    "tmp/cy-lab-block-timing.jsonl still receives rows after soak (may lag 1–2 blocks under contention — acceptable)",
+    "Unit test: two threads — holder keeps lock, note_* returns immediately, queue depth increases; after unlock flush merges",
+    "Unit test: no sleep/mock clock — verify try_lock path never blocks >1ms in test harness",
+    "cargo test -p pwmd block_timing",
+    "Remove DEF_LOCK_WAIT_MS blocking loop from with_lock (function renamed try_flush_disk or similar)"
+  ],
+  "related_tickets": [
+    "20260610-v5-cy-sync-ready-attester-preflight-coding — proposer must not treat lagging attester as live for preflight; reduces bogus timing rows while catch-up stalled"
+  ],
+  "non_goals": [
+    "Cross-process shared memory queue",
+    "SQLite timing store",
+    "Changing JSONL row schema",
+    "Sync-ready attester counting (separate ticket)"
+  ],
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 BLOCK TIMING FIX — nonblocking deferred merge.\n\nRCA: block_timing.rs with_lock sleeps up to 30s — deadlocks CY cluster.\n\nImplement per-App deferred queue; note_* nonblocking; try_flush_once on seal loop + seal. fs2 try_lock only, no sleep.\n\nParent: 20260609-v5-per-block-cluster-timing-jsonl-coding. Re-enable cy-cluster-common timing after verify.\n\nproject_id 5. cargo test -p pwmd block_timing.\n# git-handoff"
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-pwm-tui-build-regression-coding",
+  "planned_for": null,
+  "title": "V5 pwm-tui: восстановить сборку после рассинхрона слайсов",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-tui-v5-marks-copy-operator-path-coding",
+    "20260530-v5-marks-mechanics-tui-observability-coding",
+    "20260530-v5-tui-form-amount-pct-hint-coding"
+  ],
+  "related_docs": [
+    "docs/runbooks/v5-tui-marks-operator-path.md",
+    "docs/reviews/20260530-v5-tui-marks-copy-observability-post-review.md",
+    "docs/reviews/20260530-v5-tui-marks-operator-journey-review.md"
+  ],
+  "brief": "Сборка pwm-tui ломается при неполной интеграции нескольких закрытых bridge-слайсов в одно дерево. На чистом HEAD `cargo check -p pwm-tui` проходит; в рабочем дереве наблюдались E0432 (устаревшие импорты в tui_loop vs lib/marks_display) и E0277 (ветка Err после несуществующего submit_claim). Нужно довести до одного согласованного состояния: form_amount_hint, F5/F6 % hints, marks detail/effective observability, compact marks column — без ClaimTx path.",
+  "diagnosis": {
+    "repro_fail": "cargo check -p pwm-tui (при смешении частичного WIP)",
+    "repro_pass_baseline": "git checkout HEAD -- crates/pwm-tui && cargo check -p pwm-tui",
+    "errors_observed": [
+      "E0432: f5_burn_hint_needed vs lib f5_burn_hint_text",
+      "E0432: submit_claim (удалён; F5 должен открывать BurnForm, не claim)",
+      "E0432: format_marks_sat_cell / format_amount_compact / format_marks_compact / format_marks_detail — рассинхрон lib.rs ↔ marks_display.rs",
+      "E0277: Err(e) где e: str — следствие сломанного типа Result у claim-ветки"
+    ],
+    "orphan_untracked": [
+      "crates/pwm-tui/src/form_amount_hint.rs (bridge PASS, не в mod lib.rs на HEAD)"
+    ],
+    "bridge_done_refs": [
+      ".cqds/team-tasks/done/20260530-v5-tui-form-amount-pct-hint-coding.json",
+      ".cqds/team-tasks/done/20260530-v5-marks-mechanics-tui-observability-coding.json",
+      ".cqds/team-tasks/done/20260530-v5-tui-v5-marks-copy-operator-path-coding.json"
+    ]
+  },
+  "design": {
+    "marks_display": "Одновременно: format_amount_compact + format_marks_compact (колонка таблицы), format_marks_sat_cell и/или format_marks_detail (detail/F5 UX) — не удалять compact при добавлении detail (регресс 00e194b).",
+    "f5_flow": "KeyCode::F(5) → preflight → f5_burn_hint_text(staked, marks, effective) → f5_build_burn_form; без submit_claim / PendingClaimNote.",
+    "f5_copy": "Заменить modal 'ClaimTx is retired…' на тексты из operator journey / F5_BURN_V5_STATUS.",
+    "form_amount": "mod form_amount_hint; F5/F6 render suffix %; SendForm.balance_units в f6_build_send_form."
+  },
+  "acceptance_criteria": [
+    "cargo check -p pwm-tui && cargo test -p pwm-tui --lib",
+    "cargo test -p pwm-tui form_amount send_form (если затронуты)",
+    "python scripts/check_entity_name_segments.py на всех новых/изменённых pwm-tui src",
+    "Нет submit_claim / claim_mark UX path; F5 открывает burn modal",
+    "lib.rs re-exports согласованы с marks_display.rs и tui_loop.rs imports",
+    "form_amount_hint.rs в дереве, подключён через mod + используется в render modals",
+    "Закрыть или пометить superseded tasks/20260530-v5-tui-form-amount-pct-hint-coding.json в notes этого тикета"
+  ],
+  "code_touchpoints": [
+    "crates/pwm-tui/src/lib.rs",
+    "crates/pwm-tui/src/marks_display.rs",
+    "crates/pwm-tui/src/tui_loop.rs",
+    "crates/pwm-tui/src/form_amount_hint.rs",
+    "crates/pwm-tui/src/send_form.rs",
+    "crates/pwm-tui/src/burn_form.rs",
+    "crates/pwm-tui/src/account_view.rs",
+    "crates/pwm-tui/tests/send_form.rs"
+  ],
+  "non_goals": [
+    "pwm-core touch-order / protocol changes",
+    "F7 stake/unstake % hint parity",
+    "Исправление #[ignore] snapshot_roaming quota tests"
+  ],
+  "mvp_checklist": ["§6 operator / TUI devnet"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Свести pwm-tui к единому собираемому состоянию: wire form_amount_hint, синхронизировать marks_display/lib/tui_loop, F5 без claim, operator copy.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        ".cqds/team-tasks/done/20260602-v5-pwm-tui-build-regression-coding.json",
+        "crates/pwm-tui/src/form_amount_hint.rs",
+        "crates/pwm-tui/src/lib.rs",
+        "crates/pwm-tui/src/tui_loop.rs",
+        "crates/pwm-tui/src/send_form.rs"
+      ],
+      "tokens": {
+        "source": "bridge",
+        "input": null,
+        "output": null,
+        "total": 17000,
+        "confidence": "low"
+      },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Проверить отсутствие Claim path, согласованность marks compact/detail, form % hints только render-layer.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260602-v5-pwm-tui-build-regression-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 2200,
+        "total": 30200,
+        "confidence": "medium"
+      },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo test -p pwm-tui; preflight target debug; workspace check если затронуты зависимости.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": {
+        "source": "estimate",
+        "input": 18000,
+        "output": 1800,
+        "total": 19800,
+        "confidence": "medium"
+      },
+      "done_at": "2026-06-02",
+      "notes": "preflight: PS1 fallback (bash/WSL unavailable), no target/debug, PASS. cargo check -p pwm-tui: PASS (16.51s). cargo test -p pwm-tui --lib: 33/33 PASS (0.01s). form_amount filter: 7/7 PASS. Integration tests send_form/wallet_roaming: compile FAIL (AcctRow E0063, 20+5 sites missing active_policies/dormant_policies/effective_marks + 7 more fields). Pre-existing drift confirmed — separate follow-up ticket per review Nit4. CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency. No harness fixes applied. cleanup: no processes to kill."
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260602-v5-pwm-tui-build-regression-review.md"
+  },
+  "notes": "Bridge pwm-coding PASS (2026-06-02). Review PASS_WITH_NITS; testing PASS (lib 33/33, form_amount 7/7). Follow-ups queued+shared: 20260602-v5-tui-f5-hint-three-state-coding, 20260602-v5-pwm-tui-integration-tests-acctrow-drift-coding. Superseded: 20260530-v5-tui-form-amount-pct-hint-coding.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "PWM-TUI BUILD REGRESSION — pwm-coding\n\nПроблема: частичная интеграция слайсов marks-copy + observability + form-amount-pct-hint ломает `cargo check -p pwm-tui` (E0432 imports, E0277 на claim Err).\n\nБазовая линия: HEAD crates/pwm-tui собирается; есть untracked `crates/pwm-tui/src/form_amount_hint.rs` — подключить mod в lib.rs и tui_loop render.\n\nСделать:\n1) marks_display: сохранить format_amount_compact/format_marks_compact; добавить/восстановить format_marks_detail (и sat cell при необходимости) — согласовать re-export в lib.rs.\n2) lib: f5_burn_hint_text вместо f5_burn_hint_needed; обновить call sites + тесты stake_form.\n3) tui_loop F5: только burn modal (f5_build_burn_form), убрать любой resurrected submit_claim; operator hints без ClaimTx jargon.\n4) F5/F6 modal: live % suffix из form_amount_hint (см. bridge done 20260530-v5-tui-form-amount-pct-hint-coding).\n5) cargo test -p pwm-tui; check_entity_name_segments на touched files.\n\nРевью-ориентиры: docs/reviews/20260530-v5-tui-marks-copy-observability-post-review.md\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

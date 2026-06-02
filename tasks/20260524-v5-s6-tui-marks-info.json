@@ -1,0 +1,52 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "orchestrator",
+  "project_id": 5,
+  "generated_at": "2026-05-24T20:00:00Z",
+  "title": "V5-6 Sprint: TUI marks saturation",
+  "research_question": "Kickoff map for effective_marks display in pwm-tui using compute_lazy_marks + head height poll.",
+  "parent_ticket": "20260524-v5-sprint6-tui-marks-saturation",
+  "files": [
+    {
+      "path": "docs/plans/mvp_v5.md",
+      "why": "spec",
+      "note": "Sprint V5-6 scope"
+    },
+    {
+      "path": "docs/rfc/12-claim-maturity-and-state-model.md",
+      "why": "spec",
+      "note": "Lazy marks + saturation normative"
+    },
+    {
+      "path": "crates/pwm-core/src/marks.rs",
+      "why": "match",
+      "note": "compute_lazy_marks pure fn — reuse from TUI"
+    },
+    {
+      "path": "crates/pwm-tui/src/account_view.rs",
+      "why": "match",
+      "note": "poll_snapshot: head_height + AcctRow parse"
+    },
+    {
+      "path": "crates/pwm-tui/src/models.rs",
+      "why": "match",
+      "note": "AcctRow.marks, staked"
+    },
+    {
+      "path": "crates/pwm-tui/src/tui_loop.rs",
+      "why": "match",
+      "note": "panel_head_row Marks column; render_owner/receivers"
+    },
+    {
+      "path": "crates/pwmd/src/api/types.rs",
+      "why": "match",
+      "note": "AcctOut — add marks_last_block"
+    },
+    {
+      "path": "crates/pwmd/src/api/common.rs",
+      "why": "match",
+      "note": "acct_out_for_runtime"
+    }
+  ],
+  "digest": "V5-6: expose marks_last_block on account API; TUI poll computes effective_marks via pwm_core::compute_lazy_marks at head height; table shows eff/cap saturation. Two slices: (1) api+calc+poll, (2) UI column. GenCfg defaults from pwm_core genesis constants for devnet."
+}

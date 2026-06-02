@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-cy-e2e-s3-mass-burn-batches",
+  "title": "CY E2E s3: mass BurnMark batches (offchain-batch simulation)",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-precloseout-cy-e2e-umbrella",
+    "20260529-v5-cy-e2e-s2-marks-saturation-soak"
+  ],
+  "brief": "On saturated CY wallets, submit batched BurnMark txs totaling >= TargetMarksBurned (default 1_000_000_000) across accounts/txs — simulating aggregated offchain burn batches landed on-chain.",
+  "acceptance_criteria": [
+    "TargetMarksBurned cumulative >= 1e9 (configurable) verified via account-info deltas or event log.",
+    "Use mark_amount up to u32::MAX per tx after touch; multiple txs per account allowed.",
+    "At least 2 accounts participate; batching script documents tx count and wall time.",
+    "Reject rate InsufficientMarks < 1% after warm-up touch tx.",
+    "Cluster continues sealing during burn burst; head_height delta >= MinBlocksDuringBurn.",
+    "Post-burn: stored_marks decreased consistently; no panic/OOM in pwmd logs.",
+    "Optional: compare to OFFCHAIN_STUB merkle verify offline — not required for PASS.",
+    "Report PASS/FAIL with PASS_EVIDENCE: total_marks_burned=... tx_count=... duration=..."
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v5-cy-cluster-precloseout-soak.md",
+    "offchain_stub": "docs/OFFCHAIN_STUB.md",
+    "tx_type": "BurnMark in crates/pwm-core/src/tx.rs",
+    "suggested_params": {
+      "TargetMarksBurned": 1000000000,
+      "MaxMarkAmountPerTx": 4294967295,
+      "MinBlocksDuringBurn": 3,
+      "WalletCount": 4
+    }
+  },
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-testing",
+    "worker_class": "testing",
+    "invite_note": "CY E2E slice 3 — mass burn batches.\n\nPrereq: cluster stable + wallets with high stored_marks (from s2 or genesis stake + short warm-up).\n\nImplement scripts/ harness:\n- pwm tx burn-mark (or REST submit) in loop/batches\n- Track cumulative mark_amount accepted\n- Monitor seal + errors\n\nNote: single tx max mark_amount is u32; billions = many txs / accounts.\n\nSkill: colloquium-cqds-mcp; project_id: 5."
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "pwm-info",
+  "project_id": 5,
+  "generated_at": "2026-05-24T12:00:00Z",
+  "title": "V5-3 lazy marks engine + float inflation — context digest",
+  "research_question": "Подготовить единый intro-handoff для Sprint V5-3: normative excerpts RFC 0012 v2 + RFC 0019, post-V5-2 code baseline (state touch gaps, chain seal reward path), file map и slice decomposition для bridge coding/testing agents без повторного discovery.",
+  "parent_ticket": "20260524-v5-s3-intro-info",
+  "search": {
+    "cqds_start_grep": [],
+    "rg": [
+      {
+        "pattern": "matured_units_available|apply_auto_claim|DEF_BLOCKS_PER_HOUR|marks_last_block|block_reward|season_ppm|base_emission",
+        "paths_glob_optional": "crates/pwm-core/src",
+        "summary": "Located partial lazy marks helpers in state.rs, fixed block_reward seal path in chain.rs, GenCfg inflation fields in genesis.rs; no compute_lazy_marks/compute_block_reward yet."
+      },
+      {
+        "pattern": "compute_lazy_marks|compute_block_reward|legacy_block_reward",
+        "paths_glob_optional": ".",
+        "summary": "Pure functions absent from codebase; only in docs/plans/mvp_v5.md and RFC 0019."
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "tasks/introductory/20260524-v5-s3-lazy-marks-inflation.md",
+      "why": "other",
+      "note": "Human-readable V5-3 intro brief (this deliverable)."
+    },
+    {
+      "path": "docs/plans/mvp_v5.md",
+      "why": "spec",
+      "note": "Sprint V5-3 scope, acceptance criteria, purity gates."
+    },
+    {
+      "path": "docs/rfc/12-claim-maturity-and-state-model.md",
+      "why": "spec",
+      "note": "RFC 0012 v2 lazy formula, touch semantics, satur_hours."
+    },
+    {
+      "path": "docs/rfc/19-float-inflation.md",
+      "why": "spec",
+      "note": "RFC 0019 compute_block_reward formula and fallback rules."
+    },
+    {
+      "path": "docs/reviews/20260524-v5-s2-review-fixes-rereview.md",
+      "why": "spec",
+      "note": "V5-2 integrated gate PASS; marks_last_block height, season_coeff_ppm u64."
+    },
+    {
+      "path": "tasks/done/20260524-v5-sprint2-core-model.json",
+      "why": "spec",
+      "note": "Closed V5-2 umbrella ticket and slice list."
+    },
+    {
+      "path": "tasks/20260524-v5-s3-intro-info.json",
+      "why": "other",
+      "note": "Parent pwm-info orchestration ticket."
+    },
+    {
+      "path": "docs/CONCEPT_ROADMAP.md",
+      "why": "spec",
+      "note": "V5-3 checklist row (lazy marks + inflation engine)."
+    },
+    {
+      "path": "docs/MVP-checklist.md",
+      "why": "spec",
+      "note": "§0v5 V5-3 backlog row."
+    },
+    {
+      "path": "crates/pwm-core/src/state.rs",
+      "why": "match",
+      "note": "matured_units_available/apply_auto_claim partial impl; touch gaps on Transfer/BurnMark/Policy."
+    },
+    {
+      "path": "crates/pwm-core/src/chain.rs",
+      "why": "match",
+      "note": "seal uses cfg.block_reward + season_ppm; needs compute_block_reward."
+    },
+    {
+      "path": "crates/pwm-core/src/genesis.rs",
+      "why": "match",
+      "note": "GenCfg: blocks_per_hour, marks_per_hour (serde marks_per_coin_per_hour), base_emission_per_block, season_coeff_ppm, block_reward."
+    },
+    {
+      "path": "crates/pwm-core/src/types.rs",
+      "why": "import",
+      "note": "Account V5 fields: stored_marks, marks_last_block, staked_pwm_raw, deferred_policies."
+    },
+    {
+      "path": "crates/pwm-core/src/lib.rs",
+      "why": "import",
+      "note": "Module root; new marks/economics mod wiring target."
+    },
+    {
+      "path": "crates/pwm-core/src/tx.rs",
+      "why": "import",
+      "note": "TxBody variants for touch matrix (Transfer, Stake, BurnMark, Policy, Init)."
+    },
+    {
+      "path": "crates/pwmd/src/snapshot/repair.rs",
+      "why": "other",
+      "note": "V5-2 height-based marks_last_block replay semantics (context only)."
+    }
+  ],
+  "digest": "## V5-3 core task\nImplement pure `compute_lazy_marks` + `compute_block_reward` per RFC 0012 v2 / RFC 0019; integrate touch on all state transitions; wire dynamic reward in `Chain::seal`.\n\n## Post-V5-2 gaps\n- `state.rs`: uses `DEF_BLOCKS_PER_HOUR`, no `marks_per_coin_per_hour`, no `satur_hours` pre-clamp; touch only on Stake/Unstake (+ INIT cursor set).\n- Missing touch: Transfer (sender+recipient), BurnMark, PolicyTx.\n- `chain.rs`: fixed `block_reward` + legacy `season_ppm(ts)`; no `base_emission_per_block` formula.\n- No `marks.rs`/`economics.rs`; no `inflation_*` tests.\n\n## Suggested slices\n1. pure fns + unit tests\n2. state touch refactor\n3. chain seal + dev defaults\n\n## Out of scope\nV5-4 deferred policies, V5-5 ClaimIPv4Batch apply, V5-6 TUI, V5-7 CLI.",
+  "log_digest": [],
+  "open_questions": [
+    "Fallback when season_coeff_ppm=0: use existing GenCfg.block_reward vs base_emission_per_block only — align slice3 with RFC 0019 legacy_block_reward semantics.",
+    "Legacy policy_ver==1 seal path: keep separate branch or unify under compute_block_reward for all configs.",
+    "Rust field rename marks_per_hour → marks_per_coin_per_hour: optional slice4 or defer."
+  ],
+  "warnings": [
+    "CQDS start_grep skipped to minimize round-trips; discovery via local rg on crates/pwm-core/src.",
+    "RFC 0019 names legacy_block_reward but GenCfg V5-2 only has block_reward — document maps block_reward as practical fallback."
+  ],
+  "participation": {
+    "token_usage": {
+      "source": "estimate",
+      "input": 28000,
+      "output": 6500,
+      "total": 34500,
+      "confidence": "medium"
+    }
+  }
+}

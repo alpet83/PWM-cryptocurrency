@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-pwm-tui-integration-tests-acctrow-drift-coding",
+  "planned_for": null,
+  "title": "V5 pwm-tui: починить integration tests (AcctRow drift)",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260602-v5-pwm-tui-build-regression-coding"
+  ],
+  "related_docs": [
+    "docs/reviews/20260602-v5-pwm-tui-build-regression-review.md",
+    "crates/pwm-tui/src/models.rs"
+  ],
+  "brief": "Integration tests `crates/pwm-tui/tests/send_form.rs` и `wallet_roaming.rs` не компилируются: конструкторы `AcctRow` устарели (missing active_policies, dormant_policies, effective_marks, marks_last_block, …). Pre-existing на HEAD; pwm-testing PASS на lib-only. Восстановить compile + прогон без изменения prod semantics.",
+  "design": {
+    "acct_row_shape": "See crates/pwm-tui/src/models.rs AcctRow (full field list). Reference mk pattern in models::tests::mk_acct_row or tui_loop::tests::mk_row.",
+    "preferred_approach": "Add small test-only helper in pwm_tui::test_support (e.g. mk_acct_row_defaults) and migrate call sites — avoid 20+ copy-paste struct literals with divergent defaults.",
+    "scope_files": [
+      "crates/pwm-tui/tests/send_form.rs (~20 sites)",
+      "crates/pwm-tui/tests/wallet_roaming.rs (~5 sites)",
+      "crates/pwm-tui/src/test_support.rs (optional helper)"
+    ]
+  },
+  "acceptance_criteria": [
+    "cargo test -p pwm-tui send_form — compiles and runs (fix or #[ignore] only with ticket note — prefer fix)",
+    "cargo test -p pwm-tui wallet_roaming — compiles (existing #[ignore] tests may stay ignored)",
+    "cargo test -p pwm-tui --lib still green",
+    "No production logic changes in tui_loop/lib except test_support re-exports if needed",
+    "python scripts/check_entity_name_segments.py on new/edited test helpers (≤5 word test fn names)"
+  ],
+  "code_touchpoints": [
+    "crates/pwm-tui/tests/send_form.rs",
+    "crates/pwm-tui/tests/wallet_roaming.rs",
+    "crates/pwm-tui/src/test_support.rs"
+  ],
+  "non_goals": [
+    "New product features in pwm-tui",
+    "Ratatui framebuffer / on-screen copy assertions",
+    "pwmd snapshot_roaming quota tests"
+  ],
+  "mvp_checklist": ["§6 operator / TUI devnet"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Repair AcctRow literals or shared test helper; green send_form + wallet_roaming compile.",
+      "result": "PASS",
+      "artifacts": [
+        ".cqds/team-tasks/done/20260602-v5-pwm-tui-integration-tests-acctrow-drift-coding.json",
+        "crates/pwm-tui/tests/send_form.rs",
+        "crates/pwm-tui/tests/wallet_roaming.rs"
+      ],
+      "tokens": { "source": "bridge", "input": null, "output": null, "total": 9000, "confidence": "low" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Confirm test-only diff; no protocol/UX behavior change.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260602-v5-pwm-tui-integration-tests-acctrow-review.md"],
+      "tokens": { "source": "estimate", "input": 18000, "output": 1600, "total": 19600, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo test -p pwm-tui send_form wallet_roaming; lib regression; Windows CARGO_TARGET_DIR.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": 12000, "output": 2000, "total": 14000, "confidence": "low" },
+      "done_at": "2026-06-02",
+      "notes": "cargo test -p pwm-tui send_form: 6/6 PASS (send_form_fixed_skip_to, send_form_inline_mid_ops, send_form_new_to_first, val_send_form_ambig_to, val_send_form_pretty_ok, val_send_form_yes_needed). cargo test -p pwm-tui wallet_roaming: compiles+runs, 0 tests matched filter (all existing tests likely #[ignore] or different names), returncode=0. cargo test -p pwm-tui --lib: 36/36 PASS (no regression). check_entity_name_segments: 0 violations (test_support, send_form, wallet_roaming). CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency."
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260602-v5-pwm-tui-integration-tests-acctrow-review.md" },
+  "notes": "Conveyor closed 2026-06-02: send_form 6/6, lib 36/36; review PASS_WITH_NITS (inline AcctRow literals vs mk helper — optional DRY follow-up).",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "PWM-TUI INTEGRATION TESTS ACCTROW — pwm-coding\n\nProblem: cargo test -p pwm-tui send_form fails E0063 — AcctRow missing fields (active_policies, dormant_policies, effective_marks, marks_last_block, …). Same in wallet_roaming.rs. Pre-existing; lib tests 33/33 pass.\n\nDo:\n1) Prefer shared mk_acct_row helper in test_support (mirror models::tests::mk_acct_row defaults)\n2) Fix all struct initializers in tests/send_form.rs and tests/wallet_roaming.rs\n3) cargo test -p pwm-tui send_form; cargo test -p pwm-tui wallet_roaming\n4) cargo test -p pwm-tui --lib (no regression)\n5) check_entity_name_segments on test helpers edited\n\nTest-only / test_support — no prod behavior change.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

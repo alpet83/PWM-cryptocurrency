@@ -1,0 +1,37 @@
+{
+  "pwm_info_schema": 1,
+  "agent": "orchestrator",
+  "project_id": 5,
+  "generated_at": "2026-05-24T23:00:00Z",
+  "title": "V5-8 Sprint: operator smoke + closeout",
+  "research_question": "Kickoff operator harness for V5 features before MVP v5 doc closeout.",
+  "parent_ticket": "20260524-v5-sprint8-operator-closeout",
+  "files": [
+    {
+      "path": "scripts/devnet_v4_policy_e2e.ps1",
+      "why": "match",
+      "note": "Template for devnet_v5_operator_smoke.ps1"
+    },
+    {
+      "path": "docs/plans/mvp_v5.md",
+      "why": "spec",
+      "note": "Sprint V5-8 scope"
+    },
+    {
+      "path": "docs/runbooks/demo-devnet-quickstart.md",
+      "why": "spec",
+      "note": "Genesis/demo path"
+    },
+    {
+      "path": "crates/pwmd/src/api/types.rs",
+      "why": "match",
+      "note": "marks_last_block AcctOut"
+    },
+    {
+      "path": "tasks/done/20260524-v5-sprint3-lazy-marks-inflation.json",
+      "why": "other",
+      "note": "Marks engine baseline"
+    }
+  ],
+  "digest": "V5-8: five slices — four operator smoke extensions (marks, deferred, ipv4 claim, cli account-info) then orchestrator closeout. First coding ticket: devnet_v5_operator_smoke.ps1 marks path."
+}

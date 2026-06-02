@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "id": "20260610-v5-cy-proposer-attest-gap-iter2-debug",
+  "title": "V5 debug iter-2: proposer quorum_timeout + persistent 2-block attester lag (root cause)",
+  "status": "done",
+  "iteration": 2,
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "supersedes_partial": "20260531-v5-cy-proposer-quorum-wait-root-cause-debug",
+  "prior_findings": {
+    "iter1_verdict": "heartbeat_interval_ms proposer=1000 vs attester=1500 (CONFIRMED iter-1)",
+    "iter1_artifact": "docs/debug/20260531-v5-cy-proposer-quorum-wait-root-cause.md",
+    "iter1_follow_on_coding": "20260531-v5-cy-cluster-heartbeat-align-coding",
+    "owner_state_fix": "aligned attester/proposer snapshot — cluster seals intermittently; proposer logs still noisy/failing"
+  },
+  "verbosity_focus": "seal:cluster-gate",
+  "secondary_focus": [
+    "transport:peers",
+    "transport:cluster-attest"
+  ],
+  "brief": "After state alignment the CY 2-node cluster runs but proposer dominates failure signals. Do NOT recommend masking via max_tip_lag=2 or log dedup — find why (A) attester heartbeat tip lags proposer by ~2 blocks under live sync while connected, and (B) proposer reports cluster_attest_ready then seal_suppressed_by_cluster quorum_timeout attestations_missing got=0 need=1 elapsed_ms>>attest_timeout_ms (e.g. 6907 vs 2000). Correlate both sides at identical timestamps; use lldb MCP on live pwmd if static logs insufficient.",
+  "symptoms": {
+    "A_wait_sync": {
+      "log": "logs/2026-05-31/pwmd-cy-proposer-101620.log",
+      "pattern": "cluster_attest_waiting_sync: proposer_tip - attester_tip_max = 2 in 34/35 WARN; max_tip_lag=1; live_connected=1 live_synced=0"
+    },
+    "B_quorum_timeout": {
+      "log": "logs/2026-05-31/pwmd-cy-proposer-082709.log",
+      "pattern": "cluster_attest_ready live_synced=1 then seal_suppressed_by_cluster quorum_timeout attestations_missing got=0 elapsed_ms=6907 limit_ms=2000; then suppression_pct=100% cluster_gate"
+    },
+    "C_gate_pending": {
+      "pattern": "cluster_gate_pending_summary pending_ticks_since_last_sealed=200+ while intermittent sealed height"
+    }
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "claim": "sync_ready uses sync_live.tip_h / heartbeat chain_tip_height stale vs attester actual apply tip — false ready or false lag"
+    },
+    {
+      "id": "H2",
+      "claim": "ClusterPropose not received or not processed on attester within attest_timeout (cup_active, peer session busy, wrong member binding)"
+    },
+    {
+      "id": "H3",
+      "claim": "Attester applies live blocks slower than proposer seal cadence — structural 2-block lag; attest round targets height attester has not applied yet"
+    },
+    {
+      "id": "H4",
+      "claim": "Iter-1 heartbeat fix incomplete — attester still 1500ms or apply_cluster_timing not applied on attester launch path"
+    },
+    {
+      "id": "H5",
+      "claim": "Round-state / height skew: proposer opens gate for H+1 while attester max applied H-1"
+    }
+  ],
+  "method": {
+    "correlation": [
+      "Pick one quorum_timeout event (082709 ~08:51:16) and one wait_sync burst (101620 ~10:17:19–10:18:30)",
+      "Align pwmd-cy-proposer + pwmd-cy-attester + pwmd-peer-* logs at same wall time (±500ms)",
+      "Extract: propose_opened_at, cluster propose/attest wire msgs, attester tip_h, sync_live.tip_h, cup_active"
+    ],
+    "logging": [
+      "RUST_LOG=pwmd::lifecycle=debug,pwmd::peer=debug,pwm_core::state=info (no global trace)",
+      "Bounded repro: attester first, proposer second, 5 min soak, capture to tasks/20260610-v5-cy-proposer-attest-gap-iter2-debug-evidence/"
+    ],
+    "lldb": {
+      "when": "If logs show got=0 but attester claims ready — attach lldb MCP to attester pwmd PID at gate wait",
+      "breakpoints_hint": [
+        "cluster attest receive/handler",
+        "run_cluster_gate / quorum collect on proposer",
+        "on_hdr_rsp apply path advancing tip_h"
+      ],
+      "note": "Parent confirms lldb MCP available this session; use for wall-clock proof, not first resort"
+    },
+    "code_read": [
+      "crates/pwmd/src/lifecycle.rs — count_sync_ready_hs, run_cluster_gate, attest timeout",
+      "crates/pwmd/src/transport/peer_session — ClusterPropose/ClusterAttest",
+      "cy-cluster-*.ps1 startup — heartbeat_interval_ms both nodes"
+    ]
+  },
+  "acceptance_criteria": [
+    "Verdict per hypothesis: CONFIRMED / REJECTED / INCONCLUSIVE with log line refs or lldb stack",
+    "Single primary root cause (or ranked #1+#2) for symptom B; separate explanation for persistent lag=2 (symptom A) if distinct",
+    "Artifact: docs/debug/20260610-v5-cy-proposer-attest-gap-iter2-root-cause.md",
+    "Evidence dir: tasks/20260610-v5-cy-proposer-attest-gap-iter2-debug-evidence/ (grep snippets, correlation table, optional lldb transcript)",
+    "Follow-on ticket id(s) for pwm-coding (fix) — not config-only workaround",
+    "instrumentation.reverted: yes unless parent approves keep",
+    "cleaned: yes — no stray pwmd after repro"
+  ],
+  "non_goals": [
+    "Raise max_tip_lag or dedup logs as the fix",
+    "Product code fixes in this ticket",
+    "Full overnight soak"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-debug",
+      "prompt_summary": "Iter-2 root cause: attest gap + 2-block lag; correlation + optional lldb; report md",
+      "verbosity_focus": "seal:cluster-gate",
+      "instrumentation": {
+        "files": [],
+        "reverted": true,
+        "receiver_if_kept": null
+      },
+      "repro": {
+        "deterministic": "partial/high",
+        "command": "powershell -File tasks/20260610-v5-cy-proposer-attest-gap-iter2-debug-evidence/run_repro.ps1",
+        "flake_rate": "reproduced A/C and B-style got=0 in one 5m run"
+      },
+      "result": "PASS",
+      "artifacts": [
+        "docs/debug/20260610-v5-cy-proposer-attest-gap-iter2-root-cause.md",
+        "tasks/20260610-v5-cy-proposer-attest-gap-iter2-debug-evidence/"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 52000,
+        "confidence": "low"
+      },
+      "done_at": "2026-05-31T10:33:00Z"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "debug_md": "docs/debug/20260610-v5-cy-proposer-attest-gap-iter2-root-cause.md",
+    "evidence_dir": "tasks/20260610-v5-cy-proposer-attest-gap-iter2-debug-evidence/"
+  },
+  "notes": "Orchestrator 2026-05-31: owner wants causes not suppression. lldb MCP enabled.\npwm-debug 2026-05-31: PASS. Root cause: cluster gate conflates attester apply freshness with attest availability; sync_live tip lags active proposer by ~2 blocks. Separate B cause: seal-ahead/local round recording starts attest timeout before confirmed wire ACK, yielding ready->quorum_timeout got=0. Heartbeat iter-1 fix verified on both launchers/logs (1000ms). Evidence/report saved under docs/debug and tasks evidence dir. No product instrumentation kept; pwmd cleaned.",
+  "follow_on_coding": [
+    {
+      "id": "20260610-v5-cluster-gate-attester-apply-readiness-coding",
+      "title": "Fix cluster gate readiness to use attester apply/parent ACK, not stale sync tip"
+    },
+    {
+      "id": "20260610-v5-cluster-propose-timeout-and-resend-coding",
+      "title": "Start attest timeout on wire send and add bounded resend for got=0 rounds"
+    }
+  ]
+}

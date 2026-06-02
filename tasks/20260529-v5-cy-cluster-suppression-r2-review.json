@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-cy-cluster-suppression-r2-review",
+  "title": "V5 review R2: residual CY cluster suppressions after timing-align fix",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-cy-cluster-attest-timing-align-coding",
+    "20260529-v5-cy-cluster-attest-suppression-review"
+  ],
+  "brief": "First timing-align fix helped partially; owner still sees seal_suppressed_by_cluster. Second-pass RCA: other causes beyond heartbeat/timeout derivation (propose ordering, sync multiplexing, attester path, CLI overrides, session churn).",
+  "observation": {
+    "prior_fix": "20260529-v5-cy-cluster-attest-timing-align-coding (cluster_timing_ms, cluster_prop_ms heartbeat cap)",
+    "residual_symptom": "Suppressions continue in proposer logs during CY soak",
+    "required_owner_artifacts": [
+      "Fresh proposer+attester stderr or tmp log dir after rebuild with timing-align",
+      "Startup lines: seal_cadence genesis_blocks_per_hour, cluster_attest enabled=... seal_interval_ms=... attest_timeout_ms=...",
+      "scripts/scan_pwmd_log_counters.ps1 -PerFile output"
+    ]
+  },
+  "hypotheses_r2": [
+    "ClusterPropose still runs after sync_tx_batch in steady_session loop — work+jitter before propose each iteration",
+    "Seal loop and peer loop are independent tasks — seal ticks during long sync/CUP on same session",
+    "Attester auto-ack / inbound routing delay under load (20260513 sync-vs-cluster review)",
+    "cy-cluster-*.ps1 may still pass CLI cluster-attest-timeout-ms overriding genesis-derived timing",
+    "missing_round_state at tip+1 while previous height round not closed / duplicate sessions",
+    "Startup-only vs steady-state suppression mix not separated in owner observation"
+  ],
+  "acceptance_criteria": [
+    "docs/reviews/20260529-v5-cy-cluster-suppression-r2-review.md with taxonomy of suppression reasons from fresh or owner logs.",
+    "Compare R1 recommendations vs what coding actually landed (steady_session not changed).",
+    "Quantify steady-state suppression rate: suppressions per N sealed blocks (target: near-zero after startup window).",
+    "Rank root causes P0/P1/P2 with fix locus and genesis-only constraint.",
+    "Propose one minimal coding ticket (or split tickets) — no product edits in this review.",
+    "Explicit verdict: acceptable startup noise vs must-fix steady-state regression."
+  ],
+  "artifacts": {
+    "prior_reviews": [
+      "docs/reviews/20260529-v5-cy-cluster-attest-suppression-review.md",
+      "docs/reviews/20260513-cy-lab-sync-vs-cluster-priority-review.md"
+    ],
+    "coding_done": "tasks/done/20260529-v5-cy-cluster-attest-timing-align-coding.json",
+    "code_focus": [
+      "crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs",
+      "crates/pwmd/src/transport/peer_session/mod.rs",
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/main.rs",
+      "cy-cluster-proposer.ps1",
+      "cy-cluster-attester.ps1"
+    ],
+    "scanner": "scripts/scan_pwmd_log_counters.ps1"
+  },
+  "notes": "Owner: partial improvement insufficient; need second review before next coding slice.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-review",
+    "worker_class": "review",
+    "invite_note": "CY CLUSTER SUPPRESSION R2 — review only.\n\nContext: attest-timing-align-coding PASS but suppressions persist.\n\nRead prior review + tasks/done/20260529-v5-cy-cluster-attest-timing-align-coding.json (steady_session NOT in files_touched).\n\nKey R2 questions:\n1) Is propose still after sync_tx_batch each heartbeat iteration (steady_session.rs:45-93)?\n2) Does seal loop outrun in-iteration work even with hb=seal_ms?\n3) Attester path: auto-ack latency, sync competition?\n4) Do launchers override cluster-attest-timeout-ms?\n5) Classify log lines: startup vs steady; missing_round_state vs attestations_missing vs timeout\n\nUse owner fresh logs if in tmp/; else static code analysis + reproduce recipe.\n\nDeliverable: docs/reviews/20260529-v5-cy-cluster-suppression-r2-review.md\nRecommend next coding ticket e.g. seal-aligned propose trigger or sync/cluster priority.\nNO new CLI cadence knobs.\n\n# git-handoff\nSkill: colloquium-cqds-mcp; project_id: 5."
+  }
+}

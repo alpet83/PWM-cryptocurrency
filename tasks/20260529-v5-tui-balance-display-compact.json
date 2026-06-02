@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-tui-balance-display-compact",
+  "title": "V5 TUI: compact PWM balance column (spendable/staked K/M/B)",
+  "status": "in_progress",
+  "depends_on": [
+    "20260529-v5-tui-marks-display-compact",
+    "20260524-v5-sprint6-tui-marks-saturation"
+  ],
+  "brief": "Apply same K/M/B compact formatting as marks column to Balance column: spendable and staked PWM coin amounts; no saturation coloring.",
+  "acceptance_criteria": [
+    "format_balance_cell uses compact coin display for balance_pwm and staked (raw u128 -> PWM coin amount, then scale).",
+    "Scaling matches marks: <1000 integer; >=1K x.xxK; >=1M x.xxM; >=1B x.xxB (two decimals).",
+    "Staked layout preserved: {spendable}/{staked}PWM when staked>0; spendable-only when staked==0.",
+    "UNKNOWN balance sentinel still shows ???.",
+    "No red/special color on balance cells.",
+    "Prefer shared helper (e.g. format_amount_compact in marks_display or pwm-core display) — DRY with format_marks_compact where sensible.",
+    "Adjust Balance column Constraint::Length if needed so typical 21B-style rows fit.",
+    "Unit tests: small balance, K/M/B ranges, staked pair, genesis-scale billions.",
+    "cargo test -p pwm-tui --lib format_balance PASS; cargo check -p pwm-tui PASS."
+  ],
+  "artifacts": {
+    "primary_files": [
+      "crates/pwm-tui/src/models.rs",
+      "crates/pwm-tui/src/marks_display.rs",
+      "crates/pwm-tui/src/tui_loop.rs"
+    ],
+    "reference": "format_marks_compact in crates/pwm-tui/src/marks_display.rs",
+    "core_scale": "crates/pwm-core/src/display.rs PWM_RAW_SCALE (1 PWM = 1_000_000 raw)",
+    "current_format": "format_balance_cell: format_pwm full decimals -> 500/500PWM or long billions"
+  },
+  "notes": "Owner verified marks compact UX manually; balance column still overflows on billion-scale genesis wallets.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "TUI balance column compact formatting (follow-up to marks compact ticket).\n\nProblem: format_balance_cell uses format_pwm with full integer strings — billions do not fit column.\n\nImplement format_pwm_compact(raw: u128) or format_coin_compact(coin_units) with same rules as format_marks_compact.\n\nUpdate format_balance_cell in models.rs:\n- staked==0: compact spendable + optional \" PWM\" suffix policy (match existing: trim to {compact}PWM or {compact}/{staked}PWM)\n- staked>0: {compact_bal}/{compact_staked}PWM\n\nReuse/extract shared compact scaler from marks_display.rs (u32 marks vs u128 PWM raw — convert raw to whole coin or fractional coin consistently; document choice in code comment).\n\nNo color styling.\n\nWiden Balance column constraint in tui_loop if still tight.\n\nUpdate models.rs tests (bal_cell_keeps_rpc_balance -> compact expectations).\n\nGates: cargo test -p pwm-tui --lib; cargo check -p pwm-tui.\n\nSkill: colloquium-cqds-mcp; project_id: 5. Minimal diff."
+  }
+}

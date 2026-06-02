@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-live-attester-count-member-id-fix-coding",
+  "title": "V5: fix live attester preflight count (cluster member = instance_id)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260602-v5-proposer-seal-slot-metrics-preflight-coding"
+  ],
+  "brief": "First CY test after slot-metrics/preflight: `waiting_for_attester live_attesters=0` forever while attester is connected and attest path works when forced. Root cause: `count_live_cluster_attesters` matches `cluster_cfg.members` against trusted_peers map key / `trusted.node_id` (wire `--node-id`, e.g. cy-attester) but CY lab members are `--node-instance-id` values (e.g. cy-quorum-attester). Proposer never reaches Ready preflight.",
+  "root_cause": {
+    "file": "crates/pwmd/src/lifecycle.rs",
+    "function": "count_live_cluster_attesters",
+    "buggy_check": "members.any(|m| m == node_id || m == &trusted.node_id)",
+    "canonical_member_id": "peer_member_id(trusted) = TrustedPeer.instance_id — same as RFC16 cluster attest in transport/peer_session/mod.rs",
+    "cy_lab": {
+      "cluster_members": "cy-quorum-proposer,cy-quorum-attester",
+      "wire_node_id": "cy-proposer / cy-attester",
+      "peers_map_key": "wire node_id"
+    },
+    "secondary": "uses PeerStatus::Connected only; rest of transport uses is_peer_liveish (Accepted|Connected|Retrying)"
+  },
+  "design": {
+    "fix_count_live_cluster_attesters": [
+      "Resolve member_id via instance_id (reuse peer_member_id logic or move helper to transport/health.rs as pub(crate) count_live_cluster_attesters(hs, cluster_cfg, local_member_id))",
+      "Member match: cluster_cfg.members contains member_id (trimmed)",
+      "Exclude local proposer: member_id == app.node_instance_id.trim() (not wire node_id vs hs.local_instance_id key compare)",
+      "Liveness: is_peer_liveish(peer.status) + last_seen within ATTESTER_LIVE_WINDOW_MS",
+      "Require cluster_role Attester + cluster_attest_enabled on TrustedPeer"
+    ],
+    "observability": [
+      "On transition to Ready: keep cluster_attest_ready live_attesters=N",
+      "Optional debug (behind trace): skipped peer reasons once per connect — only if trivial"
+    ],
+    "tests": [
+      "Unit: trusted_peers entry wire_id=cy-attester, instance_id=cy-quorum-attester, member in cfg, peer Connected → count=1",
+      "Unit: member mismatch wire-only without instance_id → count=0",
+      "Unit: local instance excluded",
+      "Existing cluster_seal_preflight tests unchanged"
+    ],
+    "non_goals": [
+      "Change cluster-members CLI semantics",
+      "Change preflight quorum_k rule",
+      "Revert slot metrics"
+    ]
+  },
+  "acceptance_criteria": [
+    "CY: after attester+proposer up, proposer logs cluster_attest_ready live_attesters=1 (quorum_k=1) within connect window, not perpetual waiting_for_attester",
+    "Seals proceed without manual workaround; seal_suppression_summary slots sane",
+    "cargo test -p pwmd --lib lifecycle (new count_live tests)",
+    "No regression: solo cluster_enabled=false still Ready"
+  ],
+  "artifacts": {
+    "primary": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/transport/health.rs or peer_session/mod.rs (shared member_id helper if extracted)"
+    ]
+  },
+  "operator_verify": "Start attester then proposer; grep waiting_for_attester (should stop) and cluster_attest_ready live_attesters=1; height advances ~1/s",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "HOTFIX — live attester count always 0.\n\ncount_live_cluster_attesters compares cluster members (node-instance-id) to wire node_id keys — wrong.\n\nFix: match peer_member_id(instance_id) like cluster attest path; exclude app.node_instance_id; use is_peer_liveish.\n\nCY: cy-quorum-attester member vs cy-attester wire id.\n\nTests + verify cluster_attest_ready. project_id 5.\n# git-handoff"
+  },
+  "pipeline": {
+    "coding": "pwm-coding",
+    "review": "pwm-review"
+  }
+}

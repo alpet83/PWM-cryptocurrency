@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "20260523-v5-plan-init",
+  "title": "MVP v5 Plan initialization",
+  "status": "done",
+  "mvp_checklist": ["docs/plans/mvp_v5.md"],
+  "brief": "Написание и публикация плана MVP v5 (Tokenomics Hardening + IPv4 Distribution design). Артефакт: docs/plans/mvp_v5.md с 6 спринтами, anti-complexity checklist, принятыми решениями и декомпозицией задач. Критерий done: файл создан, CONCEPT_ROADMAP.md обновлён до V5 in-progress.",
+  "delegations": [],
+  "commits": [],
+  "artifacts": {
+    "review_md": null,
+    "plan_md": "docs/plans/mvp_v5.md"
+  },
+  "notes": "Оркестратор написал план на основе CONCEPT_ROADMAP.md (V5 section), DRAFT_WHITEPAPER-ru.md и mvp_v4.md как шаблона. 6 спринтов: V5-1 spec/ADR freeze, V5-2 core model, V5-3 marks+inflation engine, V5-4 deferred activation, V5-5 IPv4 claim + TUI/CLI, V5-6 closeout. ADR 0006 (address flags) и ADR 0007 (domain lease governance) — новые, spec-only в V5."
+}

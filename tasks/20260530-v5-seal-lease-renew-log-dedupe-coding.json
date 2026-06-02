@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-seal-lease-renew-log-dedupe-coding",
+  "title": "V5: dedupe seal_lease_renewed logs per tip_h",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-cy-cluster-gate-pending-log-consolidate-coding"
+  ],
+  "brief": "Owner: cluster suppress noise fixed; seal_lease_renewed sometimes doubled (same tip_h, ~1-2s apart). Cause: step_lease Renew every seal tick while log uses tip_h%10==0 without dedupe — cluster gate stalls height but lease renews each tick.",
+  "design": {
+    "root_cause": "crates/pwmd/src/lifecycle.rs run_lease_gate: LeaseEvent::Renew logged when h%10==0 on every seal loop tick; multiple ticks at same tip_h (pending cluster) emit duplicate renew lines",
+    "fix": "Log seal_lease_renewed at most once per tip_h for milestone heights (track last_renew_log_tip on App or seal-loop local state); optional debug! for repeat renews same tip_h",
+    "unchanged": [
+      "step_lease / lease semantics",
+      "acquire/takeover/loss/reject logging"
+    ],
+    "explicit_non_goals": [
+      "No change to lease TTL or renewal frequency",
+      "No cluster gate changes"
+    ]
+  },
+  "acceptance_criteria": [
+    "At steady CY soak on tip_h=25910/25920 etc.: at most one INFO seal_lease_renewed per tip_h milestone.",
+    "seal_lease_acquired / takeover / loss / reject behavior unchanged.",
+    "Unit test or lifecycle test: two Renew events same tip_h -> one info log.",
+    "cargo test -p pwmd --lib lifecycle"
+  ],
+  "artifacts": {
+    "files": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/app.rs"
+    ]
+  },
+  "notes": "Orchestrator RCA from owner terminal; review skipped.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "Dedupe seal_lease_renewed — pwm-coding.\n\nProblem: duplicate seal_lease_renewed same tip_h ~1s apart when cluster gate blocks seal but seal loop ticks.\n\nRead run_lease_gate LeaseEvent::Renew branch (h==1 || h%10==0).\n\nFix: log at most once per tip_h (last_renew_log_tip on App or static in spawn_seal_loop). debug! optional on suppressed duplicate.\n\nTest + cargo test -p pwmd --lib lifecycle.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

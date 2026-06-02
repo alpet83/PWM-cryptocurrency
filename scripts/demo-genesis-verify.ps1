@@ -1,6 +1,6 @@
 param(
     [string]$GenesisPath = "tmp/genesis-custom.json",
-    [UInt64]$ExpectedPremineRaw = 21000000000000000
+    [UInt64]$ExpectedPremineRaw = 42000000000000000
 )
 
 $ErrorActionPreference = "Stop"

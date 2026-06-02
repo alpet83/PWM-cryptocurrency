@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "20260612-v5-snapshot-genesis-anchor-light-coding",
+  "title": "V5: snapshot genesis_anchor — light checks, single sig, migrate",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "related_docs": [
+    "docs/adr/0008-snapshot-genesis-anchor-light.md",
+    "docs/guide-node-storage-and-snapshot.md",
+    "docs/FEATURES.md"
+  ],
+  "brief": "Close trust-default hole: local snapshot can diverge from --genesis-file while genesis_accounts match. Implement ADR 0008: genesis_anchor in snapshot v3 wire (genesis_state_root, gencfg_digest, block1_hdr_hash, single Ed25519 fool-guard sig), light trust-load checks (no full replay), mandatory block@1 preflight when checkpoint>=1, migrate-on-load for legacy snapshots without anchor.",
+  "design_ref": "docs/adr/0008-snapshot-genesis-anchor-light.md",
+  "acceptance_criteria": [
+    "Snapshot v3 wire includes optional genesis_anchor (schema_v=1); save path always writes anchor when validator signing key available",
+    "Trust load: fail-closed if genesis_state_root or gencfg_digest != values from --genesis-file",
+    "Trust load: verify anchor signature when present; block@1 preflight (prev_gen, hdr_hash, PoA sig, replay txs→state_root) when checkpoint_height>=1",
+    "checkpoint_height==0: digest(snapshot.state)==genesis_state_root",
+    "Migration: legacy snapshot without anchor — migrate-on-load with warn if preflight passes and node can sign; else explicit env/verify-chain path documented",
+    "Missing block@1 on disk with checkpoint>=1: fail with clear prune message",
+    "Unit tests in pwmd snapshot module; no default full replay requirement",
+    "guide-node-storage-and-snapshot.md updated; FEATURES.md links ADR 0008"
+  ],
+  "code_touchpoints": [
+    "crates/pwmd/src/snapshot/types.rs — SnapshotDataV3 genesis_anchor, data_to_v3/from_v3",
+    "crates/pwmd/src/snapshot/io.rs — validate_snapshot_trusted, preflight_block1, anchor verify",
+    "crates/pwmd/src/snapshot/store.rs — persist anchor on save",
+    "crates/pwmd/src/snapshot/genesis.rs or new anchor.rs — gencfg_digest, anchor_preimage sign/verify",
+    "crates/pwmd/src/snapshot/incremental.rs — load block at height 1 for preflight",
+    "docs/guide-node-storage-and-snapshot.md"
+  ],
+  "non_goals": [
+    "k-of-n validator cosign on snapshot (→ RFC 0020 Bootstrap Snapshot)",
+    "Full genesis→tip replay as default",
+    "ClickHouse trust-default",
+    "pwm-cli migrate subcommand unless trivial; env + verify-chain fallback OK"
+  ],
+  "bootstrap_compat": {
+    "rfc": "docs/rfc/20-bootstrap-snapshot-pruned-distribution.md",
+    "requirement": "gencfg_digest and genesis_state_root algorithms must be stable and reusable; export from pwm-core or snapshot module for future bootstrap_preimage"
+  },
+  "mvp_checklist": ["§6 operator / devnet integrity"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement ADR 0008 genesis_anchor light checks + migration per task brief",
+      "result": "done",
+      "artifacts": [".cqds/team-tasks/done/20260612-v5-snapshot-genesis-anchor-light-coding.json"],
+      "tokens": { "source": "bridge", "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": "2026-06-12"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review fail-closed semantics, migration safety, no bypass of block1 preflight on trust path",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260612-v5-snapshot-genesis-anchor-light-review.md"],
+      "tokens": { "source": "estimate", "input": 28000, "output": 3200, "total": 31200, "confidence": "medium" },
+      "done_at": "2026-06-12"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Anchor/preflight tests + snapshot suite regression; v3_replay_det_gate_ok",
+      "result": "PASS",
+      "artifacts": ["docs/testing-issues.md"],
+      "commands": [
+        "cargo test -p pwmd --lib anch_ → 2/2 PASS",
+        "cargo test -p pwmd --lib preflight_blk1_tamper_tx_root → PASS",
+        "cargo test -p pwmd --lib attach_anchor_legacy_with_signer → PASS",
+        "cargo test -p pwmd --lib v3_replay_det_gate_ok → PASS",
+        "cargo test -p pwmd --lib snapshot → 60 PASS, 2 ignored (pre-existing marks_quota)"
+      ],
+      "tokens": { "source": "estimate", "input": 15000, "output": 2000, "total": 17000, "confidence": "medium" },
+      "done_at": "2026-06-12"
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260612-v5-snapshot-genesis-anchor-light-review.md" },
+  "notes": "Conveyor closed: coding (bridge) + review PASS_WITH_NITS + testing PASS (local). Slice done. Follow-up out of scope: marks_quota on SnapshotStateV3 (testing-issues.md); review NIT cfg_dig /// comment."
+}

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "id": "20260611-v5-pwmd-graceful-node-shutdown-signals-coding",
+  "title": "V5: штатное завершение узлов — RPC + POSIX сигналы + operator log",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "related_tickets": [
+    "20260611-v5-lab-seal-console-python-json-window-coding"
+  ],
+  "runs_parallel_with": [
+    "20260610-v5-lab-cluster-seal-manual-rpc-stepmode-coding",
+    "20260611-v5-lab-seal-console-python-json-window-coding"
+  ],
+  "brief": "Owner CY/lab debug requires predictable node stop (Ctrl+C in terminal, orchestrator scripts, future seal console). Today POST /v1/shutdown exists but is not wired to SIGINT/SIGTERM; killing pwmd aborts transport/seal loops without a single operator-visible reason in logs. Implement unified graceful shutdown path for RPC and POSIX signals with snapshot persist, peer close, loop drain, and Russian operator log line.",
+  "current_state": {
+    "rpc": "POST /v1/shutdown — handlers_shutdown.rs: ShutdownFull snapshot + shutdown_tx stops axum graceful_shutdown",
+    "gap": "No tokio::signal handler; Ctrl+C/SIGTERM likely hard exit; English-only log; transport/seal tasks may outlive HTTP stop; CY launchers do not call /v1/shutdown on trap"
+  },
+  "design": {
+    "unified_shutdown": {
+      "entry_points": [
+        "POST /v1/shutdown (keep, extend response JSON optional)",
+        "SIGINT (Ctrl+C) — primary operator path on Windows/Linux terminal",
+        "SIGTERM — service/docker style stop (Unix; document Windows Ctrl+C maps to SIGINT in console)"
+      ],
+      "single_impl": "graceful_shutdown_request(app, reason: ShutdownReason) async — reason enum drives log text"
+    },
+    "ShutdownReason": {
+      "Rpc": "graceful shutdown requested via POST /v1/shutdown",
+      "OperatorSignal": "signal=SIGINT|SIGTERM",
+      "DebugStopHeight": "existing debug-stop-height path (reuse reason tag)"
+    },
+    "operator_log_ru": {
+      "required_line": "#INFO: pwmd остановлено оператором reason=<rpc|SIGINT|SIGTERM|debug_stop> node_id=<id>",
+      "also_en": "Optional duplicate #INFO: pwmd stopped by operator reason=... for grep compatibility",
+      "no_secrets": true
+    },
+    "sequence": [
+      "1. Log operator stop (RU + reason) once — dedup flag",
+      "2. If cluster proposer in manual_rpc or mid-gate: best-effort abort in-flight round (document behavior)",
+      "3. Signal transport loops to exit (cancellation token or shutdown watch on App)",
+      "4. Seal loop / federation / snapshot loader: observe shutdown and exit cleanly (no new seal after flag)",
+      "5. Autosnapshot ShutdownFull (same as RPC today)",
+      "6. Close peer sessions with explicit_shutdown where applicable",
+      "7. Fire shutdown_tx → axum graceful_shutdown (existing)",
+      "8. Final log: HTTP server graceful shutdown (existing EN ok)"
+    ],
+    "rpc_enhancements": {
+      "response": "204 No Content kept; optional GET /v1/shutdown/status not required v1",
+      "lab": "Document in runbook: curl -X POST http://127.0.0.1:3030/v1/shutdown for proposer; 127.0.0.2 for attester",
+      "console_follow_on": "cy_lab_seal_console.py subcommand shutdown (both nodes) — optional nit in same ticket or follow-on to 20260611 console ticket"
+    },
+    "scripts": {
+      "cy_cluster": "cy-cluster-*.ps1 or common: trap/int handler posts shutdown to local RPC before exit (if pwmd still up)",
+      "non_goal_systemd": "systemd unit files out of scope unless trivial doc note"
+    },
+    "code_touchpoints": [
+      "crates/pwmd/src/lifecycle.rs — signal task spawned beside serve; shutdown watch",
+      "crates/pwmd/src/api/handlers_shutdown.rs — delegate to shared graceful_shutdown_request",
+      "crates/pwmd/src/state.rs — shutdown_requested: AtomicBool or Notify",
+      "crates/pwmd/src/transport/* — honor shutdown in listener/stateful loops",
+      "docs/runbooks/v5-cy-cluster-precloseout-soak.md",
+      "docs/runbooks/v5-cy-lab-seal-console.md — shutdown step note if console exists"
+    ]
+  },
+  "acceptance_criteria": [
+    "Ctrl+C on running pwmd (CY proposer terminal): within bounded time process exits 0; log contains 'остановлено оператором' and reason=SIGINT (or platform doc)",
+    "POST /v1/shutdown on running node: same shutdown path; log reason=rpc",
+    "SIGTERM on Unix test: same path; log reason=SIGTERM",
+    "No duplicate snapshot persist storm (single ShutdownFull per stop)",
+    "Peer transport stops after shutdown (no hung listener port until kill -9)",
+    "cargo test -p pwmd — unit test: shutdown flag stops seal loop iteration (mock/minimal)",
+    "Runbook: operator procedure stop cluster (attester then proposer or reverse) via RPC or Ctrl+C"
+  ],
+  "non_goals": [
+    "Kubernetes preStop hook packaging",
+    "Changing default auto seal behavior on running node before stop",
+    "Remote unauthenticated shutdown from non-localhost without new guard discussion"
+  ],
+  "mvp_checklist": ["§6 CY lab operator path"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Unified graceful_shutdown_request; SIGINT/SIGTERM; RU operator log; transport loop drain",
+      "result": "done",
+      "artifacts": [".cqds/team-tasks/done/20260611-v5-pwmd-graceful-node-shutdown-signals-coding.json"],
+      "tokens": { "source": "bridge", "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": "2026-05-31"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review shutdown ordering, no deadlock on signal during seal, localhost RPC guard unchanged",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md"],
+      "tokens": { "source": "estimate", "input": 52000, "output": 4500, "total": 56500, "confidence": "medium" },
+      "done_at": "2026-05-31"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Verify shutdown unit tests: shutdown_request_sets_guard, seal_loop_shutdown_guard",
+      "result": "PASS",
+      "artifacts": [],
+      "commands": [
+        "cargo test -p pwmd --lib shutdown → 2 passed (shutdown_request_sets_guard, seal_loop_shutdown_guard)"
+      ],
+      "tokens": { "source": "estimate", "input": 18000, "output": 2500, "total": 20500, "confidence": "medium" },
+      "done_at": "2026-05-31"
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md" },
+  "notes": "Orchestrator 2026-05-31: coding/review/testing PASS (integrated review with lab seal slice). Bridge project_id=5."
+}

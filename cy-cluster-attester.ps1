@@ -18,6 +18,9 @@ Initialize-CyLabPeersFile
 
 $clusterMembers = $CyInstanceProposer + ',' + $CyInstanceAttester
 
+$pwmdExe = Join-Path $PSScriptRoot '..\rust-target-shared\debug\pwmd.exe'
+$pwmdExeAbs = [System.IO.Path]::GetFullPath($pwmdExe)
+
 $cargoArgs = @(
     'run', '-p', 'pwmd', '--bin', 'pwmd', '--',
     '--listen', $CyRpcAttester,
@@ -41,6 +44,33 @@ $cargoArgs = @(
     '--seal-lease-backend', 'process-local'
 )
 
+$pwmdArgs = @(
+    '--listen', $CyRpcAttester,
+    '--state-root', $CyStateAttester,
+    '--data-file', (Join-Path $CyStateAttester 'pwm-data.json'),
+    '--genesis-file', $CyGenesis,
+    '--genesis-passphrase', $CyGenesisPass,
+    '--network-id', $CyNetwork,
+    '--domain-hi', $CyDomainHi,
+    '--cluster-id', $CyClusterLabel,
+    '--node-id', $CyNodeAttester,
+    '--node-instance-id', $CyInstanceAttester,
+    '--transport-real',
+    '--transport-peer-listen', $CyPeerAttester,
+    '--peers-list', $CyPeersFile,
+    '--cluster-enabled',
+    '--cluster-role', 'attester',
+    '--cluster-members', $clusterMembers,
+    '--cluster-quorum-k', '1',
+    '--cluster-quorum-n', '2',
+    '--seal-lease-backend', 'process-local'
+)
+
 # RFC16 §8.2: cluster-role=attester derives standby (replay-only, no competing local seal loop).
 Write-Host "Starting CY cluster attester. RPC=$CyRpcAttester peer=$CyPeerAttester peers-list=$CyPeersFile (seal loop off; proposer seals)."
-& cargo @cargoArgs
+if (Test-Path -LiteralPath $pwmdExeAbs) {
+    & $pwmdExeAbs @pwmdArgs
+}
+else {
+    & cargo @cargoArgs
+}

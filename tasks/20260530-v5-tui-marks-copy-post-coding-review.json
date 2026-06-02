@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-tui-marks-copy-post-coding-review",
+  "title": "V5 review: TUI marks copy + observability post-coding gate",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-tui-v5-marks-copy-operator-path-coding",
+    "20260530-v5-marks-mechanics-tui-observability-coding"
+  ],
+  "brief": "Light review gate after pwm-coding closed copy + observability slices. Verify no ClaimTx path copy remains, runbook exists, detail marks hint coherent with RFC 0012. Verdict PASS or PASS_WITH_NITS only.",
+  "acceptance_criteria": [
+    "docs/reviews/20260530-v5-tui-marks-copy-observability-post-review.md",
+    "grep pwm-tui for Claim/ClaimTx user strings — none advertising marks Claim path",
+    "Confirm docs/runbooks/v5-tui-marks-operator-path.md linked from soak or mvp_v5",
+    "Confirm format_marks_detail + F5 hints match operator journey review",
+    "No product Rust edits in review ticket"
+  ],
+  "artifacts": {
+    "coding_done": [
+      "tasks/done/20260530-v5-tui-v5-marks-copy-operator-path-coding.json",
+      "tasks/done/20260530-v5-marks-mechanics-tui-observability-coding.json"
+    ],
+    "prior_review": "docs/reviews/20260530-v5-tui-marks-operator-journey-review.md"
+  },
+  "notes": "Orchestrator re-queue: copy coding already done by bridge worker; review was skipped in conveyor.",
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-review",
+    "worker_lane": "review",
+    "invite_note": "TUI MARKS COPY+OBS POST REVIEW — pwm-review only.\n\nCoding tickets already done:\n- 20260530-v5-tui-v5-marks-copy-operator-path-coding\n- 20260530-v5-marks-mechanics-tui-observability-coding\n\nDeliver docs/reviews/20260530-v5-tui-marks-copy-observability-post-review.md\nVerify Claim copy gone, runbook present, marks detail/hint UX.\nNo Rust edits.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

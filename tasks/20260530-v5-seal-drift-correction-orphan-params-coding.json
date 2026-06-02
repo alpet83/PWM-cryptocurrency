@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-seal-drift-correction-orphan-params-coding",
+  "title": "V5: remove orphan cluster timing params + seal interval drift correction",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-genesis-runtime-consensus-audit-review",
+    "20260529-v5-cy-cluster-propose-seal-align-coding",
+    "20260530-v5-param-derivation-coupling-audit-review"
+  ],
+  "brief": "Remove consensus-timing CLI/config fields that are overwritten or unused (tx_catchup_ms, cluster-attest-timeout-ms). Add genesis-nominal seal cadence with wall-clock drift correction every 100 sealed blocks (max ±1% interval adjust per step, INFO log).",
+  "design": {
+    "reviews": [
+      "docs/reviews/20260529-v5-genesis-runtime-consensus-audit-review.md",
+      "docs/reviews/20260529-v5-cy-cluster-suppression-r2-review.md"
+    ],
+    "orphan_removal": {
+      "remove_entirely": [
+        "ClusterCfg.tx_catchup_ms field and all reads/writes",
+        "--cluster-tx-catchup-ms CLI (main.rs)",
+        "cluster_timing_ms catchup leg if unused — keep attest derivation only",
+        "--cluster-attest-timeout-ms CLI when cluster.enabled (always derive via apply_cluster_timing)"
+      ],
+      "keep_derived_internal_only": [
+        "cluster_cfg.attest_timeout_ms — set only by apply_cluster_timing from seal_ms; not operator-tunable"
+      ],
+      "do_not_remove": [
+        "attest_timeout_ms runtime use in run_cluster_gate",
+        "transport heartbeat/timeout CLI (ops; proposer cap stays in apply_cluster_timing)"
+      ],
+      "rfc16_note": "T_tx_catchup (RFC16 §6.1) not implemented in pwmd yet — do not reintroduce dead config; future slice wires attester catch-up using derived constant from seal_ms in code, not CLI."
+    },
+    "drift_correction": {
+      "nominal_ms": "seal_interval_ms(blocks_per_hour) = 3_600_000 / bph (unchanged formula)",
+      "sample_window_blocks": 100,
+      "trigger": "On successful local seal, when tip_h - window_start_h >= 100",
+      "measurement": "wall_clock elapsed for last 100 sealed blocks (Instant at window start → now)",
+      "expected_ms": "100 * nominal_interval_ms",
+      "adjustment_cap": "±1% of current effective_interval_ms per correction step (not unbounded PID)",
+      "direction": "If actual > expected (slow), decrease effective interval; if actual < expected (fast), increase",
+      "apply": "Use effective_interval_ms for next sleep/tick (replace or reset tokio::interval after adjust)",
+      "logging": "INFO each adjustment: e.g. seal_cadence_drift blocks=100 nominal_ms=… effective_ms=… actual_ms=… expected_ms=… adjust_pct=…",
+      "scope": "Active local sealer only (single-sealer proposer); skip attester/follower/debug-disable-seal-loop",
+      "constants": "Name magic 500 in cluster_timing_ms if retained — prefer seal_ms/2 or single CLUSTER_ATTEST_JITTER_MS with comment tied to nominal seal"
+    },
+    "explicit_non_goals": [
+      "No --seal-interval-ms or operator override of cadence",
+      "No change to GenCfg.blocks_per_hour semantics",
+      "No full RFC16 §6.1 attester tx catch-up implementation in this ticket",
+      "Drift correction is local scheduler only — not a consensus fork parameter"
+    ]
+  },
+  "acceptance_criteria": [
+    "grep/code: no tx_catchup_ms in ClusterCfg, main CLI, or startup logs.",
+    "grep/code: no --cluster-attest-timeout-ms / --cluster-tx-catchup-ms in main.rs (cluster mode derives timing only).",
+    "apply_cluster_timing still sets attest_timeout_ms from genesis seal_ms; cluster proposer heartbeat cap unchanged.",
+    "spawn_seal_loop: drift state; every 100 successful seals adjusts effective sleep within ±1%; logs adjustment.",
+    "Unit tests: seal_interval_ms; drift adjust math (slow/fast, clamp 1%); orphan field removal compiles.",
+    "cargo test -p pwmd --lib lifecycle; cargo check -p pwmd -p pwm-core.",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: document seal_cadence_drift log and nominal vs effective interval.",
+    "config/tests updated for removed cluster CLI fields."
+  ],
+  "artifacts": {
+    "files": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/config.rs",
+      "crates/pwmd/src/main.rs",
+      "docs/runbooks/v5-cy-cluster-precloseout-soak.md"
+    ]
+  },
+  "notes": "Owner: purge orphaned params; drift-correct effective sealing interval toward genesis blocks_per_hour target. Owner clarification 2026-05-31 (see 20260531-v5-seal-cadence-drift-oscillation-log-review): invariant is ±1% band around nominal_ms at all times, NOT only ±1% step on accumulated effective_ms — coding follow-up must clamp envelope if log review confirms gap.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "V5 SEAL DRIFT + ORPHAN PARAM PURGE — pwm-coding.\n\nRead:\n- docs/reviews/20260529-v5-genesis-runtime-consensus-audit-review.md (D2, D3)\n- crates/pwmd/src/lifecycle.rs spawn_seal_loop, cluster_timing_ms, apply_cluster_timing\n- crates/pwmd/src/config.rs ClusterCfg\n- crates/pwmd/src/main.rs cluster CLI flags\n\nA) REMOVE orphaned/unused:\n- tx_catchup_ms field + CLI + log fields (unused in runtime path)\n- --cluster-attest-timeout-ms CLI (derive only via apply_cluster_timing)\n- Simplify cluster_timing_ms to attest-only derivation\n\nB) DRIFT CORRECTION (local sealer):\n- nominal = seal_interval_ms(bph)\n- Every 100 successful seals: measure wall ms for window; expected = 100 * nominal\n- Adjust effective sleep ±1% max per step; INFO log seal_cadence_drift …\n- Skip attester / debug-disable-seal-loop\n\nTests + runbook. No new cadence CLI.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

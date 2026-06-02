@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "20260603-v5-seal-interval-suppression-eval-coding",
+  "title": "V5: interval-based seal suppression (one strike per nominal window)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260601-v5-proposer-seal-deadline-scheduler-coding",
+    "20260602-v5-proposer-seal-slot-metrics-preflight-coding",
+    "20260602-v5-live-attester-count-member-id-fix-coding"
+  ],
+  "brief": "CY soak after live-attester fix: seals work but seal_suppression_summary shows ~2200 suppressed / 100s while sealed_in_window ~37. Root cause: spawn_seal_loop calls close_supp on every cluster_gate/lease fail (every 10ms poll), which clears open_slot; next poll open_slot(same deadline) opens a NEW slot → ~100 false suppressions per second during normal ~200ms attest wait. Owner rule: count suppression only when (now - interval_trigger_ms) > nominal_ms without Ok(seal); after recording one suppression, move trigger to now+10ms for paced re-check. Attest RTT < nominal must not accrue penalty points.",
+  "root_cause": {
+    "file": "crates/pwmd/src/lifecycle.rs",
+    "loop_pattern": "open_slot(next_seal) → gate fail → close_supp → sleep(10ms) → open_slot(same next_seal) → slots++ & slot_supp++",
+    "test_gap": "slot_polls_no_inflate keeps slot open across polls; production closes slot each poll"
+  },
+  "owner_semantics": {
+    "suppression_definition": "From interval_trigger_ms until now elapsed > seal_interval_ms (nominal) and block still not sealed for this grid deadline",
+    "after_record": "interval_trigger_ms = now_ms + SEAL_POLL_INTERVAL_MS (10ms) before next suppression evaluation",
+    "not_suppressed": "Attest completes in 200–300ms within same nominal second — no strike",
+    "denominator": "~1 slot per grid deadline per 100s (~100 slots), not per poll",
+    "log_noise": "After attester connects, gate/propose path still runs every 10ms — rate-limit operator-visible suppress logs; do not log per-poll suppress"
+  },
+  "design": {
+    "SealSuppressWindow_refactor": {
+      "state": [
+        "active_deadline_ms: Option<u64> — current next_seal_time_ms being pursued",
+        "interval_trigger_ms: Option<u64> — wall ms when this deadline attempt started",
+        "suppression_recorded_for_deadline: bool — at most one strike per deadline until seal or grid skip"
+      ],
+      "API_sketch": [
+        "begin_deadline_attempt(deadline_ms, now_ms) — if new deadline: slots++, set trigger=now, clear recorded flag",
+        "evaluate_suppression(now_ms, nominal_ms) -> bool — if active && now - trigger > nominal && !recorded: slot_supp++, recorded=true, trigger=now+10, return true",
+        "on_sealed() — sealed_in++, clear active deadline state",
+        "on_grid_skip(old_deadline, new_deadline) — if missed seal across boundary: slot_supp once (SlotSkipped)"
+      ],
+      "remove": "close_supp on every run_cluster_gate/lease false in hot loop"
+    },
+    "spawn_seal_loop": {
+      "gate_fail_path": "sleep(poll_pause) only; call evaluate_suppression when appropriate (may be no-op until nominal elapsed)",
+      "lease_fail": "same interval rule or fence-specific once-per-deadline — document",
+      "propose_tick": "record_cluster_prop_tick only when beginning new deadline attempt or throttled (e.g. once per nominal window), not 100/s — reduces post-connect log noise"
+    },
+    "run_cluster_gate_logging": {
+      "pre_timeout": "remain debug; no per-poll warn",
+      "optional": "sample quorum_pending info 1/s per height while in-wait"
+    },
+    "emit_suppress_summary": {
+      "fields": "slots, suppressed, sealed_in_window, suppression_pct, last_reason",
+      "CY_expect": "100s window: slots ~90–110, suppressed ~0–40 (not ~2200), sealed ~35–40, pct aligns with real missed intervals"
+    },
+    "non_goals": [
+      "Revert deadline scheduler",
+      "Change attest_timeout formula",
+      "RFC16 pipeline attest"
+    ]
+  },
+  "acceptance_criteria": [
+    "Unit: 100 gate-fail polls within 200ms of same deadline → 0 suppressions; after nominal+1ms → exactly 1 suppression; trigger advances +10ms",
+    "Unit: seal within 300ms of deadline → 0 suppressions, 1 sealed",
+    "Integration test or harness: slot_polls matches production loop semantics",
+    "CY 5min: seal_suppression_summary suppressed < 80 (order of tens per 100s, not thousands)",
+    "CY: no burst of seal_suppressed_by_cluster warn after attester ready (sampled logs OK)",
+    "cargo test -p pwmd --lib lifecycle",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: interval suppression definition"
+  ],
+  "artifacts": {
+    "primary": ["crates/pwmd/src/lifecycle.rs"],
+    "docs": ["docs/runbooks/v5-cy-cluster-precloseout-soak.md"]
+  },
+  "operator_verify": "CY steady: grep seal_suppression_summary — slots~100 suppressed~30-50 sealed~37; inter-seal ~1s; no log flood after cluster_attest_ready",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 INTERVAL SUPPRESSION — pwm-coding.\n\nFix inflated ~2200/100s: stop close_supp every 10ms gate fail.\n\nOwner rule: suppress only if now-trigger>nominal_ms without seal; then trigger=now+10ms.\n\nRefactor SealSuppressWindow + spawn_seal_loop; throttle record_cluster_prop per deadline; tests.\n\nproject_id 5.\n# git-handoff"
+  },
+  "pipeline": {
+    "coding": "pwm-coding",
+    "review": "pwm-review"
+  }
+}

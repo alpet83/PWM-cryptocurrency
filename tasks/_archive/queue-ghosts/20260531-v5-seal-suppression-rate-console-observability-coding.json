@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "20260531-v5-seal-suppression-rate-console-observability-coding",
+  "title": "V5: seal loop suppression rate — 100s console summary (ERROR if >1%)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260531-v5-cy-proposer-seal-throughput-degradation-review",
+    "20260531-v5-seal-cadence-reanchor-envelope-clamp-coding"
+  ],
+  "brief": "Owner does not see seal suppression in proposer console; throughput review found ~93% tick suppression but most lines are DEBUG (quorum_pending pre_timeout). Add operator-visible aggregate: every 100s wall clock on proposer seal loop, log suppression_pct = suppressed_ticks / seal_loop_ticks * 100; if suppression_pct > 1.0 use error! (red #ERROR in stderr), else info!. Counters reset each 100s window. Do not spam per-tick WARN for normal quorum_pending.",
+  "owner_requirement": {
+    "interval_wall_sec": 100,
+    "metric": "percent of seal-loop iterations suppressed (cluster gate or lease gate fail before seal)",
+    "threshold": 1.0,
+    "above_threshold_level": "ERROR (red via existing logging.rs color_level_tag)",
+    "at_or_below_threshold_level": "INFO"
+  },
+  "context_from_review": {
+    "review": "docs/reviews/20260531-v5-cy-proposer-seal-throughput-degradation-review.md",
+    "why_console_quiet": "run_cluster_gate quorum_pending uses debug!(); only quorum_timeout uses warn!()",
+    "log_line_grep_inflates": "Historical log counts include DEBUG lines owner never sees on default console level"
+  },
+  "design": {
+    "file": "crates/pwmd/src/lifecycle.rs",
+    "scope": "spawn_seal_loop — ClusterRole::Proposer only (not attester/follower/debug_disable)",
+    "counters_per_100s_window": {
+      "seal_loop_ticks": "increment once per loop iteration that reaches proposer seal path (after sleep, before seal success)",
+      "seal_loop_ticks_suppressed": "increment when run_lease_gate returns false OR run_cluster_gate returns false (same paths that today bump pending_ticks_since_last_sealed)"
+    },
+    "emit": {
+      "trigger": "Instant::now() - window_start >= 100s",
+      "message": "seal_suppression_summary window_sec=100 ticks={} suppressed={} suppression_pct={:.2} sealed_in_window={}",
+      "level": "error! if suppression_pct > 1.0 else info!",
+      "reset": "zero counters and window_start after emit"
+    },
+    "optional_detail_on_error": "When ERROR, one-line breakdown: fence_suppressed vs cluster_suppressed counts in same window (helps owner reconcile with review)",
+    "non_goals": [
+      "Change RFC16 quorum semantics",
+      "Promote every debug quorum_pending to WARN (too noisy)",
+      "Change blocks_per_hour or drift envelope"
+    ]
+  },
+  "acceptance_criteria": [
+    "Proposer stderr shows seal_suppression_summary at least every ~100s at INFO or ERROR",
+    "When simulated or live suppression_pct > 1%, line uses #ERROR red styling (existing pwmd logging)",
+    "When suppression_pct <= 1%, INFO only",
+    "Unit test: helper compute_suppression_pct + threshold level selection",
+    "cargo test -p pwmd --lib lifecycle",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: note seal_suppression_summary and DEBUG vs console"
+  ],
+  "operator_verify": "Restart proposer; within 100s expect seal_suppression_summary; on CY cluster with quorum wait expect red ERROR if review attribution holds",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 SEAL SUPPRESSION OBSERVABILITY — pwm-coding.\n\nOwner: no suppression visible in console; wants every 100s: suppression_pct; if >1% → error! red.\n\nCause: quorum_pending logged at debug! in run_cluster_gate (lifecycle.rs). Review counted log grep — not operator console.\n\nImplement in spawn_seal_loop (proposer):\n- Count ticks + suppressed (lease fail + cluster gate fail)\n- Every 100s wall: seal_suppression_summary … suppression_pct=…\n- error! if pct>1.0 else info!\n- Optional fence vs cluster subcounts on ERROR\n\nTests + runbook line.\n\nRead: docs/reviews/20260531-v5-cy-proposer-seal-throughput-degradation-review.md §4.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

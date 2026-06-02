@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-proposer-seal-slot-metrics-preflight-coding",
+  "title": "V5: seal-slot suppression metrics + attester preflight (fix deadline poll inflation)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260601-v5-proposer-seal-deadline-scheduler-coding"
+  ],
+  "brief": "Post deadline-scheduler soak: seal_suppression_summary shows ~97% suppression while sealed_in_window ~37/100s unchanged. Root cause: metrics count every 10ms poll past deadline as one tick+suppression (~100/s), not one logical seal slot per nominal interval (~1/s). Also proposer calls record_cluster_prop_tick + run_cluster_gate when no live attester is connected, spamming quorum_pending logs at startup. Fix: slot-based suppression accounting (one suppress per failed attest window per grid deadline), attester-transport preflight before propose/gate, longer idle sleep when quorum impossible, keep 10ms poll only inside an active attest slot.",
+  "symptoms": {
+    "operator": "suppression_pct ~97%, sealed_in_window ~37 unchanged vs pre-scheduler ~50–60%",
+    "logs": "burst of seal_suppressed_by_cluster / missing_round_state at proposer start until attester connects",
+    "hypothesis_confirmed": "poll_pause(10ms) IS present on gate-fail continue (lifecycle.rs) — not a zero-delay spin; counters are wrong"
+  },
+  "root_cause": {
+    "metrics": "is_proposer: supp_win.tick_inc() every loop iteration while now>=next_seal_time_ms; cluster_inc() on every run_cluster_gate false — ~100 ticks/sec vs ~1 seal/sec",
+    "preflight": "no check for live attester peers before record_cluster_prop_tick / run_cluster_gate",
+    "logging": "run_cluster_gate missing_round_state uses warn every poll when height>2; propose tick creates rounds before transport ready"
+  },
+  "design": {
+    "A_slot_metrics": {
+      "replace": "per-poll tick_inc/cluster_inc for proposer suppression %",
+      "model": "One seal_slot per grid deadline attempt (tracked by slot_deadline_ms = next_seal_time_ms while attempting this height)",
+      "rules": [
+        "On first poll entering attempt for current slot: slot_attempt_inc (at most once per slot_deadline_ms)",
+        "While slot open: poll loop may run every SEAL_POLL_INTERVAL_MS but does NOT increment suppression counters",
+        "slot_suppressed_inc once when slot ends without Ok(seal): attest_timeout for round, OR next grid boundary passed without seal, OR height advanced without seal for that slot",
+        "Ok(seal): close slot without suppress; sealed_in unchanged",
+        "emit_suppress_summary: report slots= slot_attempts, suppressed= slot_suppressed, suppression_pct= suppressed/slots (expect ~30–70% on CY steady state, not ~97%)"
+      ],
+      "compat": "Rename log fields ticks→slots (or dual-publish one release); update docs/runbooks/v5-cy-cluster-precloseout-soak.md"
+    },
+    "B_attester_preflight": {
+      "helper": "count_live_cluster_attesters(app) -> u8 using handshake: trusted_peers with cluster_role=Attester, member in cluster_cfg.members, peer liveish in hs.peers",
+      "gate": "cluster_seal_preflight(app) -> Ready | WaitingAttester | …",
+      "when_WaitingAttester": [
+        "Do NOT call record_cluster_prop_tick",
+        "Do NOT call run_cluster_gate (no missing_round_state spam)",
+        "Do NOT increment slot suppression counters",
+        "sleep min(nominal_ms/4, 500ms) or const SEAL_WAIT_PEER_MS — not 10ms poll storm"
+      ],
+      "ready_rule": "live_attesters >= quorum_k (CY 2-of-2: >=1 live attester excluding proposer)"
+    },
+    "C_in_slot_poll": {
+      "when": "preflight Ready && now>=next_seal_time_ms && in active slot",
+      "poll": "SEAL_POLL_INTERVAL_MS between gate checks (existing poll_pause)",
+      "note": "Owner intent: many polls only while genuinely waiting for attest within the 1s target window, not while peers absent"
+    },
+    "D_logging": {
+      "startup": "waiting_for_attester: info once per 5s (or first connect), not warn per 10ms",
+      "quorum_pending pre_timeout": "remain debug; optional sample 1/s per height",
+      "missing_round_state": "only after preflight Ready (propose path active)"
+    },
+    "non_goals": [
+      "Revert deadline scheduler / grid align",
+      "RFC16 pipeline attest",
+      "New CLI cadence knobs",
+      "Change quorum k/n formulas"
+    ]
+  },
+  "acceptance_criteria": [
+    "Unit tests: slot counters — N polls in one slot increment slot_attempt once; suppress once on slot close",
+    "Unit tests: preflight WaitingAttester when live_attesters=0; Ready when >= quorum_k",
+    "CY steady 5min: seal_suppression_summary suppression_pct in same ballpark as sealed rate (~30–70%, not ~97%)",
+    "CY startup: no wall of warn quorum_pending before first attester connect; at most periodic waiting_for_attester info",
+    "sealed_in_window per 100s still ~prior baseline (~35–40 on CY)",
+    "cargo test -p pwmd --lib lifecycle",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md updated (slots vs ticks semantics)"
+  ],
+  "artifacts": {
+    "primary": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/transport/health.rs or transport/peer_session helper for live attester count"
+    ],
+    "docs": ["docs/runbooks/v5-cy-cluster-precloseout-soak.md"]
+  },
+  "operator_verify": "Restart CY attester then proposer; first 30s logs quiet until connect; after steady state grep seal_suppression_summary — slots~100, suppressed~30–70, sealed~37, pct not ~97%",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 SEAL SLOT METRICS + PREFLIGHT — pwm-coding (follow-up deadline scheduler).\n\nProblem: 97% suppression_pct but ~37 seals/100s — each 10ms poll counts as tick+suppress.\n\n1) Slot-based SealSuppressWindow (one attempt + one suppress per grid slot, not per poll).\n2) count_live_cluster_attesters + preflight: skip propose/gate/metrics when no attester connected; slower sleep.\n3) Log rate-limit startup noise.\n\nRead spawn_seal_loop + run_cluster_gate + SealSuppressWindow. Tests + runbook.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  },
+  "pipeline": {
+    "coding": "pwm-coding",
+    "review": "pwm-review"
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "id": "20260610-v5-lab-cluster-seal-manual-rpc-stepmode-coding",
+  "title": "V5 lab: manual RPC step-mode for cluster seal (stop auto loop)",
+  "status": "done",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "related_debug": [
+    "20260610-v5-cy-proposer-attest-gap-iter2-debug",
+    "docs/debug/20260610-v5-cy-proposer-attest-gap-iter2-root-cause.md"
+  ],
+  "depends_on": [],
+  "runs_parallel_with": [
+    "20260610-v5-cluster-propose-timeout-and-resend-coding"
+  ],
+  "brief": "Owner-driven CY debug: stop deadline seal loop; advance cluster seal strictly via HTTP RPC steps with per-step max verbosity and wall timing in logs. Enables operator to restart cluster, align nodes, then walk one block through preflight→lease→propose→gate→seal without seal-ahead/poll races. Lab-only; default production path unchanged.",
+  "design": {
+    "problem": "Iter-2 debug required owner cluster restarts; automatic seal loop (deadline_poll + seal_ahead + 10ms gate poll) hides causality and overlaps propose timeout with sync lag. Need reproducible single-step execution with loud logs.",
+    "approach": "Integral switch SealControlMode: Auto (today) | ManualRpc. In ManualRpc: do not run autonomous seal attempts (equivalent to pausing spawn_seal_loop body for proposer); expose decomposed steps callable via /v1/lab/seal/* on proposer RPC (localhost lab).",
+    "activation": {
+      "cli": "--seal-control auto|manual-rpc (default auto)",
+      "env": "PWM_SEAL_CONTROL=manual_rpc",
+      "runtime_rpc": "POST /v1/lab/seal/control { \"mode\": \"manual_rpc\" | \"auto\" }",
+      "guard": "Only when cluster-enabled proposer OR explicit --lab-seal-api; reject on attester/follower with 409"
+    },
+    "auto_loop_behavior": {
+      "manual_rpc": "spawn_seal_loop still runs but proposer branch only: init check, optional block_timing flush, sleep(poll_pause) — NO preflight slot open, NO seal_ahead, NO record_cluster_prop_tick, NO run_cluster_gate, NO chain.seal",
+      "auto": "unchanged current lifecycle.rs path"
+    },
+    "state": {
+      "holder": "App: SealManualState { mode, target_h, last_step, last_result, verbose_until_ms, step_t0_ms }",
+      "target_h": "always tip_h+1 at step entry unless request specifies height (optional, default next)"
+    },
+    "rpc_surface": {
+      "GET /v1/lab/seal/status": "mode, tip_h, target_h, sync_ready snapshot (sync_n, live_n, peer_tip_max, max_lag), lease snapshot, round-state summary (open round, got/need, propose_opened_at_ms), last_step, last_step_ms, verbose_active",
+      "POST /v1/lab/seal/control": "{ mode, verbose_default?: bool }",
+      "POST /v1/lab/seal/step": "{ step, verbose?: true, timeout_ms?: optional for gate_wait }",
+      "steps_enum": [
+        "preflight — count_sync_ready_attesters + cluster_seal_preflight; log per-peer sync_live (tip_h, cup_active, lag); no mutations",
+        "lease — run_lease_gate once; log fence/owner/expiry",
+        "propose — single wire ClusterPropose for target_h (reuse peer_session propose path; NO seal_ahead / NO record_cluster_prop_tick unless this step runs); log wire send ack / seq",
+        "gate_poll — run_cluster_gate once (+ optional recheck flag); log gate_obs Wait|Timeout|Ready, attest counts, elapsed since propose",
+        "gate_wait — bounded loop gate_poll until ready or timeout_ms (for operator convenience)",
+        "seal_commit — mempool take + chain.seal + roaming expire; log sealed height; optional autosnapshot",
+        "step_all — run ordered chain preflight→lease→propose→gate_wait→seal_commit (abort on first fail; still one RPC for smoke)"
+      ],
+      "response_shape": "{ ok, step, target_h, tip_h_after, duration_ms, detail, warnings[], gate?: { got, need, elapsed_ms }, sync?: { sync_n, live_n, peer_tip_max } }"
+    },
+    "verbosity": {
+      "per_step": "POST .../step verbose=true sets RUST_LOG-equivalent scoped bump for this await only: pwmd::lifecycle=trace, pwmd::peer=trace, pwmd::sync=debug (implementation: ManualSealVerboseGuard or tracing span with target filters — no global permanent trace)",
+      "log_prefix": "manual_seal step={} target_h={} phase={} elapsed_ms={} …",
+      "fields": "Each sub-phase logs t0/t1 (preflight_start, preflight_ok, propose_wire_sent, attest_rx, gate_ready, seal_done)",
+      "block_timing": "If PWM_BLOCK_TIMING_ENABLED, note_* on manual steps same heights as auto path"
+    },
+    "operator_workflow": {
+      "1": "Start attester, then proposer with --seal-control manual-rpc (or RPC switch after up)",
+      "2": "Align chain (owner restart/sync) until GET status shows sync_ready acceptable",
+      "3": "POST step preflight (verbose) — inspect logs both nodes",
+      "4": "POST step propose (verbose) — attester should attest; inspect peer logs",
+      "5": "POST step gate_poll or gate_wait — confirm quorum",
+      "6": "POST step seal_commit — confirm tip_h+1",
+      "7": "Repeat or POST control mode=auto to resume soak"
+    },
+    "code_touchpoints": [
+      "crates/pwmd/src/lifecycle.rs — extract reusable async fns from spawn_seal_loop proposer path",
+      "crates/pwmd/src/api/router.rs + new handlers_lab_seal.rs",
+      "crates/pwmd/src/main.rs + config — seal_control enum",
+      "crates/pwmd/src/state.rs — SealManualState",
+      "docs/runbooks/v5-cy-cluster-precloseout-soak.md — Manual RPC seal section",
+      "scripts/ optional: cy_manual_seal_step.ps1 helper (curl examples)"
+    ],
+    "non_goals": [
+      "Public mainnet API without lab guard",
+      "TUI panel for step mode v1",
+      "Remote RPC without localhost bind check",
+      "Replacing pwm-debug experiments ticket entirely"
+    ]
+  },
+  "acceptance_criteria": [
+    "Proposer --seal-control manual-rpc: no sealed height advance without successful seal_commit step; no seal_ahead/propose side effects between steps",
+    "Each step with verbose=true emits manual_seal_* lines with duration_ms and key cluster fields (sync, gate, lease)",
+    "CY 2-node: operator script can seal one block via 4–5 RPC calls while tailing proposer+attester logs",
+    "POST control mode=auto restores autonomous loop without restart",
+    "Attester POST to lab/seal returns 409 with clear message",
+    "Unit tests: manual mode skips auto seal; step preflight returns sync snapshot; step_all aborts when preflight WaitingAttester",
+    "cargo test -p pwmd api + lifecycle manual_seal",
+    "Document RPC contract in runbook (request/response examples)"
+  ],
+  "mvp_checklist": ["§4 cluster seal diagnostics", "§6 CY lab operator path"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Implement SealControlMode manual-rpc, pause auto proposer seal path, /v1/lab/seal/* RPC steps with per-step verbose logging",
+      "result": "done",
+      "artifacts": [".cqds/team-tasks/done/20260610-v5-lab-cluster-seal-manual-rpc-stepmode-coding.json"],
+      "tokens": { "source": "bridge", "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": "2026-05-31"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review lab guard, no accidental auto-seal in manual mode, RPC safety (localhost/cluster)",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md"],
+      "tokens": { "source": "estimate", "input": 52000, "output": 4500, "total": 56500, "confidence": "medium" },
+      "done_at": "2026-05-31"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Verify seal_manual + shutdown Rust unit tests and Python console tests",
+      "result": "PASS",
+      "artifacts": [],
+      "commands": [
+        "cargo test -p pwmd --lib seal_manual → 2 passed",
+        "cargo test -p pwmd --lib shutdown → 2 passed (shutdown_request_sets_guard, seal_loop_shutdown_guard)",
+        "cargo test -p pwmd --lib status_returns_sync → 1 passed",
+        "cargo test -p pwmd --lib step_all_waiting_attester → 1 passed",
+        "python scripts/_test_cy_lab_seal_console.py -v → 6 passed",
+        "python -m py_compile scripts/cy_lab_seal_console.py → OK",
+        "cargo check --workspace → pwm-tui pre-existing errors (unrelated); pwmd OK",
+        "cargo bench -p pwmd --bench snapshot_load --no-run → compiled OK"
+      ],
+      "tokens": { "source": "estimate", "input": 18000, "output": 2500, "total": 20500, "confidence": "medium" },
+      "done_at": "2026-05-31"
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md" },
+  "related_tickets": [
+    "20260611-v5-lab-seal-console-python-json-window-coding"
+  ],
+  "notes": "Orchestrator 2026-05-31: coding bridge done (pwm-coding_42644); review PASS_WITH_NITS; testing PASS. Review nits NIT-1..3 fixed in runbook + cy_lab_seal_console (orchestrator, no Rust). Report: docs/reviews/20260531-v5-cy-lab-seal-manual-console-shutdown-review.md. Bridge: share_ticket project_id=5; do not write tasks/queue/ (sentinel)."
+}

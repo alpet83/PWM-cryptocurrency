@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-tui-prepublish-operator-ux-coding",
+  "planned_for": null,
+  "title": "V5 TUI pre-publish: detail marks + burn copy polish",
+  "status": "done",
+  "parent_ticket": "20260602-v5-prepublish-polish-umbrella",
+  "depends_on": [
+    "20260602-v5-tui-f5-hint-three-state-coding"
+  ],
+  "related_docs": [
+    "docs/reviews/20260530-v5-marks-mechanics-proposer-log-review.md",
+    "docs/reviews/20260602-v5-tui-f5-hint-three-state-review.md",
+    "docs/runbooks/v5-tui-marks-operator-path.md"
+  ],
+  "brief": "Закрыть operator-trap и review NIT перед публикацией: detail pane показывает stored marks; burn_form default status всё ещё «Claim or Stake»; F5 burn modal marks_available из stored, не effective.",
+  "design": {
+    "detail_pane": "Marks line: effective at poll head (reuse effective_marks_at_height / row.effective_marks); optional sub-label stored=… marks_last_block=…",
+    "accrual_hint": "When staked>=1 PWM whole unit and effective==stored: one line blocks-until-next-hour (DEF_BLOCKS_PER_HOUR until /v1/status exposes genesis params)",
+    "burn_form": "Default status: V5 lazy marks copy (no Claim); align burn_form.rs + any modal help",
+    "f5_modal": "Prefer effective_marks.unwrap_or(marks) for marks_available when opening burn form",
+    "f5_burn_hint_needed": "Add brief /// doc: narrow 2-state helper vs f5_burn_hint_text"
+  },
+  "acceptance_criteria": [
+    "Detail Marks reflects effective (visible change after stake+head advance in table/detail)",
+    "No user-facing Claim/ClaimTx path strings in pwm-tui src",
+    "burn_form default status matches operator runbook",
+    "Unit tests for detail/accrual formatting thresholds",
+    "cargo test -p pwm-tui --lib; cargo test -p pwm-tui send_form",
+    "check_entity_name_segments.py on touched files"
+  ],
+  "code_touchpoints": [
+    "crates/pwm-tui/src/tui_loop.rs",
+    "crates/pwm-tui/src/burn_form.rs",
+    "crates/pwm-tui/src/marks_display.rs",
+    "crates/pwm-tui/src/lib.rs"
+  ],
+  "non_goals": ["pwm-core touch-order change", "F7 stake % hints", "format_marks_detail rename-only"],
+  "mvp_checklist": ["§6 operator / TUI devnet"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Detail effective marks, accrual hint, burn_form copy, effective marks_available.",
+      "result": null,
+      "artifacts": [],
+      "tokens": { "source": null, "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Operator journey vs mechanics review; no Claim copy.",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/20260602-v5-prepublish-polish-integrated-review.md"],
+      "tokens": { "source": "estimate", "input": 12000, "output": 3500, "total": 15500, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "pwm-tui lib + send_form; Windows CARGO_TARGET_DIR.",
+      "result": "PASS",
+      "artifacts": ["docs/testing-issues.md"],
+      "tokens": { "source": "estimate", "input": 8000, "output": 1200, "total": 9200, "confidence": "medium" },
+      "done_at": "2026-06-02",
+      "notes": "cargo test -p pwm-tui --lib: 38 passed. send_form 42 + wallet_roaming 45 passed (harness fix footer_rpc_online_one stale span-count assert)."
+    }
+  ],
+  "commits": [],
+  "artifacts": { "review_md": "docs/reviews/20260602-v5-prepublish-polish-integrated-review.md" },
+  "notes": "Highest UX value for publish. Bridge project_id 5.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "TUI PREPUBLISH OPERATOR UX — pwm-coding\n\nRefs: docs/reviews/20260530-v5-marks-mechanics-proposer-log-review.md (detail trap), 20260602 F5 hint review NIT B/C.\n\n1) Detail pane: show effective marks (+ optional stored sub-label)\n2) Accrual hint when staked>0 and effective==stored (blocks to next mark hour)\n3) burn_form.rs: remove Claim from default status\n4) F5: marks_available from effective_marks when set\n5) /// on f5_burn_hint_needed\n6) Tests + cargo test -p pwm-tui --lib send_form\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-prepublish-naming-style-sweep-review",
+  "planned_for": null,
+  "title": "V5 pre-publish: naming/style sweep (entity segments)",
+  "status": "done",
+  "parent_ticket": "20260602-v5-prepublish-polish-umbrella",
+  "depends_on": [],
+  "brief": "Комплексное ревью стиля перед публикацией MVP v5. Обязательный прогон scripts/check_entity_name_segments.py по всем product crates (pwm-core, pwm-cli, pwmd, pwm-tui src+tests). Зафиксировать prod ≤4 / test ≤5 segment violations; module banners; systemic patterns. Без правок Rust — отчёт + handoff в fix-coding.",
+  "orchestrator_prescan": {
+    "command": "python scripts/check_entity_name_segments.py crates/pwm-core/src crates/pwm-cli/src crates/pwmd/src crates/pwm-tui/src crates/pwm-tui/tests crates/pwm-core/tests crates/pwm-cli/tests crates/pwmd/src/tests",
+    "total_violations": 6,
+    "files": [
+      "crates/pwmd/src/block_timing.rs (5 test fn, 6-8 segments)",
+      "crates/pwmd/src/transport/peer_session/inbound.rs (1 prod const INBOUND_SOCKET_READ_LOG_SLOW_MS, 6 segments)"
+    ]
+  },
+  "acceptance_criteria": [
+    "docs/reviews/20260602-v5-prepublish-naming-style-sweep-review.md",
+    "Full scanner JSON summary in report (total violations, top files, entity kinds)",
+    "Verdict PASS if zero prod violations after fix ticket; PASS_WITH_NITS if only test backlog",
+    "Explicit handoff list for 20260602-v5-prepublish-naming-violations-fix-coding",
+    "Wire JSON / u128 subsection",
+    "No product Rust edits"
+  ],
+  "artifacts": {
+    "scanner": "scripts/check_entity_name_segments.py",
+    "fix_ticket": "20260602-v5-prepublish-naming-violations-fix-coding"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Run full entity segment scan; style report; verdict.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260602-v5-prepublish-naming-style-sweep-review.md"],
+      "tokens": { "source": "estimate", "input": 8500, "output": 1200, "total": 9700, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    }
+  ],
+  "notes": "Run BEFORE or IN PARALLEL with naming-violations-fix; fix ticket uses prescan list. Skill colloquium-cqds-mcp.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-review",
+    "worker_class": "review",
+    "invite_note": "PREPUBLISH NAMING/STYLE SWEEP — pwm-review only\n\n1) Run: python scripts/check_entity_name_segments.py crates/pwm-core/src crates/pwm-cli/src crates/pwmd/src crates/pwm-tui/src crates/pwm-tui/tests crates/pwm-core/tests crates/pwm-cli/tests crates/pwmd/src/tests\n2) Report: docs/reviews/20260602-v5-prepublish-naming-style-sweep-review.md\n3) Orchestrator prescan found 6 violations (block_timing tests + inbound const) — confirm/extend\n4) Flag any prod fn>4 segments as REQUEST_CHANGES for publish gate\n5) Optional: spot-check module //! banners on touched hot files\n6) Wire JSON / u128 N/A unless wire touched\n7) git-handoff for review md + task json\n\nNo Rust edits.\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

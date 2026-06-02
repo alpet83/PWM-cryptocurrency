@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-tui-marks-operator-journey-review",
+  "title": "V5 review: TUI marks operator journey + stale ClaimTx copy audit",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260528-v5-audit-warn5-tui-retire-claimtx-ui"
+  ],
+  "brief": "Owner: ClaimTx removed in V5 but TUI still mentions Claim; unclear how to get marks from zero balance. Deliver normative operator path (lazy marks) and inventory stale UI strings; distinguish ClaimTx vs ClaimIPv4Batch.",
+  "acceptance_criteria": [
+    "docs/reviews/20260530-v5-tui-marks-operator-journey-review.md",
+    "Operator path doc section: PWM -> stake (S) -> wait blocks -> marks in column -> F5 burn; note IPv4 ClaimIPv4Batch is separate registry tx not in TUI",
+    "Inventory all pwm-tui user-visible Claim/claim_mark references with keep/remove/rewrite",
+    "Recommend coding ticket copy (Russian-friendly operator bullets ok in runbook)",
+    "Verdict PASS_WITH_NITS or REQUEST_CHANGES for TUI UX gap",
+    "No product Rust edits in review ticket"
+  ],
+  "artifacts": {
+    "spec": [
+      "docs/rfc/12-claim-maturity-and-state-model.md",
+      "docs/plans/mvp_v5.md",
+      "docs/GLOSSARY.md"
+    ],
+    "code": [
+      "crates/pwm-tui/src/tui_loop.rs",
+      "crates/pwm-tui/src/burn_form.rs",
+      "crates/pwm-tui/src/status.rs"
+    ],
+    "prior": "tasks/done/20260528-v5-audit-warn5-tui-retire-claimtx-ui.json"
+  },
+  "notes": "Owner-reported UX gap after WARN-005 partial cleanup.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-review",
+    "worker_class": "review",
+    "invite_note": "TUI V5 MARKS JOURNEY — review only.\n\nOwner: ClaimTx cut but TUI still says Claim; zero marks path unclear.\n\nRead RFC 0012 v2 touch semantics (STAKE/UNSTAKE/TRANSFER/BURN touch; no ClaimTx).\n\nDeliver:\n1) docs/reviews/20260530-v5-tui-marks-operator-journey-review.md\n2) Operator steps for devnet/TUI: stake first, marks lazy-accrue while staked, F5 burns materialized marks\n3) Grep pwm-tui for Claim strings — list fixes for coding\n4) Clarify ClaimIPv4Batch != ClaimTx (CLI helper only today)\n\nRecommend coding ticket for copy + optional runbook docs/runbooks/v5-tui-marks-operator-path.md\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

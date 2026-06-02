@@ -22,6 +22,8 @@ param(
     [int]$ProposerLeadSeconds = 12,
     [int]$StatusWaitSeconds = 120,
     [switch]$CleanState,
+    [switch]$SkipArchive,
+    [int]$MaxStateArchives = 30,
     [switch]$SkipGenesis,
     [switch]$SkipNodes,
     [switch]$BruteDemoOnly,
@@ -98,17 +100,11 @@ if ($BruteDemoOnly) {
 
 if ($CleanState) {
     Add-Rep "## CleanState"
-    foreach ($p in @(
-            (Join-Path $RepoRoot 'tmp\state-cy-proposer'),
-            (Join-Path $RepoRoot 'tmp\state-cy-attester'),
-            (Join-Path $RepoRoot 'tmp\state-cy-follower'),
-            (Join-Path $RepoRoot 'tmp\cy-lab-peers.yaml')
-        )) {
-        if (Test-Path -LiteralPath $p) {
-            Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue
-            Add-Rep "- removed $p"
-        }
-    }
+    . (Join-Path $PSScriptRoot '_devnet_clean_state.ps1')
+    $cleanPatterns = Get-DevnetCleanStatePatterns -RepoRoot $RepoRoot -Profile CyCluster
+    $null = Invoke-DevnetCleanStateWithArchive -RepoRoot $RepoRoot -PathPatterns $cleanPatterns `
+        -Label 'devnet_v4_policy_e2e' -MaxArchives $MaxStateArchives -SkipArchive:$SkipArchive `
+        -Log { param($m) Add-Rep $m }
 }
 
 if (-not $SkipGenesis) {

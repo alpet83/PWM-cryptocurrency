@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "20260604-v5-proposer-seal-on-gate-ready-coding",
+  "title": "V5: seal immediately when cluster gate OK (cut ACK→seal lag)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260605-v5-cy-proposer-residual-10pct-overhead-debug"
+  ],
+  "brief": "Debug (docs/debug/20260605): residual ~10% is pre_timeout gate wait + poll after attest ready, not steady timeout; ACK→seal p50 15ms but tails to ~800ms while grid scheduler defers commit. Fix: when run_cluster_gate is true after deadline (active slot opened), seal in the same loop iteration—no extra poll_pause, no wait for next grid tick. Owner invariant: seal MUST NOT run before should_attempt_seal(next_seal_time_ms); ahead window remains propose-only (no early seal for metrics). Target: ack_to_seal p50 < 100ms, T_100 ~110–130s, slots_struck < 15% steady.",
+  "design": {
+    "reference": [
+      "docs/debug/20260605-v5-cy-proposer-residual-10pct-overhead-debug.md",
+      "docs/debug/20260603-v5-cy-proposer-seal-wall-overhead.md"
+    ],
+    "owner_invariants": [
+      "No seal before now_ms >= next_seal_time_ms (variant C grid)",
+      "seal_ahead_ms path: wire propose only, never chain.seal in ahead window",
+      "seal-on-gate-ready applies only after deadline branch entered (begin_slot active)"
+    ],
+    "hypothesis": "Gate OK but loop sleeps poll_pause or re-enters slot logic before seal",
+    "measure_success": [
+      "ack_to_seal_ms_p50 < 100ms (new or log-derived)",
+      "100-block wall T_100 closer to 110–130s not 155–230s",
+      "slots_struck < 15% steady",
+      "pending_ticks median drops vs 20260605 baseline"
+    ],
+    "non_goals": [
+      "RFC16 pipeline attest (V6)",
+      "New CLI cadence knobs",
+      "Early seal on ACK before grid deadline"
+    ]
+  },
+  "acceptance_criteria": [
+    "Invariant test/doc: no chain.seal when now_ms < next_seal_time_ms even if gate would pass",
+    "Unit/integration: after deadline, gate OK → seal same iteration without poll_pause before seal",
+    "CY 5min soak: ACK→Seal p50 < 200ms on paired peer+proposer logs",
+    "cargo test -p pwmd --lib lifecycle",
+    "No regression: preflight waiting_for_attester; height-dedup wait/to/strike; interval strike ≤1 per slot/height"
+  ],
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 SEAL ON GATE READY — pwm-coding.\n\nRCA: docs/debug/20260605-v5-cy-proposer-residual-10pct-overhead-debug.md (HIGH). Cut ACK→seal lag AFTER grid deadline; do NOT seal in ahead window.\n\nOwner invariants in ticket design.owner_invariants — mandatory.\n\nSkill: colloquium-cqds-mcp; cq_help; project_id 5.\n\nConveyor: pwm-coding → pwm-review → pwm-testing.\n\n# git-handoff"
+  },
+  "notes": {
+    "orchestrator": "2026-05-30: shared to bridge after owner confirmed grid deadline stays; observability-split may follow in parallel."
+  }
+}

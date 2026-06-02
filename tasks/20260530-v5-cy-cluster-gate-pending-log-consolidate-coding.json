@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-cy-cluster-gate-pending-log-consolidate-coding",
+  "title": "V5: consolidate pre_timeout cluster gate logs (DEBUG + periodic summary)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-cy-cluster-pending-log-throttle-coding",
+    "20260530-v5-cy-cluster-suppression-r3-review"
+  ],
+  "brief": "Owner live CY logs: still ~1 INFO seal_suppressed pre_timeout per height (got=0) while head advances ~2-3s/block. R3 demote incomplete — move pre_timeout to DEBUG; emit INFO summary every N sealed heights with pending tick count. Gate unchanged.",
+  "design": {
+    "evidence": "terminals/owner: one pre_timeout INFO per height; sealed height every ~2-3s; drift actual_ms~2x expected for 100 blocks",
+    "fix": {
+      "pre_timeout_attestations_missing": "tracing::debug! (not info!)",
+      "missing_round_state_startup": "keep info for h<=2",
+      "summary": "every 10 sealed heights: info cluster_gate_pending_summary pending_ticks_since_last_sealed=N sealed_h=H (counter in seal loop local state)"
+    },
+    "unchanged": [
+      "run_cluster_gate fail-closed",
+      "quorum_timeout / invalid_proposal WARN"
+    ],
+    "explicit_non_goals": [
+      "No wire propose from seal loop (separate slice if debug finds RTT gap)",
+      "No relax timeout"
+    ]
+  },
+  "acceptance_criteria": [
+    "Default INFO console: no per-tick pre_timeout spam during steady CY soak.",
+    "WARN quorum_timeout and invalid cluster errors still visible.",
+    "Periodic INFO summary every 10 sealed heights with pending suppression count.",
+    "cargo test -p pwmd --lib lifecycle",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: operator sees summary + WARN only"
+  ],
+  "artifacts": {
+    "files": [
+      "crates/pwmd/src/lifecycle.rs",
+      "docs/runbooks/v5-cy-cluster-precloseout-soak.md"
+    ]
+  },
+  "notes": "Orchestrator: cause clear from owner logs; review skipped.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "CY gate log consolidate — pwm-coding.\n\nOwner logs: INFO pre_timeout every height got=0; head OK ~2-3s/block.\n\n1) run_cluster_gate: pre_timeout attestations_missing -> debug! only.\n2) spawn_seal_loop: count pending gate failures between sealed heights; every 10 sealed heights info summary cluster_gate_pending_summary pending_ticks=N.\n3) Runbook: what operator should see.\n\nKeep WARN on timeout/invalid. Tests if counter added.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

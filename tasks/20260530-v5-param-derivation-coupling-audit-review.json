@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-param-derivation-coupling-audit-review",
+  "title": "V5 review: parameter derivation coupling & magic-from-defaults audit",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-genesis-runtime-consensus-audit-review",
+    "20260529-v5-cy-cluster-propose-seal-align-coding"
+  ],
+  "brief": "Second-pass audit (current tree): map where consensus/timing logic is spread across genesis fields, CLI defaults, config defaults, and code literals that implicitly assume those defaults (e.g. 500/1500/4500/3600). Produce coupling graph + de-smear recommendations without product edits.",
+  "context": {
+    "prior_audit": "docs/reviews/20260529-v5-genesis-runtime-consensus-audit-review.md",
+    "owner_direction": "No critical contradictions in present config; focus on maintainability — avoid duplicated semantics and constants that only make sense when defaults match.",
+    "known_examples": [
+      "cluster_timing_ms: catchup=seal_ms, attest=max(2*seal, seal+500) — literal 500",
+      "Transport CLI defaults 1500/4500/500 tuned pre-BPH seal align",
+      "cluster CLI 500/1000 defaults overwritten by apply_cluster_timing",
+      "DEF_BLOCKS_PER_HOUR=3600 vs historical from_secs(2) era",
+      "season_enabled vs season_coeff_ppm dual path"
+    ]
+  },
+  "acceptance_criteria": [
+    "docs/reviews/20260530-v5-param-derivation-coupling-audit-review.md delivered.",
+    "Coupling diagram or table: primary knob -> derived values -> consumers (seal, cluster, transport, marks, rewards).",
+    "Inventory magic literals in pwmd/pwm-core that encode default-era assumptions; mark replace-with-formula vs document-as-chain-const.",
+    "Flag smeared logic: same semantic timing spread across lifecycle + config defaults + CLI help + steady_session ordering.",
+    "For each finding: single-source recommendation (genesis field | named const in one module | pure function of parent param).",
+    "Explicitly verify post propose-seal-align coding if merged; note residual smear.",
+    "Propose follow-up ticket IDs only (doc-lock, const consolidation coding); no product edits in this review.",
+    "Verdict: PASS | PASS_WITH_NITS | REQUEST_CHANGES for closeout hygiene."
+  ],
+  "artifacts": {
+    "scan_roots": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwmd/src/config.rs",
+      "crates/pwmd/src/main.rs",
+      "crates/pwmd/src/transport/",
+      "crates/pwm-core/src/genesis.rs",
+      "crates/pwm-core/src/marks.rs",
+      "crates/pwm-core/src/chain.rs"
+    ],
+    "prior_reviews": [
+      "docs/reviews/20260529-v5-genesis-runtime-consensus-audit-review.md",
+      "docs/reviews/20260529-v5-cy-cluster-suppression-r2-review.md"
+    ]
+  },
+  "notes": "Owner-requested hygiene audit after genesis-runtime PASS_WITH_FOLLOWUPS. Bridge-only delegation.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-review",
+    "worker_class": "review",
+    "invite_note": "PARAM DERIVATION / SMEAR AUDIT — review only (pwm-review).\n\nContext: genesis-runtime audit done (PASS_WITH_FOLLOWUPS). Owner wants focus on logic spread across influencing parameters and hardcoded constants that only make sense when CLI/config/genesis defaults align (e.g. 500 jitter, 1500 heartbeat, 3600 BPH era).\n\nRead first:\n- docs/reviews/20260529-v5-genesis-runtime-consensus-audit-review.md (§4-6, D1-D6)\n- crates/pwmd/src/lifecycle.rs cluster_timing_ms, apply_cluster_timing, seal_interval_ms\n- crates/pwmd/src/main.rs + config.rs defaults\n- If merged: steady_session propose ordering + seal-loop local propose record\n\nDeliverable:\n- docs/reviews/20260530-v5-param-derivation-coupling-audit-review.md\n- Coupling graph: blocks_per_hour -> seal_ms -> cluster/transport derivations\n- List magic literals; say which should become named derived consts vs chain-spec hard consts\n- No --seal-interval-ms recommendation; align with owner genesis/code lock rule\n\nFollow-up IDs only (e.g. runtime-param-doc-lock, const consolidation). No Rust edits.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

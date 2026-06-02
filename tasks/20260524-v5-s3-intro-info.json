@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "20260524-v5-s3-intro-info",
+  "title": "V5-3 sprint introductory brief (pwm-info, off-bridge)",
+  "status": "done",
+  "parent_ticket": null,
+  "mvp_checklist": [
+    "docs/plans/mvp_v5.md#sprint-v5-3-lazy-marks-engine--float-inflation",
+    "docs/MVP-checklist.md §0v5 V5-3"
+  ],
+  "brief": "Подготовить единый intro-документ для bridge-воркеров следующего спринта V5-3 (lazy marks + float inflation). Без coding. Артефакты: tasks/introductory/20260524-v5-s3-lazy-marks-inflation.md + tasks/20260524-v5-s3-lazy-marks-inflation-info.json. Цель — сократить число мелких CQDS/grep запросов на стороне моста (rate-limit).",
+  "acceptance_criteria": [
+    "tasks/introductory/20260524-v5-s3-lazy-marks-inflation.md содержит: scope/acceptance V5-3, выдержки RFC 0012 v2 + RFC 0019, карту файлов к правке, текущее состояние кода post-V5-2, границы спринта (не V5-4/5).",
+    "tasks/20260524-v5-s3-lazy-marks-inflation-info.json — pwm_info_schema v1 с files[] и digest.",
+    "Нет правок crates/."
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-info",
+      "prompt_summary": "V5-3 intro brief: RFC excerpts, post-V5-2 baseline, file map, slice decomposition",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/introductory/20260524-v5-s3-lazy-marks-inflation.md",
+        "tasks/20260524-v5-s3-lazy-marks-inflation-info.json"
+      ],
+      "token_usage": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 6500,
+        "total": 34500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-05-24"
+    }
+  ],
+  "verification": [],
+  "commits": [],
+  "artifacts": {
+    "intro_md": "tasks/introductory/20260524-v5-s3-lazy-marks-inflation.md",
+    "info_json": "tasks/20260524-v5-s3-lazy-marks-inflation-info.json",
+    "plan_anchor": "docs/plans/mvp_v5.md#sprint-v5-3-lazy-marks-engine--float-inflation"
+  },
+  "notes": "Off-bridge pwm-info (Cursor Task). Bridge workers should read intro doc first before coding V5-3 slices."
+}

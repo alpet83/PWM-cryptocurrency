@@ -27,7 +27,19 @@ JSON-файлы здесь — **версионируемые задания** �
 
 ## Именование
 
-`YYYYMMDD-<slug>.json` или `T-<n>-<slug>.json` — на усмотрение оркестратора; главное — уникальность и читаемость в `git log -- tasks/`.
+Базовый формат: `YYYYMMDD-<slug>.json`, где `YYYYMMDD` — **дата создания тикета**, не плановая дата релиза/волны.
+
+- Плановую дату хранить отдельно в поле `planned_for` (формат `YYYY-MM-DD`).
+- `id` и имя файла должны совпадать.
+- Если требуется исключение (осознанная future-дата в id), использовать override `PWM_ALLOW_FUTURE_TICKET_DATE=1` и зафиксировать причину в `notes`.
+
+Локальный guard перед делегированием в bridge:
+
+```bash
+python scripts/_orchestrator_ticket_id_guard.py <ticket_id>
+```
+
+Guard встроен и в fallback share-скрипт `scripts/_orchestrator_share_ticket_to_bridge.py`.
 
 **Выжимки контекста от субагента `pwm-info`:** см. **`docs/AGENT_PROMPT_info.md`** — отдельные файлы **`…-info.json`** (не путать с полноценным тикетом с `delegations[]`, если только оркестратор не связал их в `notes`).
 
@@ -79,6 +91,17 @@ JSON-файлы здесь — **версионируемые задания** �
 Параллельно можно вызвать **`cq_project_ctl`** с `project_status` для проверки скана/кэша.
 
 **Проблемы с CQDS** (сервер не найден, 401, таймаут индекса, пустой `list_projects`) — **эскалировать владельцу**; правки глобального MCP и окружения оркестратор не подменяет без явного запроса.
+
+## Team bridge (VS Code worker, `cq_team_bridge_ctl`)
+
+Делегирование coding-слайса во **внешний** long-lived worker (Copilot / VS Code). Оркестратор и воркер используют **один ключ маршрутизации**:
+
+- **`project_id: 5`** на **каждом** вызове `cq_team_bridge_ctl` (`bridge_status`, `share_ticket`, `create_ticket`, …).
+- **`tasks_root` не передавать** — MCP резолвит `<project_root>/tasks` сам; явный `tasks_root` только advanced override.
+- Предпочтительно **`share_ticket`** на существующий `tasks/<slice-id>.json` после заполнения `brief`/критериев.
+- Не обходить вручную `P:/opt/docker/cqds/tasks` — это не PWM-очередь.
+
+Подробно: **`docs/AGENT_PROMPT_orchestrator.md` § Team bridge**, воркер: **`.github/agents/pwm-coding-worker.agent.md`**.
 
 ## Человеко-читаемый индекс кодовой базы
 

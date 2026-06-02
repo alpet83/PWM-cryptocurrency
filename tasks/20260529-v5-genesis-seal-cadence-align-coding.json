@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-genesis-seal-cadence-align-coding",
+  "title": "V5: derive pwmd seal interval from genesis blocks_per_hour",
+  "status": "in_progress",
+  "depends_on": [
+    "20260529-v5-cy-cluster-seal-cadence-review",
+    "20260529-v5-genesis-runtime-consensus-audit-review"
+  ],
+  "brief": "Remove hard-coded 2s seal loop. Compute seal tick from chain GenCfg.blocks_per_hour only (genesis-locked). No --seal-interval-ms CLI.",
+  "design": {
+    "formula": "seal_interval_ms = 3_600_000 / blocks_per_hour (integer ms, saturating)",
+    "examples": {
+      "blocks_per_hour_3600": "1000ms (~1 block/s)",
+      "blocks_per_hour_1800": "2000ms (current de-facto with BPH=3600 mismatch)"
+    },
+    "source_of_truth": "pwm_core::GenCfg.blocks_per_hour from loaded genesis / chain.cfg",
+    "explicit_non_goals": [
+      "No CLI/env override for seal interval",
+      "No runtime RPC tuning of seal cadence"
+    ]
+  },
+  "acceptance_criteria": [
+    "spawn_seal_loop uses Duration derived from chain cfg blocks_per_hour, not from_secs(2).",
+    "blocks_per_hour==0 rejected at genesis load or seal-loop start with clear error.",
+    "Startup log line records derived seal_interval_ms and blocks_per_hour.",
+    "CY cluster + single-sealer: wall-clock block rate matches 3600000/bph ms within test tolerance.",
+    "docs/MVP-checklist.md and docs/runbooks/v5-cy-cluster-precloseout-soak.md updated (expected cadence from genesis).",
+    "Unit test: bph=3600 -> 1000ms; bph=1800 -> 2000ms.",
+    "cargo test -p pwmd --lib lifecycle; cargo check -p pwmd -p pwm-core PASS."
+  ],
+  "artifacts": {
+    "review": "docs/reviews/20260529-v5-cy-cluster-seal-cadence-review.md",
+    "code": [
+      "crates/pwmd/src/lifecycle.rs",
+      "crates/pwm-core/src/genesis.rs"
+    ]
+  },
+  "notes": "Owner decision: consensus timing must be genesis/code-locked, not operator-tunable.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "Align seal loop with genesis blocks_per_hour.\n\nRemove hard-coded Duration::from_secs(2) in spawn_seal_loop.\n\nDerive: seal_interval_ms = 3_600_000 / blocks_per_hour from chain GenCfg (genesis-loaded).\n\nNO new CLI flag (--seal-interval-ms forbidden).\n\nRead chain cfg at loop start; log derived interval once.\n\nUpdate MVP-checklist + CY runbook cadence text.\n\nTests for interval helper.\n\nSkill: colloquium-cqds-mcp; project_id: 5."
+  }
+}

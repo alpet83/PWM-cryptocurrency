@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-snapshot-genesis-anchor-land-coding",
+  "planned_for": null,
+  "title": "V5: land genesis_anchor implementation to repo",
+  "status": "done",
+  "parent_ticket": "20260602-v5-prepublish-polish-umbrella",
+  "depends_on": [
+    "20260612-v5-snapshot-genesis-anchor-light-coding"
+  ],
+  "related_docs": [
+    "docs/adr/0008-snapshot-genesis-anchor-light.md",
+    "docs/guide-node-storage-and-snapshot.md"
+  ],
+  "brief": "Coding slice 20260612 marked done but crates/pwmd/src/snapshot/anchor.rs may remain untracked. Land full ADR 0008 implementation in git, verify trust-load tests, update ADR status to Implemented if appropriate.",
+  "acceptance_criteria": [
+    "anchor.rs and related snapshot/io changes committed in working tree",
+    "cargo test -p pwmd --lib snapshot (or documented subset)",
+    "cargo check --workspace",
+    "docs/adr/0008 status line reflects implementation",
+    "No regression on CY trust-default startup path"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Verify genesis_anchor code complete; commit-ready tree; tests green.",
+      "result": null,
+      "artifacts": [],
+      "tokens": { "source": null, "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Fail-closed trust load semantics per ADR 0008.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260602-v5-prepublish-polish-integrated-review.md"],
+      "tokens": { "source": "estimate", "input": 12000, "output": 3500, "total": 15500, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "pwmd snapshot module tests.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": 8000, "output": 1200, "total": 9200, "confidence": "medium" },
+      "done_at": "2026-06-02",
+      "notes": "cargo test -p pwmd --lib snapshot: 60 passed. Optional anch_: 2 passed (anch_sig_rt, anch_gen_root_mismatch_err)."
+    }
+  ],
+  "artifacts": { "review_md": "docs/reviews/20260602-v5-prepublish-polish-integrated-review.md" },
+  "notes": "Security-relevant for publish; check git status before coding.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "GENESIS ANCHOR LAND — pwm-coding\n\nTicket 20260612 done in bridge; ensure crates/pwmd/src/snapshot/anchor.rs + io/types wired and in repo.\nADR 0008. cargo test -p pwmd snapshot-related.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

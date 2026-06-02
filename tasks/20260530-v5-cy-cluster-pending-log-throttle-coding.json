@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-cy-cluster-pending-log-throttle-coding",
+  "title": "V5: throttle cluster pending gate logs + scanner head_delta ratio",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-cy-cluster-suppression-r3-review"
+  ],
+  "brief": "R3: steady suppressions are mostly normal pre-timeout attestations_missing logged as WARN every seal tick. Demote/debounce pending logs; keep timeout/invalid as WARN. Extend scan_pwmd_log_counters with suppressions per head_delta.",
+  "design": {
+    "review": "docs/reviews/20260530-v5-cy-cluster-suppression-r3-review.md",
+    "unchanged": [
+      "run_cluster_gate fail-closed semantics",
+      "record_cluster_prop_tick before gate",
+      "genesis-derived seal/attest timing",
+      "drift correction"
+    ],
+    "logging": {
+      "warn": [
+        "quorum_timeout",
+        "invalid_proposal / binding / signature / proposer_not_member",
+        "missing_round_state after startup grace (configurable height or time)"
+      ],
+      "debug_or_info_or_once": [
+        "quorum_pending detail=attestations_missing before attest_timeout_ms — once per (height, round) or DEBUG",
+        "startup missing_round_state — burst OK"
+      ]
+    },
+    "scanner": {
+      "add": [
+        "first/last sealed height from log",
+        "head_delta",
+        "suppressions per head_delta",
+        "breakdown missing_round_state / attestations_missing / quorum_timeout"
+      ]
+    },
+    "explicit_non_goals": [
+      "No consensus CLI knobs",
+      "No relax gate / timeout",
+      "No wire/API marker change"
+    ]
+  },
+  "acceptance_criteria": [
+    "Pre-timeout attestations_missing not emitted as WARN on every seal tick (debounce or DEBUG/INFO).",
+    "quorum_timeout and real cluster errors remain WARN.",
+    "scripts/scan_pwmd_log_counters.ps1 reports head_delta and suppressions per head_delta.",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md updated with healthy ratio guidance from R3.",
+    "cargo test -p pwmd --lib lifecycle (debounce state tests if added).",
+    "cargo test -p pwmd --lib peer_session if lifecycle touches shared paths only minimally."
+  ],
+  "artifacts": {
+    "files": [
+      "crates/pwmd/src/lifecycle.rs",
+      "scripts/scan_pwmd_log_counters.ps1",
+      "docs/runbooks/v5-cy-cluster-precloseout-soak.md"
+    ]
+  },
+  "notes": "Follow-up from R3 PASS_WITH_REQUESTED_FOLLOWUP; not a liveness fix.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "Implement docs/reviews/20260530-v5-cy-cluster-suppression-r3-review.md §8.\n\n1) lifecycle run_cluster_gate: debounce/demote pre-timeout attestations_missing; keep timeout/invalid WARN.\n2) scan_pwmd_log_counters: head_delta + suppressions/head_delta + reason breakdown.\n3) runbook ratio guidance.\n\nGate semantics unchanged. Tests for debounce if stateful.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-tui-test-support-mk-acct-row-coding",
+  "planned_for": null,
+  "title": "V5 pwm-tui: mk_acct_row test helper (DRY)",
+  "status": "done",
+  "parent_ticket": "20260602-v5-prepublish-polish-umbrella",
+  "depends_on": [
+    "20260602-v5-pwm-tui-integration-tests-acctrow-drift-coding"
+  ],
+  "brief": "Review NIT: 25 inline AcctRow literals in integration tests. Introduce mk_acct_row (or extend test_support) mirroring models::tests defaults; migrate send_form.rs and wallet_roaming.rs call sites.",
+  "acceptance_criteria": [
+    "crates/pwm-tui/src/test_support.rs exports mk_acct_row with sane defaults + overrides pattern",
+    "send_form.rs and wallet_roaming.rs use helper (no full struct spam)",
+    "cargo test -p pwm-tui send_form wallet_roaming --lib",
+    "check_entity_name_segments: test fn names ≤5 segments"
+  ],
+  "code_touchpoints": [
+    "crates/pwm-tui/src/test_support.rs",
+    "crates/pwm-tui/tests/send_form.rs",
+    "crates/pwm-tui/tests/wallet_roaming.rs"
+  ],
+  "non_goals": ["Production behavior changes"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Add mk_acct_row; migrate integration tests.",
+      "result": null,
+      "artifacts": [],
+      "tokens": { "source": null, "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Test-only diff.",
+      "result": "PASS",
+      "artifacts": ["docs/reviews/20260602-v5-prepublish-polish-integrated-review.md"],
+      "tokens": { "source": "estimate", "input": 12000, "output": 3500, "total": 15500, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "pwm-tui integration tests.",
+      "result": "PASS",
+      "artifacts": ["docs/testing-issues.md", "crates/pwm-tui/tests/wallet_roaming.rs"],
+      "tokens": { "source": "estimate", "input": 8000, "output": 1200, "total": 9200, "confidence": "medium" },
+      "done_at": "2026-06-02",
+      "notes": "send_form 42 + wallet_roaming 45 passed; mk_acct_row migration compile+run OK. Fixed stale footer_rpc_online_one assert (see testing-issues.md)."
+    }
+  ],
+  "artifacts": { "review_md": "docs/reviews/20260602-v5-prepublish-polish-integrated-review.md" },
+  "notes": "Can run parallel with operator-ux if disjoint; prefer after operator-ux if same files conflict.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "PWM-TUI MK_ACCT_ROW DRY — pwm-coding\n\nAdd mk_acct_row to test_support (mirror models::tests::mk_acct_row fields).\nMigrate crates/pwm-tui/tests/send_form.rs and wallet_roaming.rs.\ncargo test -p pwm-tui send_form\ncargo test -p pwm-tui --test wallet_roaming\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-cy-e2e-s2-marks-saturation-soak",
+  "title": "CY E2E s2: multi-hour lazy marks saturation on staked accounts",
+  "status": "in_progress",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260529-v5-precloseout-cy-e2e-umbrella",
+    "20260529-v5-cy-e2e-s1-cluster-bootstrap-stability"
+  ],
+  "brief": "With stable CY cluster, run 2–6h soak (configurable): periodic touch via Transfer/Stake or account-info-driven checks; assert marks_last_block tracks head and saturation reaches 100% on staked wallets.",
+  "acceptance_criteria": [
+    "Cluster remains up entire SoakHours (default 3; owner may extend to 6).",
+    "At least 3 sample accounts: staked_pwm > 0, sampled every SampleIntervalMinutes.",
+    "Each sample: pwm account-info (or REST) records marks_stored, marks_effective, marks_sat_pct, marks_last_block, head_height.",
+    "Final sample: marks_sat_pct=100 and marks_effective=4294967295 (MARKS_CAP) for all sampled staked accounts OR documented genesis exception.",
+    "marks_last_block monotonic non-decreasing per account while head advances.",
+    "No seal stall > SealStallMinutes without new sealed height.",
+    "Report with time series table + PASS_EVIDENCE lines; log scan summary."
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v5-cy-cluster-precloseout-soak.md",
+    "rfc": "docs/rfc/12-claim-maturity-and-state-model.md",
+    "v5_smoke_reference": "scripts/devnet_v5_operator_smoke.ps1",
+    "suggested_params": {
+      "SoakHours": 3,
+      "SampleIntervalMinutes": 30,
+      "RpcUrl": "http://127.0.0.1:3030",
+      "SealStallMinutes": 10
+    }
+  },
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-testing",
+    "worker_class": "testing",
+    "invite_note": "CY E2E slice 2 — marks saturation soak (hours).\n\nRequires s1 PASS or equivalent stable cluster.\n\nHarness ideas:\n- Keep cluster running; loop: sleep SampleInterval; account-info N wallets; append CSV/md report\n- Optional: submit low-rate Stake/Transfer to force touch if marks_last_block stalls\n- Compare marks_last_block to /v1/status head_height\n\nOwner watches visually per runbook; automation must produce evidence file tmp/cy-e2e-s2-*.\n\nDo NOT require single-node devnet_v5 smoke — use CY RPC.\nSkill: colloquium-cqds-mcp; project_id: 5."
+  }
+}

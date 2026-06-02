@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "20260610-v5-cy-sync-ready-attester-preflight-coding",
+  "title": "V5 CY: sync-ready attester preflight + catch-up stall + suppression dedup",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260602-v5-live-attester-count-member-id-fix-coding",
+    "20260610-v5-block-timing-nonblocking-deferred-merge-coding"
+  ],
+  "related_owner_incident": "Attester tip_h=33001, proposer ~65k; Sync progress 50% frozen (goal=65300 rem=32299); proposer spam seal_suppressed for same height while attester connected but not synced.",
+  "brief": "Owner restarted attester with timing off — attester holds half chain and shows Sync progress 50% without advancing; proposer still treats TCP-connected attester as live and spins suppression/gate-wait on one block. Implement: (1) count_live_cluster_attesters → count_sync_ready_attesters using heartbeat chain_tip_height + max_tip_lag + not in active epoch catch-up; (2) fix or improve deep catch-up when lag≫256 (CUP/live_hdr path) so standby attester converges after proposer ran ahead; (3) dedup proposer cluster-gate/suppression logs per target_h across poll ticks and 100s windows — no log carpet for one stuck height.",
+  "design": {
+    "track_a_sync_ready_preflight": {
+      "replace_or_split": "count_live_cluster_attesters → count_sync_ready_cluster_attesters for seal preflight / cluster_attest_ready / ahead preflight",
+      "criteria_per_attester_member": [
+        "trusted peer: cluster_role=Attester, member instance_id in cluster_cfg.members",
+        "transport liveish + last_seen within ATTESTER_LIVE_WINDOW_MS",
+        "heartbeat chain_tip_height Some(h) and proposer_local_tip.saturating_sub(h) <= max_sync_lag_blocks",
+        "peer not in active catch-up on proposer sync_live view: !cup_active for that node_id OR lag < SYNC_CUP_TAIL_MAX"
+      ],
+      "config": {
+        "max_sync_lag_blocks": "default 1 (align lab takeover_max_tip_lag); CLI/env PWM_CLUSTER_ATTEST_MAX_TIP_LAG",
+        "log_line": "cluster_attest_ready live_synced_attesters={} quorum_k={} (not live_connected)"
+      },
+      "tests": "unit: connected but tip lag 32k → synced=0; tip within 1 → synced=1"
+    },
+    "track_b_attester_deep_catchup": {
+      "symptom": "Sync progress 50% rem=32299 goal=65300 mem=33001/65300 — no forward progress after proposer restart",
+      "investigate": [
+        "sync_live on_tip: cup_started vs cup_skipped vs live_hdr batch apply",
+        "attester drops cluster propose while syncing? untrusted_peer / busy loop",
+        "whether attester should prioritize short-tail live_hdr until lag<SYNC_CUP_TAIL_MAX before attesting"
+      ],
+      "acceptance": "After proposer at H≈65k and attester restart from H=33k: within bounded wall (document in runbook, e.g. T_catchup_1k blocks), attester tip reaches proposer_tip - max_sync_lag; Sync progress reaches 100% or tail_quiet",
+      "observability": "INFO sync_catchup_stall reason=... every 30s when rem unchanged"
+    },
+    "track_c_suppression_dedup": {
+      "symptom": "Proposer logs endless seal_suppressed / quorum_pending for same height",
+      "fixes": [
+        "Extend ClusterGateDedup (or sibling) to dedup DEBUG pre_timeout attestations_missing per target_h",
+        "Do not reset height dedup keys on 100s summary emit for gate WARN lines (or use sticky per-height once per process)",
+        "Optional INFO every 10s: cluster_gate_stuck height=H pending_ticks=N (replaces per-poll spam)",
+        "When sync_ready_attesters < quorum_k: one WARN cluster_attest_waiting_sync height=H attester_tip=... proposer_tip=... then silence until height changes"
+      ],
+      "tests": "simulate gate false for 300 polls → at most 1 WARN per height per 100s window"
+    }
+  },
+  "acceptance_criteria": [
+    "Proposer with lagging attester: cluster_attest_ready false OR live_synced_attesters=0; no unbounded seal on next_h until attester within max_sync_lag",
+    "Proposer logs: no per-poll DEBUG/WARN flood for single stuck height (owner-visible reduction)",
+    "CY lab: attester from 33k catches up toward proposer tip — Sync progress rem decreases; sealed heights resume on proposer",
+    "Unit tests for sync-ready counter and gate log dedup",
+    "cargo test -p pwmd — lib lifecycle + transport as needed",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md: sync-ready vs connected attester"
+  ],
+  "non_goals": [
+    "Change quorum k/n",
+    "Automatic attester state wipe when behind",
+    "RFC16 wire protocol version bump"
+  ],
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 CY SYNC-READY + CATCHUP + SUPPRESSION DEDUP — pwm-coding.\n\nOwner: attester 33k / proposer 65k — sync stuck 50%; proposer suppression spam one block. Replace live-connected attester count with sync-ready (heartbeat tip within max_lag, not in CUP). Fix deep catch-up stall. Dedup gate logs per height.\n\nSee tasks/queue/20260610-v5-cy-sync-ready-attester-preflight-coding.json.\n\nproject_id 5. cargo test -p pwmd.\n# git-handoff"
+  }
+}

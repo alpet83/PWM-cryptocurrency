@@ -18,6 +18,9 @@ Initialize-CyLabPeersFile
 
 $clusterMembers = $CyInstanceProposer + ',' + $CyInstanceAttester
 
+$pwmdExe = Join-Path $PSScriptRoot '..\rust-target-shared\debug\pwmd.exe'
+$pwmdExeAbs = [System.IO.Path]::GetFullPath($pwmdExe)
+
 $cargoArgs = @(
     'run', '-p', 'pwmd', '--bin', 'pwmd', '--',
     '--listen', $CyRpcProposer,
@@ -41,5 +44,33 @@ $cargoArgs = @(
     '--seal-lease-backend', 'process-local'
 )
 
+$pwmdArgs = @(
+    '--listen', $CyRpcProposer,
+    '--state-root', $CyStateProposer,
+    '--data-file', (Join-Path $CyStateProposer 'pwm-data.json'),
+    '--genesis-file', $CyGenesis,
+    '--genesis-passphrase', $CyGenesisPass,
+    '--network-id', $CyNetwork,
+    '--domain-hi', $CyDomainHi,
+    '--cluster-id', $CyClusterLabel,
+    '--node-id', $CyNodeProposer,
+    '--node-instance-id', $CyInstanceProposer,
+    '--transport-real',
+    '--transport-peer-listen', $CyPeerProposer,
+    '--peers-list', $CyPeersFile,
+    '--cluster-enabled',
+    '--cluster-role', 'proposer',
+    '--cluster-members', $clusterMembers,
+    '--cluster-quorum-k', '1',
+    '--cluster-quorum-n', '2',
+    '--seal-lease-backend', 'process-local',
+    '--cluster-attest-max-tip-lag', '2'
+)
+
 Write-Host "Starting CY cluster proposer (sealer). RPC=$CyRpcProposer peer=$CyPeerProposer peers-list=$CyPeersFile"
-& cargo @cargoArgs
+if (Test-Path -LiteralPath $pwmdExeAbs) {
+    & $pwmdExeAbs @pwmdArgs
+}
+else {
+    & cargo @cargoArgs
+}

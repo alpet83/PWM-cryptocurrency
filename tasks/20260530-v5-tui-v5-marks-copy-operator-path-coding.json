@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "20260530-v5-tui-v5-marks-copy-operator-path-coding",
+  "title": "V5 TUI: remove stale Claim copy; V5 marks operator hints",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260530-v5-tui-marks-operator-journey-review"
+  ],
+  "brief": "Replace retired ClaimTx messaging in TUI with V5 lazy-marks path (stake S, wait accrual, F5 burn). Add short operator runbook; improve F5 zero-marks hint and burn modal help.",
+  "design": {
+    "remove_claimtx_ux": [
+      "crates/pwm-tui/src/tui_loop.rs: F5_BURN_V5_STATUS, f5 hint, burn modal line 1424",
+      "crates/pwm-tui/src/burn_form.rs: default status string"
+    ],
+    "v5_copy_theme": "Marks accrue lazily on staked PWM (RFC 0012). Touch via Stake/Unstake/Transfer; no ClaimTx. Burn F5 uses materialized marks.",
+    "zero_marks_hint": "When marks=0 and staked=0: modal — Stake PWM (S), wait for chain head advance, then marks column grows. When staked>0 but marks=0: wait for lazy accrual.",
+    "optional_ui": "Status bar or burn modal one-liner: S=stake U=unstake marks path",
+    "runbook": "docs/runbooks/v5-tui-marks-operator-path.md (new, short)"
+  },
+  "acceptance_criteria": [
+    "No user-facing 'Claim or Stake' / claim_mark path in pwm-tui (except factual ClaimIPv4 if ever added — not in scope).",
+    "F5 blocked hint explains stake+accrual not ClaimTx retirement jargon only.",
+    "Burn modal help matches RFC 0012 v2.",
+    "Runbook documents operator path for devnet/TUI in <=1 page.",
+    "cargo test -p pwm-tui; update tests referencing old Claim strings.",
+    "Link runbook from docs/runbooks/v5-cy-cluster-precloseout-soak.md or mvp_v5 if appropriate (one line)."
+  ],
+  "artifacts": {
+    "files": [
+      "crates/pwm-tui/src/tui_loop.rs",
+      "crates/pwm-tui/src/burn_form.rs",
+      "crates/pwm-tui/src/status.rs",
+      "docs/runbooks/v5-tui-marks-operator-path.md"
+    ],
+    "review": "docs/reviews/20260530-v5-tui-marks-operator-journey-review.md"
+  },
+  "notes": "Depends on review for copy table; may start from grep list if review queued.",
+  "delegation": {
+    "version": 1,
+    "shared": false,
+    "target_agent_name": "pwm-coding",
+    "worker_class": "coding",
+    "invite_note": "TUI V5 MARKS COPY — pwm-coding.\n\nRead review when ready: docs/reviews/20260530-v5-tui-marks-operator-journey-review.md\nRFC 0012: lazy marks, touch on STAKE/UNSTAKE/TRANSFER/BURN.\n\nFix stale strings in tui_loop.rs burn_form.rs (Claim or Stake -> stake+accrual).\nImprove f5_burn_hint when marks=0.\nAdd docs/runbooks/v5-tui-marks-operator-path.md.\n\ncargo test -p pwm-tui\n\nSkill: colloquium-cqds-mcp; project_id: 5.\n# git-handoff"
+  }
+}

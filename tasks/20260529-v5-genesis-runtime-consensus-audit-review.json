@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "20260529-v5-genesis-runtime-consensus-audit-review",
+  "title": "V5 review: genesis vs runtime params — consensus drift audit",
+  "status": "done",
+  "notes": "Completed on bridge. See tasks/done/20260529-v5-genesis-runtime-consensus-audit-review.json and docs/reviews/20260529-v5-genesis-runtime-consensus-audit-review.md",
+  "result": "PASS_WITH_FOLLOWUPS"
+}

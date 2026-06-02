@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "id": "20260602-v5-pwmd-remove-legacy-marks-quota-coding",
+  "planned_for": null,
+  "title": "pwmd: remove legacy marks_quota mirror + dead validation",
+  "status": "done",
+  "parent_ticket": "20260602-v5-prepublish-polish-umbrella",
+  "depends_on": [],
+  "related_docs": [
+    "docs/testing-issues.md",
+    "CHANGELOG.md"
+  ],
+  "brief": "V3 snapshots never carry marks_quota; state_from_v3 always empty. Remove ignored legacy tests, validate_quota_rows/SnapshotQuotaRow* wire paths, and stale docs. Unblock prepublish naming slice: fix block_timing::tests::json_stats_merge_schema (rel_ms must use start_ms..checkpoint ms delta when start_ms set).",
+  "design": {
+    "marks_quota": "Delete snap_or_mk_quota and snap_reject_quota_mismatch from snapshot_roaming.rs. Strip marks_quota fields and validate_quota_rows from snapshot/types.rs v2 wire only where dead; keep v3 path without quota. Do NOT re-add v3 validation for injected JSON quota.",
+    "json_stats": "In ProfileTime::checkpoint_at, when start_ms is Some, rel_ms = timestamp_ms - start_ms (saturating); keep Instant::elapsed fallback only when start_ms unset."
+  },
+  "acceptance_criteria": [
+    "No marks_quota in pwmd snapshot types except CHANGELOG historical note if needed",
+    "snapshot_roaming: two quota tests removed",
+    "cargo test -p pwmd --lib snapshot",
+    "cargo test -p pwmd --lib json_stats_merge_schema",
+    "cargo test -p pwmd --lib block_timing",
+    "docs/testing-issues.md: cancel v3 marks_quota item",
+    "CHANGELOG Known issues updated"
+  ],
+  "code_touchpoints": [
+    "crates/pwmd/src/snapshot/types.rs",
+    "crates/pwmd/src/tests/snapshot_roaming.rs",
+    "crates/pwmd/src/block_timing.rs",
+    "docs/testing-issues.md",
+    "CHANGELOG.md"
+  ],
+  "non_goals": ["pwm-core marks_quota (already absent)", "re-enable quota validation on v3 decode"],
+  "mvp_checklist": ["§5 snapshot v3"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Remove legacy marks_quota + fix ProfileTime rel_ms for json_stats test.",
+      "result": null,
+      "artifacts": [],
+      "tokens": { "source": null, "input": null, "output": null, "total": null, "confidence": null },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Legacy marks_quota removal + rel_ms fix in integrated polish review.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260602-v5-prepublish-polish-integrated-review.md"],
+      "tokens": { "source": "estimate", "input": 12000, "output": 3500, "total": 15500, "confidence": "medium" },
+      "done_at": "2026-06-02"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "pwmd snapshot + block_timing json_stats_merge_schema.",
+      "result": "PASS",
+      "artifacts": [],
+      "tokens": { "source": "estimate", "input": 8000, "output": 1200, "total": 9200, "confidence": "medium" },
+      "done_at": "2026-06-02",
+      "notes": "snapshot 60 passed; json_stats_merge_schema + block_timing 9 passed. marks_quota tests removed as expected."
+    }
+  ],
+  "artifacts": { "review_md": "docs/reviews/20260602-v5-prepublish-polish-integrated-review.md" },
+  "notes": "Orchestrator slice after bridge prepublish coding PASS; naming-violations coding BLOCKED on same test."
+}

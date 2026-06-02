@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "20260604-v5-seal-attest-observability-split-coding",
+  "title": "V5: split seal observability — attest wait vs timeout vs strike (ACK→seal RTT)",
+  "status": "queue",
+  "parent_ticket": "20260529-v5-precloseout-cy-e2e-umbrella",
+  "depends_on": [
+    "20260603-v5-cy-proposer-seal-wall-overhead-debug"
+  ],
+  "brief": "Debug RCA (docs/debug/20260603-v5-cy-proposer-seal-wall-overhead.md): operator seal_suppression_summary conflates healthy pre_timeout wait (A) with interval strikes (C). Implement per-100s INFO/ERROR summary fields: slots_waited_attest (gate pre_timeout polls or slot-level wait), slots_timeout (quorum_timeout), slots_struck (existing slot_supp), optional ack_rtt_ms_p50/p95 and ack_to_seal_ms_p50/p95 from round state or lightweight counters. No cadence/timeout formula changes.",
+  "design": {
+    "reference": "docs/debug/20260603-v5-cy-proposer-seal-wall-overhead.md §Recommendations #1",
+    "emit": "extend emit_suppress_summary or parallel seal_attest_summary line",
+    "non_goals": ["Change eval_supp threshold", "RFC16 protocol change"]
+  },
+  "acceptance_criteria": [
+    "CY soak: summary shows waited_attest vs struck vs timeout separately; suppression_pct uses struck/slots only",
+    "Unit tests for counter aggregation in SealSuppressWindow or sibling struct",
+    "docs/runbooks/v5-cy-cluster-precloseout-soak.md updated",
+    "cargo test -p pwmd --lib lifecycle"
+  ],
+  "delegation": {
+    "version": 1,
+    "target_agent_name": "pwm-coding",
+    "worker_lane": "coding",
+    "invite_note": "V5 SEAL ATTEST OBSERVABILITY SPLIT — pwm-coding.\n\nFrom debug doc 20260603: split A/B/C metrics in seal summary; optional ack_rtt / ack_to_seal p50 p95.\n\nRead docs/debug/20260603-v5-cy-proposer-seal-wall-overhead.md §Recommendations.\n\nproject_id 5.\n# git-handoff"
+  }
+}

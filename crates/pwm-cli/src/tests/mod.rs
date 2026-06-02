@@ -9,6 +9,7 @@ use super::{
 use crate::bruteforce::DomainMatchMode;
 use crate::cli_config::DEFAULT_WALLET_OUT_REL;
 use crate::cli_parse::{parse_address_arg, parse_address_input, resolve_tx_send_amount};
+use crate::cmd_account::{calc_eff_marks, calc_sat_pct, parse_acct_body, parse_head_h};
 use crate::cmd_addr::{
     bruteforce_resume_index, fmt_addr_bruteforce_results, is_rpc_unavailable_error,
     persist_wallet_account_output, resolve_master_seed,
@@ -222,6 +223,62 @@ fn wallet_import_seed_cli_parsing() {
         },
         _ => panic!("unexpected cmd"),
     }
+}
+
+#[test]
+fn account_info_cli_acct() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "account-info",
+        "--account",
+        "ff00aa00bb00cc00dd00ee00ff00aa00bb00cc00dd00ee00ff00aa00bb00cc00",
+    ])
+    .expect("must parse account-info --account");
+    match cli.cmd {
+        Cmd::AccountInfo { account, wallet } => {
+            assert!(account.is_some());
+            assert!(wallet.is_none());
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn account_info_cli_wallet() {
+    let cli = Cli::try_parse_from(["pwm", "account-info", "--wallet", "wallet.yaml"])
+        .expect("must parse account-info --wallet");
+    match cli.cmd {
+        Cmd::AccountInfo { account, wallet } => {
+            assert!(account.is_none());
+            assert_eq!(wallet, Some(PathBuf::from("wallet.yaml")));
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn account_info_marks_zero_stake() {
+    let eff = calc_eff_marks(10, 0, 0, 9999);
+    assert_eq!(eff, 10);
+    assert_eq!(calc_sat_pct(eff), 0);
+}
+
+#[test]
+fn account_info_effective_at_head() {
+    let eff = calc_eff_marks(10, 0, 5_000_000, 3600);
+    assert_eq!(eff, 15);
+}
+
+#[test]
+fn account_info_parse_fields() {
+    let head = parse_head_h(r#"{"height":123,"tip":"ab"}"#).expect("head parse");
+    assert_eq!(head, 123);
+
+    let acct = parse_acct_body(r#"{"marks":9,"marks_last_block":7,"staked":"11"}"#)
+        .expect("account parse");
+    assert_eq!(acct.marks, 9);
+    assert_eq!(acct.marks_last_block, 7);
+    assert_eq!(acct.staked, 11);
 }
 
 #[test]
@@ -2060,6 +2117,43 @@ fn tx_policy_set_cli_parse() {
         }
         _ => panic!("unexpected cmd"),
     }
+}
+
+#[test]
+fn tx_policy_set_deferred_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-set",
+        "--wallet",
+        "wallet.yaml",
+        "--policy",
+        "sender_filter",
+        "--activation",
+        "deferred",
+        "--activate-at-height",
+        "77",
+        "--fee",
+        "10",
+    ])
+    .expect("must parse tx-policy-set deferred");
+    match cli.cmd {
+        Cmd::TxPolicySet {
+            activation,
+            activate_at_height,
+            ..
+        } => {
+            assert_eq!(activation, "deferred");
+            assert_eq!(activate_at_height, Some(77));
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_policy_set_no_height() {
+    let err = crate::cmd_tx::parse_policy_act_cli("deferred", None)
+        .expect_err("must reject deferred without height");
+    assert!(err.contains("--activate-at-height"), "{err}");
 }
 
 #[test]

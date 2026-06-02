@@ -2,11 +2,12 @@
 
 use super::super::super::*;
 use super::super::super::{
-    mark_trusted_peer_live, merge_account_views, merge_cross_shard_facts, peer_sync_v1,
-    read_wire_msg, route_cluster_stub, route_sync_stub, send_account_views, send_cluster_prop,
-    send_cross_shard_facts, sync_live, write_wire_msg, PeerWireMsg,
+    handshake_write_traced, mark_trusted_peer_live, merge_account_views, merge_cross_shard_facts,
+    peer_sync_v1, read_wire_msg, route_cluster_stub, route_sync_stub, send_account_views,
+    send_cluster_prop, send_cross_shard_facts, sync_live, write_wire_msg, PeerWireMsg,
 };
 use super::{InitialExchangeOutcome, PostInitialExchange};
+use crate::block_timing;
 use crate::handshake::NodeHello;
 
 pub(super) async fn run_seed_initial_exchange(
@@ -32,7 +33,7 @@ pub(super) async fn run_seed_initial_exchange(
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
     if let Err(err) = send_cross_shard_facts(&app, &cfg, stream).await {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
         let close_reason = wire_close_reason(&err);
         set_peer_error(
             &mut hs,
@@ -61,7 +62,7 @@ pub(super) async fn run_seed_initial_exchange(
         return InitialExchangeOutcome::Aborted;
     }
     if let Err(err) = send_account_views(&app, &cfg, stream).await {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
         let close_reason = wire_close_reason(&err);
         set_peer_error(
             &mut hs,
@@ -90,7 +91,7 @@ pub(super) async fn run_seed_initial_exchange(
         return InitialExchangeOutcome::Aborted;
     }
     if let Err(err) = send_cluster_prop(&app, &cfg, stream, remote).await {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
         let close_reason = wire_close_reason(&err);
         set_peer_error(
             &mut hs,
@@ -133,7 +134,7 @@ pub(super) async fn run_seed_initial_exchange(
     match read_wire_msg(stream, cfg.heartbeat_timeout_ms).await {
         Ok(PeerWireMsg::CrossShardFacts { facts }) => {
             merge_cross_shard_facts(&app, facts, true).await;
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
             mark_trusted_peer_live(
                 &mut hs,
                 &remote.node.node_id,
@@ -150,7 +151,7 @@ pub(super) async fn run_seed_initial_exchange(
                 now_ms,
             )
             .await;
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
             mark_trusted_peer_live(
                 &mut hs,
                 &remote.node.node_id,
@@ -182,7 +183,7 @@ pub(super) async fn run_seed_initial_exchange(
             )
             .await
             {
-                let mut hs = app.handshake.write().await;
+                let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
                 close_reason = Some(wire_close_reason(&err));
                 close_detail = detail_with_err("heartbeat_ack_write_failed", &err);
                 set_peer_error(
@@ -191,7 +192,7 @@ pub(super) async fn run_seed_initial_exchange(
                     format!("seed {seed} wire_heartbeat_ack_write_failed: {err}"),
                 );
             } else {
-                let mut hs = app.handshake.write().await;
+                let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
                 mark_trusted_peer_live(
                     &mut hs,
                     &remote.node.node_id,
@@ -200,8 +201,24 @@ pub(super) async fn run_seed_initial_exchange(
             }
         }
         Ok(msg @ (PeerWireMsg::ClusterPropose { .. } | PeerWireMsg::ClusterAttest { .. })) => {
+            let route_cluster_start_ms = current_time_ms().unwrap_or(now_ms);
             let maybe_attest = route_cluster_stub(app, &remote.node.node_id, msg).await;
+            let route_cluster_done_ms = current_time_ms().unwrap_or(route_cluster_start_ms);
+            let route_cluster_latency_ms =
+                route_cluster_done_ms.saturating_sub(route_cluster_start_ms);
+            if route_cluster_latency_ms >= 100 {
+                warn!(
+                    target: "pwmd::peer",
+                    "seed initial_exchange cluster_route_slow seed={} node_id={} ts_ms={} latency_ms={}",
+                    seed,
+                    remote.node.node_id,
+                    route_cluster_done_ms,
+                    route_cluster_latency_ms,
+                );
+            }
             if let Some(attest) = maybe_attest {
+                let h = attest.height;
+                let r = attest.round;
                 if let Err(err) = write_wire_msg(
                     stream,
                     &PeerWireMsg::ClusterAttest { msg: attest },
@@ -209,13 +226,23 @@ pub(super) async fn run_seed_initial_exchange(
                 )
                 .await
                 {
-                    let mut hs = app.handshake.write().await;
+                    let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
                     close_reason = Some(wire_close_reason(&err));
                     close_detail = detail_with_err("cluster_attest_write_failed", &err);
                     set_peer_error(
                         &mut hs,
                         now_ms,
                         format!("seed {seed} cluster_attest_write_failed: {err}"),
+                    );
+                } else if let Some(bt) = app.block_timing.as_ref() {
+                    block_timing::note_att_wire(
+                        bt,
+                        block_timing::AttCtx {
+                            h,
+                            r,
+                            t_ms: block_timing::now_ms_f64(),
+                            att_id: app.node_instance_id.clone(),
+                        },
                     );
                 }
             }
@@ -259,7 +286,7 @@ pub(super) async fn run_seed_initial_exchange(
         Ok(_) => {}
         Err(err) => {
             if !is_wire_timeout(&err) {
-                let mut hs = app.handshake.write().await;
+                let mut hs = handshake_write_traced(app, "seed_initial_exchange").await;
                 close_reason = Some(wire_close_reason(&err));
                 close_detail = detail_with_err("initial_read_failed", &err);
                 set_peer_error(

@@ -490,6 +490,7 @@ fn snap_v0_legacy_mig_ok() {
     let legacy = SnapshotData {
         version: 1,
         genesis_accounts: snapshot_genesis_accounts(&cfg),
+        genesis_anchor: None,
         blocks: chain.blocks.iter().cloned().collect(),
         state: chain.st.clone(),
         roaming: SnapshotRoamingWire::default(),
@@ -539,6 +540,7 @@ fn snap_v1_read_save_v2() {
     let legacy = SnapshotData {
         version: 1,
         genesis_accounts: snapshot_genesis_accounts(&cfg),
+        genesis_anchor: None,
         blocks: chain.blocks.iter().cloned().collect(),
         state: chain.st.clone(),
         roaming: SnapshotRoamingWire::default(),
@@ -807,82 +809,5 @@ fn snap_reject_dup_acct() {
     std::fs::write(&p, serde_json::to_string_pretty(&v).expect("encode")).expect("write");
     let err = load_snapshot(&p, &cfg).expect_err("must reject duplicate state account ids");
     assert!(err.contains("duplicate account id"));
-    let _ = std::fs::remove_file(&p);
-}
-
-/// Orphan mark quota identifiers fail snapshot validation.
-#[test]
-fn snap_or_mk_quota() {
-    let (cfg, sks) = dev_net();
-    let mut chain = Chain::boot(cfg.clone(), sks);
-    chain.seal(vec![]).expect("seal");
-    let inner = Inner {
-        chain,
-        pool: Mpool::new(16),
-        roaming_pool: crate::roaming::RoamingPool::default(),
-        cross_shard: crate::ledger::CrossShardLedger::default(),
-        federation: Default::default(),
-        peer_account_views: std::collections::HashMap::new(),
-        recent_flow: std::collections::VecDeque::new(),
-    };
-    let p = temp_path("snapshot_orphan_quota_ids");
-    save_snapshot(&p, &inner).expect("save");
-    let raw = std::fs::read_to_string(&p).expect("read");
-    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("json");
-    v["state"]["marks_quota"] = serde_json::json!([]);
-    let quota = v["state"]["marks_quota"]
-        .as_array_mut()
-        .expect("state.marks_quota");
-    quota.push(serde_json::json!({
-        "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        "quota": "1"
-    }));
-    std::fs::write(&p, serde_json::to_string_pretty(&v).expect("encode")).expect("write");
-    let err = load_snapshot(&p, &cfg).expect_err("must reject orphan marks_quota ids");
-    assert!(
-        err.contains("marks_quota id"),
-        "unexpected error text: {err}"
-    );
-    let _ = std::fs::remove_file(&p);
-}
-
-/// Legacy mark quota rows must mirror account.marks exactly.
-#[test]
-fn snap_reject_quota_mismatch() {
-    let (cfg, sks) = dev_net();
-    let mut chain = Chain::boot(cfg.clone(), sks);
-    chain.seal(vec![]).expect("seal");
-    let inner = Inner {
-        chain,
-        pool: Mpool::new(16),
-        roaming_pool: crate::roaming::RoamingPool::default(),
-        cross_shard: crate::ledger::CrossShardLedger::default(),
-        federation: Default::default(),
-        peer_account_views: std::collections::HashMap::new(),
-        recent_flow: std::collections::VecDeque::new(),
-    };
-    let p = temp_path("snapshot_quota_mismatch");
-    save_snapshot(&p, &inner).expect("save");
-    let raw = std::fs::read_to_string(&p).expect("read");
-    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("json");
-    let first_id = v["state"]["accounts"][0]["id"]
-        .as_str()
-        .expect("state.accounts[0].id")
-        .to_string();
-    let marks = v["state"]["accounts"][0]["account"]["marks"]
-        .as_str()
-        .expect("state.accounts[0].account.marks")
-        .parse::<u128>()
-        .expect("marks u128");
-    v["state"]["marks_quota"] = serde_json::json!([{
-        "id": first_id,
-        "quota": (marks.saturating_add(1)).to_string()
-    }]);
-    std::fs::write(&p, serde_json::to_string_pretty(&v).expect("encode")).expect("write");
-    let err = load_snapshot(&p, &cfg).expect_err("must reject marks_quota mismatch");
-    assert!(
-        err.contains("marks_quota mismatch"),
-        "unexpected error text: {err}"
-    );
     let _ = std::fs::remove_file(&p);
 }

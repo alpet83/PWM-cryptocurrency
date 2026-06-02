@@ -1647,7 +1647,7 @@ dependencies = [
 
 [[package]]
 name = "pwmd"
-version = "0.1.55"
+version = "0.1.66"
 dependencies = [
  "axum",
  "clap",

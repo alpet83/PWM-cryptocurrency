@@ -24,13 +24,25 @@ pub(crate) use status::{
     rpc_health_from_failure, status_footer_line, JsonFetchFailure, RpcHealth,
 };
 
+mod marks_display;
+#[allow(unused_imports)]
+pub(crate) use marks_display::{
+    effective_marks_at_height, format_amount_compact, format_marks_compact, marks_sat_pct,
+};
+
+mod form_amount_hint;
+#[allow(unused_imports)]
+pub(crate) use form_amount_hint::{
+    mark_pct_hint, pad_input_field, pwm_pct_hint, MODAL_AMOUNT_INPUT_WIDTH,
+};
+
 mod models;
 
 #[allow(unused_imports)]
 pub(crate) use models::{
     format_balance_cell, format_init_cell, format_policy_bits, parse_hex_account_id, parse_u128,
-    parse_u16, parse_u32, AcctRow, BookRecipient, OwnedWalletAccount, WalletIdentity, WalletV3Meta,
-    UNKNOWN_BALANCE_SENTINEL, UNKNOWN_INIT_NONCE_SENTINEL,
+    parse_u16, parse_u32, parse_u64, AcctRow, BookRecipient, OwnedWalletAccount, WalletIdentity,
+    WalletV3Meta, UNKNOWN_BALANCE_SENTINEL, UNKNOWN_INIT_NONCE_SENTINEL,
 };
 
 mod modals;
@@ -69,8 +81,8 @@ pub(crate) use signing::{
 mod tx_submit;
 #[allow(unused_imports)]
 pub(crate) use tx_submit::{
-    format_submit_transfer_error, is_cross_domain_route, submit_burn_mark, submit_claim,
-    submit_init, submit_stake, submit_transfer, submit_unstake,
+    format_submit_transfer_error, is_cross_domain_route, submit_burn_mark, submit_init,
+    submit_stake, submit_transfer, submit_unstake,
 };
 
 mod burn_form;
@@ -158,7 +170,9 @@ pub(crate) fn f6_build_send_form(
     let to = selected
         .map(|r| account_id_to_human(&r.id))
         .unwrap_or_default();
-    Ok(SendForm::new(from, to, selected.is_none()))
+    let mut form = SendForm::new(from, to, selected.is_none());
+    form.balance_units = owner.balance_pwm;
+    Ok(form)
 }
 
 /// Build F5 burn modal from selected owner row.
@@ -188,16 +202,55 @@ pub(crate) fn f5_build_burn_form(
     };
     Ok(BurnForm::new(
         from,
-        owner.marks,
+        owner.effective_marks.unwrap_or(owner.marks),
         beneficiary,
         beneficiary_editable,
     ))
 }
 
-/// True when F5 burn shows the stake-first hint (nothing staked and no marks).
+/// Narrow 2-state helper kept for legacy tests; production F5 gating uses `f5_burn_hint_text`.
 #[inline]
+#[cfg(test)]
 pub(crate) fn f5_burn_hint_needed(staked: u128, marks: u32) -> bool {
     staked == 0 && marks == 0
+}
+
+/// Optional F5 hint when there are no materialized marks available for burn.
+#[inline]
+pub(crate) fn f5_burn_hint_text(
+    staked: u128,
+    marks: u32,
+    effective_marks: Option<u32>,
+) -> Option<&'static str> {
+    if effective_marks.unwrap_or(marks) > 0 {
+        None
+    } else if staked == 0 {
+        Some("No materialized marks yet. Stake PWM with S, wait for next head update, then press F5.")
+    } else {
+        Some("Marks not materialized yet. Wait for head advance after staking, then press F5.")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::f5_burn_hint_text;
+
+    #[test]
+    fn f5_hint_allow_burn() {
+        assert_eq!(f5_burn_hint_text(10, 2, Some(1)), None);
+    }
+
+    #[test]
+    fn f5_hint_stake_first() {
+        let msg = f5_burn_hint_text(0, 0, None).expect("hint");
+        assert!(msg.contains("Stake PWM"));
+    }
+
+    #[test]
+    fn f5_hint_wait_accrue() {
+        let msg = f5_burn_hint_text(10, 0, Some(0)).expect("hint");
+        assert!(msg.contains("Wait for head advance"));
+    }
 }
 
 /// Build F7 stake/unstake modal from selected owner row.

@@ -3,13 +3,14 @@
 use super::types::SnapshotGenesisRow;
 use ed25519_dalek::SigningKey;
 use pwm_core::genesis::{
-    FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg, DEF_MARKS_STAKE_MIN, DEF_PWM_STAKE_MIN,
-    DEF_SEASON_COEFF_PPM, LEGACY_POLICY_VER,
+    ClaimPhaseConfig, FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg, DEF_MARKS_STAKE_MIN,
+    DEF_PWM_STAKE_MIN, DEF_SEASON_COEFF_PPM, LEGACY_POLICY_VER,
 };
 use pwm_core::hd::account_id_from_parts;
 use pwm_core::{open_wallet_secret_ciphertext, WALLET_KDF};
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 #[derive(Deserialize)]
 struct GenesisFileV4 {
@@ -36,6 +37,8 @@ struct GenesisCfgV4 {
     season_enabled: bool,
     #[serde(default = "def_season_ppm_s")]
     season_coeff_ppm: String,
+    #[serde(default)]
+    ipv4_claim_phases: Vec<GenesisClaimPhaseV4>,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +77,13 @@ struct GenesisRowV3 {
     pubkey_hex: String,
     der_idx: u32,
     bal: String,
+}
+
+#[derive(Deserialize)]
+struct GenesisClaimPhaseV4 {
+    phase: u8,
+    registry_address: String,
+    allocation: Value,
 }
 
 #[derive(Clone, Deserialize)]
@@ -115,6 +125,22 @@ fn parse_u128_json(v: &str, field: &str) -> Result<u128, String> {
     v.trim()
         .parse::<u128>()
         .map_err(|e| format!("{field}: invalid u128 string: {e}"))
+}
+
+fn parse_u128_value(v: &Value, field: &str) -> Result<u128, String> {
+    if let Some(s) = v.as_str() {
+        return parse_u128_json(s, field);
+    }
+    if let Some(n) = v.as_u64() {
+        return Ok(u128::from(n));
+    }
+    Err(format!("{field}: invalid u128 JSON value"))
+}
+
+fn parse_u64_json(v: &str, field: &str) -> Result<u64, String> {
+    v.trim()
+        .parse::<u64>()
+        .map_err(|e| format!("{field}: invalid u64 string: {e}"))
 }
 
 fn default_pol_ver() -> u32 {
@@ -179,8 +205,8 @@ fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), 
     let marks_coeff = parse_u128_json(&b.gen_cfg.marks_coeff, "gen_cfg.marks_coeff")?;
     let pwm_stake_min = parse_u128_json(&b.gen_cfg.pwm_stake_min, "gen_cfg.pwm_stake_min")?;
     let marks_stake_min = parse_u128_json(&b.gen_cfg.marks_stake_min, "gen_cfg.marks_stake_min")?;
-    let season_coeff_ppm =
-        parse_u128_json(&b.gen_cfg.season_coeff_ppm, "gen_cfg.season_coeff_ppm")?;
+    let season_coeff_ppm = parse_u64_json(&b.gen_cfg.season_coeff_ppm, "gen_cfg.season_coeff_ppm")?;
+    let ipv4_claim_phases = parse_claim_phases(b.gen_cfg.ipv4_claim_phases)?;
     let rew = match b.gen_cfg.reward_policy.mode {
         GenesisRewardModeV4::ToProducerAccount => RewPol::ToProducerAccount,
     };
@@ -192,9 +218,13 @@ fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), 
             vals: ValCfg { set },
             rew,
             accounts: rows,
+            blocks_per_hour: pwm_core::genesis::DEF_BLOCKS_PER_HOUR,
+            marks_per_hour: pwm_core::genesis::DEF_MARKS_HOUR,
+            ipv4_claim_phases,
             block_reward,
             marks_coeff,
             policy_ver: b.gen_cfg.policy_ver,
+            base_emission_per_block: pwm_core::genesis::DEF_BASE_EMIT,
             pwm_stake_min,
             marks_stake_min,
             season_enabled: b.gen_cfg.season_enabled,
@@ -202,6 +232,132 @@ fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), 
         },
         b.validator_keys,
     ))
+}
+
+fn parse_claim_phases(rows: Vec<GenesisClaimPhaseV4>) -> Result<Vec<ClaimPhaseConfig>, String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::with_capacity(rows.len());
+    for (i, row) in rows.into_iter().enumerate() {
+        if !seen.insert(row.phase) {
+            return Err(format!(
+                "gen_cfg.ipv4_claim_phases[{i}].phase: duplicate phase {}",
+                row.phase
+            ));
+        }
+        let registry_address = hex32_from_hex(&row.registry_address)
+            .map_err(|e| format!("gen_cfg.ipv4_claim_phases[{i}].registry_address: {e}"))?;
+        let allocation = parse_u128_value(
+            &row.allocation,
+            &format!("gen_cfg.ipv4_claim_phases[{i}].allocation"),
+        )?;
+        out.push(ClaimPhaseConfig {
+            phase: row.phase,
+            registry_address,
+            allocation,
+        });
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn gen_ipv4_phases_load() {
+        let registry = "1111111111111111111111111111111111111111111111111111111111111111";
+        let raw = json!({
+            "schema_version": 5,
+            "validator_keys": [],
+            "gen_cfg": {
+                "chain_id": "devnet",
+                "epoch": 0,
+                "validator_set": "test",
+                "block_reward": "0",
+                "reward_policy": {
+                    "mode": "to_producer_account"
+                },
+                "marks_coeff": "0",
+                "funding": {
+                    "accounts": []
+                },
+                "validators": {
+                    "set": []
+                },
+                "ipv4_claim_phases": [
+                    {
+                        "phase": 7,
+                        "registry_address": registry,
+                        "allocation": 1000000
+                    },
+                    {
+                        "phase": 8,
+                        "registry_address": registry,
+                        "allocation": "42"
+                    }
+                ]
+            }
+        });
+
+        let (parsed, _) = parse_genesis_v4(raw).expect("schema v5 genesis parses");
+
+        assert_eq!(parsed.ipv4_claim_phases.len(), 2);
+        assert_eq!(parsed.ipv4_claim_phases[0].phase, 7);
+        assert_eq!(parsed.ipv4_claim_phases[0].allocation, 1_000_000);
+        assert_eq!(parsed.ipv4_claim_phases[1].phase, 8);
+        assert_eq!(parsed.ipv4_claim_phases[1].allocation, 42);
+        assert_eq!(
+            hex::encode(parsed.ipv4_claim_phases[0].registry_address),
+            registry
+        );
+    }
+
+    #[test]
+    fn gen_ipv4_phases_reject_dup() {
+        let registry_a = "1111111111111111111111111111111111111111111111111111111111111111";
+        let registry_b = "2222222222222222222222222222222222222222222222222222222222222222";
+        let raw = json!({
+            "schema_version": 5,
+            "validator_keys": [],
+            "gen_cfg": {
+                "chain_id": "devnet",
+                "epoch": 0,
+                "validator_set": "test",
+                "block_reward": "0",
+                "reward_policy": {
+                    "mode": "to_producer_account"
+                },
+                "marks_coeff": "0",
+                "funding": {
+                    "accounts": []
+                },
+                "validators": {
+                    "set": []
+                },
+                "ipv4_claim_phases": [
+                    {
+                        "phase": 7,
+                        "registry_address": registry_a,
+                        "allocation": "100"
+                    },
+                    {
+                        "phase": 7,
+                        "registry_address": registry_b,
+                        "allocation": "200"
+                    }
+                ]
+            }
+        });
+
+        let err = match parse_genesis_v4(raw) {
+            Ok(_) => panic!("duplicate phase must reject"),
+            Err(e) => e,
+        };
+
+        assert!(err.contains("gen_cfg.ipv4_claim_phases[1].phase"));
+        assert!(err.contains("duplicate phase 7"));
+    }
 }
 
 /// Load `gen_cfg` + encrypted validator keys (schema_version=4/5).

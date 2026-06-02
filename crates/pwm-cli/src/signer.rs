@@ -7,11 +7,37 @@ use pwm_core::hd::{account_id_from_parts, brute_cluster_address};
 use pwm_core::{parse_account_id, AccountId};
 use std::path::PathBuf;
 
-pub(crate) struct TxSignerSource {
+/// Security-sensitive signing material resolved from wallet or dev overrides.
+///
+/// The raw key is crate-private; harness binaries should use the narrow
+/// accessors below instead of depending on struct fields.
+pub struct TxSignerSource {
     pub(crate) sk: SigningKey,
     pub(crate) dom: u16,
     pub(crate) idx: u32,
     pub(crate) from: AccountId,
+}
+
+impl TxSignerSource {
+    pub fn signing_key(&self) -> &SigningKey {
+        &self.sk
+    }
+
+    pub fn into_signing_key(self) -> SigningKey {
+        self.sk
+    }
+
+    pub fn domain(&self) -> u16 {
+        self.dom
+    }
+
+    pub fn derivation_index(&self) -> u32 {
+        self.idx
+    }
+
+    pub fn account_id(&self) -> &AccountId {
+        &self.from
+    }
 }
 
 fn derive_sender(master: &str, domain: &str) -> Result<(SigningKey, u16, u32, AccountId), String> {
@@ -22,7 +48,7 @@ fn derive_sender(master: &str, domain: &str) -> Result<(SigningKey, u16, u32, Ac
     Ok((sk, dom, i, from))
 }
 
-fn load_sender_from_wallet(
+pub(crate) fn load_sender_from_wallet(
     path: &PathBuf,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
@@ -61,7 +87,7 @@ fn load_sender_from_wallet(
     })
 }
 
-pub(crate) fn load_wallet_account_signer(
+pub fn load_wallet_account_signer(
     path: &PathBuf,
     account_index: u32,
     wallet_passphrase: Option<&str>,
@@ -94,7 +120,7 @@ pub(crate) fn load_wallet_account_signer(
     })
 }
 
-fn resolve_wallet_account(
+pub(crate) fn resolve_wallet_account(
     path: &PathBuf,
     wallet: &crate::wallet::WalletYaml,
     account_index: u32,

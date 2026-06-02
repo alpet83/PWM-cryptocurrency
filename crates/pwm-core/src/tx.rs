@@ -5,25 +5,20 @@ use crate::hd::{account_id_from_parts, domain_of_account_id};
 use crate::state::ExportProvenance;
 use crate::types::AccountId;
 use ed25519_dalek::SigningKey;
-use serde::{Deserialize, Serialize};
+use serde::de::{self, IgnoredAny};
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub const MIN_IMPORT_FEE_UNITS: u128 = 10_000;
-/// Sentinel value for `TxBody::Claim.claim_units`: instructs the node to
-/// materialise all currently matured marks without the client computing the amount.
-pub const CLAIM_ALL: u32 = u32::MAX;
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ClaimMode {
-    Free,
-    Paid,
-}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivationMode {
     Dormant,
     Immediately,
+    #[serde(rename = "deferred")]
+    Deferred {
+        activate_at_height: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -135,7 +130,7 @@ pub const INIT_OWNER_COUNTRY_MAX: usize = 8;
 pub const INIT_EXT_REF_MAX: usize = 96;
 pub const INIT_MAX_POLICIES: usize = 16;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TxBody {
     Init {
@@ -161,12 +156,12 @@ pub enum TxBody {
         mark_amount: u32,
         beneficiary: Option<AccountId>,
     },
-    Claim {
-        mode: ClaimMode,
-        claim_units: u32,
-        anchor_ref: u64,
-        #[serde(with = "crate::ser_json_u128")]
-        fee: u128,
+    #[serde(rename = "claim_ipv4_batch")]
+    ClaimIPv4Batch {
+        phase: u8,
+        batch_root: [u8; 32],
+        #[serde(with = "crate::ser_bin::sig64")]
+        registry_sig: [u8; 64],
     },
     Export {
         to: AccountId,
@@ -190,6 +185,125 @@ pub enum TxBody {
     },
 }
 
+impl<'de> Deserialize<'de> for TxBody {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum RawTxBody {
+            Init {
+                index: u32,
+                flags: u32,
+            },
+            Transfer {
+                to: AccountId,
+                #[serde(with = "crate::ser_json_u128")]
+                amount: u128,
+                #[serde(with = "crate::ser_json_u128")]
+                fee: u128,
+            },
+            Stake {
+                #[serde(with = "crate::ser_json_u128")]
+                amount: u128,
+            },
+            Unstake {
+                #[serde(with = "crate::ser_json_u128")]
+                amount: u128,
+            },
+            BurnMark {
+                mark_amount: u32,
+                beneficiary: Option<AccountId>,
+            },
+            #[serde(rename = "claim_ipv4_batch")]
+            ClaimIpv4Batch {
+                phase: u8,
+                batch_root: [u8; 32],
+                #[serde(with = "crate::ser_bin::sig64")]
+                registry_sig: [u8; 64],
+            },
+            Export {
+                to: AccountId,
+                target_domain: u16,
+                #[serde(with = "crate::ser_json_u128")]
+                amount: u128,
+                #[serde(with = "crate::ser_json_u128")]
+                fee: u128,
+            },
+            Import {
+                to: AccountId,
+                #[serde(with = "crate::ser_json_u128")]
+                amount: u128,
+                export_id: [u8; 32],
+            },
+            Policy {
+                target_account: AccountId,
+                action: PolicyAction,
+                #[serde(with = "crate::ser_json_u128")]
+                fee: u128,
+            },
+            #[serde(rename = "claim_mark")]
+            ClaimMarkRetired(IgnoredAny),
+        }
+
+        match RawTxBody::deserialize(deserializer)? {
+            RawTxBody::Init { index, flags } => Ok(Self::Init { index, flags }),
+            RawTxBody::Transfer { to, amount, fee } => Ok(Self::Transfer { to, amount, fee }),
+            RawTxBody::Stake { amount } => Ok(Self::Stake { amount }),
+            RawTxBody::Unstake { amount } => Ok(Self::Unstake { amount }),
+            RawTxBody::BurnMark {
+                mark_amount,
+                beneficiary,
+            } => Ok(Self::BurnMark {
+                mark_amount,
+                beneficiary,
+            }),
+            RawTxBody::ClaimIpv4Batch {
+                phase,
+                batch_root,
+                registry_sig,
+            } => Ok(Self::ClaimIPv4Batch {
+                phase,
+                batch_root,
+                registry_sig,
+            }),
+            RawTxBody::Export {
+                to,
+                target_domain,
+                amount,
+                fee,
+            } => Ok(Self::Export {
+                to,
+                target_domain,
+                amount,
+                fee,
+            }),
+            RawTxBody::Import {
+                to,
+                amount,
+                export_id,
+            } => Ok(Self::Import {
+                to,
+                amount,
+                export_id,
+            }),
+            RawTxBody::Policy {
+                target_account,
+                action,
+                fee,
+            } => Ok(Self::Policy {
+                target_account,
+                action,
+                fee,
+            }),
+            RawTxBody::ClaimMarkRetired(_) => Err(de::Error::custom(
+                "tx body variant `claim_mark` is retired in V5",
+            )),
+        }
+    }
+}
+
 impl TxBody {
     /// Canonical fee view used by policy checks and state invariants.
     /// Burn-mark flow is fixed to zero fee in Sprint 8 baseline.
@@ -197,12 +311,12 @@ impl TxBody {
         match self {
             TxBody::Transfer { fee, .. }
             | TxBody::Export { fee, .. }
-            | TxBody::Claim { fee, .. }
             | TxBody::Policy { fee, .. } => *fee,
             TxBody::Init { .. }
             | TxBody::Stake { .. }
             | TxBody::Unstake { .. }
             | TxBody::BurnMark { .. }
+            | TxBody::ClaimIPv4Batch { .. }
             | TxBody::Import { .. } => 0,
         }
     }
@@ -266,10 +380,14 @@ impl SignedTx {
                     v.push(pol_count);
                     for row in ext.initial_policies.iter().take(pol_count as usize) {
                         v.push(row.policy.policy_id());
-                        v.push(match row.activation {
-                            ActivationMode::Dormant => 0,
-                            ActivationMode::Immediately => 1,
-                        });
+                        match row.activation {
+                            ActivationMode::Dormant => v.push(0),
+                            ActivationMode::Immediately => v.push(1),
+                            ActivationMode::Deferred { activate_at_height } => {
+                                v.push(2);
+                                v.extend_from_slice(&activate_at_height.to_le_bytes());
+                            }
+                        }
                     }
                     match &ext.cosign_policy {
                         Some(cosign) => {
@@ -317,20 +435,15 @@ impl SignedTx {
                     None => v.push(0),
                 }
             }
-            TxBody::Claim {
-                mode,
-                claim_units,
-                anchor_ref,
-                fee,
+            TxBody::ClaimIPv4Batch {
+                phase,
+                batch_root,
+                registry_sig,
             } => {
                 v.push(8);
-                v.push(match mode {
-                    ClaimMode::Free => 0,
-                    ClaimMode::Paid => 1,
-                });
-                v.extend_from_slice(&claim_units.to_le_bytes());
-                v.extend_from_slice(&anchor_ref.to_le_bytes());
-                v.extend_from_slice(&fee.to_le_bytes());
+                v.push(*phase);
+                v.extend_from_slice(batch_root);
+                v.extend_from_slice(registry_sig);
             }
             TxBody::Export {
                 to,
@@ -490,19 +603,9 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
                 .ok_or(TxError::InvalidPurposeLength)?;
             validate_burn_purpose(&normalized)?;
         }
-        TxBody::Claim {
-            mode,
-            claim_units,
-            fee,
-            ..
-        } => {
-            if *claim_units == 0 {
-                return Err(TxError::ClaimDeltaInvalid);
-            }
-            match mode {
-                ClaimMode::Free if *fee != 0 => return Err(TxError::ClaimFeeModeConflict),
-                ClaimMode::Paid if *fee == 0 => return Err(TxError::ClaimFeeModeConflict),
-                _ => {}
+        TxBody::ClaimIPv4Batch { registry_sig, .. } => {
+            if registry_sig.iter().all(|b| *b == 0) {
+                return Err(TxError::PolicySchemaInvalid);
             }
         }
         TxBody::Import { .. } => {
@@ -585,10 +688,14 @@ fn push_policy_action_signing(out: &mut Vec<u8>, action: &PolicyAction) {
         PolicyAction::SetPolicy { policy, activation } => {
             out.push(0);
             out.push(policy.policy_id());
-            out.push(match activation {
-                ActivationMode::Dormant => 0,
-                ActivationMode::Immediately => 1,
-            });
+            match activation {
+                ActivationMode::Dormant => out.push(0),
+                ActivationMode::Immediately => out.push(1),
+                ActivationMode::Deferred { activate_at_height } => {
+                    out.push(2);
+                    out.extend_from_slice(&activate_at_height.to_le_bytes());
+                }
+            }
         }
         PolicyAction::ActivatePolicy { policy_id } => {
             out.push(1);
@@ -693,18 +800,8 @@ pub enum TxError {
     InvalidPurposeLength,
     #[error("invalid purpose chars")]
     InvalidPurposeChars,
-    #[error("claim fee mode conflict")]
-    ClaimFeeModeConflict,
-    #[error("claim delta invalid")]
-    ClaimDeltaInvalid,
-    #[error("claim anchor range invalid")]
-    ClaimAnchorRangeInvalid,
-    #[error("claim anchor continuity broken")]
-    ClaimAnchorContinuityBroken,
-    #[error("claim over matured")]
-    ClaimOverMatured,
-    #[error("free claim daily limit")]
-    FreeClaimDailyLimit,
+    #[error("unsupported tx kind")]
+    UnsupportedTxKind,
     #[error("import fee too low")]
     ImportFeeTooLow,
     #[error("policy schema invalid")]
@@ -1006,6 +1103,56 @@ mod tests {
     }
 
     #[test]
+    fn claim_ipv4_batch_signing_json() {
+        let (sk, idx) = signer(&[95u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let dom = domain_of_account_id(&probe.computed_account_id());
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            8,
+            TxBody::ClaimIPv4Batch {
+                phase: 3,
+                batch_root: [0xAB; 32],
+                registry_sig: [0xCD; 64],
+            },
+        );
+        let encoded = to_vec(&tx).expect("json");
+        let decoded: SignedTx = from_slice(&encoded).expect("decode");
+        assert_eq!(decoded, tx);
+        assert_eq!(tx.signing_message(), decoded.signing_message());
+    }
+
+    #[test]
+    fn claim_ipv4_rejects_zero_sig() {
+        let (sk, idx) = signer(&[96u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let dom = domain_of_account_id(&probe.computed_account_id());
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            9,
+            TxBody::ClaimIPv4Batch {
+                phase: 1,
+                batch_root: [0x11; 32],
+                registry_sig: [0u8; 64],
+            },
+        );
+        let err = validate_tx_shape(&tx).expect_err("zero registry sig must fail shape validation");
+        assert!(matches!(err, TxError::PolicySchemaInvalid));
+    }
+
+    #[test]
+    fn claim_mark_wire_retired_error() {
+        let raw = r#"{"claim_mark":{"mode":"free","claim_units":"1","anchor_ref":0,"fee":"0"}}"#;
+        let err = from_slice::<TxBody>(raw.as_bytes()).expect_err("claim_mark must be retired");
+        assert!(err.to_string().contains("retired in V5"));
+        assert!(err.to_string().contains("claim_mark"));
+    }
+
+    #[test]
     fn policy_signing_changes_by_action() {
         let (sk, idx) = signer(&[93u8; 32]);
         let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
@@ -1038,6 +1185,94 @@ mod tests {
             },
         );
         assert_ne!(tx_a.signing_message(), tx_b.signing_message());
+    }
+
+    #[test]
+    fn pol_deferred_signing_by_height() {
+        let (sk, idx) = signer(&[97u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let tx_a = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            5,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 100,
+                    },
+                },
+                fee: 10,
+            },
+        );
+        let tx_b = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            5,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 101,
+                    },
+                },
+                fee: 10,
+            },
+        );
+        assert_ne!(tx_a.signing_message(), tx_b.signing_message());
+    }
+
+    #[test]
+    fn policy_deferred_json_roundtrip() {
+        let (sk, idx) = signer(&[98u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            6,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 123,
+                    },
+                },
+                fee: 42,
+            },
+        );
+        let encoded = to_vec(&tx).expect("json");
+        let decoded: SignedTx = from_slice(&encoded).expect("decode");
+        assert_eq!(decoded, tx);
+    }
+
+    #[test]
+    fn policy_deferred_json_requires_height() {
+        let raw = r#"{
+            "domain_code":0,
+            "signer_pk":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "derivation_index":0,
+            "nonce":0,
+            "body":{
+                "policy":{
+                    "target_account":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                    "action":{"set_policy":{"policy":"sender_filter","activation":"deferred"}},
+                    "fee":"1"
+                }
+            },
+            "cosigns":[],
+            "signature":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+        }"#;
+        assert!(from_slice::<SignedTx>(raw.as_bytes()).is_err());
     }
 
     #[test]

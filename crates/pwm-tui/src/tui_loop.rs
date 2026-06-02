@@ -2,20 +2,21 @@
 
 use crate::{
     account_id_to_human, append_addr_book, base_url, burn_replay_guard_status, centered_rect,
-    choose_identity, clamp_sel, debug_json, f5_build_burn_form, f5_burn_hint_needed,
+    choose_identity, clamp_sel, debug_json, f5_build_burn_form, f5_burn_hint_text,
     f6_build_send_form, f7_build_stake_form, format_acct_cell, format_balance_cell, format_hms_utc,
-    format_init_cell, format_policy_bits, handle_submit_done_history, http_client,
-    identity_f3_action_label, identity_lock_status_suffix, inter_shard_status_short,
-    is_cross_domain_route, masked_with_caret, merge_rpc_health, move_selection_down,
-    move_selection_up, now_unix_secs, owner_and_receivers, poll_snapshot, preflight_sel_init_auto,
-    preflight_xfer_dst, push_op_history, receiver_table_len, selected_row_for_panel,
-    send_replay_guard_status, start_rpc_worker, status_footer_line, submit_claim, submit_stake,
-    submit_unstake, validate_burn_form, validate_encrypt_passphrase_inputs, validate_send_form,
-    validate_stake_form, value_with_caret, wallet_apply_auto_lock, wallet_lock_now, wallet_rekey,
-    wallet_unlock, wallet_unlock_secs_clamped, AcctRow, Args, BookPromptModal, BurnField, BurnForm,
-    DebugCache, EncryptField, EncryptModal, IdentitySource, OpStatus, OperationHistoryEntry, Panel,
-    RpcEvent, RpcTask, SendField, SendForm, StakeField, StakeForm, StakeMode, Ui, UnlockModal,
-    DEBUG_FETCH_INTERVAL, DETAIL_CHUNK_ROWS, FALLBACK_MODE_WARNING, FALLBACK_WARN_CHUNK_ROWS,
+    format_init_cell, format_marks_compact, format_policy_bits, handle_submit_done_history,
+    http_client, identity_f3_action_label, identity_lock_status_suffix, inter_shard_status_short,
+    is_cross_domain_route, mark_pct_hint, masked_with_caret, merge_rpc_health, move_selection_down,
+    move_selection_up, now_unix_secs, owner_and_receivers, pad_input_field, poll_snapshot,
+    preflight_sel_init_auto, preflight_xfer_dst, push_op_history, pwm_pct_hint, receiver_table_len,
+    selected_row_for_panel, send_replay_guard_status, start_rpc_worker, status_footer_line,
+    submit_stake, submit_unstake, validate_burn_form, validate_encrypt_passphrase_inputs,
+    validate_send_form, validate_stake_form, value_with_caret, wallet_apply_auto_lock,
+    wallet_lock_now, wallet_rekey, wallet_unlock, wallet_unlock_secs_clamped, AcctRow, Args,
+    BookPromptModal, BurnField, BurnForm, DebugCache, EncryptField, EncryptModal, IdentitySource,
+    OpStatus, OperationHistoryEntry, Panel, RpcEvent, RpcTask, SendField, SendForm, StakeField,
+    StakeForm, StakeMode, Ui, UnlockModal, DEBUG_FETCH_INTERVAL, DETAIL_CHUNK_ROWS,
+    FALLBACK_MODE_WARNING, FALLBACK_WARN_CHUNK_ROWS, MODAL_AMOUNT_INPUT_WIDTH,
     UNKNOWN_INIT_NONCE_SENTINEL,
 };
 use crossterm::{
@@ -23,6 +24,9 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use pwm_core::display::PWM_RAW_SCALE;
+use pwm_core::genesis::DEF_BLOCKS_PER_HOUR;
+use pwm_core::MARKS_CAP;
 use ratatui::{
     prelude::{
         Color, Constraint, CrosstermBackend, Direction, Layout, Line, Modifier, Rect, Span, Style,
@@ -37,17 +41,8 @@ use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
 use std::time::{Duration, Instant};
 
-const CLAIM_NOTE_WAIT_SECS: u64 = 6;
-const FREE_CLAIM_LIMIT_CODE: &str = "E_FREE_CLAIM_DAILY_LIMIT";
-const FREE_CLAIM_LIMIT_NOTE: &str =
-    "Free claim limit is exhausted. Use coin top-up/spend to force progress.";
-
-#[derive(Clone, Copy)]
-struct PendingClaimNote {
-    owner_id: [u8; 32],
-    base_marks: u32,
-    wait_until: Instant,
-}
+const F5_BURN_V5_STATUS: &str =
+    "V5 marks: stake PWM with S, wait for blocks, then burn materialized marks with F5.";
 
 struct TerminalGuard;
 
@@ -92,7 +87,6 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
     let mut send_req_id: u64 = 0;
     let mut inflight_send_req_id: Option<u64> = None;
     let mut inflight_burn_req_id: Option<u64> = None;
-    let mut pending_claim_note: Option<PendingClaimNote> = None;
     let (rpc_tx, rpc_rx) = start_rpc_worker();
 
     loop {
@@ -112,15 +106,6 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                     ui.err = snapshot.err;
                     ui.rpc_health = snapshot.rpc_health;
                     ui.rpc_shard_label = snapshot.rpc_shard_label;
-                    if ui.err.is_empty() {
-                        sync_claim_note(
-                            &mut action_note,
-                            &mut action_note_warn,
-                            &mut pending_claim_note,
-                            &ui.rows,
-                            Instant::now(),
-                        );
-                    }
                 }
                 Ok(RpcEvent::DebugAccountDone {
                     id_hex,
@@ -143,7 +128,6 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                 }) => {
                     if inflight_burn_req_id == Some(req_id) {
                         inflight_burn_req_id = None;
-                        pending_claim_note = None;
                         action_note = None;
                         action_note_warn = false;
                         if let Some(form) = burn_form.as_mut() {
@@ -605,88 +589,14 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                             match preflight_sel_init_auto(selected_owner, "F5 burn", &identity) {
                                 Ok(auto_init_msg) => {
                                     if let Some(owner) = owner_rows.get(owner_sel) {
-                                        if f5_burn_hint_needed(owner.staked, owner.marks) {
-                                            info_modal = Some(
-                                                "No materialized marks yet. Use Claim or Stake/Unstake; Burn uses materialized marks."
-                                                    .into(),
-                                            );
+                                        if let Some(msg) = f5_burn_hint_text(
+                                            owner.staked,
+                                            owner.marks,
+                                            owner.effective_marks,
+                                        ) {
+                                            info_modal = Some(msg.into());
                                             continue;
                                         }
-                                        use pwm_core::tx::CLAIM_ALL;
-                                        let claim_res = submit_claim(
-                                            &owner.id,
-                                            CLAIM_ALL,
-                                            ui.head_height.unwrap_or(0),
-                                            &identity,
-                                        );
-                                        let (mut claim_form_msg, mut claim_form_error) =
-                                            match claim_res {
-                                                Ok(()) => {
-                                                    action_note_warn = false;
-                                                    action_note = Some(
-                                                    "Claim submitted; waiting for confirmation..."
-                                                        .to_string(),
-                                                );
-                                                    pending_claim_note = Some(PendingClaimNote {
-                                                        owner_id: owner.id,
-                                                        base_marks: owner.marks,
-                                                        wait_until: Instant::now()
-                                                            + Duration::from_secs(
-                                                                CLAIM_NOTE_WAIT_SECS,
-                                                            ),
-                                                    });
-                                                    (
-                                                        action_note
-                                                            .clone()
-                                                            .unwrap_or_else(String::new),
-                                                        false,
-                                                    )
-                                                }
-                                                Err(e) if e.contains("E_CLAIM_OVER_MATURED") => {
-                                                    pending_claim_note = None;
-                                                    action_note_warn = false;
-                                                    action_note = Some(
-                                                        "Claim accepted; no new marks yet".into(),
-                                                    );
-                                                    (
-                                                        action_note
-                                                            .clone()
-                                                            .unwrap_or_else(String::new),
-                                                        false,
-                                                    )
-                                                }
-                                                Err(e) => {
-                                                    pending_claim_note = None;
-                                                    let (claim_note, is_error, is_warn) =
-                                                        map_claim_err_note(&e);
-                                                    action_note_warn = is_warn;
-                                                    action_note = Some(claim_note.clone());
-                                                    (claim_note, is_error)
-                                                }
-                                            };
-                                        let snapshot = poll_snapshot(&http_client());
-                                        ui.head = snapshot.head;
-                                        ui.head_height = snapshot.head_height;
-                                        ui.rows = snapshot.rows;
-                                        ui.err = snapshot.err;
-                                        ui.rpc_health = snapshot.rpc_health;
-                                        ui.rpc_shard_label = snapshot.rpc_shard_label;
-                                        if ui.err.is_empty() {
-                                            sync_claim_note(
-                                                &mut action_note,
-                                                &mut action_note_warn,
-                                                &mut pending_claim_note,
-                                                &ui.rows,
-                                                Instant::now(),
-                                            );
-                                            claim_form_msg = action_note
-                                                .clone()
-                                                .unwrap_or_else(|| claim_form_msg.clone());
-                                            claim_form_error = claim_form_error
-                                                || claim_form_msg
-                                                    .starts_with("Claim attempt failed:");
-                                        }
-
                                         let (fresh_owner_rows, _, _) =
                                             owner_and_receivers(&ui.rows, &identity);
                                         match f5_build_burn_form(
@@ -700,18 +610,12 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                                                 if let Some(fresh_owner) =
                                                     fresh_owner_rows.get(owner_sel)
                                                 {
-                                                    form.marks_available = fresh_owner.marks;
+                                                    form.marks_available = fresh_owner
+                                                        .effective_marks
+                                                        .unwrap_or(fresh_owner.marks);
                                                 }
-                                                if let Some(init_msg) = auto_init_msg {
-                                                    form.status = format!(
-                                                        "{init_msg}; {claim_form_msg}; fill burn fields"
-                                                    );
-                                                } else {
-                                                    form.status = format!(
-                                                        "{claim_form_msg}; fill burn fields"
-                                                    );
-                                                }
-                                                form.status_is_error = claim_form_error;
+                                                form.status = f5_burn_status(auto_init_msg);
+                                                form.status_is_error = false;
                                                 burn_form = Some(form);
                                             }
                                             Err(e) => info_modal = Some(e),
@@ -799,12 +703,13 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
         let selected_row =
             selected_row_for_panel(active, &owner_rows, owner_sel, &receiver_rows, recv_sel);
         if let Some(r) = selected_row {
+            let marks_txt = detail_marks_txt(r);
             let rescue_txt = r
                 .rescue_address
                 .as_ref()
                 .map(account_id_to_human)
                 .unwrap_or_else(|| "-".to_string());
-            ui.detail_line = format!(
+            let mut detail_line = format!(
                 "selected: {} | init={} | nonce={}\nPWM: {}\nStaked: {}\nMarks: {}\nPolicy active: {}\nPolicy dormant: {}\nFinalized: {}\nRescue: {}\nOwner: {}/{}/{}",
                 format_acct_cell(r),
                 format_init_cell(r),
@@ -815,7 +720,7 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                 },
                 format_balance_cell(r),
                 r.staked,
-                r.marks,
+                marks_txt,
                 format_policy_bits(r.active_policies),
                 format_policy_bits(r.dormant_policies),
                 if r.finalized { "yes" } else { "no" },
@@ -836,6 +741,10 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                     r.owner_country.as_str()
                 },
             );
+            if let Some(left) = marks_hour_left(r, ui.head_height) {
+                detail_line.push_str(&format!("\nAccrual: ~{left} blocks until next mark hour"));
+            }
+            ui.detail_line = detail_line;
             if dbg {
                 let selected_hex = r.id_hex.clone();
                 if debug_cache.selected_id_hex.as_deref() != Some(selected_hex.as_str()) {
@@ -987,6 +896,42 @@ fn panel_head_row() -> Row<'static> {
     .style(Style::default().add_modifier(Modifier::BOLD))
 }
 
+fn marks_cell(row: &AcctRow) -> String {
+    let eff = row.effective_marks.unwrap_or(row.marks);
+    format_marks_compact(eff)
+}
+
+fn detail_marks_txt(row: &AcctRow) -> String {
+    let eff = row.effective_marks.unwrap_or(row.marks);
+    format!(
+        "{} (stored: {}, last_block: {})",
+        eff, row.marks, row.marks_last_block
+    )
+}
+
+fn marks_hour_left(row: &AcctRow, head_h: Option<u64>) -> Option<u64> {
+    let eff = row.effective_marks.unwrap_or(row.marks);
+    if row.staked < PWM_RAW_SCALE || eff != row.marks {
+        return None;
+    }
+    let head = head_h?;
+    let bph = u64::from(DEF_BLOCKS_PER_HOUR);
+    if bph == 0 {
+        return None;
+    }
+    let since = head.saturating_sub(row.marks_last_block);
+    let rem = bph - (since % bph);
+    Some(rem)
+}
+
+fn marks_cell_style(row: &AcctRow) -> Style {
+    if row.effective_marks.unwrap_or(row.marks) == MARKS_CAP {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default()
+    }
+}
+
 /// Returns bright focus style for active panel border and title.
 fn panel_focus_style(active: Panel, panel: Panel) -> Style {
     if active == panel {
@@ -1033,7 +978,7 @@ fn render_owner_panel(
             Row::new(vec![
                 Cell::from(format_acct_cell(r)),
                 Cell::from(format_balance_cell(r)),
-                Cell::from(r.marks.to_string()),
+                Cell::from(marks_cell(r)).style(marks_cell_style(r)),
             ])
             .style(style)
         })
@@ -1050,7 +995,7 @@ fn render_owner_panel(
         [
             Constraint::Min(36),
             Constraint::Length(18),
-            Constraint::Length(10),
+            Constraint::Length(24),
         ],
     )
     .header(header.clone());
@@ -1081,7 +1026,7 @@ fn render_recv_panel(
             Row::new(vec![
                 Cell::from(format_acct_cell(r)),
                 Cell::from(format_balance_cell(r)),
-                Cell::from(r.marks.to_string()),
+                Cell::from(marks_cell(r)).style(marks_cell_style(r)),
             ])
             .style(style)
         })
@@ -1116,8 +1061,8 @@ fn render_recv_panel(
         recv_rows_all,
         [
             Constraint::Min(36),
-            Constraint::Length(12),
-            Constraint::Length(10),
+            Constraint::Length(18),
+            Constraint::Length(24),
         ],
     )
     .header(header.clone());
@@ -1221,37 +1166,11 @@ fn render_footer_area(
     f.render_widget(Paragraph::new(foot_line), area);
 }
 
-fn sync_claim_note(
-    action_note: &mut Option<String>,
-    action_note_warn: &mut bool,
-    pending_claim_note: &mut Option<PendingClaimNote>,
-    rows: &[AcctRow],
-    now: Instant,
-) {
-    let Some(pending) = pending_claim_note else {
-        return;
-    };
-    if let Some(row) = rows.iter().find(|row| row.id == pending.owner_id) {
-        let gain = row.marks.saturating_sub(pending.base_marks);
-        if gain > 0 {
-            *action_note = Some(format!("Claim confirmed (+{gain} marks)"));
-            *action_note_warn = false;
-            *pending_claim_note = None;
-            return;
-        }
-    }
-    if now >= pending.wait_until {
-        *action_note = Some("Claim accepted; no new marks yet".into());
-        *action_note_warn = false;
-        *pending_claim_note = None;
-    }
-}
-
-fn map_claim_err_note(err: &str) -> (String, bool, bool) {
-    if err.contains(FREE_CLAIM_LIMIT_CODE) {
-        (FREE_CLAIM_LIMIT_NOTE.to_string(), false, true)
+fn f5_burn_status(auto_init_msg: Option<String>) -> String {
+    if let Some(init_msg) = auto_init_msg {
+        format!("{init_msg}; {F5_BURN_V5_STATUS}")
     } else {
-        (format!("Claim attempt failed: {err}"), true, false)
+        F5_BURN_V5_STATUS.to_string()
     }
 }
 
@@ -1457,6 +1376,11 @@ fn render_send_modal(f: &mut Frame, screen: Rect, form: &SendForm) {
             _ => 0,
         };
         let shown = value_with_caret(value, cursor, active_field && editable);
+        let shown = if name == "amount" {
+            pad_input_field(&shown, MODAL_AMOUNT_INPUT_WIDTH)
+        } else {
+            shown
+        };
         let label = format!("{prefix}{name:<7}: ");
         let bg = if editable {
             Color::DarkGray
@@ -1475,6 +1399,21 @@ fn render_send_modal(f: &mut Frame, screen: Rect, form: &SendForm) {
             Span::styled(shown, style),
             Span::raw(lock_hint),
         ]));
+        if name == "amount" {
+            if let Some(hint) = pwm_pct_hint(value, form.balance_units) {
+                text.lines.push(Line::from(vec![
+                    Span::raw("           "),
+                    Span::styled(
+                        hint.label,
+                        if hint.over_limit {
+                            Style::default().fg(Color::Red)
+                        } else {
+                            Style::default().fg(Color::Gray)
+                        },
+                    ),
+                ]));
+            }
+        }
     }
     text.lines.push(Line::from(""));
     text.lines.push(Line::from(
@@ -1536,7 +1475,7 @@ fn render_burn_modal(f: &mut Frame, screen: Rect, form: &BurnForm) {
     let mut text = Text::from(vec![
         Line::from("F5 Burn marks (v2)"),
         Line::from("marks: whole mark units; beneficiary: empty for none; purpose: RFC 0011 (default ok for dev)."),
-        Line::from("Marks materialize via Claim or Stake/Unstake. Burn uses materialized marks."),
+        Line::from("V5 marks: stake PWM with S, wait for blocks, then burn materialized marks with F5."),
         Line::from(format!("Marks available: {}", form.marks_available)),
         Line::from(""),
     ]);
@@ -1556,6 +1495,11 @@ fn render_burn_modal(f: &mut Frame, screen: Rect, form: &BurnForm) {
             _ => 0,
         };
         let shown = value_with_caret(value, cursor, active_field && editable);
+        let shown = if name == "marks" {
+            pad_input_field(&shown, MODAL_AMOUNT_INPUT_WIDTH)
+        } else {
+            shown
+        };
         let label = format!("{prefix}{name:<7}: ");
         let bg = if editable {
             Color::DarkGray
@@ -1574,6 +1518,21 @@ fn render_burn_modal(f: &mut Frame, screen: Rect, form: &BurnForm) {
             Span::styled(shown, style),
             Span::raw(lock_hint),
         ]));
+        if name == "marks" {
+            if let Some(hint) = mark_pct_hint(value, form.marks_available) {
+                text.lines.push(Line::from(vec![
+                    Span::raw("           "),
+                    Span::styled(
+                        hint.label,
+                        if hint.over_limit {
+                            Style::default().fg(Color::Red)
+                        } else {
+                            Style::default().fg(Color::Gray)
+                        },
+                    ),
+                ]));
+            }
+        }
     }
     text.lines.push(Line::from(""));
     text.lines.push(Line::from(
@@ -1601,12 +1560,12 @@ fn render_burn_modal(f: &mut Frame, screen: Rect, form: &BurnForm) {
 #[cfg(test)]
 mod tests {
     use super::{
-        map_claim_err_note, panel_focus_style, sync_claim_note, Panel, PendingClaimNote,
-        FREE_CLAIM_LIMIT_NOTE,
+        detail_marks_txt, f5_burn_status, marks_cell, marks_cell_style, marks_hour_left,
+        panel_focus_style, Panel, F5_BURN_V5_STATUS,
     };
     use crate::AcctRow;
+    use pwm_core::MARKS_CAP;
     use ratatui::style::{Color, Modifier};
-    use std::time::{Duration, Instant};
 
     fn mk_row(id: [u8; 32], marks: u32) -> AcctRow {
         AcctRow {
@@ -1616,6 +1575,9 @@ mod tests {
             initialized: true,
             nonce: 0,
             marks,
+            marks_last_block: 0,
+            effective_marks: None,
+            marks_sat_pct: None,
             staked: 0,
             rescue_address: None,
             active_policies: 0,
@@ -1629,72 +1591,26 @@ mod tests {
     }
 
     #[test]
-    fn claim_note_confirms_delta() {
-        let id = [7u8; 32];
-        let mut action_note = Some("Claim submitted; waiting for confirmation...".to_string());
-        let mut action_note_warn = true;
-        let mut pending = Some(PendingClaimNote {
-            owner_id: id,
-            base_marks: 10,
-            wait_until: Instant::now() + Duration::from_secs(5),
-        });
-        let rows = vec![mk_row(id, 14)];
-        sync_claim_note(
-            &mut action_note,
-            &mut action_note_warn,
-            &mut pending,
-            &rows,
-            Instant::now(),
-        );
-        assert_eq!(action_note.as_deref(), Some("Claim confirmed (+4 marks)"));
-        assert!(!action_note_warn);
-        assert!(pending.is_none());
+    fn marks_cell_zero_stake() {
+        let row = mk_row([1u8; 32], 0);
+        assert_eq!(marks_cell(&row), "0");
     }
 
     #[test]
-    fn claim_note_wait_timeout() {
-        let id = [9u8; 32];
-        let mut action_note = Some("Claim submitted; waiting for confirmation...".to_string());
-        let mut action_note_warn = true;
-        let mut pending = Some(PendingClaimNote {
-            owner_id: id,
-            base_marks: 10,
-            wait_until: Instant::now() - Duration::from_secs(1),
-        });
-        let rows = vec![mk_row(id, 10)];
-        sync_claim_note(
-            &mut action_note,
-            &mut action_note_warn,
-            &mut pending,
-            &rows,
-            Instant::now(),
-        );
-        assert_eq!(
-            action_note.as_deref(),
-            Some("Claim accepted; no new marks yet")
-        );
-        assert!(!action_note_warn);
-        assert!(pending.is_none());
+    fn marks_cell_sat_red() {
+        let mut row = mk_row([2u8; 32], 10);
+        row.effective_marks = Some(MARKS_CAP);
+
+        assert_eq!(marks_cell(&row), "4.29B");
+        assert_eq!(marks_cell_style(&row).fg, Some(Color::Red));
     }
 
     #[test]
-    fn claim_daily_limit_warn_note() {
-        let err =
-            "claim failed: 400 Bad Request reject: code=E_FREE_CLAIM_DAILY_LIMIT trace_id=abc";
-        let (note, is_error, is_warn) = map_claim_err_note(err);
-        assert_eq!(note, FREE_CLAIM_LIMIT_NOTE);
-        assert!(!is_error);
-        assert!(is_warn);
-        assert!(!note.contains("trace_id="));
-    }
+    fn marks_cell_plain_style() {
+        let row = mk_row([3u8; 32], 999);
 
-    #[test]
-    fn claim_other_error_path() {
-        let err = "claim failed: 503 Service Unavailable";
-        let (note, is_error, is_warn) = map_claim_err_note(err);
-        assert_eq!(note, format!("Claim attempt failed: {err}"));
-        assert!(is_error);
-        assert!(!is_warn);
+        assert_eq!(marks_cell(&row), "999");
+        assert_eq!(marks_cell_style(&row).fg, None);
     }
 
     #[test]
@@ -1709,6 +1625,39 @@ mod tests {
         let style = panel_focus_style(Panel::Owner, Panel::Receivers);
         assert_eq!(style.fg, None);
         assert_eq!(style.add_modifier, Modifier::empty());
+    }
+
+    #[test]
+    fn f5_retired_claim_no_submit() {
+        let status = f5_burn_status(None);
+
+        assert_eq!(status, F5_BURN_V5_STATUS);
+        assert!(!status.contains("Claim submitted"));
+        assert!(!status.contains("waiting for confirmation"));
+    }
+
+    #[test]
+    fn detail_marks_uses_effective() {
+        let mut row = mk_row([4u8; 32], 15);
+        row.effective_marks = Some(22);
+
+        let txt = detail_marks_txt(&row);
+        assert!(txt.contains("22"));
+        assert!(txt.contains("stored: 15"));
+    }
+
+    #[test]
+    fn marks_hour_hint_gate() {
+        let mut row = mk_row([5u8; 32], 10);
+        row.staked = pwm_core::display::PWM_RAW_SCALE;
+        row.marks_last_block = 100;
+        row.effective_marks = Some(10);
+
+        assert_eq!(marks_hour_left(&row, Some(100)), Some(3600));
+        assert_eq!(marks_hour_left(&row, Some(150)), Some(3550));
+
+        row.staked = pwm_core::display::PWM_RAW_SCALE - 1;
+        assert_eq!(marks_hour_left(&row, Some(150)), None);
     }
 }
 

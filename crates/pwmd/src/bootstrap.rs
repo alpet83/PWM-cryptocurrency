@@ -6,6 +6,7 @@ use crate::identity::{default_dev_lane_identity, storage_namespace, DevLane, Run
 use crate::ledger::CrossShardLedger;
 use crate::roaming::RoamingPool;
 use crate::snapshot::{load_genesis_bundle, SnapshotBackend, SnapshotLoadOpts};
+use crate::state::SealManualState;
 use crate::state::{App, InitState, Inner};
 use crate::transport::HandshakeState;
 use crate::TransportConfig;
@@ -14,7 +15,7 @@ use pwm_core::genesis::GenCfg;
 use pwm_core::{absorb_blocks_tail, dev_net, digest, Chain, Mpool};
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 use tracing::info;
@@ -107,7 +108,12 @@ pub(crate) fn app_from_chain_boot(
         lease_backend: Arc::new(crate::lease_backend::ProcessLocalLeaseBackend),
         lease_runtime: Arc::new(Mutex::new(lease_runtime)),
         lease_stats: Arc::new(crate::lease::LeaseStats::default()),
+        lease_renew_log_tip: Arc::new(AtomicU64::new(0)),
         cluster_cfg: crate::ClusterCfg::default(),
+        cluster_prop_nudge: Arc::new(AtomicBool::new(false)),
+        seal_wake: Arc::new(tokio::sync::Notify::new()),
+        seal_manual: Arc::new(RwLock::new(SealManualState::default())),
+        lab_seal_api: false,
         validator_identity_hash,
         node_instance_id,
         debug_dump: DebugDumpCfg::default(),
@@ -117,6 +123,8 @@ pub(crate) fn app_from_chain_boot(
         state_namespace,
         hello_nonce_ctr: Arc::new(AtomicU64::new(1)),
         transport_config: Arc::new(RwLock::new(TransportConfig::default())),
+        block_timing: None,
+        shutdown_requested: Arc::new(AtomicBool::new(false)),
         shutdown_tx: Arc::new(Mutex::new(None)),
         log_ctl: crate::logging::runtime_log_ctl(),
         log_ovr: Arc::new(RwLock::new(None)),
@@ -237,7 +245,12 @@ pub fn app_from_genesis_shard(
                     node_instance_id.clone(),
                 ))),
                 lease_stats: Arc::new(crate::lease::LeaseStats::default()),
+                lease_renew_log_tip: Arc::new(AtomicU64::new(0)),
                 cluster_cfg: crate::ClusterCfg::default(),
+                cluster_prop_nudge: Arc::new(AtomicBool::new(false)),
+                seal_wake: Arc::new(tokio::sync::Notify::new()),
+                seal_manual: Arc::new(RwLock::new(SealManualState::default())),
+                lab_seal_api: false,
                 validator_identity_hash,
                 node_instance_id,
                 debug_dump: DebugDumpCfg::default(),
@@ -247,6 +260,8 @@ pub fn app_from_genesis_shard(
                 state_namespace,
                 hello_nonce_ctr: Arc::new(AtomicU64::new(1)),
                 transport_config: Arc::new(RwLock::new(TransportConfig::default())),
+                block_timing: None,
+                shutdown_requested: Arc::new(AtomicBool::new(false)),
                 autosnapshot_backend,
                 shutdown_tx: Arc::new(Mutex::new(None)),
                 log_ctl: crate::logging::runtime_log_ctl(),
@@ -304,7 +319,12 @@ pub fn app_from_genesis_shard(
             node_instance_id.clone(),
         ))),
         lease_stats: Arc::new(crate::lease::LeaseStats::default()),
+        lease_renew_log_tip: Arc::new(AtomicU64::new(0)),
         cluster_cfg: crate::ClusterCfg::default(),
+        cluster_prop_nudge: Arc::new(AtomicBool::new(false)),
+        seal_wake: Arc::new(tokio::sync::Notify::new()),
+        seal_manual: Arc::new(RwLock::new(SealManualState::default())),
+        lab_seal_api: false,
         validator_identity_hash,
         node_instance_id,
         debug_dump: DebugDumpCfg::default(),
@@ -314,7 +334,9 @@ pub fn app_from_genesis_shard(
         state_namespace,
         hello_nonce_ctr: Arc::new(AtomicU64::new(1)),
         transport_config: Arc::new(RwLock::new(TransportConfig::default())),
+        block_timing: None,
         autosnapshot_backend,
+        shutdown_requested: Arc::new(AtomicBool::new(false)),
         shutdown_tx: Arc::new(Mutex::new(None)),
         log_ctl: crate::logging::runtime_log_ctl(),
         log_ovr: Arc::new(RwLock::new(None)),

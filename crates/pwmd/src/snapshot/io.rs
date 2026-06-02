@@ -1,16 +1,19 @@
 //! Snapshot filesystem load/save, migration helpers, and cfg validation.
 //! Primary-load wall times are recorded in [`load_snapshot_timed`] for `pwmd::startup::snapshot`.
 
+use super::anchor;
 use super::epoch::{ensure_epoch_man_schema, manifest_file_path};
 use super::genesis::snapshot_genesis_accounts;
 use super::incremental;
 use super::telemetry::{JsonSnapTiming, SNAP_STARTUP_TARGET};
 use super::types::{
-    data_from_v2, data_to_v2, roaming_to_wire, BlocksStored, SnapshotData, SnapshotDataLegacyV0,
-    SnapshotDataV2, SnapshotRoamingWire, SNAPSHOT_V1, SNAPSHOT_VERSION,
+    data_from_v2, data_from_v3, data_to_v3, roaming_to_wire, BlocksStored, SnapshotData,
+    SnapshotDataLegacyV0, SnapshotDataV2, SnapshotDataV3, SnapshotRoamingWire, SNAPSHOT_V1,
+    SNAPSHOT_V2, SNAPSHOT_VERSION,
 };
 use crate::ledger::CrossShardLedger;
 use crate::Inner;
+use ed25519_dalek::SigningKey;
 use pwm_core::block::Block;
 use pwm_core::block::{hdr_hash, txs_root};
 use pwm_core::chain::prev_gen;
@@ -26,14 +29,20 @@ use std::time::Instant;
 use tracing::{info, warn};
 
 /// JsonFile epoch load: full replay vs trust checkpoint + tail-only blocks (see `validate_snapshot_trusted`).
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) struct SnapshotLoadOpts {
     pub verify_chain: bool,
+    pub anchor_sk: Option<SigningKey>,
+    pub anchor_idx: u32,
 }
 
 impl SnapshotLoadOpts {
     pub(crate) fn verify_full() -> Self {
-        Self { verify_chain: true }
+        Self {
+            verify_chain: true,
+            anchor_sk: None,
+            anchor_idx: 0,
+        }
     }
 }
 
@@ -91,6 +100,119 @@ fn mismatch_class(snapshot: &SnapshotData, tx_kind: &str) -> &'static str {
     } else {
         "state_root_divergence"
     }
+}
+
+fn find_blk1(snapshot: &SnapshotData, summary_path: &FsPath) -> Result<Option<Block>, String> {
+    if let Some(blk) = snapshot.blocks.iter().find(|b| b.hdr.height == 1) {
+        return Ok(Some(blk.clone()));
+    }
+    incremental::load_block_at_height(summary_path, 1)
+}
+
+fn preflight_blk1(
+    snapshot: &SnapshotData,
+    cfg: &GenCfg,
+    summary_path: &FsPath,
+) -> Result<[u8; 32], String> {
+    if snapshot.checkpoint_height == 0 {
+        return Ok([0u8; 32]);
+    }
+    let blk = find_blk1(snapshot, summary_path)?.ok_or_else(|| {
+        "snapshot trust validation: missing genesis anchor block1 (pruned)".to_string()
+    })?;
+    if blk.hdr.height != 1 {
+        return Err("snapshot trust validation: genesis preflight expects block height 1".into());
+    }
+    if blk.hdr.prev_hash != prev_gen() {
+        return Err("snapshot trust validation: block1 prev_hash mismatch with genesis".into());
+    }
+    let want_tx_root = txs_root(&blk.txs);
+    if blk.hdr.tx_root != want_tx_root {
+        return Err("snapshot trust validation: block1 tx_root is invalid".into());
+    }
+    let prod = cfg
+        .vals
+        .set
+        .get(blk.hdr.prod_idx as usize)
+        .ok_or_else(|| "snapshot trust validation: block1 prod_idx out of range".to_string())?;
+    if !blk.hdr.verify_sig(&prod.pubkey) {
+        return Err("snapshot trust validation: block1 has invalid producer signature".into());
+    }
+    let mut st = cfg.state0();
+    for (tx_i, tx) in blk.txs.iter().enumerate() {
+        st.apply_tx_with_ctx(tx, 1, blk.hdr.ts, cfg).map_err(|e| {
+            format!("snapshot trust validation: block1 tx[{tx_i}] replay failed: {e}")
+        })?;
+    }
+    let prod_acct = cfg.prod_acct(blk.hdr.prod_idx);
+    if cfg.is_legacy_policy() {
+        st.accrue_marks(cfg.marks_coeff);
+        st.reward_producer(&prod_acct, cfg.block_reward);
+    } else {
+        let season_ppm = cfg.season_ppm(blk.hdr.ts);
+        st.accrue_marks_v2(cfg.marks_coeff, cfg.marks_stake_min, season_ppm);
+        st.reward_producer_v2(&prod_acct, cfg.block_reward, cfg.pwm_stake_min, season_ppm);
+    }
+    let st_root = digest(&st);
+    if blk.hdr.state_root != st_root {
+        return Err("snapshot trust validation: block1 state_root mismatch after replay".into());
+    }
+    Ok(hdr_hash(&blk.hdr))
+}
+
+fn attach_anch(
+    snapshot: &mut SnapshotData,
+    cfg: &GenCfg,
+    summary_path: &FsPath,
+    opts: &SnapshotLoadOpts,
+) -> Result<(), String> {
+    if snapshot.genesis_anchor.is_some() {
+        return Ok(());
+    }
+    let blk1_hash = preflight_blk1(snapshot, cfg, summary_path)?;
+    let Some(sk) = opts.anchor_sk.as_ref() else {
+        return Err(
+            "snapshot trust validation: legacy snapshot missing genesis_anchor and signer key unavailable; rerun with --snapshot-verify-chain or set PWM_SNAPSHOT_ANCHOR_MIGRATE=1 for temporary bypass"
+                .to_string(),
+        );
+    };
+    let anch = anchor::mk_anch(cfg, blk1_hash, opts.anchor_idx, sk)?;
+    snapshot.genesis_anchor = Some(anch);
+    warn!("snapshot genesis_anchor migrated at load");
+    Ok(())
+}
+
+fn allow_legacy_env() -> bool {
+    match std::env::var("PWM_SNAPSHOT_ANCHOR_MIGRATE") {
+        Ok(v) => {
+            let v = v.trim().to_ascii_lowercase();
+            !(v.is_empty() || v == "0" || v == "false" || v == "no" || v == "off")
+        }
+        Err(_) => false,
+    }
+}
+
+fn snap_blk1(path: &FsPath, inner: &Inner, tip: u64) -> Result<[u8; 32], String> {
+    if tip == 0 {
+        return Ok([0u8; 32]);
+    }
+    if let Some(blk) = inner.chain.blocks.iter().find(|b| b.hdr.height == 1) {
+        return Ok(hdr_hash(&blk.hdr));
+    }
+    let blk = incremental::load_block_at_height(path, 1)?
+        .ok_or_else(|| "snapshot persist: missing genesis anchor block1 (pruned)".to_string())?;
+    Ok(hdr_hash(&blk.hdr))
+}
+
+fn fill_anch(path: &FsPath, inner: &Inner, snap: &mut SnapshotData) -> Result<(), String> {
+    let tip = snap.checkpoint_height;
+    let blk1_hash = snap_blk1(path, inner, tip)?;
+    let sk = inner.chain.val_sks.first().ok_or_else(|| {
+        "snapshot persist: missing validator signing key for genesis_anchor".to_string()
+    })?;
+    let anch = anchor::mk_anch(&inner.chain.cfg, blk1_hash, 0, sk)?;
+    snap.genesis_anchor = Some(anch);
+    Ok(())
 }
 
 fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), String> {
@@ -191,7 +313,7 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
         }
         for (tx_i, tx) in blk.txs.iter().enumerate() {
             replay_state
-                .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts)
+                .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, cfg)
                 .map_err(|e| {
                     format!(
                     "snapshot chain mismatch: block[{i}] tx[{tx_i}] is invalid during replay: {e}"
@@ -271,9 +393,10 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
 
 /// Trust-disk checkpoint: no genesis→tip replay; verifies manifest/summary/tail linkage and PoA headers on the tail.
 fn validate_snapshot_trusted(
-    snapshot: &SnapshotData,
+    snapshot: &mut SnapshotData,
     cfg: &GenCfg,
     summary_path: &FsPath,
+    opts: &SnapshotLoadOpts,
 ) -> Result<(), String> {
     if cfg.vals.set.is_empty() {
         return Err("snapshot validation error: genesis config has zero validators".into());
@@ -324,10 +447,20 @@ fn validate_snapshot_trusted(
         if !snapshot.blocks.is_empty() {
             return Err("snapshot trust validation: tip=0 but blocks non-empty".into());
         }
-        let genesis_root = digest(&cfg.state0());
+        let genesis_root = anchor::st_root(cfg);
         let st_root = digest(&snapshot.state);
         if st_root != genesis_root {
             return Err("snapshot state mismatch: empty chain must match genesis state".into());
+        }
+        if let Some(ref anch) = snapshot.genesis_anchor {
+            anchor::chk_anch(anch, cfg, [0u8; 32])?;
+        } else if opts.anchor_sk.is_some() {
+            attach_anch(snapshot, cfg, summary_path, opts)?;
+        } else if !opts.verify_chain && !allow_legacy_env() {
+            return Err(
+                "snapshot trust validation: missing genesis_anchor on legacy snapshot; set PWM_SNAPSHOT_ANCHOR_MIGRATE=1 (unsafe) or rerun with --snapshot-verify-chain"
+                    .to_string(),
+            );
         }
         return validate_snapshot_state_accounts(snapshot);
     }
@@ -431,6 +564,17 @@ fn validate_snapshot_trusted(
             ));
         }
     }
+    let blk1_hash = preflight_blk1(snapshot, cfg, summary_path)?;
+    if let Some(ref anch) = snapshot.genesis_anchor {
+        anchor::chk_anch(anch, cfg, blk1_hash)?;
+    } else if opts.anchor_sk.is_some() {
+        attach_anch(snapshot, cfg, summary_path, opts)?;
+    } else if !opts.verify_chain && !allow_legacy_env() {
+        return Err(
+            "snapshot trust validation: missing genesis_anchor on legacy snapshot; set PWM_SNAPSHOT_ANCHOR_MIGRATE=1 (unsafe) or rerun with --snapshot-verify-chain"
+                .to_string(),
+        );
+    }
     validate_snapshot_state_accounts(snapshot)
 }
 
@@ -526,6 +670,7 @@ pub(crate) fn encode_inner_snap_json(
     let snap = SnapshotData {
         version: SNAPSHOT_VERSION,
         genesis_accounts: snapshot_genesis_accounts(&inner.chain.cfg),
+        genesis_anchor: None,
         blocks,
         state: inner.chain.st.clone(),
         roaming: roaming_to_wire(&inner.roaming_pool),
@@ -533,19 +678,23 @@ pub(crate) fn encode_inner_snap_json(
         blocks_stored: BlocksStored::Inline,
         checkpoint_height: 0,
     };
+    let mut snap = snap;
+    if let Some(path) = summary_path {
+        fill_anch(path, inner, &mut snap)?;
+    }
     encode_snap_data_txt(&snap)
 }
 
-/// Canonical JSON for ClickHouse `snapshot_json` (pretty v2 wire, matches [`encode_inner_snap_json`]).
+/// Canonical JSON for ClickHouse `snapshot_json` (pretty v3 wire, matches [`encode_inner_snap_json`]).
 pub(crate) fn encode_snap_data_txt(snap: &SnapshotData) -> Result<String, String> {
-    let wire = data_to_v2(snap);
+    let wire = data_to_v3(snap);
     serde_json::to_string_pretty(&wire).map_err(|e| format!("encode snapshot: {e}"))
 }
 
-/// Stable bytes for equality of two-loaded snapshots: `serde_json::to_vec` of v2 wire (`data_to_v2`).
+/// Stable bytes for equality of two-loaded snapshots: `serde_json::to_vec` of v3 wire (`data_to_v3`).
 pub(crate) fn snap_wire_json_bytes(snap: &SnapshotData) -> Result<Vec<u8>, String> {
-    let v2 = data_to_v2(snap);
-    serde_json::to_vec(&v2).map_err(|e| format!("snap wire json: {e}"))
+    let v3 = data_to_v3(snap);
+    serde_json::to_vec(&v3).map_err(|e| format!("snap wire json: {e}"))
 }
 
 pub(crate) fn load_snapshot(path: &FsPath, cfg: &GenCfg) -> Result<Option<SnapshotData>, String> {
@@ -592,6 +741,7 @@ pub(crate) fn load_snapshot_timed(
         Some(SnapshotData {
             version: SNAPSHOT_VERSION,
             genesis_accounts: snapshot_genesis_accounts(cfg),
+            genesis_anchor: None,
             blocks: vec![],
             state: cfg.state0(),
             roaming: SnapshotRoamingWire::default(),
@@ -638,7 +788,9 @@ pub(crate) fn load_snapshot_timed(
     }
     let tv = Instant::now();
     let validate_err = match (&snap.blocks_stored, effective_opts.verify_chain) {
-        (BlocksStored::Epochs, false) => validate_snapshot_trusted(&snap, cfg, path),
+        (BlocksStored::Epochs, false) => {
+            validate_snapshot_trusted(&mut snap, cfg, path, &effective_opts)
+        }
         _ => validate_snapshot(&mut snap, cfg),
     };
     validate_err.map_err(|e| {
@@ -698,6 +850,9 @@ fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData
                 })?
                 .clone(),
         );
+        if let Some(anch) = obj.get("genesis_anchor") {
+            canonical.insert("genesis_anchor".to_string(), anch.clone());
+        }
         canonical.insert(
             "blocks".to_string(),
             obj.get("blocks")
@@ -733,6 +888,7 @@ fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData
             .filter(|k| {
                 *k != "version"
                     && *k != "genesis_accounts"
+                    && *k != "genesis_anchor"
                     && *k != "blocks"
                     && *k != "state"
                     && *k != "roaming"
@@ -750,9 +906,14 @@ fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData
         }
         match version {
             v if v == u64::from(SNAPSHOT_VERSION) => {
-                let wire: SnapshotDataV2 = serde_json::from_value(Value::Object(canonical))
+                let wire: SnapshotDataV3 = serde_json::from_value(Value::Object(canonical))
                     .map_err(|e| format!("parse canonical snapshot JSON: {e}"))?;
-                data_from_v2(wire).map_err(|e| format!("parse canonical snapshot JSON: {e}"))?
+                data_from_v3(wire).map_err(|e| format!("parse canonical snapshot JSON: {e}"))?
+            }
+            v if v == u64::from(SNAPSHOT_V2) => {
+                let wire: SnapshotDataV2 = serde_json::from_value(Value::Object(canonical))
+                    .map_err(|e| format!("parse v2 snapshot JSON: {e}"))?;
+                data_from_v2(wire).map_err(|e| format!("parse v2 snapshot JSON: {e}"))?
             }
             v if v == u64::from(SNAPSHOT_V1) => {
                 let mut snap: SnapshotData = serde_json::from_value(Value::Object(canonical))
@@ -762,7 +923,7 @@ fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData
             }
             other => {
                 return Err(format!(
-                    "snapshot version mismatch: got {other}, expected {SNAPSHOT_VERSION} or {SNAPSHOT_V1}"
+                    "snapshot version mismatch: got {other}, expected {SNAPSHOT_VERSION}, {SNAPSHOT_V2} or {SNAPSHOT_V1}"
                 ));
             }
         }
@@ -808,6 +969,7 @@ fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData
         SnapshotData {
             version: SNAPSHOT_VERSION,
             genesis_accounts: snapshot_genesis_accounts(cfg),
+            genesis_anchor: None,
             blocks: legacy.blocks,
             state: legacy.state,
             roaming: SnapshotRoamingWire::default(),
@@ -847,9 +1009,10 @@ pub(crate) fn json_file_runtime_persist(path: &FsPath, inner: &Inner) -> Result<
 /// Persist summary checkpoint (`pwm-data.json` without `blocks[]`); chain in `epochs/` JSONL.
 pub(crate) fn save_checkpoint_summary(path: &FsPath, inner: &Inner) -> Result<(), String> {
     let h = inner.chain.tip_h();
-    let snap = SnapshotData {
+    let mut snap = SnapshotData {
         version: SNAPSHOT_VERSION,
         genesis_accounts: snapshot_genesis_accounts(&inner.chain.cfg),
+        genesis_anchor: None,
         blocks: vec![],
         state: inner.chain.st.clone(),
         roaming: roaming_to_wire(&inner.roaming_pool),
@@ -857,6 +1020,7 @@ pub(crate) fn save_checkpoint_summary(path: &FsPath, inner: &Inner) -> Result<()
         blocks_stored: BlocksStored::Epochs,
         checkpoint_height: h,
     };
+    fill_anch(path, inner, &mut snap)?;
     let txt = encode_snap_data_txt(&snap)?;
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -885,6 +1049,7 @@ mod tests {
     use super::*;
     use pwm_core::hd::domain_of_account_id;
     use pwm_core::tx::{SignedTx, TxBody};
+    use std::path::Path;
 
     #[test]
     fn snap_replay_uses_blk_ctx() {
@@ -903,6 +1068,7 @@ mod tests {
         let mut snap = SnapshotData {
             version: SNAPSHOT_VERSION,
             genesis_accounts: snapshot_genesis_accounts(&cfg),
+            genesis_anchor: None,
             blocks,
             state: chain.st.clone(),
             roaming: SnapshotRoamingWire::default(),
@@ -931,6 +1097,7 @@ mod tests {
         let base = SnapshotData {
             version: SNAPSHOT_VERSION,
             genesis_accounts: snapshot_genesis_accounts(&cfg),
+            genesis_anchor: None,
             blocks,
             state: chain.st.clone(),
             roaming: SnapshotRoamingWire::default(),
@@ -955,6 +1122,7 @@ mod tests {
         let snap = SnapshotData {
             version: SNAPSHOT_VERSION,
             genesis_accounts: snapshot_genesis_accounts(&cfg),
+            genesis_anchor: None,
             blocks: vec![],
             state: cfg.state0(),
             roaming: SnapshotRoamingWire::default(),
@@ -995,5 +1163,55 @@ mod tests {
         assert_eq!(one.active_policies, 0);
         assert_eq!(one.dormant_policies, 0);
         assert!(!one.finalized);
+    }
+
+    #[test]
+    fn preflight_blk1_tamper_tx_root() {
+        let (cfg, sks) = pwm_core::dev_net();
+        let mut chain = Chain::boot(cfg.clone(), sks.clone());
+        chain.seal(vec![]).expect("seal #1");
+        let mut blk1 = chain.blocks[0].clone();
+        blk1.hdr.tx_root[0] ^= 0x01;
+        let snap = SnapshotData {
+            version: SNAPSHOT_VERSION,
+            genesis_accounts: snapshot_genesis_accounts(&cfg),
+            genesis_anchor: None,
+            blocks: vec![blk1],
+            state: chain.st.clone(),
+            roaming: SnapshotRoamingWire::default(),
+            cross_shard: CrossShardLedger::default(),
+            blocks_stored: BlocksStored::Epochs,
+            checkpoint_height: 1,
+        };
+        let err = preflight_blk1(&snap, &cfg, Path::new("pwm-data.json"))
+            .expect_err("tampered block1 must be rejected");
+        assert!(err.contains("tx_root is invalid"));
+    }
+
+    #[test]
+    fn attach_anchor_legacy_with_signer() {
+        let (cfg, sks) = pwm_core::dev_net();
+        let mut chain = Chain::boot(cfg.clone(), sks.clone());
+        chain.seal(vec![]).expect("seal #1");
+        let blk1 = chain.blocks[0].clone();
+        let mut snap = SnapshotData {
+            version: SNAPSHOT_VERSION,
+            genesis_accounts: snapshot_genesis_accounts(&cfg),
+            genesis_anchor: None,
+            blocks: vec![blk1.clone()],
+            state: chain.st.clone(),
+            roaming: SnapshotRoamingWire::default(),
+            cross_shard: CrossShardLedger::default(),
+            blocks_stored: BlocksStored::Epochs,
+            checkpoint_height: 1,
+        };
+        let opts = SnapshotLoadOpts {
+            verify_chain: false,
+            anchor_sk: Some(sks[0].clone()),
+            anchor_idx: 0,
+        };
+        attach_anch(&mut snap, &cfg, Path::new("pwm-data.json"), &opts).expect("migrate");
+        let anch = snap.genesis_anchor.as_ref().expect("anchor attached");
+        anchor::chk_anch(anch, &cfg, hdr_hash(&blk1.hdr)).expect("anchor verifies");
     }
 }

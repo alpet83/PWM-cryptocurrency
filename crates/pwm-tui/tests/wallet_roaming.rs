@@ -108,24 +108,14 @@ address_book: []
         .any(|a| a.id == legacy_id && !a.is_active));
     let owner_rows = vec![
         AcctRow {
-            id: legacy_id,
-            id_hex: legacy_hex,
             balance_pwm: 1,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: legacy_hex,
+            ..mk_acct_row(legacy_id)
         },
         AcctRow {
-            id: default_id,
-            id_hex: default_hex,
             balance_pwm: 2,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: default_hex,
+            ..mk_acct_row(default_id)
         },
     ];
     let form = f6_build_send_form(&IdentitySource::Wallet(identity), &owner_rows, 0, &[], 0)
@@ -225,7 +215,7 @@ fn footer_rpc_offline_order() {
     assert!(flat.contains("wallet: ok"));
 }
 
-/// Online healthy RPC collapses footer to a single non-red span with unknown shard hint.
+/// Online healthy RPC: no red health prefix; unknown shard hint in rpc context.
 #[test]
 fn footer_rpc_online_one() {
     use ratatui::style::Color;
@@ -241,9 +231,13 @@ fn footer_rpc_online_one() {
         None,
         false,
     );
-    assert_eq!(line.spans.len(), 1);
-    assert_ne!(line.spans[0].style.fg, Some(Color::Red));
-    let flat = line.spans[0].content.as_ref();
+    assert!(
+        line.spans
+            .iter()
+            .all(|s| s.style.fg != Some(Color::Red)),
+        "online RPC should not emit red health spans"
+    );
+    let flat: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
     assert!(
         flat.starts_with("… | RPC=http://127.0.0.1:4040 (unknown shard) | Tab switch"),
         "{flat}"
@@ -596,14 +590,9 @@ fn roam_expired_import() {
 #[test]
 fn preflight_sel_init_blocks_locked() {
     let row = AcctRow {
-        id: [9u8; 32],
         id_hex: "09".repeat(32),
-        balance_pwm: 0,
         initialized: false,
-        nonce: 0,
-        marks: 0,
-        staked: 0,
-        label: None,
+        ..mk_acct_row([9u8; 32])
     };
     let identity = IdentitySource::Wallet(WalletIdentity {
         account_id: [9u8; 32],
@@ -632,14 +621,11 @@ fn preflight_sel_init_blocks_locked() {
 #[test]
 fn preflight_sel_ready_ok() {
     let row = AcctRow {
-        id: [7u8; 32],
-        id_hex: "07".repeat(32),
         balance_pwm: 1,
-        initialized: true,
         nonce: 3,
-        marks: 0,
-        staked: 0,
+        id_hex: "07".repeat(32),
         label: Some("ok".into()),
+        ..mk_acct_row([7u8; 32])
     };
     assert!(matches!(
         preflight_sel_init_auto(Some(&row), "F5 burn", &IdentitySource::SeedFallback),
@@ -674,14 +660,9 @@ fn xfer_dst_uninit_row() {
     let mut to = [0x43u8; 32];
     to[1] = 0x59;
     let row = AcctRow {
-        id: to,
         id_hex: hex::encode(to),
-        balance_pwm: 0,
         initialized: false,
-        nonce: 0,
-        marks: 0,
-        staked: 0,
-        label: None,
+        ..mk_acct_row(to)
     };
     let err = preflight_xfer_dst(&from, &to, &[], &[row])
         .expect_err("known uninitialized recipient must block");

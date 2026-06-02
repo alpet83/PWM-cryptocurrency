@@ -7,7 +7,7 @@ use pwmd::{
     parse_cluster_domain_hi, resolve_runtime_identity, storage_namespace, ClusterCfg,
     ConsoleColorMode, DebugDumpCfg, DevLane, GenesisSource, LeaseBackendMode, LogFileMode,
     LoggingConfig, PersistSnapKind, PwmdConfig, RuntimeIdentityInput, RuntimeIdentityMode,
-    TransportConfig,
+    SealControlMode, TransportConfig,
 };
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -218,6 +218,17 @@ struct Cli {
         action = clap::ArgAction::SetTrue
     )]
     debug_disable_seal_loop: bool,
+    /// Enable lab seal RPC surface on the local proposer.
+    #[arg(long = "lab-seal-api", env = "PWM_LAB_SEAL_API", default_value_t = false, action = clap::ArgAction::SetTrue)]
+    lab_seal_api: bool,
+    /// Lab seal control mode.
+    #[arg(
+        long = "seal-control",
+        env = "PWM_SEAL_CONTROL",
+        default_value = "auto",
+        value_parser = parse_seal_control_mode
+    )]
+    seal_control_mode: SealControlMode,
     /// Runtime deployment profile for same-validator guard policy.
     #[arg(
         long = "deployment-profile",
@@ -312,12 +323,26 @@ struct Cli {
     /// Quorum N in k-of-n when cluster mode is enabled (limited to <=3 in this slice).
     #[arg(long = "cluster-quorum-n", default_value_t = 2)]
     cluster_quorum_n: u8,
-    /// RFC16 §6.1 bounded catch-up window before attest reject.
-    #[arg(long = "cluster-tx-catchup-ms", default_value_t = 500)]
-    cluster_tx_catchup_ms: u64,
-    /// RFC16 attest timeout window for quorum collection.
-    #[arg(long = "cluster-attest-timeout-ms", default_value_t = 1000)]
-    cluster_attest_timeout_ms: u64,
+    /// Proposer: eager cluster propose this many ms before seal grid deadline (0 = off).
+    #[arg(
+        long = "cluster-seal-ahead-ms",
+        env = "PWM_CLUSTER_SEAL_AHEAD_MS",
+        default_value_t = 100
+    )]
+    cluster_seal_ahead_ms: u64,
+    /// Max local-vs-attester tip lag tolerated for sync-ready preflight.
+    #[arg(
+        long = "cluster-attest-max-tip-lag",
+        env = "PWM_CLUSTER_ATTEST_MAX_TIP_LAG",
+        default_value_t = 1
+    )]
+    cluster_att_tip_lag: u64,
+    /// Enable per-block cluster timing JSONL capture.
+    #[arg(long = "block-timing-enabled", default_value_t = false)]
+    block_timing_enabled: bool,
+    /// Shared JSONL path for per-block cluster timing (must be identical for proposer+attester).
+    #[arg(long = "block-timing-path", env = "PWM_BLOCK_TIMING_PATH")]
+    block_timing_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -556,6 +581,10 @@ async fn main() {
         );
     let debug_disable_seal_loop = cli.debug_disable_seal_loop
         || pwm_env_truthy(std::env::var("PWM_DEBUG_DISABLE_SEAL_LOOP").ok().as_deref());
+    let lab_seal_api =
+        cli.lab_seal_api || pwm_env_truthy(std::env::var("PWM_LAB_SEAL_API").ok().as_deref());
+    let block_timing_enabled = cli.block_timing_enabled
+        || pwm_env_truthy(std::env::var("PWM_BLOCK_TIMING_ENABLED").ok().as_deref());
     let debug_dump_on_div = cli.debug_dump_on_divergence
         || pwm_env_truthy(
             std::env::var("PWM_DEBUG_DUMP_ON_DIVERGENCE")
@@ -609,6 +638,8 @@ async fn main() {
         debug_det_seal_time,
         debug_align_mid,
         debug_disable_seal_loop,
+        lab_seal_api,
+        seal_control_mode: cli.seal_control_mode,
         deployment_profile: cli.deployment_profile.into(),
         seal_role_override: cli.seal_role.map(Into::into),
         seal_lease_ttl_ms: cli.seal_lease_ttl_ms.max(1_000),
@@ -633,8 +664,18 @@ async fn main() {
                 .collect(),
             quorum_k: cli.cluster_quorum_k,
             quorum_n: cli.cluster_quorum_n,
-            tx_catchup_ms: cli.cluster_tx_catchup_ms,
-            attest_timeout_ms: cli.cluster_attest_timeout_ms,
+            attest_timeout_ms: ClusterCfg::default().attest_timeout_ms,
+            seal_ahead_ms: cli.cluster_seal_ahead_ms,
+            block_timing_path: if block_timing_enabled {
+                Some(
+                    cli.block_timing_path
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("tmp/cy-lab-block-timing.jsonl")),
+                )
+            } else {
+                None
+            },
+            att_max_tip_lag: cli.cluster_att_tip_lag,
         },
         node_instance_id_override: cli
             .node_instance_id
@@ -693,6 +734,10 @@ fn pwm_env_truthy(raw: Option<&str>) -> bool {
     };
     let t = s.trim().to_ascii_lowercase();
     !(t.is_empty() || t == "0" || t == "false" || t == "no" || t == "off")
+}
+
+fn parse_seal_control_mode(raw: &str) -> Result<SealControlMode, String> {
+    SealControlMode::parse(raw)
 }
 
 const BUILD_TS_ENV: Option<&str> = option_env!("PWM_BUILD_TIMESTAMP_UTC");

@@ -470,6 +470,7 @@ async fn cluster_2of2_gate_ok() {
         vote_object: vote.to_string(),
         candidate_hash: cand.clone(),
         candidate_ref: None,
+        tail_blocks: Vec::new(),
     };
     write_wire_msg(
         &mut client_ab,
@@ -480,7 +481,13 @@ async fn cluster_2of2_gate_ok() {
     )
     .await
     .expect("write cluster propose");
-    record_cluster_propose_originated(&app_a, propose, "node-a").await;
+    record_cluster_propose_originated(
+        &app_a,
+        propose,
+        "node-a",
+        Some(crate::current_time_ms().unwrap_or(0)),
+    )
+    .await;
     let mut client_ba = handshake_ib_client(app_a.clone(), &app_b).await;
     let sk_b = local_hello_signing_key(&app_b.identity);
     trust_attester(
@@ -509,6 +516,7 @@ async fn cluster_2of2_gate_ok() {
                 candidate_hash: cand_bind,
                 signature: sig_b,
                 candidate_ref: cref_bind,
+                attester_tip_height: None,
             },
         },
         300,
@@ -524,7 +532,7 @@ async fn cluster_2of2_gate_ok() {
         let g = app_a.inner.read().await;
         (g.chain.tip_h(), hex::encode(g.chain.tip_hash()))
     };
-    assert!(run_cluster_gate(&app_a).await);
+    assert!(run_cluster_gate(&app_a, None).await);
     {
         let mut g = app_a.inner.write().await;
         g.chain
@@ -577,6 +585,7 @@ async fn cluster_2of3_gate_wire() {
         vote_object: vote.to_string(),
         candidate_hash: cand.clone(),
         candidate_ref: None,
+        tail_blocks: Vec::new(),
     };
     write_wire_msg(
         &mut client_ab,
@@ -587,7 +596,13 @@ async fn cluster_2of3_gate_wire() {
     )
     .await
     .expect("write cluster propose");
-    record_cluster_propose_originated(&app_a, propose, "node-a").await;
+    record_cluster_propose_originated(
+        &app_a,
+        propose,
+        "node-a",
+        Some(crate::current_time_ms().unwrap_or(0)),
+    )
+    .await;
 
     let mut client_ba = handshake_ib_client(app_a.clone(), &app_b).await;
     let sk_b = local_hello_signing_key(&app_b.identity);
@@ -617,6 +632,7 @@ async fn cluster_2of3_gate_wire() {
                 candidate_hash: cand_bind.clone(),
                 signature: sig_b,
                 candidate_ref: cref_bind.clone(),
+                attester_tip_height: None,
             },
         },
         300,
@@ -652,6 +668,7 @@ async fn cluster_2of3_gate_wire() {
                 candidate_hash: cand_bind,
                 signature: sig_c,
                 candidate_ref: cref_bind,
+                attester_tip_height: None,
             },
         },
         300,
@@ -668,7 +685,7 @@ async fn cluster_2of3_gate_wire() {
         let g = app_a.inner.read().await;
         (g.chain.tip_h(), hex::encode(g.chain.tip_hash()))
     };
-    assert!(run_cluster_gate(&app_a).await);
+    assert!(run_cluster_gate(&app_a, None).await);
     {
         let mut g = app_a.inner.write().await;
         g.chain
@@ -714,6 +731,7 @@ async fn cluster_2of3_one_ack_stuck() {
         vote_object: vote.to_string(),
         candidate_hash: cand.clone(),
         candidate_ref: None,
+        tail_blocks: Vec::new(),
     };
     write_wire_msg(
         &mut client_ab,
@@ -724,7 +742,13 @@ async fn cluster_2of3_one_ack_stuck() {
     )
     .await
     .expect("write cluster propose");
-    record_cluster_propose_originated(&app_a, propose, "node-a").await;
+    record_cluster_propose_originated(
+        &app_a,
+        propose,
+        "node-a",
+        Some(crate::current_time_ms().unwrap_or(0)),
+    )
+    .await;
 
     let mut client_ba = handshake_ib_client(app_a.clone(), &app_b).await;
     let sk_b = local_hello_signing_key(&app_b.identity);
@@ -754,6 +778,7 @@ async fn cluster_2of3_one_ack_stuck() {
                 candidate_hash: cand_bind,
                 signature: sig_b,
                 candidate_ref: cref_bind,
+                attester_tip_height: None,
             },
         },
         300,
@@ -766,7 +791,7 @@ async fn cluster_2of3_one_ack_stuck() {
         "{}",
         cluster_diag(&app_a, next_h, 0).await
     );
-    assert!(!run_cluster_gate(&app_a).await);
+    assert!(!run_cluster_gate(&app_a, None).await);
 }
 
 /// Missing attestation over TCP wire keeps cluster gate closed and reaches timeout path.
@@ -796,6 +821,7 @@ async fn cluster_timeout_no_seal() {
         vote_object: "vo-timeout".to_string(),
         candidate_hash: "cd".repeat(32),
         candidate_ref: None,
+        tail_blocks: Vec::new(),
     };
     write_wire_msg(
         &mut client_ab,
@@ -806,10 +832,16 @@ async fn cluster_timeout_no_seal() {
     )
     .await
     .expect("write cluster propose");
-    record_cluster_propose_originated(&app_a, propose, "node-a").await;
+    record_cluster_propose_originated(
+        &app_a,
+        propose,
+        "node-a",
+        Some(crate::current_time_ms().unwrap_or(0)),
+    )
+    .await;
     let (logs, guard) = warn_log_scope();
     tokio::time::sleep(Duration::from_millis(25)).await;
-    let gate_open = run_cluster_gate(&app_a).await;
+    let gate_open = run_cluster_gate(&app_a, None).await;
     drop(guard);
     assert!(!gate_open);
     let lines = logs.lines();
@@ -850,6 +882,7 @@ async fn cluster_bind_mismatch_no_seal() {
         vote_object: vote.to_string(),
         candidate_hash: cand.clone(),
         candidate_ref: None,
+        tail_blocks: Vec::new(),
     };
     write_wire_msg(
         &mut client_ab,
@@ -860,7 +893,13 @@ async fn cluster_bind_mismatch_no_seal() {
     )
     .await
     .expect("write cluster propose");
-    record_cluster_propose_originated(&app_a, propose, "node-a").await;
+    record_cluster_propose_originated(
+        &app_a,
+        propose,
+        "node-a",
+        Some(crate::current_time_ms().unwrap_or(0)),
+    )
+    .await;
     let mut client_ba = handshake_ib_client(app_a.clone(), &app_b).await;
     let sk_b = local_hello_signing_key(&app_b.identity);
     trust_attester(
@@ -883,6 +922,7 @@ async fn cluster_bind_mismatch_no_seal() {
                 candidate_hash: cand,
                 signature: sig,
                 candidate_ref: None,
+                attester_tip_height: None,
             },
         },
         300,
@@ -890,7 +930,7 @@ async fn cluster_bind_mismatch_no_seal() {
     .await
     .expect("write mismatched attest");
     tokio::time::sleep(Duration::from_millis(50)).await;
-    let gate_open = run_cluster_gate(&app_a).await;
+    let gate_open = run_cluster_gate(&app_a, None).await;
     drop(guard);
     assert!(!gate_open);
     let lines = logs.lines();
@@ -943,6 +983,7 @@ async fn cluster_partition_attest_stuck() {
         vote_object: vote.to_string(),
         candidate_hash: cand.clone(),
         candidate_ref: None,
+        tail_blocks: Vec::new(),
     };
     write_wire_msg(
         &mut client_ab,
@@ -953,7 +994,13 @@ async fn cluster_partition_attest_stuck() {
     )
     .await
     .expect("write cluster propose");
-    record_cluster_propose_originated(&app_a, propose, "node-a").await;
+    record_cluster_propose_originated(
+        &app_a,
+        propose,
+        "node-a",
+        Some(crate::current_time_ms().unwrap_or(0)),
+    )
+    .await;
 
     let mut client_ba = handshake_ib_client(app_a.clone(), &app_b).await;
     let sk_b = local_hello_signing_key(&app_b.identity);
@@ -983,6 +1030,7 @@ async fn cluster_partition_attest_stuck() {
                 candidate_hash: cand_bind,
                 signature: sig_b,
                 candidate_ref: cref_bind,
+                attester_tip_height: None,
             },
         },
         300,
@@ -1011,7 +1059,7 @@ async fn cluster_partition_attest_stuck() {
     );
     let (logs, guard) = warn_log_scope();
     tokio::time::sleep(Duration::from_millis(25)).await;
-    let gate_open = run_cluster_gate(&app_a).await;
+    let gate_open = run_cluster_gate(&app_a, None).await;
     drop(guard);
     assert!(!gate_open);
     let lines = logs.lines();

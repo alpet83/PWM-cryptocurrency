@@ -1,6 +1,6 @@
 //! Submit init/transfer/stake transactions via HTTP RPC.
 
-use pwm_core::tx::{ClaimMode, SignedTx, TxBody};
+use pwm_core::tx::{SignedTx, TxBody};
 use pwm_core::{summarize_tx_reject_json, AccountId};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -110,51 +110,6 @@ pub fn submit_burn_mark(
                 .take(400)
                 .collect::<String>()
         ))
-    }
-}
-
-/// Submits a ClaimTx with CLAIM_ALL sentinel - node materialises all matured marks.
-pub fn submit_claim(
-    from: &AccountId,
-    claim_units: u32,
-    anchor_ref: u64,
-    identity: &IdentitySource,
-) -> Result<(), String> {
-    let (sk, dom, idx) = signing_material_for_sender(from, identity)?;
-    let client = http_client();
-    let rpc = base_url();
-    let nonce = fetch_nonce(&client, &rpc, *from)?;
-    let tx = SignedTx::sign_body(
-        &sk,
-        dom,
-        idx,
-        nonce,
-        TxBody::Claim {
-            mode: ClaimMode::Free,
-            claim_units,
-            anchor_ref,
-            fee: 0,
-        },
-    );
-    let response = client
-        .post(format!("{rpc}/v1/tx"))
-        .json(&tx)
-        .send()
-        .map_err(|e| {
-            if e.is_timeout() {
-                crate::config::rpc_timeout_hint()
-            } else {
-                format!("rpc error: {e}")
-            }
-        })?;
-    let status = response.status();
-    let body = response.text().unwrap_or_default();
-    if status.is_success() {
-        Ok(())
-    } else if let Some(hint) = summarize_tx_reject_json(&body) {
-        Err(format!("claim failed: {status} {hint}"))
-    } else {
-        Err(format!("claim failed: {status} {body}"))
     }
 }
 

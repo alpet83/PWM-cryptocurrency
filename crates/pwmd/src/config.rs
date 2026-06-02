@@ -9,6 +9,35 @@ use crate::RuntimeIdentity;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SealControlMode {
+    Auto,
+    ManualRpc,
+}
+
+impl Default for SealControlMode {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl SealControlMode {
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "manual-rpc" | "manual_rpc" => Ok(Self::ManualRpc),
+            other => Err(format!(
+                "invalid seal control mode {other:?}; expected auto|manual-rpc|manual_rpc"
+            )),
+        }
+    }
+
+    pub fn is_manual_rpc(self) -> bool {
+        matches!(self, Self::ManualRpc)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DebugDumpCfg {
     pub on_divergence: bool,
@@ -24,8 +53,15 @@ pub struct ClusterCfg {
     pub members: Vec<String>,
     pub quorum_k: u8,
     pub quorum_n: u8,
-    pub tx_catchup_ms: u64,
+    /// Runtime-derived from genesis seal cadence when cluster mode is enabled.
     pub attest_timeout_ms: u64,
+    /// Proposer-only: fire eager cluster propose this many ms before `next_seal` grid
+    /// deadline so attester can ACK before the seal tick (0 = disabled).
+    pub seal_ahead_ms: u64,
+    /// Shared JSONL path for per-block cluster timing rows (disabled when empty).
+    pub block_timing_path: Option<PathBuf>,
+    /// Max tolerated tip lag (blocks) for counting a live attester as sync-ready.
+    pub att_max_tip_lag: u64,
 }
 
 impl Default for ClusterCfg {
@@ -37,8 +73,10 @@ impl Default for ClusterCfg {
             // RFC16 §7: `k` counts distinct attester ACKs (proposer is excluded from `k`).
             quorum_k: 1,
             quorum_n: 2,
-            tx_catchup_ms: 500,
             attest_timeout_ms: 1_000,
+            seal_ahead_ms: 100,
+            block_timing_path: None,
+            att_max_tip_lag: 1,
         }
     }
 }
@@ -107,6 +145,10 @@ pub struct PwmdConfig {
     pub debug_align_mid: bool,
     /// Test/dev-only: disable periodic local seal-loop (follower-only apply via sync/catch-up).
     pub debug_disable_seal_loop: bool,
+    /// Lab/manual seal control mode for proposer step RPC.
+    pub seal_control_mode: SealControlMode,
+    /// Allow lab seal RPC surface outside cluster proposer mode.
+    pub lab_seal_api: bool,
     /// Deployment runtime profile for same-validator guard policy.
     pub deployment_profile: DeploymentProfile,
     /// Optional explicit local seal role override (default derives from runtime mode).
@@ -308,6 +350,8 @@ impl Default for PwmdConfig {
             debug_det_seal_time: false,
             debug_align_mid: false,
             debug_disable_seal_loop: false,
+            seal_control_mode: SealControlMode::Auto,
+            lab_seal_api: false,
             deployment_profile: DeploymentProfile::SingleSealer,
             seal_role_override: None,
             seal_lease_ttl_ms: 10_000,
@@ -355,15 +399,6 @@ impl PwmdConfig {
                 cfg.quorum_k, cfg.quorum_n
             ));
         }
-        if cfg.tx_catchup_ms == 0 || cfg.attest_timeout_ms == 0 {
-            return Err("cluster enabled requires positive cluster timeout values".to_string());
-        }
-        if cfg.tx_catchup_ms > cfg.attest_timeout_ms {
-            return Err(format!(
-                "cluster_tx_catchup_ms={} must be <= cluster_attest_timeout_ms={}",
-                cfg.tx_catchup_ms, cfg.attest_timeout_ms
-            ));
-        }
         if cfg.members.len() != cfg.quorum_n as usize {
             return Err(format!(
                 "cluster enabled requires members count == quorum_n, got members={} quorum_n={}",
@@ -378,6 +413,17 @@ impl PwmdConfig {
         for member in &cfg.members {
             if !uniq.insert(member.trim()) {
                 return Err(format!("duplicate cluster member id: {}", member.trim()));
+            }
+        }
+        if cfg.seal_ahead_ms > 60_000 {
+            return Err(format!(
+                "cluster seal_ahead_ms must be <= 60000, got {}",
+                cfg.seal_ahead_ms
+            ));
+        }
+        if let Some(path) = cfg.block_timing_path.as_ref() {
+            if path.as_os_str().is_empty() {
+                return Err("cluster block_timing_path must not be empty when set".to_string());
             }
         }
         Ok(())
@@ -624,8 +670,10 @@ mod tests {
             ],
             quorum_k: 3,
             quorum_n: 4,
-            tx_catchup_ms: 200,
             attest_timeout_ms: 300,
+            seal_ahead_ms: 100,
+            block_timing_path: None,
+            att_max_tip_lag: 1,
         };
         assert!(cfg.validate_cluster_cfg().is_err());
     }
@@ -639,8 +687,10 @@ mod tests {
             members: vec!["node-a".to_string(), "node-b".to_string()],
             quorum_k: 1,
             quorum_n: 2,
-            tx_catchup_ms: 200,
             attest_timeout_ms: 300,
+            seal_ahead_ms: 100,
+            block_timing_path: None,
+            att_max_tip_lag: 1,
         };
         assert!(cfg.validate_cluster_cfg().is_ok());
     }
@@ -658,8 +708,10 @@ mod tests {
             ],
             quorum_k: 1,
             quorum_n: 3,
-            tx_catchup_ms: 200,
             attest_timeout_ms: 300,
+            seal_ahead_ms: 100,
+            block_timing_path: None,
+            att_max_tip_lag: 1,
         };
         assert!(cfg.validate_cluster_cfg().is_ok());
     }
@@ -673,8 +725,10 @@ mod tests {
             members: vec!["node-a".to_string(), "node-b".to_string()],
             quorum_k: 1,
             quorum_n: 2,
-            tx_catchup_ms: 200,
             attest_timeout_ms: 300,
+            seal_ahead_ms: 100,
+            block_timing_path: None,
+            att_max_tip_lag: 1,
         };
         cfg.seal_role_override = Some(SealRole::Active);
         let err = cfg

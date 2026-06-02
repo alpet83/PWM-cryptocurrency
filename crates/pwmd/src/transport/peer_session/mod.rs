@@ -1,9 +1,10 @@
 //! Peer TCP session: wire framing, inbound acceptor path, outbound seed dial path.
 
 use super::*;
+use crate::block_timing;
 use crate::debug_dump::{dump_blk_json, DumpWrite};
 use crate::handshake::{ClusterRole, NodeHello};
-use pwm_core::block::hdr_hash;
+use pwm_core::block::{hdr_hash, Block};
 use pwm_core::{validate_tx_shape, SignedTx};
 
 const SYNC_TX_OUT_CAP: usize = 32;
@@ -11,6 +12,7 @@ const SYNC_TX_IN_CAP: usize = 64;
 const SYNC_TX_SCAN_CAP: usize = 256;
 const SYNC_TX_RECENT_MS: u64 = 30_000;
 const SYNC_TIP_COOLDOWN_MS: u64 = 60_000;
+const CLUSTER_PROP_TAIL_CAP: usize = 10;
 
 mod inbound;
 mod seed;
@@ -26,6 +28,120 @@ pub(super) use wire::{
     read_wire_msg, write_wire_msg, ClusterAttestWire, ClusterProposeWire, PeerWireMsg,
     SyncBlockWire, SyncCatchupChunkWire, SyncHeaderWire, SyncWireHdr,
 };
+
+pub(crate) struct HandshakeWriteTraceGuard<'a> {
+    tag: &'static str,
+    acquired_ms: u64,
+    guard: tokio::sync::RwLockWriteGuard<'a, HandshakeState>,
+}
+
+pub(crate) struct HandshakeReadTraceGuard<'a> {
+    tag: &'static str,
+    acquired_ms: u64,
+    guard: tokio::sync::RwLockReadGuard<'a, HandshakeState>,
+}
+
+impl std::ops::Deref for HandshakeWriteTraceGuard<'_> {
+    type Target = HandshakeState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl std::ops::DerefMut for HandshakeWriteTraceGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.guard
+    }
+}
+
+impl std::ops::Deref for HandshakeReadTraceGuard<'_> {
+    type Target = HandshakeState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl Drop for HandshakeWriteTraceGuard<'_> {
+    fn drop(&mut self) {
+        let release_ms = current_time_ms().unwrap_or(self.acquired_ms);
+        let held_ms = release_ms.saturating_sub(self.acquired_ms);
+        if held_ms >= 100 {
+            warn!(
+                target: "pwmd::peer",
+                "peer handshake lock_released tag={} ts_ms={} held_ms={}",
+                self.tag,
+                release_ms,
+                held_ms
+            );
+        }
+    }
+}
+
+impl Drop for HandshakeReadTraceGuard<'_> {
+    fn drop(&mut self) {
+        let release_ms = current_time_ms().unwrap_or(self.acquired_ms);
+        let held_ms = release_ms.saturating_sub(self.acquired_ms);
+        if held_ms >= 100 {
+            warn!(
+                target: "pwmd::peer",
+                "peer handshake read_lock_released tag={} ts_ms={} held_ms={}",
+                self.tag,
+                release_ms,
+                held_ms
+            );
+        }
+    }
+}
+
+pub(crate) async fn handshake_write_traced<'a>(
+    app: &'a App,
+    tag: &'static str,
+) -> HandshakeWriteTraceGuard<'a> {
+    let wait_start_ms = current_time_ms().unwrap_or(0);
+    let guard = app.handshake.write().await;
+    let acquired_ms = current_time_ms().unwrap_or(wait_start_ms);
+    let wait_ms = acquired_ms.saturating_sub(wait_start_ms);
+    if wait_ms >= 100 {
+        warn!(
+            target: "pwmd::peer",
+            "peer handshake lock_acquired tag={} ts_ms={} wait_ms={}",
+            tag,
+            acquired_ms,
+            wait_ms
+        );
+    }
+    HandshakeWriteTraceGuard {
+        tag,
+        acquired_ms,
+        guard,
+    }
+}
+
+pub(crate) async fn handshake_read_traced<'a>(
+    app: &'a App,
+    tag: &'static str,
+) -> HandshakeReadTraceGuard<'a> {
+    let wait_start_ms = current_time_ms().unwrap_or(0);
+    let guard = app.handshake.read().await;
+    let acquired_ms = current_time_ms().unwrap_or(wait_start_ms);
+    let wait_ms = acquired_ms.saturating_sub(wait_start_ms);
+    if wait_ms >= 100 {
+        warn!(
+            target: "pwmd::peer",
+            "peer handshake read_lock_acquired tag={} ts_ms={} wait_ms={}",
+            tag,
+            acquired_ms,
+            wait_ms
+        );
+    }
+    HandshakeReadTraceGuard {
+        tag,
+        acquired_ms,
+        guard,
+    }
+}
 
 async fn peer_heartbeat_wire(app: &App, unix_ms: u64) -> PeerWireMsg {
     let (
@@ -150,7 +266,7 @@ async fn add_sync_tx_drop(app: &App, reason: &str, count: u64) {
     if count == 0 {
         return;
     }
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
     hs.transport.snapshot.sync_tx_drop_total = hs
         .transport
         .snapshot
@@ -160,7 +276,7 @@ async fn add_sync_tx_drop(app: &App, reason: &str, count: u64) {
 }
 
 async fn add_sync_v1_drop(app: &App, reason: &str) {
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
     hs.transport.snapshot.sync_v1_drop_total =
         hs.transport.snapshot.sync_v1_drop_total.saturating_add(1);
     increment_string_u64_bucket(&mut hs.transport.snapshot.sync_v1_drop_reason, reason);
@@ -171,7 +287,7 @@ async fn ingest_sync_tx_batch(app: &App, node_id: &str, mut txs: Vec<SignedTx>, 
     let cap = cap_hint.min(SYNC_TX_IN_CAP).max(1);
     let seen = txs.len() as u64;
     if seen > 0 {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
         add_bucket(
             &mut hs.transport.snapshot.mempool_ingress_kind_total,
             "p2p",
@@ -195,7 +311,7 @@ async fn ingest_sync_tx_batch(app: &App, node_id: &str, mut txs: Vec<SignedTx>, 
     for tx in txs.drain(..) {
         let tx_id = tx_hash_hex(&tx);
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             prune_mempool_gsp(&mut hs, now_ms);
             if hs.mempool_gsp.tx_seen_ms.contains_key(&tx_id) {
                 dropped_dup = dropped_dup.saturating_add(1);
@@ -214,7 +330,7 @@ async fn ingest_sync_tx_batch(app: &App, node_id: &str, mut txs: Vec<SignedTx>, 
         };
         if g.chain
             .st
-            .precheck_apply_with_ctx(&tx, next_h, next_ts)
+            .precheck_apply_with_ctx(&tx, next_h, next_ts, &g.chain.cfg)
             .is_err()
         {
             dropped_invalid = dropped_invalid.saturating_add(1);
@@ -227,7 +343,7 @@ async fn ingest_sync_tx_batch(app: &App, node_id: &str, mut txs: Vec<SignedTx>, 
         accepted = accepted.saturating_add(1);
     }
     if accepted > 0 {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
         hs.transport.snapshot.sync_tx_accept_total = hs
             .transport
             .snapshot
@@ -281,7 +397,7 @@ async fn send_sync_tx_batch(
     let mut out = Vec::new();
     let mut suppressed = 0u64;
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
         prune_mempool_gsp(&mut hs, now_ms);
         let sent = hs
             .mempool_gsp
@@ -305,7 +421,7 @@ async fn send_sync_tx_batch(
         }
     }
     if suppressed > 0 {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
         add_bucket(
             &mut hs.transport.snapshot.mempool_push_suppressed,
             "recent_peer_dedup",
@@ -339,7 +455,7 @@ async fn send_sync_tx_batch(
     .await?;
     let out_len = out.len() as u64;
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
         let sent = hs
             .mempool_gsp
             .tx_sent_peer_ms
@@ -392,7 +508,7 @@ async fn merge_account_views(
     let mut g = app.inner.write().await;
     let changed = g.merge_peer_acct_views(rows, source_node_id, expected_domain_hi);
     drop(g);
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
     if changed > 0 {
         let prev = hs.peer_merge_logged.get(source_node_id).copied();
         if prev != Some(changed) {
@@ -466,6 +582,7 @@ fn record_cluster_prop(
     hs: &mut HandshakeState,
     msg: &ClusterProposeWire,
     proposer_member_id: &str,
+    opened_at_ms: Option<u64>,
 ) -> usize {
     let entry = hs
         .cluster_attest
@@ -485,9 +602,10 @@ fn record_cluster_prop(
             .is_some_and(|x| x != proposer_member_id);
     if bind_changed {
         entry.attesters.clear();
-        entry.propose_opened_at_ms = Some(crate::current_time_ms().unwrap_or(0));
+        entry.propose_retry_n = 0;
+        entry.propose_opened_at_ms = opened_at_ms;
     } else if entry.propose_opened_at_ms.is_none() {
-        entry.propose_opened_at_ms = Some(crate::current_time_ms().unwrap_or(0));
+        entry.propose_opened_at_ms = opened_at_ms;
     }
     entry.attesters.len()
 }
@@ -496,12 +614,54 @@ pub(crate) async fn record_cluster_propose_originated(
     app: &App,
     msg: ClusterProposeWire,
     proposer_member_id: &str,
+    opened_at_ms: Option<u64>,
 ) {
-    let mut hs = app.handshake.write().await;
-    let _ = record_cluster_prop(&mut hs, &msg, proposer_member_id);
+    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
+    let _ = record_cluster_prop(&mut hs, &msg, proposer_member_id, opened_at_ms);
 }
 
-async fn mk_cluster_prop(app: &App) -> Option<ClusterProposeWire> {
+pub(crate) async fn record_cluster_prop_tick(app: &App) {
+    let Some(msg) = mk_cluster_prop(app, None).await else {
+        return;
+    };
+    let local_member = app.node_instance_id.trim().to_string();
+    // Local seal/ahead tick may open round binding, but timeout anchor must wait
+    // for confirmed wire send to at least one attester.
+    record_cluster_propose_originated(app, msg, &local_member, None).await;
+}
+
+pub(crate) async fn mark_cluster_prop_opened(app: &App, h: u64, r: u32, opened_ms: u64) {
+    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
+    let Some(round) = hs.cluster_attest.rounds.get_mut(&(h, r)) else {
+        return;
+    };
+    if round.propose_opened_at_ms.is_none() {
+        round.propose_opened_at_ms = Some(opened_ms);
+    }
+}
+
+pub(crate) async fn maybe_retry_round(app: &App, h: u64, r: u32, max_retry: u8) -> Option<u8> {
+    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
+    let (retry_n, can_retry) = {
+        let round = hs.cluster_attest.rounds.get_mut(&(h, r))?;
+        if !round.attesters.is_empty() || round.propose_retry_n >= max_retry {
+            (round.propose_retry_n, false)
+        } else {
+            round.propose_opened_at_ms = None;
+            round.propose_retry_n = round.propose_retry_n.saturating_add(1);
+            (round.propose_retry_n, true)
+        }
+    };
+    if !can_retry {
+        return None;
+    }
+    hs.cluster_attest
+        .sent_key_by_node
+        .retain(|_, k| *k != (h, r));
+    Some(retry_n)
+}
+
+async fn mk_cluster_prop(app: &App, remote_tip_h: Option<u64>) -> Option<ClusterProposeWire> {
     if !app.cluster_cfg.enabled || app.cluster_cfg.role != ClusterRole::Proposer {
         return None;
     }
@@ -509,16 +669,43 @@ async fn mk_cluster_prop(app: &App) -> Option<ClusterProposeWire> {
     if proposer.is_empty() || !app.cluster_cfg.members.iter().any(|x| x == proposer) {
         return None;
     }
+    let manual_target_h = {
+        let manual = app.seal_manual.read().await;
+        if manual.mode.is_manual_rpc() {
+            manual.target_h
+        } else {
+            0
+        }
+    };
     let g = app.inner.read().await;
-    let height = g.chain.tip_h().saturating_add(1);
+    let tip_h = g.chain.tip_h();
+    let height = manual_target_h.max(tip_h.saturating_add(1));
     let tip_hash = hex::encode(g.chain.tip_hash());
     let vote = format!("vo1:{height}:{tip_hash}");
+    let gap = remote_tip_h.map(|h| tip_h.saturating_sub(h)).unwrap_or(0);
+    let tail_depth = usize::try_from(gap.saturating_add(2))
+        .unwrap_or(CLUSTER_PROP_TAIL_CAP)
+        .clamp(1, CLUSTER_PROP_TAIL_CAP);
+    let mut tail_blocks: Vec<SyncBlockWire> = g
+        .chain
+        .blocks
+        .iter()
+        .rev()
+        .take(tail_depth)
+        .map(|blk| SyncBlockWire {
+            height: blk.hdr.height,
+            hash: hex::encode(hdr_hash(&blk.hdr)),
+            block: Some(blk.clone()),
+        })
+        .collect();
+    tail_blocks.reverse();
     Some(ClusterProposeWire {
         height,
         round: 0,
         vote_object: vote,
         candidate_hash: tip_hash,
         candidate_ref: None,
+        tail_blocks,
     })
 }
 
@@ -539,29 +726,86 @@ pub(super) async fn send_cluster_prop(
     {
         return Ok(());
     }
-    let Some(msg) = mk_cluster_prop(app).await else {
+    let remote_tip_h = {
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
+        hs.sync_live
+            .peers
+            .get(&remote.node.node_id)
+            .map(|x| x.tip_h)
+            .filter(|h| *h > 0)
+    };
+    let Some(msg) = mk_cluster_prop(app, remote_tip_h).await else {
         return Ok(());
     };
+    {
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
+        if hs
+            .cluster_attest
+            .sent_key_by_node
+            .get(&remote.node.node_id)
+            .is_some_and(|k| *k == (msg.height, msg.round))
+        {
+            return Ok(());
+        }
+    }
     let local_member = app.node_instance_id.trim();
-    record_cluster_propose_originated(app, msg.clone(), local_member).await;
     write_wire_msg(
         stream,
         &PeerWireMsg::ClusterPropose { msg: msg.clone() },
         cfg.heartbeat_timeout_ms,
     )
     .await?;
+    let opened_ms = crate::current_time_ms().unwrap_or(0);
+    record_cluster_propose_originated(app, msg.clone(), local_member, Some(opened_ms)).await;
+    mark_cluster_prop_opened(app, msg.height, msg.round, opened_ms).await;
+    if let Some(bt) = app.block_timing.as_ref() {
+        block_timing::note_send(
+            bt,
+            block_timing::SendCtx {
+                h: msg.height,
+                r: msg.round,
+                t_ms: block_timing::now_ms_f64(),
+            },
+        );
+    }
+    {
+        let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
+        hs.cluster_attest
+            .sent_key_by_node
+            .insert(remote.node.node_id.clone(), (msg.height, msg.round));
+    }
     info!(
         target: "pwmd::peer",
-        "cluster propose sent node_id={} member_id={} height={} round={}",
+        "cluster propose sent node_id={} member_id={} height={} round={} remote_tip_h={:?} tail_blocks={}",
         remote.node.node_id,
         remote_member,
         msg.height,
-        msg.round
+        msg.round,
+        remote_tip_h,
+        msg.tail_blocks.len()
     );
     Ok(())
 }
 
-fn mk_cluster_attest(app: &App, msg: &ClusterProposeWire) -> Option<ClusterAttestWire> {
+/// Seal-loop ahead-trigger: send wire propose before the next heartbeat sleep.
+pub(super) async fn try_prop_nudge(
+    app: &App,
+    cfg: &TransportConfig,
+    stream: &mut tokio::net::TcpStream,
+    remote: &NodeHello,
+) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+    if app.cluster_cfg.seal_ahead_ms == 0 {
+        return Ok(());
+    }
+    if app.cluster_prop_nudge.swap(false, Ordering::AcqRel) {
+        send_cluster_prop(app, cfg, stream, remote).await
+    } else {
+        Ok(())
+    }
+}
+
+async fn mk_cluster_attest(app: &App, msg: &ClusterProposeWire) -> Option<ClusterAttestWire> {
     if app.cluster_cfg.role != ClusterRole::Attester {
         return None;
     }
@@ -577,6 +821,10 @@ fn mk_cluster_attest(app: &App, msg: &ClusterProposeWire) -> Option<ClusterAttes
         &msg.candidate_hash,
         msg.candidate_ref.as_deref(),
     );
+    let attester_tip_height = {
+        let g = app.inner.read().await;
+        Some(g.chain.tip_h())
+    };
     Some(ClusterAttestWire {
         height: msg.height,
         round: msg.round,
@@ -584,6 +832,7 @@ fn mk_cluster_attest(app: &App, msg: &ClusterProposeWire) -> Option<ClusterAttes
         candidate_hash: msg.candidate_hash.clone(),
         signature: hex::encode(pwm_core::crypto::sign(&sk, &sign_msg)),
         candidate_ref: msg.candidate_ref.clone(),
+        attester_tip_height,
     })
 }
 
@@ -600,7 +849,18 @@ async fn route_cluster_stub(
         );
         return None;
     }
-    let mut hs = app.handshake.write().await;
+    let route_lock_wait_start_ms = crate::current_time_ms().unwrap_or(0);
+    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
+    let route_lock_acquired_ms = crate::current_time_ms().unwrap_or(route_lock_wait_start_ms);
+    if route_lock_acquired_ms.saturating_sub(route_lock_wait_start_ms) >= 100 {
+        info!(
+            target: "pwmd::peer",
+            "cluster route step=state_lock_acquired node_id={} ts_ms={} wait_ms={}",
+            node_id,
+            route_lock_acquired_ms,
+            route_lock_acquired_ms.saturating_sub(route_lock_wait_start_ms)
+        );
+    }
     let Some(peer) = hs.trusted_peers.get(node_id).cloned() else {
         warn!(
             target: "pwmd::peer",
@@ -649,17 +909,125 @@ async fn route_cluster_stub(
                 );
                 return None;
             }
-            let attesters_n = record_cluster_prop(&mut hs, &msg, &member_id);
+            // Do not hold handshake write-lock while waiting on inner state lock.
+            drop(hs);
+            let local_tip_read_start_ms =
+                crate::current_time_ms().unwrap_or(route_lock_acquired_ms);
+            if local_tip_read_start_ms.saturating_sub(route_lock_acquired_ms) >= 100 {
+                info!(
+                    target: "pwmd::peer",
+                    "cluster route step=before_local_tip_read node_id={} member_id={} ts_ms={} lock_held_ms={} height={} round={}",
+                    node_id,
+                    member_id,
+                    local_tip_read_start_ms,
+                    local_tip_read_start_ms.saturating_sub(route_lock_acquired_ms),
+                    height,
+                    round
+                );
+            }
+            let local_tip = {
+                let g = app.inner.read().await;
+                g.chain.tip_h()
+            };
+            let local_tip_read_done_ms =
+                crate::current_time_ms().unwrap_or(local_tip_read_start_ms);
+            if local_tip_read_done_ms.saturating_sub(local_tip_read_start_ms) >= 100 {
+                info!(
+                    target: "pwmd::peer",
+                    "cluster route step=after_local_tip_read node_id={} member_id={} ts_ms={} read_latency_ms={} lock_held_ms={} height={} round={} local_tip={}",
+                    node_id,
+                    member_id,
+                    local_tip_read_done_ms,
+                    local_tip_read_done_ms.saturating_sub(local_tip_read_start_ms),
+                    local_tip_read_done_ms.saturating_sub(route_lock_acquired_ms),
+                    height,
+                    round,
+                    local_tip
+                );
+            }
+            hs = handshake_write_traced(&app, "cluster_route_stub").await;
+            if local_tip.saturating_add(1) < height {
+                let mut tail_batch: Vec<Block> = msg
+                    .tail_blocks
+                    .iter()
+                    .filter_map(|x| x.block.clone())
+                    .collect();
+                tail_batch.sort_by_key(|b| b.hdr.height);
+                tail_batch.retain(|b| b.hdr.height > local_tip);
+                if !tail_batch.is_empty() {
+                    drop(hs);
+                    match sync_live::apply_cluster_tail_blocks(app, &tail_batch).await {
+                        Ok(applied) => {
+                            info!(
+                                target: "pwmd::peer",
+                                "cluster propose tail_applied node_id={} member_id={} local_tip={} target_height={} tail_rows={} applied={}",
+                                node_id,
+                                member_id,
+                                local_tip,
+                                height,
+                                tail_batch.len(),
+                                applied
+                            );
+                        }
+                        Err(err) => {
+                            warn!(
+                                target: "pwmd::peer",
+                                "cluster propose tail_apply_failed node_id={} member_id={} local_tip={} target_height={} tail_rows={} err={}",
+                                node_id,
+                                member_id,
+                                local_tip,
+                                height,
+                                tail_batch.len(),
+                                err
+                            );
+                        }
+                    }
+                    hs = handshake_write_traced(&app, "cluster_route_stub").await;
+                }
+            }
+            let attesters_n = record_cluster_prop(
+                &mut hs,
+                &msg,
+                &member_id,
+                Some(crate::current_time_ms().unwrap_or(0)),
+            );
+            if let Some(bt) = app.block_timing.as_ref() {
+                block_timing::note_att_rx(
+                    bt,
+                    block_timing::AttCtx {
+                        h: height,
+                        r: round,
+                        t_ms: block_timing::now_ms_f64(),
+                        att_id: app.node_instance_id.clone(),
+                    },
+                );
+            }
+            let proc_start_ms = block_timing::now_ms_f64();
+            let proc_start_at = std::time::Instant::now();
             info!(
                 target: "pwmd::peer",
-                "cluster propose accepted node_id={} member_id={} height={} round={} attesters={}",
+                "cluster propose accepted node_id={} member_id={} height={} round={} attesters={} tail_blocks={}",
                 node_id, member_id,
                 height,
                 round,
-                attesters_n
+                attesters_n,
+                msg.tail_blocks.len()
             );
             drop(hs);
-            return mk_cluster_attest(app, &msg);
+            let out = mk_cluster_attest(app, &msg).await;
+            if let Some(bt) = app.block_timing.as_ref() {
+                let proc_ms = proc_start_at.elapsed().as_secs_f64() * 1000.0;
+                block_timing::note_att_proc(
+                    bt,
+                    block_timing::ProcCtx {
+                        h: height,
+                        r: round,
+                        start_ms: proc_start_ms,
+                        proc_ms,
+                    },
+                );
+            }
+            return out;
         }
         PeerWireMsg::ClusterAttest {
             msg:
@@ -670,6 +1038,7 @@ async fn route_cluster_stub(
                     candidate_hash,
                     signature,
                     candidate_ref,
+                    attester_tip_height,
                 },
         } => {
             if !cluster_role_ok(app.cluster_cfg.role, peer.cluster_role, false) {
@@ -682,6 +1051,10 @@ async fn route_cluster_stub(
                     peer.cluster_role
                 );
                 return None;
+            }
+            if let Some(tip_h) = attester_tip_height {
+                let st = hs.sync_live.peers.entry(node_id.to_string()).or_default();
+                st.tip_h = st.tip_h.max(tip_h);
             }
             if let Some(entry) = hs.cluster_attest.rounds.get_mut(&(height, round)) {
                 if entry.vote_object == vote_object
@@ -707,13 +1080,25 @@ async fn route_cluster_stub(
                         return None;
                     }
                     entry.attesters.insert(member_id.clone(), signature);
+                    if let Some(bt) = app.block_timing.as_ref() {
+                        block_timing::note_att_ok(
+                            bt,
+                            block_timing::AttCtx {
+                                h: height,
+                                r: round,
+                                t_ms: block_timing::now_ms_f64(),
+                                att_id: member_id.clone(),
+                            },
+                        );
+                    }
                     info!(
                         target: "pwmd::peer",
-                        "cluster attest accepted node_id={} member_id={} height={} round={} attesters={}",
+                        "cluster attest accepted node_id={} member_id={} height={} round={} attesters={} attester_tip_height={:?}",
                         node_id, member_id,
                         height,
                         round,
-                        entry.attesters.len()
+                        entry.attesters.len(),
+                        attester_tip_height
                     );
                 } else {
                     warn!(
@@ -851,7 +1236,7 @@ async fn route_sync_stub(
     let tx_items = sync_tx_items(&msg);
     let tx_frame = is_sync_tx_msg(&msg);
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
         hs.transport.snapshot.sync_v1_seen_total =
             hs.transport.snapshot.sync_v1_seen_total.saturating_add(1);
         if tx_frame && tx_items > 0 {
@@ -949,7 +1334,7 @@ async fn route_sync_stub(
                 Ok(Some(div)) => {
                     let now_ms = current_time_ms().unwrap_or(0);
                     let cooldown_ms = cfg.reconnect_runaway_cooldown_ms.max(SYNC_TIP_COOLDOWN_MS);
-                    let mut hs = app.handshake.write().await;
+                    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
                     hs.transport.snapshot.sync_tip_disconnect_total = hs
                         .transport
                         .snapshot
@@ -1035,7 +1420,7 @@ async fn route_sync_stub(
                     };
                 }
                 Ok(None) => {
-                    let mut hs = app.handshake.write().await;
+                    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
                     if let Some(st) = hs.sync_live.peers.get_mut(node_id) {
                         st.div_streak = 0;
                     }
@@ -1063,17 +1448,33 @@ async fn route_sync_stub(
             }
         }
         PeerWireMsg::SyncHeadersBatch { headers, .. } => {
-            if let Err(err) = sync_live::on_hdr_batch(
+            match sync_live::on_hdr_batch(
                 app, cfg, stream, node_id, headers, hdr_cap, blk_cap, seq_no,
             )
             .await
             {
-                warn!(
-                    target: "pwmd::peer",
-                    "peer sync headers batch handling failed node_id={} err={}",
-                    node_id,
-                    err
-                );
+                Ok(Some(div)) => {
+                    return SyncRouteOutcome::Disconnect {
+                        reason: PeerCloseReason::SyncTipDivergence,
+                        detail: format!(
+                            "sync_hdr_divergence local_h={} local_hash={} peer_h={} peer_prev_hash={} cooldown_ms={}",
+                            div.local_h,
+                            div.local_hash,
+                            div.peer_h,
+                            div.peer_hash,
+                            cfg.reconnect_runaway_cooldown_ms
+                        ),
+                    };
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    warn!(
+                        target: "pwmd::peer",
+                        "peer sync headers batch handling failed node_id={} err={}",
+                        node_id,
+                        err
+                    );
+                }
             }
         }
         PeerWireMsg::SyncBlocksReq {
@@ -1123,7 +1524,7 @@ async fn route_sync_stub(
             ..
         } => {
             if !can_cup {
-                let mut hs = app.handshake.write().await;
+                let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
                 hs.transport.snapshot.sync_cup_drop_total =
                     hs.transport.snapshot.sync_cup_drop_total.saturating_add(1);
                 return SyncRouteOutcome::Continue;
@@ -1142,7 +1543,7 @@ async fn route_sync_stub(
         }
         PeerWireMsg::SyncCatchupChunk { chunk, .. } => {
             if !can_cup {
-                let mut hs = app.handshake.write().await;
+                let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
                 hs.transport.snapshot.sync_cup_drop_total =
                     hs.transport.snapshot.sync_cup_drop_total.saturating_add(1);
                 return SyncRouteOutcome::Continue;
@@ -1156,7 +1557,7 @@ async fn route_sync_stub(
             ..
         } => {
             if !can_cup {
-                let mut hs = app.handshake.write().await;
+                let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
                 hs.transport.snapshot.sync_cup_drop_total =
                     hs.transport.snapshot.sync_cup_drop_total.saturating_add(1);
                 return SyncRouteOutcome::Continue;
@@ -1248,7 +1649,7 @@ mod tests {
     async fn remote_hello(app: &App, node_id: &str) -> NodeHello {
         let now_ms = current_time_ms().unwrap_or(0);
         let genesis_hash = {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             hs.validation_ctx.expected_genesis_hash.clone()
         };
         let chain_tip_height = {
@@ -1379,7 +1780,7 @@ mod tests {
         };
         route_test(&app, "peer-valid", msg, true, true).await;
         {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             assert_eq!(hs.transport.snapshot.sync_tx_seen_total, 1);
             assert_eq!(hs.transport.snapshot.sync_tx_accept_total, 1);
             assert_eq!(hs.transport.snapshot.sync_tx_drop_total, 0);
@@ -1398,7 +1799,7 @@ mod tests {
         };
         route_test(&app, "peer-dup", mk_msg(), true, true).await;
         route_test(&app, "peer-dup", mk_msg(), true, true).await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_tx_accept_total, 1);
         assert_eq!(hs.transport.snapshot.sync_tx_drop_total, 1);
         assert_eq!(
@@ -1421,7 +1822,7 @@ mod tests {
         };
         route_test(&app, "peer-legacy", msg, false, true).await;
         {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             assert_eq!(hs.transport.snapshot.sync_tx_accept_total, 0);
             assert_eq!(hs.transport.snapshot.sync_tx_drop_total, 1);
             assert_eq!(
@@ -1447,7 +1848,7 @@ mod tests {
         };
         route_test(&app, "peer-foreign", msg, true, false).await;
         {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             assert_eq!(hs.transport.snapshot.sync_tx_accept_total, 0);
             assert_eq!(hs.transport.snapshot.sync_tx_drop_total, 1);
             assert_eq!(
@@ -1480,7 +1881,7 @@ mod tests {
             limit: 16,
         };
         route_test(&app, "peer-legacy-hdr", msg, false, true).await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_v1_seen_total, 1);
         assert_eq!(hs.transport.snapshot.sync_v1_drop_total, 1);
         assert_eq!(hs.transport.snapshot.sync_tx_seen_total, 0);
@@ -1514,10 +1915,11 @@ mod tests {
             hash: "11".repeat(32),
             prev_hash: "22".repeat(32),
         }];
-        sync_live::on_hdr_batch(&app, &cfg, &mut stream, "peer-a", bad, 64, 32, &mut seq)
+        let out = sync_live::on_hdr_batch(&app, &cfg, &mut stream, "peer-a", bad, 64, 32, &mut seq)
             .await
             .expect("hdr batch route");
-        let hs = app.handshake.read().await;
+        assert!(out.is_none());
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_fork_conflict_total, 1);
     }
 
@@ -1553,9 +1955,11 @@ mod tests {
             hash: blk_hash.clone(),
             prev_hash: hex::encode(blk.hdr.prev_hash),
         }];
-        sync_live::on_hdr_batch(&app, &cfg, &mut stream, "peer-b", hdrs, 64, 32, &mut seq)
-            .await
-            .expect("hdr batch route");
+        let out =
+            sync_live::on_hdr_batch(&app, &cfg, &mut stream, "peer-b", hdrs, 64, 32, &mut seq)
+                .await
+                .expect("hdr batch route");
+        assert!(out.is_none());
         let rows = vec![SyncBlockWire {
             height: blk.hdr.height,
             hash: blk_hash.clone(),
@@ -1564,7 +1968,7 @@ mod tests {
         sync_live::on_blk_batch(&app, &cfg, &mut stream, "peer-b", rows, 64, 32, &mut seq)
             .await
             .expect("blk batch route");
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_apply_ok_total, 1);
         let inn = app.inner.read().await;
         assert_eq!(inn.chain.tip_h(), 1);
@@ -1600,9 +2004,11 @@ mod tests {
             hash: blk_hash.clone(),
             prev_hash: hex::encode(blk.hdr.prev_hash),
         }];
-        sync_live::on_hdr_batch(&app, &cfg, &mut stream, "peer-c", hdrs, 64, 32, &mut seq)
-            .await
-            .expect("hdr batch route");
+        let out =
+            sync_live::on_hdr_batch(&app, &cfg, &mut stream, "peer-c", hdrs, 64, 32, &mut seq)
+                .await
+                .expect("hdr batch route");
+        assert!(out.is_none());
         let rows = vec![SyncBlockWire {
             height: blk.hdr.height,
             hash: blk_hash,
@@ -1611,7 +2017,7 @@ mod tests {
         sync_live::on_blk_batch(&app, &cfg, &mut stream, "peer-c", rows, 64, 32, &mut seq)
             .await
             .expect("blk batch route");
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_apply_fail_total, 1);
         let inn = app.inner.read().await;
         assert_eq!(inn.chain.tip_h(), 0);
@@ -1663,7 +2069,7 @@ mod tests {
         )
         .await
         .expect("cup done");
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_cup_start_total, 1);
         assert_eq!(
             hs.transport.snapshot.sync_cup_chunk_total,
@@ -1725,7 +2131,7 @@ mod tests {
                 .collect(),
         };
         sync_live::on_cup_chunk(&app, &cfg, "peer-cup-bad", bad_chunk).await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert!(hs.transport.snapshot.sync_cup_fail_total >= 1);
         let inn = app.inner.read().await;
         assert_eq!(inn.chain.tip_h(), 0);
@@ -1759,13 +2165,13 @@ mod tests {
         .await
         .expect("tip starts catchup");
         {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             let st = hs.sync_live.peers.get("peer-cup-nack").expect("peer state");
             assert!(st.cup_active);
         }
         sync_live::on_nack(&app, &cfg, "peer-cup-nack", "catchup_range").await;
         {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             let st = hs.sync_live.peers.get("peer-cup-nack").expect("peer state");
             assert!(!st.cup_active);
             assert_eq!(st.cup_try, 1);
@@ -1786,7 +2192,7 @@ mod tests {
         )
         .await
         .expect("tip fallback live");
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let st = hs.sync_live.peers.get("peer-cup-nack").expect("peer state");
         assert_eq!(st.wait_hdr_from, Some(1));
         assert_eq!(hs.transport.snapshot.sync_cup_fail_total, 1);
@@ -1820,7 +2226,7 @@ mod tests {
             &mut seq,
         )
         .await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let st = hs.sync_live.peers.get("peer-cup-fail").expect("peer state");
         assert!(!st.cup_active);
         assert_eq!(st.cup_try, 1);
@@ -1864,7 +2270,7 @@ mod tests {
             &mut seq,
         )
         .await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_cup_drop_total, 1);
         let inn = app.inner.read().await;
         assert_eq!(inn.chain.tip_h(), 0);
@@ -1881,7 +2287,7 @@ mod tests {
             finalized_hash: None,
         };
         route_test(&app, "peer-shard", msg, true, true).await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_v1_drop_total, 1);
         assert_eq!(
             hs.transport
@@ -1939,7 +2345,7 @@ mod tests {
                 ..
             }
         ));
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_tip_disconnect_total, 1);
         let due_ms = hs
             .transport
@@ -1983,7 +2389,7 @@ mod tests {
         )
         .await;
         assert_eq!(out, SyncRouteOutcome::Continue);
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_tip_disconnect_total, 0);
     }
 
@@ -2026,7 +2432,7 @@ mod tests {
         )
         .await;
         assert_eq!(out, SyncRouteOutcome::Continue);
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_tip_disconnect_total, 0);
     }
 
@@ -2037,7 +2443,7 @@ mod tests {
         let cfg = TransportConfig::default();
         let mut seq = 0u64;
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             hs.transport.seed_peers.insert(
                 "seed-inbound-divergence".to_string(),
                 TransportPeerState {
@@ -2085,7 +2491,7 @@ mod tests {
                 ..
             }
         ));
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let due_ms = hs
             .transport
             .seed_peers
@@ -2149,7 +2555,7 @@ mod tests {
         )
         .await;
         assert_eq!(out, SyncRouteOutcome::Continue);
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert_eq!(hs.transport.snapshot.sync_tip_disconnect_total, 0);
     }
 
@@ -2175,7 +2581,7 @@ mod tests {
         .await
         .expect("first tip");
         {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             let st = hs
                 .sync_live
                 .peers
@@ -2186,7 +2592,7 @@ mod tests {
         }
         sync_live::on_nack(&app, &cfg, "peer-reconnect", "wire_read_failed").await;
         {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(&app, "peer_session_mod").await;
             let st = hs
                 .sync_live
                 .peers
@@ -2210,7 +2616,7 @@ mod tests {
         )
         .await
         .expect("second tip");
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let st = hs
             .sync_live
             .peers
@@ -2244,7 +2650,7 @@ mod tests {
         send_sync_tx_batch(&app, &cfg, &mut stream_b, &remote_b, &mut seq)
             .await
             .expect("relay second peer");
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         assert!(
             hs.transport
                 .snapshot
@@ -2275,7 +2681,7 @@ mod tests {
         app.cluster_cfg.quorum_k = 1;
         let h = app.inner.read().await.chain.tip_h().saturating_add(1);
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             hs.trusted_peers.insert(
                 "peer-b".to_string(),
                 crate::transport::TrustedPeer {
@@ -2307,11 +2713,12 @@ mod tests {
                     candidate_hash: "ab".repeat(32),
                     signature: "not-a-signature".to_string(),
                     candidate_ref: None,
+                    attester_tip_height: None,
                 },
             },
         )
         .await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let got = hs
             .cluster_attest
             .rounds
@@ -2332,7 +2739,7 @@ mod tests {
         let h = app.inner.read().await.chain.tip_h().saturating_add(1);
         let sk = SigningKey::from_bytes(&[8u8; 32]);
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             hs.trusted_peers.insert(
                 "peer-c".to_string(),
                 crate::transport::TrustedPeer {
@@ -2362,11 +2769,12 @@ mod tests {
                     candidate_hash: "cd".repeat(32),
                     signature: attest_sig_hex(&sk, h, 0, "vo2", &"cd".repeat(32), None),
                     candidate_ref: None,
+                    attester_tip_height: None,
                 },
             },
         )
         .await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let got = hs
             .cluster_attest
             .rounds
@@ -2387,7 +2795,7 @@ mod tests {
         let h = app.inner.read().await.chain.tip_h().saturating_add(1);
         let sk = SigningKey::from_bytes(&[7u8; 32]);
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             hs.trusted_peers.insert(
                 "peer-b".to_string(),
                 crate::transport::TrustedPeer {
@@ -2419,11 +2827,12 @@ mod tests {
                     candidate_hash: cand,
                     signature: sig,
                     candidate_ref: None,
+                    attester_tip_height: None,
                 },
             },
         )
         .await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let got = hs
             .cluster_attest
             .rounds
@@ -2446,7 +2855,7 @@ mod tests {
         let cref = "epoch:seg42";
         let cand = "ee".repeat(32);
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             hs.trusted_peers.insert(
                 "peer-b".to_string(),
                 crate::transport::TrustedPeer {
@@ -2478,11 +2887,12 @@ mod tests {
                     candidate_hash: cand,
                     signature: sig,
                     candidate_ref: Some(cref.to_string()),
+                    attester_tip_height: None,
                 },
             },
         )
         .await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let got = hs
             .cluster_attest
             .rounds
@@ -2504,7 +2914,7 @@ mod tests {
         let sk = SigningKey::from_bytes(&[5u8; 32]);
         let cand = "dd".repeat(32);
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             hs.trusted_peers.insert(
                 "peer-b".to_string(),
                 crate::transport::TrustedPeer {
@@ -2537,11 +2947,12 @@ mod tests {
                     candidate_hash: cand,
                     signature: bad_sig,
                     candidate_ref: Some("must-bind".to_string()),
+                    attester_tip_height: None,
                 },
             },
         )
         .await;
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let got = hs
             .cluster_attest
             .rounds
@@ -2562,7 +2973,7 @@ mod tests {
         app.node_instance_id = "node-b".to_string();
         let h = app.inner.read().await.chain.tip_h().saturating_add(1);
         {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
             hs.trusted_peers.insert(
                 "peer-a".to_string(),
                 crate::transport::TrustedPeer {
@@ -2586,6 +2997,7 @@ mod tests {
                 vote_object: "vo-auto".to_string(),
                 candidate_hash: cand.clone(),
                 candidate_ref: None,
+                tail_blocks: Vec::new(),
             },
         };
         let out = route_cluster_stub(&app, "peer-a", msg).await;
@@ -2622,7 +3034,7 @@ mod tests {
             .await
             .expect("send cluster propose");
         let next_h = app.inner.read().await.chain.tip_h().saturating_add(1);
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
         let round = hs.cluster_attest.rounds.get(&(next_h, 0)).expect("round");
         assert_eq!(round.proposer_id.as_deref(), Some("node-a"));
         assert!(!round.vote_object.is_empty());

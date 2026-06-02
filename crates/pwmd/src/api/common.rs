@@ -185,7 +185,7 @@ pub(super) async fn ensure_trusted_handoff_source(
     }
     let mut pk = [0u8; 32];
     pk.copy_from_slice(&pk_raw);
-    let hs = app.handshake.read().await;
+    let hs = crate::transport::handshake_read_traced(app, "api_common").await;
     let Some(peer) = hs.trusted_peers.get(&input.source_node_id) else {
         return Err((
             StatusCode::FORBIDDEN,
@@ -238,7 +238,7 @@ pub(super) fn tx_kind(tx: &SignedTx) -> &'static str {
         TxBody::Stake { .. } => "stake",
         TxBody::Unstake { .. } => "unstake",
         TxBody::BurnMark { .. } => "burn_mark",
-        TxBody::Claim { .. } => "claim",
+        TxBody::ClaimIPv4Batch { .. } => "claim_ipv4_batch",
         TxBody::Export { .. } => "export",
         TxBody::Import { .. } => "import",
         TxBody::Policy { .. } => "policy",
@@ -248,7 +248,7 @@ pub(super) fn tx_kind(tx: &SignedTx) -> &'static str {
 pub(crate) fn reject_tx_kind(tx: &SignedTx) -> &'static str {
     match tx.body {
         TxBody::BurnMark { .. } => "burn",
-        TxBody::Claim { .. } => "claim",
+        TxBody::ClaimIPv4Batch { .. } => "claim_ipv4_batch",
         TxBody::Import { .. } => "import",
         TxBody::Export { .. } => "export",
         TxBody::Transfer { .. } => "transfer",
@@ -268,14 +268,6 @@ pub(crate) fn tx_err_wire(e: &TxError, tx_kind: &str) -> (&'static str, &'static
         }
         InsufficientMarks if tx_kind == "burn" => ("E_BURN_OVER_BALANCE", "STATE_CONFLICT"),
         DomainMismatch if tx_kind == "burn" => ("E_BURN_POLICY_REJECT", "POLICY_REJECT"),
-
-        // Claim stable errors (RFC 0013/0014 baseline)
-        ClaimFeeModeConflict => ("E_MODE_FEE_CONFLICT", "POLICY_REJECT"),
-        ClaimDeltaInvalid => ("E_CLAIM_UNITS_INVALID", "VALIDATION_ERROR"),
-        ClaimAnchorRangeInvalid => ("E_ANCHOR_RANGE_INVALID", "STATE_CONFLICT"),
-        ClaimAnchorContinuityBroken => ("E_ANCHOR_CONTINUITY_BROKEN", "STATE_CONFLICT"),
-        ClaimOverMatured => ("E_CLAIM_OVER_MATURED", "STATE_CONFLICT"),
-        FreeClaimDailyLimit => ("E_FREE_CLAIM_DAILY_LIMIT", "POLICY_REJECT"),
 
         // Import fee baseline.
         ImportFeeTooLow => ("E_IMPORT_FEE_TOO_LOW", "POLICY_REJECT"),
@@ -497,8 +489,9 @@ pub(super) fn acct_out_for_runtime(
         home_lookup_status,
         spendable_on_this_shard: (!is_foreign).then(|| ac.balance_pwm.to_string()),
         local_view_only: is_foreign,
-        staked: ac.staked.to_string(),
-        marks: ac.marks,
+        staked: ac.staked_pwm_raw.to_string(),
+        marks: ac.stored_marks,
+        marks_last_block: ac.marks_last_block,
         initialized: ac.initialized,
         nonce: ac.nonce,
         rescue_address: ac.rescue_address.as_ref().map(hex::encode),
@@ -511,6 +504,7 @@ pub(super) fn acct_out_for_runtime(
         company_metadata_commitment: ac.company_metadata_commitment.as_ref().map(hex::encode),
         external_verification_ref: ac.external_verification_ref.clone(),
         requested_domain_lo: ac.requested_domain_lo,
+        ipv4_claimed_phase: ac.ipv4_claimed_phase,
     }
 }
 
@@ -532,7 +526,7 @@ pub(super) async fn foreign_home_lookup_state(
     let fresh_window_ms =
         account_fresh_window_ms(cfg.heartbeat_interval_ms, cfg.heartbeat_timeout_ms);
     drop(cfg);
-    let hs = a.handshake.read().await;
+    let hs = crate::transport::handshake_read_traced(&a, "api_common").await;
     if hs.bridge_trust.refused {
         return HomeLookupState::Unavailable;
     }
@@ -699,7 +693,7 @@ pub(super) async fn ensure_user_tx_allowed(app: &App) -> Result<(), (StatusCode,
             ));
         }
     }
-    let hs = app.handshake.read().await;
+    let hs = crate::transport::handshake_read_traced(app, "api_common").await;
     if hs.genesis_guard.blocked {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -710,7 +704,7 @@ pub(super) async fn ensure_user_tx_allowed(app: &App) -> Result<(), (StatusCode,
 }
 
 pub(super) async fn ensure_bridge_federation_ok(app: &App) -> Result<(), (StatusCode, String)> {
-    let hs = app.handshake.read().await;
+    let hs = crate::transport::handshake_read_traced(app, "api_common").await;
     if hs.bridge_trust.refused {
         return Err((
             StatusCode::CONFLICT,

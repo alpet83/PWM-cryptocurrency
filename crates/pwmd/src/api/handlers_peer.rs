@@ -4,8 +4,9 @@ use super::common::ensure_ready;
 use super::types::{PeerHelloOut, PeerStatsOut};
 use crate::handshake::NodeHello;
 use crate::transport::{
-    count_native_live_peers, increment_class_bucket, is_peer_liveish, prioritize_peer_candidates,
-    process_incoming_peer_hello, SoakConfidenceSnapshot,
+    count_native_live_peers, handshake_read_traced, handshake_write_traced, increment_class_bucket,
+    is_peer_liveish, prioritize_peer_candidates, process_incoming_peer_hello,
+    SoakConfidenceSnapshot,
 };
 use crate::App;
 use axum::{extract::State, http::StatusCode, Json};
@@ -27,7 +28,7 @@ pub(super) async fn v1_peer_hello(
     }
     let now_ms = crate::current_time_ms()?;
     let genesis_hash = {
-        let hs = a.handshake.read().await;
+        let hs = handshake_read_traced(&a, "api_handlers_peer").await;
         hs.validation_ctx.expected_genesis_hash.clone()
     };
     let chain_tip_height = {
@@ -42,7 +43,7 @@ pub(super) async fn v1_peer_hello(
         now_ms,
         chain_tip_height,
     );
-    let mut hs = a.handshake.write().await;
+    let mut hs = handshake_write_traced(&a, "api_handlers_peer").await;
     match process_incoming_peer_hello(
         &mut hs,
         &hello,
@@ -86,7 +87,7 @@ pub(super) async fn v1_dev_peers(
                 .to_string(),
         ));
     }
-    let mut hs = a.handshake.write().await;
+    let mut hs = handshake_write_traced(&a, "api_handlers_peer").await;
     hs.policy.counters.prioritize_runs += 1;
     let mut connected_by_class: HashMap<String, u64> = HashMap::new();
     for peer in hs.peers.values() {

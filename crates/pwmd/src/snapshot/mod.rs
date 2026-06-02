@@ -4,6 +4,7 @@
 // does not compile test-only paths, so rustc may flag these as unused.
 #![allow(unused_imports)]
 
+mod anchor;
 pub(crate) mod ch_http;
 pub(crate) mod epoch;
 mod genesis;

@@ -121,7 +121,7 @@ pub(super) async fn v1_cross_shard_backfill(
     peers.dedup();
     let expected_network_id = a.identity.network_id.clone();
     let expected_genesis_hash = {
-        let hs = a.handshake.read().await;
+        let hs = crate::transport::handshake_read_traced(&a, "api_backfill").await;
         hs.validation_ctx.expected_genesis_hash.clone()
     };
     let client = reqwest::Client::builder()

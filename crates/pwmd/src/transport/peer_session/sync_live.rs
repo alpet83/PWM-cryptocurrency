@@ -3,7 +3,8 @@
 
 use super::super::*;
 use super::{
-    write_wire_msg, PeerWireMsg, SyncBlockWire, SyncCatchupChunkWire, SyncHeaderWire, SyncWireHdr,
+    handshake_read_traced, handshake_write_traced, write_wire_msg, PeerWireMsg, SyncBlockWire,
+    SyncCatchupChunkWire, SyncHeaderWire, SyncWireHdr,
 };
 use crate::handshake::NodeHello;
 use crate::handshake::SealRole;
@@ -30,10 +31,13 @@ const SYNC_CUP_LAG_MIN: u64 = 256;
 const SYNC_CUP_TAIL_MAX: u64 = 32;
 const SYNC_CUP_WIN_CAP: u64 = 4_096;
 const SYNC_CUP_CHUNK_CAP: usize = 32;
-const SYNC_CUP_TRY_CAP: u8 = 3;
 const SYNC_PROG_MIN_MS: u64 = 7_000;
 /// Quiet console during healthy live short-tail: peer tip advances by 1, no epoch CUP in flight.
 const SYNC_PROG_TAIL_MS: u64 = 60_000;
+/// Periodic unchanged-remaining catch-up observability (deep lag).
+const SYNC_STALL_LOG_MS: u64 = 30_000;
+/// Fail-closed threshold: repeated live continuity breaks on same boundary.
+const SYNC_FORK_BRK_CAP: u8 = 3;
 
 pub(super) struct TipDivergence {
     pub(super) local_h: u64,
@@ -148,6 +152,66 @@ fn sync_prog_tick(
     Some(snap)
 }
 
+fn sync_stall_tick(st: &mut SyncPeerState, now: u64, rem: u64) -> bool {
+    if rem == 0 {
+        st.sync_stall_rem = 0;
+        st.sync_stall_ms = 0;
+        return false;
+    }
+    if st.sync_stall_rem != rem {
+        st.sync_stall_rem = rem;
+        st.sync_stall_ms = now;
+        return false;
+    }
+    if st.sync_stall_ms == 0 {
+        st.sync_stall_ms = now;
+        return false;
+    }
+    if now.saturating_sub(st.sync_stall_ms) < SYNC_STALL_LOG_MS {
+        return false;
+    }
+    st.sync_stall_ms = now;
+    true
+}
+
+fn hash_tag(hash: &str) -> &str {
+    let n = hash.len().min(12);
+    &hash[..n]
+}
+
+fn fork_clear(st: &mut SyncPeerState) {
+    st.fork_h = None;
+    st.fork_tip = 0;
+    st.fork_n = 0;
+    st.fork_local.clear();
+    st.fork_prev.clear();
+}
+
+fn fork_mark(
+    st: &mut SyncPeerState,
+    brk_h: u64,
+    tip_h: u64,
+    local_hash: &str,
+    peer_prev: &str,
+) -> u8 {
+    if st.fork_h == Some(brk_h) && st.fork_tip == tip_h {
+        st.fork_n = st.fork_n.saturating_add(1);
+    } else {
+        st.fork_h = Some(brk_h);
+        st.fork_tip = tip_h;
+        st.fork_n = 1;
+        st.fork_local = local_hash.to_string();
+        st.fork_prev = peer_prev.to_string();
+    }
+    st.fork_n
+}
+
+fn fork_locked(st: &SyncPeerState, local_h: u64) -> bool {
+    st.fork_h == Some(local_h.saturating_add(1))
+        && st.fork_tip == local_h
+        && st.fork_n >= SYNC_FORK_BRK_CAP
+}
+
 async fn maybe_log_sync_prog(
     app: &App,
     node_id: &str,
@@ -157,7 +221,7 @@ async fn maybe_log_sync_prog(
 ) {
     let now = now_ms();
     let (snap, emit_progress_line) = {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         let st = peer_sync(&mut hs, node_id);
         let tick = sync_prog_tick(st, now, local_h, peer_tip_h, persisted_h);
         let Some(snap) = tick else {
@@ -317,7 +381,7 @@ async fn ask_hdr(
 ) -> Result<(), String> {
     let mut req_lim = lim.min(SYNC_HDR_REQ_CAP).max(1);
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         {
             let st = peer_sync(&mut hs, node_id);
             if st.wait_hdr_from == Some(from_h) && st.in_hdr > 0 {
@@ -365,7 +429,7 @@ async fn ask_blk(
     let mut want_h: Vec<u64> = Vec::new();
     let lim = blk_cap.min(SYNC_BLK_REQ_CAP).max(1) as usize;
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         let st = peer_sync(&mut hs, node_id);
         if st.in_blk >= SYNC_INF_CAP || !st.wait_blk.is_empty() {
             return Ok(());
@@ -421,7 +485,7 @@ async fn live_tail_pull_hdr(
         return Ok(());
     }
     let (cup, pend_empty, wait_empty, in_hdr) = {
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(app, "sync_live").await;
         let Some(st) = hs.sync_live.peers.get(node_id) else {
             return Ok(());
         };
@@ -463,7 +527,7 @@ async fn send_cup_req(
     };
     let eid = epoch_idx(from_h)?;
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         let st = peer_sync(&mut hs, node_id);
         st.cup_active = true;
         st.cup_epoch = eid;
@@ -496,7 +560,7 @@ async fn send_cup_req(
     )
     .await
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         cup_fail(&mut hs, "req_write");
         let st = peer_sync(&mut hs, node_id);
         st.live_stall = st.live_stall.saturating_add(1);
@@ -526,26 +590,26 @@ async fn maybe_start_cup(
     seq_no: &mut u64,
 ) -> Result<bool, String> {
     if !can_cup {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         hs.transport.snapshot.sync_cup_drop_total =
             hs.transport.snapshot.sync_cup_drop_total.saturating_add(1);
         cup_fail(&mut hs, "feature_mismatch");
         return Ok(false);
     }
-    let (local_h, next_ms, cup_on, cup_try) = {
+    let (local_h, next_ms, cup_on, fork_on) = {
         let g = app.inner.read().await;
         let local_h = g.chain.tip_h();
         drop(g);
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(app, "sync_live").await;
         let st = hs.sync_live.peers.get(node_id);
         (
             local_h,
             st.map(|x| x.cup_next_ms).unwrap_or(0),
             st.map(|x| x.cup_active).unwrap_or(false),
-            st.map(|x| x.cup_try).unwrap_or(0),
+            st.map(|x| fork_locked(x, local_h)).unwrap_or(false),
         )
     };
-    if cup_on || now_ms() < next_ms || head_h <= local_h || cup_try > SYNC_CUP_TRY_CAP {
+    if fork_on || cup_on || now_ms() < next_ms || head_h <= local_h {
         return Ok(cup_on);
     }
     let Some((from_h, to_h)) = cup_req_range(local_h, head_h)? else {
@@ -585,14 +649,18 @@ pub(super) async fn on_tip(
             local_h.saturating_sub(1),
         )
     };
-    let (live_stall, cup_on) = {
-        let mut hs = app.handshake.write().await;
+    let (live_stall, cup_on, fork_on) = {
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         hs.transport.snapshot.sync_tip_seen_total =
             hs.transport.snapshot.sync_tip_seen_total.saturating_add(1);
         let st = peer_sync(&mut hs, node_id);
         st.tip_h = st.tip_h.max(head_h);
         st.tip_hash = Some(head_hash.to_string());
-        (st.live_stall, st.cup_active && now_ms() >= st.cup_next_ms)
+        (
+            st.live_stall,
+            st.cup_active && now_ms() >= st.cup_next_ms,
+            fork_locked(st, local_h),
+        )
     };
     if head_h < local_h {
         return Ok(None);
@@ -601,7 +669,7 @@ pub(super) async fn on_tip(
     let persisted_h = app.last_snapshot_height.load(Ordering::Acquire);
     maybe_log_sync_prog(app, node_id, local_h, head_h, persisted_h).await;
     let demoted = {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         try_demote_cup_tail(&mut hs, node_id, lag)
     };
     if demoted {
@@ -649,6 +717,24 @@ pub(super) async fn on_tip(
         }
         return Ok(None);
     }
+    let (cup_now, cup_try_now, stall_hit) = {
+        let mut hs = handshake_write_traced(app, "sync_live").await;
+        let st = peer_sync(&mut hs, node_id);
+        let hit = sync_stall_tick(st, now_ms(), lag);
+        (st.cup_active, st.cup_try, hit)
+    };
+    if stall_hit {
+        info!(
+            target: "pwmd::sync",
+            "sync_catchup_stall node_id={} rem={} local_h={} head_h={} cup_active={} cup_try={}",
+            node_id,
+            lag,
+            local_h,
+            head_h,
+            cup_now,
+            cup_try_now
+        );
+    }
     info!(
         target: "pwmd::peer",
         "peer sync on_tip lag node_id={} local_h={} head_h={} lag={} persisted_h={} live_stall={} cup_on={} can_cup={}",
@@ -665,6 +751,16 @@ pub(super) async fn on_tip(
     // Short tail (lag < 256): stay on the live hdr/blk path; do not arm CUP from `live_stall` alone
     // (CUP remains the deep / epoch background path; retries only via `cup_on`).
     let cup_req = cup_on || lag >= SYNC_CUP_LAG_MIN;
+    if cup_req && fork_on {
+        info!(
+            target: "pwmd::peer",
+            "peer sync on_tip cup_skipped node_id={} reason=live_continuity_break local_h={} head_h={} lag={}",
+            node_id,
+            local_h,
+            head_h,
+            lag
+        );
+    }
     let cup_started = if cup_req {
         maybe_start_cup(app, cfg, stream, node_id, head_h, can_cup, seq_no).await?
     } else {
@@ -684,7 +780,7 @@ pub(super) async fn on_tip(
     }
     if cup_req {
         let cup_try = {
-            let hs = app.handshake.read().await;
+            let hs = handshake_read_traced(app, "sync_live").await;
             hs.sync_live
                 .peers
                 .get(node_id)
@@ -795,7 +891,7 @@ pub(super) async fn on_hdr_req(
         cfg.heartbeat_timeout_ms,
     )
     .await?;
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(app, "sync_live").await;
     hs.transport.snapshot.sync_hdr_resp_total =
         hs.transport.snapshot.sync_hdr_resp_total.saturating_add(1);
     Ok(())
@@ -810,13 +906,13 @@ pub(super) async fn on_hdr_batch(
     hdr_cap: u16,
     blk_cap: u16,
     seq_no: &mut u64,
-) -> Result<(), String> {
+) -> Result<Option<TipDivergence>, String> {
     let hard = hdr_cap.min(SYNC_HDR_REQ_CAP).max(1) as usize;
     if headers.is_empty() || headers.len() > hard {
-        return Ok(());
+        return Ok(None);
     }
     {
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(app, "sync_live").await;
         if hs
             .sync_live
             .peers
@@ -824,11 +920,11 @@ pub(super) async fn on_hdr_batch(
             .map(|x| x.cup_active)
             .unwrap_or(false)
         {
-            return Ok(());
+            return Ok(None);
         }
     }
     let (from_h, req_lim, tip_h) = {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         hs.transport.snapshot.sync_hdr_resp_total =
             hs.transport.snapshot.sync_hdr_resp_total.saturating_add(1);
         let st = peer_sync(&mut hs, node_id);
@@ -837,10 +933,10 @@ pub(super) async fn on_hdr_batch(
         (req, st.wait_hdr_lim.max(1), st.tip_h)
     };
     let Some(exp_h) = from_h else {
-        return Ok(());
+        return Ok(None);
     };
     if headers.first().map(|x| x.height) != Some(exp_h) || headers.len() > req_lim as usize {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         hs.transport.snapshot.sync_fork_conflict_total = hs
             .transport
             .snapshot
@@ -855,23 +951,27 @@ pub(super) async fn on_hdr_batch(
             exp_h,
             headers.first().map(|x| x.height)
         );
-        return Ok(());
+        return Ok(None);
     }
     let (local_h, mut prev_hash) = {
         let g = app.inner.read().await;
         (g.chain.tip_h(), hex::encode(g.chain.tip_hash()))
     };
     if exp_h != local_h.saturating_add(1) {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         let st = peer_sync(&mut hs, node_id);
         st.live_stall = st.live_stall.saturating_add(1);
-        return Ok(());
+        return Ok(None);
     }
     let mut next_h = exp_h;
     let mut blk_rows = Vec::new();
     for hdr in headers.iter() {
         if hdr.height != next_h || hdr.prev_hash != prev_hash {
-            let mut hs = app.handshake.write().await;
+            let brk_h = hdr.height;
+            let peer_prev = hdr.prev_hash.clone();
+            let local_tip = local_h;
+            let local_tip_hash = prev_hash.clone();
+            let mut hs = handshake_write_traced(app, "sync_live").await;
             hs.transport.snapshot.sync_fork_conflict_total = hs
                 .transport
                 .snapshot
@@ -879,21 +979,35 @@ pub(super) async fn on_hdr_batch(
                 .saturating_add(1);
             let st = peer_sync(&mut hs, node_id);
             st.live_stall = st.live_stall.saturating_add(1);
+            let brk_n = fork_mark(st, brk_h, local_tip, &local_tip_hash, &peer_prev);
             warn!(
                 target: "pwmd::peer",
-                "peer sync headers rejected node_id={} reason=continuity_break at_height={}",
+                "peer sync headers rejected node_id={} reason=continuity_break at_height={} local_h={} local_hash={} peer_prev_hash={} streak={}",
                 node_id,
-                hdr.height
+                brk_h,
+                local_tip,
+                hash_tag(&local_tip_hash),
+                hash_tag(&peer_prev),
+                brk_n
             );
-            return Ok(());
+            if brk_n >= SYNC_FORK_BRK_CAP && st.fork_tip == local_tip {
+                return Ok(Some(TipDivergence {
+                    local_h: local_tip,
+                    local_hash: st.fork_local.clone(),
+                    peer_h: brk_h,
+                    peer_hash: st.fork_prev.clone(),
+                }));
+            }
+            return Ok(None);
         }
         prev_hash = hdr.hash.clone();
         next_h = next_h.saturating_add(1);
         blk_rows.push((hdr.height, hdr.hash.clone()));
     }
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         let st = peer_sync(&mut hs, node_id);
+        fork_clear(st);
         for (height, hash) in blk_rows {
             if has_hash(&st.pend_blk, &hash) || has_hash(&st.wait_blk, &hash) {
                 continue;
@@ -907,7 +1021,8 @@ pub(super) async fn on_hdr_batch(
     if next_h <= tip_h {
         ask_hdr(app, cfg, stream, node_id, next_h, req_lim, seq_no).await?;
     }
-    ask_blk(app, cfg, stream, node_id, blk_cap, seq_no).await
+    ask_blk(app, cfg, stream, node_id, blk_cap, seq_no).await?;
+    Ok(None)
 }
 
 pub(super) async fn on_blk_req(
@@ -1023,7 +1138,7 @@ pub(super) async fn on_blk_req(
         cfg.heartbeat_timeout_ms,
     )
     .await?;
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(app, "sync_live").await;
     hs.transport.snapshot.sync_blk_resp_total =
         hs.transport.snapshot.sync_blk_resp_total.saturating_add(1);
     Ok(())
@@ -1049,6 +1164,7 @@ fn cup_clear(st: &mut SyncPeerState) {
     st.cup_next_h = 0;
     st.cup_next_ix = 0;
     st.cup_prev_hash.clear();
+    fork_clear(st);
 }
 
 /// Abort epoch catch-up when peer announce lag (`head_h - local_h`) is inside short tail.
@@ -1071,7 +1187,7 @@ fn try_demote_cup_tail(hs: &mut HandshakeState, node_id: &str, tip_lag: u64) -> 
 }
 
 async fn cup_chunk_fail(app: &App, cfg: &TransportConfig, node_id: &str, reason: &str) {
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(app, "sync_live").await;
     cup_fail(&mut hs, reason);
     let st = peer_sync(&mut hs, node_id);
     st.live_stall = st.live_stall.saturating_add(1);
@@ -1122,7 +1238,7 @@ fn apply_blk(inn: &mut Inner, blk: &Block) -> Result<(), String> {
     }
     let mut st = inn.chain.st.clone();
     for tx in blk.txs.iter() {
-        st.apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts)
+        st.apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, &inn.chain.cfg)
             .map_err(|e| format!("tx_invalid:{e}"))?;
     }
     let prod_acct = inn.chain.cfg.prod_acct(blk.hdr.prod_idx);
@@ -1202,6 +1318,25 @@ async fn apply_blk_batch(app: &App, blocks: &[Block]) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) async fn apply_cluster_tail_blocks(
+    app: &App,
+    blocks: &[Block],
+) -> Result<usize, String> {
+    if blocks.is_empty() {
+        return Ok(0);
+    }
+    let tip_before = {
+        let g = app.inner.read().await;
+        g.chain.tip_h()
+    };
+    apply_blk_batch(app, blocks).await?;
+    let tip_after = {
+        let g = app.inner.read().await;
+        g.chain.tip_h()
+    };
+    Ok(tip_after.saturating_sub(tip_before) as usize)
+}
+
 pub(super) async fn on_blk_batch(
     app: &App,
     cfg: &TransportConfig,
@@ -1217,7 +1352,7 @@ pub(super) async fn on_blk_batch(
         return Ok(());
     }
     {
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(app, "sync_live").await;
         if hs
             .sync_live
             .peers
@@ -1229,7 +1364,7 @@ pub(super) async fn on_blk_batch(
         }
     }
     let expected = {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         hs.transport.snapshot.sync_blk_resp_total =
             hs.transport.snapshot.sync_blk_resp_total.saturating_add(1);
         let st = peer_sync(&mut hs, node_id);
@@ -1246,7 +1381,7 @@ pub(super) async fn on_blk_batch(
             break;
         };
         if row.hash != want_hash || row.height != want_h {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "sync_live").await;
             hs.transport.snapshot.sync_fork_conflict_total = hs
                 .transport
                 .snapshot
@@ -1259,7 +1394,7 @@ pub(super) async fn on_blk_batch(
             return Ok(());
         }
         let Some(blk) = row.block else {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "sync_live").await;
             hs.transport.snapshot.sync_apply_fail_total = hs
                 .transport
                 .snapshot
@@ -1273,7 +1408,7 @@ pub(super) async fn on_blk_batch(
         };
         let got_hash = hex::encode(hdr_hash(&blk.hdr));
         if got_hash != row.hash || blk.hdr.height != row.height || blk.hdr.height != want_h {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "sync_live").await;
             hs.transport.snapshot.sync_fork_conflict_total = hs
                 .transport
                 .snapshot
@@ -1290,7 +1425,7 @@ pub(super) async fn on_blk_batch(
     match apply_blk_batch(app, &apply_rows).await {
         Ok(()) => {
             let tip_h = {
-                let mut hs = app.handshake.write().await;
+                let mut hs = handshake_write_traced(app, "sync_live").await;
                 hs.transport.snapshot.sync_apply_ok_total = hs
                     .transport
                     .snapshot
@@ -1322,7 +1457,7 @@ pub(super) async fn on_blk_batch(
                 node_id,
                 err
             );
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "sync_live").await;
             hs.transport.snapshot.sync_apply_fail_total = hs
                 .transport
                 .snapshot
@@ -1472,7 +1607,7 @@ pub(super) async fn on_cup_chunk(
         return;
     }
     let (mut next_h, mut next_ix, mut prev_hash, from_h, to_h, epoch_id, active) = {
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(app, "sync_live").await;
         let Some(st) = hs.sync_live.peers.get(node_id) else {
             return;
         };
@@ -1532,7 +1667,7 @@ pub(super) async fn on_cup_chunk(
         return;
     }
     let (local_h, tip_h) = {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         hs.transport.snapshot.sync_cup_chunk_total =
             hs.transport.snapshot.sync_cup_chunk_total.saturating_add(1);
         let st = peer_sync(&mut hs, node_id);
@@ -1572,7 +1707,7 @@ pub(super) async fn on_cup_done(
     let mut next_live_h = 0u64;
     let tip_h;
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "sync_live").await;
         let mut done_ok = false;
         let mut done_bad = false;
         let mut out_tip = 0u64;
@@ -1636,7 +1771,7 @@ pub(super) async fn on_cup_done(
 }
 
 pub(super) async fn on_nack(app: &App, cfg: &TransportConfig, node_id: &str, reason_code: &str) {
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(app, "sync_live").await;
     let mut cup_drop = false;
     let mut cup_retry = 0u8;
     let mut cup_next_ms = 0u64;
@@ -1689,8 +1824,8 @@ pub(super) async fn on_nack(app: &App, cfg: &TransportConfig, node_id: &str, rea
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_blk_batch, maybe_start_cup, on_hdr_req, sync_prog_snap, sync_prog_tail_quiet,
-        sync_prog_tick, try_demote_cup_tail, SyncProgSnap,
+        apply_blk_batch, maybe_start_cup, on_hdr_batch, on_hdr_req, on_tip, sync_prog_snap,
+        sync_prog_tail_quiet, sync_prog_tick, sync_stall_tick, try_demote_cup_tail, SyncProgSnap,
     };
     use crate::bootstrap::{app_from_dev_net, app_from_genesis_id};
     use crate::config::GenesisSource;
@@ -1700,6 +1835,7 @@ mod tests {
     use crate::snapshot::incremental::append_tip_block;
     use crate::transport::handshake_state::{HandshakeState, SyncPeerState};
     use crate::transport::peer_session::wire::{read_wire_msg, PeerWireMsg};
+    use crate::transport::peer_session::SyncHeaderWire;
     use pwm_core::chain::{Chain, SealTimeMode};
     use pwm_core::{dev_net, TAIL_BLOCK_CAP};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1893,6 +2029,86 @@ mod tests {
         assert_eq!(st.cup_next_ms, 0);
         assert_eq!(hs.transport.snapshot.sync_cup_demote_tail, 1);
         assert!(!try_demote_cup_tail(&mut hs, "peer-a", 0));
+    }
+
+    #[test]
+    fn sync_stall_tick_30s() {
+        let mut st = SyncPeerState::default();
+        assert!(!sync_stall_tick(&mut st, 1_000, 32_000));
+        assert!(!sync_stall_tick(&mut st, 20_000, 32_000));
+        assert!(sync_stall_tick(&mut st, 31_001, 32_000));
+        assert!(!sync_stall_tick(&mut st, 40_000, 31_999));
+    }
+
+    #[tokio::test]
+    async fn hdr_break_fail_closed() {
+        let app = app_from_dev_net();
+        let cfg = app.transport_config.read().await.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let client =
+            tokio::spawn(
+                async move { tokio::net::TcpStream::connect(addr).await.expect("connect") },
+            );
+        let (mut stream, _) = listener.accept().await.expect("accept");
+        let _peer = client.await.expect("join");
+        let mut seq = 0u64;
+        let bad = vec![SyncHeaderWire {
+            height: 1,
+            hash: "11".repeat(32),
+            prev_hash: "22".repeat(32),
+        }];
+        for _ in 0..2 {
+            on_tip(
+                &app,
+                &cfg,
+                &mut stream,
+                "peer-fork",
+                1,
+                "aa",
+                0,
+                None,
+                64,
+                true,
+                &mut seq,
+            )
+            .await
+            .expect("tip");
+            let out = on_hdr_batch(
+                &app,
+                &cfg,
+                &mut stream,
+                "peer-fork",
+                bad.clone(),
+                64,
+                32,
+                &mut seq,
+            )
+            .await
+            .expect("hdr");
+            assert!(out.is_none());
+        }
+        on_tip(
+            &app,
+            &cfg,
+            &mut stream,
+            "peer-fork",
+            1,
+            "aa",
+            0,
+            None,
+            64,
+            true,
+            &mut seq,
+        )
+        .await
+        .expect("tip");
+        let out = on_hdr_batch(&app, &cfg, &mut stream, "peer-fork", bad, 64, 32, &mut seq)
+            .await
+            .expect("hdr");
+        assert!(out.is_some());
     }
 
     #[tokio::test]

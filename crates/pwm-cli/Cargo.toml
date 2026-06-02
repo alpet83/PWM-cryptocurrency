@@ -8,6 +8,16 @@ license.workspace = true
 name = "pwm"
 path = "src/main.rs"
 
+# Small harness helper for the V5-8 operator smoke (ClaimIPv4Batch happy path).
+# Not intended as a user-facing CLI command.
+[[bin]]
+name = "claim-ipv4-batch"
+path = "src/bin/claim_ipv4_batch.rs"
+
+[lib]
+name = "pwm_cli"
+path = "src/lib.rs"
+
 [dependencies]
 pwm-core = { path = "../pwm-core" }
 clap.workspace = true

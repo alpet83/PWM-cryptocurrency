@@ -217,20 +217,22 @@ pub(crate) fn process_incoming_peer_hello(
                     status: PeerStatus::Connected,
                 },
             );
-            if provenance_trusted {
-                hs.trusted_peers.insert(
-                    hello.node.node_id.clone(),
-                    TrustedPeer {
-                        node_id: hello.node.node_id.clone(),
-                        cluster_id: hello.cluster.cluster_id.clone(),
-                        pubkey: hello.node.pubkey,
-                        domain_hi: hello.cluster.domain_hi,
-                        instance_id: hello.capabilities.node_instance_id.clone(),
-                        cluster_attest_enabled: hello.capabilities.cluster_attest_enabled,
-                        cluster_role: hello.capabilities.cluster_role,
-                    },
-                );
-            }
+            // Validated/signed hello must become trusted immediately on both inbound and
+            // outbound paths; otherwise cluster frames can race between peer discovery and
+            // trusted map population, causing first-round attest drops.
+            let _ = provenance_trusted;
+            hs.trusted_peers.insert(
+                hello.node.node_id.clone(),
+                TrustedPeer {
+                    node_id: hello.node.node_id.clone(),
+                    cluster_id: hello.cluster.cluster_id.clone(),
+                    pubkey: hello.node.pubkey,
+                    domain_hi: hello.cluster.domain_hi,
+                    instance_id: hello.capabilities.node_instance_id.clone(),
+                    cluster_attest_enabled: hello.capabilities.cluster_attest_enabled,
+                    cluster_role: hello.capabilities.cluster_role,
+                },
+            );
             let native_live = count_native_live_peers(hs);
             refresh_native_health(hs, native_live, false);
             info!(
@@ -249,8 +251,18 @@ pub(crate) fn process_incoming_peer_hello(
             increment_reject_reason_total(&mut hs.metrics, &label);
             let detail = match reason {
                 crate::handshake::HandshakeRejectReason::GenesisMismatch => format!(
-                    "peer hello rejected peer={} reason={} expected_genesis_hash={:?} received_genesis_hash={:?}",
-                    peer_hint, label, hs.validation_ctx.expected_genesis_hash, hello.genesis_hash
+                    "peer hello rejected peer={} node_id={} reason={} expected_network_id={} received_network_id={} expected_genesis_hash={:?} received_genesis_hash={:?} local_cluster_id={} remote_cluster_id={} local_domain_hi=0x{:02X} remote_domain_hi=0x{:02X}",
+                    peer_hint,
+                    hello.node.node_id,
+                    label,
+                    hs.validation_ctx.expected_network_id,
+                    hello.network_id,
+                    hs.validation_ctx.expected_genesis_hash,
+                    hello.genesis_hash,
+                    expected_cluster_id,
+                    hello.cluster.cluster_id,
+                    hs.local_domain_hi,
+                    hello.cluster.domain_hi,
                 ),
                 crate::handshake::HandshakeRejectReason::NetworkMismatch => format!(
                     "peer hello rejected peer={} reason={} expected_network_id={} received_network_id={}",

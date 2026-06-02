@@ -53,6 +53,8 @@ pub(crate) struct ClusterProposeWire {
     pub candidate_hash: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tail_blocks: Vec<SyncBlockWire>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -64,6 +66,8 @@ pub(crate) struct ClusterAttestWire {
     pub signature: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attester_tip_height: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -10,8 +10,8 @@ use crate::wallet::load_wallet_yaml_upgrade;
 use crate::{exit_user_error, http_client_for_rpc};
 use pwm_core::crypto::sign;
 use pwm_core::tx::{
-    ActivationMode, ClaimMode, CosignRole, Cosignature, InitPolicyEntry, InitV4Extension,
-    PolicyAction, PolicyKind, SignedTx, TxBody,
+    ActivationMode, CosignRole, Cosignature, InitPolicyEntry, InitV4Extension, PolicyAction,
+    PolicyKind, SignedTx, TxBody,
 };
 use pwm_core::validate_recipient_domain_policy;
 use std::path::PathBuf;
@@ -72,13 +72,14 @@ pub(crate) fn run_tx_policy_set(
     upgrade_wallet: bool,
     policy: String,
     activation: String,
+    activate_at_height: Option<u64>,
     fee: u128,
 ) {
     let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
         .unwrap_or_else(|e| exit_user_error(&e));
     let policy_kind = parse_policy_kind(&policy).unwrap_or_else(|e| exit_user_error(&e));
-    let activation_mode =
-        parse_activation_mode(&activation).unwrap_or_else(|e| exit_user_error(&e));
+    let activation_mode = parse_activation_mode(&activation, activate_at_height)
+        .unwrap_or_else(|e| exit_user_error(&e));
     let c = http_client_for_rpc();
     let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
     let tx = SignedTx::sign_body(
@@ -302,14 +303,46 @@ fn parse_policy_kind(raw: &str) -> Result<PolicyKind, String> {
     }
 }
 
-fn parse_activation_mode(raw: &str) -> Result<ActivationMode, String> {
+fn parse_activation_mode(
+    raw: &str,
+    activate_at_height: Option<u64>,
+) -> Result<ActivationMode, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "dormant" => Ok(ActivationMode::Dormant),
         "immediately" | "immediate" | "active" => Ok(ActivationMode::Immediately),
+        "deferred" => {
+            let at = activate_at_height.ok_or_else(|| {
+                "activation=deferred requires --activate-at-height > 0".to_string()
+            })?;
+            if at == 0 {
+                return Err("activation=deferred requires --activate-at-height > 0".to_string());
+            }
+            Ok(ActivationMode::Deferred {
+                activate_at_height: at,
+            })
+        }
         other => Err(format!(
-            "invalid activation mode '{other}'; expected `dormant` or `immediately`"
+            "invalid activation mode '{other}'; expected `dormant`, `immediately`, or `deferred`"
         )),
     }
+}
+
+#[cfg(test)]
+pub(crate) fn parse_claim_mode_cli(raw: &str) -> Result<(), String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "free" | "paid" => Ok(()),
+        other => Err(format!(
+            "invalid --claim-mode '{other}'; expected `free` or `paid`"
+        )),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn parse_policy_act_cli(
+    raw: &str,
+    activate_at_height: Option<u64>,
+) -> Result<ActivationMode, String> {
+    parse_activation_mode(raw, activate_at_height)
 }
 
 fn parse_policy_selector(policy: Option<String>, policy_id: Option<u8>) -> Result<u8, String> {
@@ -342,7 +375,7 @@ fn parse_initial_policy(raw: &str) -> Result<InitPolicyEntry, String> {
     };
     Ok(InitPolicyEntry {
         policy: parse_policy_kind(policy_raw)?,
-        activation: parse_activation_mode(activation_raw)?,
+        activation: parse_activation_mode(activation_raw, None)?,
     })
 }
 
@@ -445,47 +478,6 @@ fn append_rescue_cosign(tx: &mut SignedTx, rescue_sk: &ed25519_dalek::SigningKey
         role: CosignRole::Rescue,
         signature: sign(rescue_sk, &msg),
     });
-}
-
-pub(crate) fn parse_claim_mode_cli(raw: &str) -> Result<ClaimMode, String> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "free" => Ok(ClaimMode::Free),
-        "paid" => Ok(ClaimMode::Paid),
-        other => Err(format!(
-            "invalid --claim-mode {other:?}: expected `free` or `paid`"
-        )),
-    }
-}
-
-pub(crate) fn run_tx_claim(
-    rpc_base: &str,
-    wallet: Option<PathBuf>,
-    master: Option<String>,
-    domain: Option<String>,
-    wallet_passphrase: Option<&str>,
-    upgrade_wallet: bool,
-    mode: ClaimMode,
-    claim_units: u32,
-    anchor_ref: u64,
-    fee: u128,
-) {
-    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
-        .unwrap_or_else(|e| exit_user_error(&e));
-    let c = http_client_for_rpc();
-    let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
-    let tx = SignedTx::sign_body(
-        &source.sk,
-        source.dom,
-        source.idx,
-        nonce,
-        TxBody::Claim {
-            mode,
-            claim_units,
-            anchor_ref,
-            fee,
-        },
-    );
-    post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
 }
 
 pub(crate) fn run_tx_burn_mark(

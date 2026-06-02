@@ -84,7 +84,14 @@ pub(super) async fn v1_tx(
         return Err((StatusCode::CONFLICT, ACTIVE_LOCK_ERR_TEXT.to_string()));
     }
     match &tx.body {
-        TxBody::Export { .. } | TxBody::Import { .. } => {
+        TxBody::Export { .. } | TxBody::Import { .. } | TxBody::ClaimIPv4Batch { .. } => {
+            // Cancellation contract: this direct-seal branch is not fully cancel-safe once
+            // `g.chain.seal` succeeds. Explicit seal/snapshot errors roll back via `bak`,
+            // but an HTTP future cancelled after seal can leave the block committed before
+            // later cross-shard/roaming bookkeeping or init-state publication completes.
+            // Retried submissions are expected to be idempotent at the chain layer via
+            // nonce/export-id replay checks (usually BadNonce/DuplicateImport); durable
+            // cancellation robustness would need a separate background/idempotent section.
             if matches!(tx.body, TxBody::Export { .. }) {
                 let now_ms = crate::current_time_ms()?;
                 let sender = tx.computed_account_id();
@@ -226,7 +233,11 @@ pub(super) async fn v1_tx(
                     format!("precheck context resolve failed: {e}"),
                 )
             })?;
-            if let Err(e) = g.chain.st.precheck_apply_with_ctx(&tx, next_h, next_ts) {
+            if let Err(e) = g
+                .chain
+                .st
+                .precheck_apply_with_ctx(&tx, next_h, next_ts, &g.chain.cfg)
+            {
                 return Err(tx_tip_precheck_err(&tx, e));
             }
             g.pool.push(tx.clone()).map_err(|_| {

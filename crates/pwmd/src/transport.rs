@@ -22,6 +22,9 @@ mod transport_tick;
 pub(crate) use incoming_hello::process_incoming_peer_hello;
 mod peer_session;
 mod spawn;
+pub(crate) use peer_session::maybe_retry_round;
+pub(crate) use peer_session::record_cluster_prop_tick;
+pub(crate) use peer_session::{handshake_read_traced, handshake_write_traced};
 pub use spawn::{
     spawn_peer_listener_loop, spawn_real_transport_loop, spawn_stateful_transport_loop,
     spawn_transport_loop,

@@ -164,7 +164,7 @@ fn replay_to(cfg: &GenCfg, blocks: &[Block], target_h: Option<u64>) -> Result<Re
         let mut block_ok = true;
         for tx in &blk.txs {
             if replay_state
-                .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts)
+                .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, cfg)
                 .is_err()
             {
                 block_ok = false;
@@ -280,6 +280,7 @@ fn rewrite_summary(
     let snap = SnapshotData {
         version: SNAPSHOT_VERSION,
         genesis_accounts: snapshot_genesis_accounts(cfg),
+        genesis_anchor: None,
         blocks: vec![],
         state,
         roaming,
@@ -538,6 +539,6 @@ mod tests {
         let rep = replay_to(&cfg, &blocks, Some(1)).expect("repair replay");
         assert_eq!(rep.last_good_h, 1);
         let acc = rep.state.get(&signer).expect("signer account");
-        assert_eq!(acc.last_stake_change_height, 1);
+        assert_eq!(acc.marks_last_block, 1);
     }
 }

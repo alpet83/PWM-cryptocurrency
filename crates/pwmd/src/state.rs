@@ -1,5 +1,6 @@
 //! Tokio-guarded node state: chain, mempool, roaming pool, handshake snapshot.
 
+use crate::block_timing::BlockTimingCfg;
 use crate::handshake::{DeploymentProfile, SealRole};
 use crate::identity::RuntimeIdentity;
 use crate::lease::{LeaseBackendMode, LeaseCfg, LeaseRuntime, LeaseStats};
@@ -8,14 +9,16 @@ use crate::ledger::CrossShardLedger;
 use crate::roaming::RoamingPool;
 use crate::transport::HandshakeState;
 use crate::ClusterCfg;
+use crate::SealControlMode;
 use crate::TransportConfig;
 use pwm_core::tx::TxBody;
 use pwm_core::{Chain, Mpool, SignedTx};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
+use tokio::sync::Notify;
 use tokio::sync::RwLock;
 
 #[derive(Clone, Debug, Serialize)]
@@ -29,6 +32,19 @@ pub(crate) struct LogOvrState {
     pub(crate) auth_mode: String,
     #[serde(skip)]
     pub(crate) rev: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub(crate) struct SealManualState {
+    pub(crate) mode: SealControlMode,
+    pub(crate) target_h: u64,
+    pub(crate) verbose_default: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) last_step: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) last_result: Option<String>,
+    pub(crate) verbose_until_ms: u64,
+    pub(crate) step_t0_ms: u64,
 }
 
 #[derive(Clone)]
@@ -62,7 +78,14 @@ pub struct App {
     pub(crate) lease_backend: Arc<dyn LeaseBackend>,
     pub(crate) lease_runtime: Arc<Mutex<LeaseRuntime>>,
     pub(crate) lease_stats: Arc<LeaseStats>,
+    pub(crate) lease_renew_log_tip: Arc<AtomicU64>,
     pub(crate) cluster_cfg: ClusterCfg,
+    /// Set by seal loop ahead-trigger; steady_session sends wire propose before next heartbeat sleep.
+    pub(crate) cluster_prop_nudge: Arc<AtomicBool>,
+    /// Wakes proposer seal loop when a fresh cluster attest arrives.
+    pub(crate) seal_wake: Arc<Notify>,
+    pub(crate) seal_manual: Arc<RwLock<SealManualState>>,
+    pub(crate) lab_seal_api: bool,
     pub(crate) validator_identity_hash: String,
     pub(crate) node_instance_id: String,
     /// Debug dump controls for persistent tip divergence diagnostics.
@@ -75,6 +98,10 @@ pub struct App {
     pub(crate) state_namespace: String,
     pub(crate) hello_nonce_ctr: Arc<AtomicU64>,
     pub(crate) transport_config: Arc<RwLock<TransportConfig>>,
+    /// Optional per-block cluster timing JSONL capture configuration.
+    pub(crate) block_timing: Option<BlockTimingCfg>,
+    /// Shared shutdown guard used by RPC and signal-triggered stop paths.
+    pub(crate) shutdown_requested: Arc<AtomicBool>,
     /// One-shot sender wired in `run_with`; used by `POST /v1/shutdown` for graceful HTTP stop.
     pub(crate) shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     /// Runtime log filter control handle (reload layer), if logging was initialized with control support.

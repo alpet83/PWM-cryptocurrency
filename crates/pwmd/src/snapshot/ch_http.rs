@@ -587,6 +587,7 @@ impl SnapChCfg {
         let snap = SnapshotData {
             version: SNAPSHOT_VERSION,
             genesis_accounts: snapshot_genesis_accounts(gcfg),
+            genesis_anchor: None,
             blocks,
             state: gcfg.state0(),
             roaming: Default::default(),
@@ -631,7 +632,7 @@ fn replay_state_at(gcfg: &GenCfg, blocks: &[Block], up_to_h: u64) -> Result<Stat
             break;
         }
         for tx in &blk.txs {
-            st.apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts)
+            st.apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, gcfg)
                 .map_err(|e| format!("replay checkpoint state at {up_to_h}: {e}"))?;
         }
         let prod_acct = gcfg.prod_acct(blk.hdr.prod_idx);

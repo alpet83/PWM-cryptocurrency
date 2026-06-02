@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "pwm")]
-pub(crate) struct Cli {
+pub struct Cli {
     /// pwmd base URL (trailing slash optional). Same as env `PWM_RPC`.
     /// HTTP timeouts for tx/nonce calls: env `PWM_CLI_RPC_TIMEOUT_MS` (default 10000, max 120000).
     #[arg(
@@ -158,6 +158,22 @@ pub(crate) enum Cmd {
         )]
         initial_policy: Vec<String>,
     },
+    /// Fetch and print account marks/stake view at current chain head.
+    #[command(name = "account-info")]
+    AccountInfo {
+        #[arg(
+            long,
+            required_unless_present = "wallet",
+            help = "Account id (pretty/canonical bech32DX/legacy hex/PWMv0-hex)."
+        )]
+        account: Option<String>,
+        #[arg(
+            long,
+            required_unless_present = "account",
+            help = "Wallet path used to resolve active account id when --account is omitted."
+        )]
+        wallet: Option<PathBuf>,
+    },
     /// POST signed POLICY set action.
     #[command(name = "tx-policy-set")]
     TxPolicySet {
@@ -184,8 +200,13 @@ pub(crate) enum Cmd {
             help = "Policy kind: sender_filter, routing.emergency_redirect, routing.same_domain_only, default_behavior, cosign_required."
         )]
         policy: String,
-        #[arg(long, help = "Activation mode: dormant or immediately.")]
+        #[arg(long, help = "Activation mode: dormant, immediately, or deferred.")]
         activation: String,
+        #[arg(
+            long,
+            help = "Absolute chain height for --activation deferred (must be > 0)."
+        )]
+        activate_at_height: Option<u64>,
         #[arg(
             long,
             default_value_t = 1,

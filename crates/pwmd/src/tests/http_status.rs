@@ -743,7 +743,7 @@ async fn assert_preflight_apply_parity(
         g.chain
             .st
             .clone()
-            .apply_tx_with_ctx(&tx, next_h, next_ts)
+            .apply_tx_with_ctx(&tx, next_h, next_ts, &g.chain.cfg)
             .expect_err("tx must reject on apply")
     };
     let apply_json = crate::api::common::tx_reject_json(
@@ -826,54 +826,6 @@ async fn v1_burn_cross_domain_ok() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
-}
-
-/// Free claim daily limit keeps stable `E_*` code/class parity between preflight and apply.
-#[tokio::test]
-async fn v1_tx_claim_daily_limit() {
-    let app = app_for_devnet_sender(DevLane::Lane0);
-    let (cfg, sks) = dev_net();
-    let sk = &sks[0];
-    let sender = cfg.accounts[0].acct;
-    let sender_dom = domain_of_account_id(&sender);
-    {
-        let mut g = app.inner.write().await;
-        let (_, next_ts) = g.chain.next_apply_ctx().expect("apply ctx");
-        let utc_day = next_ts / 86_400;
-        let acc = g
-            .chain
-            .st
-            .accounts
-            .get_mut(&sender)
-            .expect("sender account");
-        // 10 whole PWM → 10 marks/h matured; enough for claim_units=1 to pass amount check
-        acc.staked = 10 * pwm_core::display::PWM_RAW_SCALE;
-        acc.last_claim_unix_time = next_ts.saturating_sub(7_200);
-        acc.last_claim_anchor_ref = 0;
-        acc.last_stake_change_height = 0;
-        acc.free_claim_utc_day = Some(utc_day);
-    }
-    let tx = SignedTx::sign_body(
-        sk,
-        sender_dom,
-        0,
-        0,
-        TxBody::Claim {
-            mode: pwm_core::tx::ClaimMode::Free,
-            claim_units: 1,
-            anchor_ref: 0,
-            fee: 0,
-        },
-    );
-    assert_preflight_apply_parity(
-        &app,
-        tx,
-        StatusCode::BAD_REQUEST,
-        "E_FREE_CLAIM_DAILY_LIMIT",
-        "POLICY_REJECT",
-        "claim",
-    )
-    .await;
 }
 
 /// Import fee too low keeps policy reject parity and stable wire fields on submit.

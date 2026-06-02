@@ -1,6 +1,7 @@
 //! Periodic transport driver: backoff queues, reconnect decisions, dial pacing.
 
 use super::*;
+use crate::transport::peer_session::handshake_write_traced;
 use tracing::warn;
 
 fn enqueue_seed_peer_cls(
@@ -391,13 +392,47 @@ fn retry_delay_ms(base_ms: u64, max_ms: u64, attempts: u32) -> u64 {
 pub(crate) async fn run_real_transport_tick(app: &App, cfg: &TransportConfig, now_ms: u64) {
     let due;
     {
-        let mut hs = app.handshake.write().await;
+        let tick_state_lock_wait_start_ms = crate::current_time_ms().unwrap_or(now_ms);
+        let mut hs = handshake_write_traced(app, "transport_tick").await;
+        let tick_state_lock_acquired_ms =
+            crate::current_time_ms().unwrap_or(tick_state_lock_wait_start_ms);
+        if tick_state_lock_acquired_ms.saturating_sub(tick_state_lock_wait_start_ms) >= 100 {
+            info!(
+                target: "pwmd::peer",
+                "peer transport_tick step=state_lock_acquired ts_ms={} wait_ms={}",
+                tick_state_lock_acquired_ms,
+                tick_state_lock_acquired_ms.saturating_sub(tick_state_lock_wait_start_ms)
+            );
+        }
         let skip_tick = refresh_real_tick_state(&mut hs, cfg, now_ms);
         let seed_count = cfg.peer_seeds.len();
         if seed_count == 0 || skip_tick {
+            let tick_state_lock_release_ms =
+                crate::current_time_ms().unwrap_or(tick_state_lock_acquired_ms);
+            if tick_state_lock_release_ms.saturating_sub(tick_state_lock_acquired_ms) >= 100 {
+                info!(
+                    target: "pwmd::peer",
+                    "peer transport_tick step=state_lock_released ts_ms={} held_ms={} due_count=0 skip_tick={}",
+                    tick_state_lock_release_ms,
+                    tick_state_lock_release_ms.saturating_sub(tick_state_lock_acquired_ms),
+                    skip_tick
+                );
+            }
             return;
         }
         due = collect_due_seed_attempts(&mut hs, cfg, now_ms);
+        let tick_state_lock_release_ms =
+            crate::current_time_ms().unwrap_or(tick_state_lock_acquired_ms);
+        if tick_state_lock_release_ms.saturating_sub(tick_state_lock_acquired_ms) >= 100 {
+            info!(
+                target: "pwmd::peer",
+                "peer transport_tick step=state_lock_released ts_ms={} held_ms={} due_count={} skip_tick={}",
+                tick_state_lock_release_ms,
+                tick_state_lock_release_ms.saturating_sub(tick_state_lock_acquired_ms),
+                due.len(),
+                skip_tick
+            );
+        }
     }
     let mut tick_retryable = false;
     let mut tick_success = false;
@@ -411,20 +446,64 @@ pub(crate) async fn run_real_transport_tick(app: &App, cfg: &TransportConfig, no
         )
         .await;
         let class_key = dial_attempt_class_key(class.as_ref());
-        let mut hs = app.handshake.write().await;
+        let tick_apply_lock_wait_start_ms = crate::current_time_ms().unwrap_or(now_ms);
+        let mut hs = handshake_write_traced(app, "transport_tick").await;
+        let tick_apply_lock_acquired_ms =
+            crate::current_time_ms().unwrap_or(tick_apply_lock_wait_start_ms);
+        if tick_apply_lock_acquired_ms.saturating_sub(tick_apply_lock_wait_start_ms) >= 100 {
+            info!(
+                target: "pwmd::peer",
+                "peer transport_tick step=apply_seed_result_lock_acquired seed={} ts_ms={} wait_ms={}",
+                seed,
+                tick_apply_lock_acquired_ms,
+                tick_apply_lock_acquired_ms.saturating_sub(tick_apply_lock_wait_start_ms)
+            );
+        }
         let seed_key = seed.to_string();
         if let Some(err) = peer_err {
             set_peer_error(&mut hs, now_ms, err);
         }
         let (has_retryable, has_success) =
             apply_seed_attempt_result(&mut hs, cfg, now_ms, &seed_key, result, &class_key, node_id);
+        let tick_apply_lock_release_ms =
+            crate::current_time_ms().unwrap_or(tick_apply_lock_acquired_ms);
+        if tick_apply_lock_release_ms.saturating_sub(tick_apply_lock_acquired_ms) >= 100 {
+            info!(
+                target: "pwmd::peer",
+                "peer transport_tick step=apply_seed_result_lock_released seed={} ts_ms={} held_ms={}",
+                seed,
+                tick_apply_lock_release_ms,
+                tick_apply_lock_release_ms.saturating_sub(tick_apply_lock_acquired_ms)
+            );
+        }
         tick_retryable |= has_retryable;
         tick_success |= has_success;
     }
     {
-        let mut hs = app.handshake.write().await;
+        let tick_finalize_lock_wait_start_ms = crate::current_time_ms().unwrap_or(now_ms);
+        let mut hs = handshake_write_traced(app, "transport_tick").await;
+        let tick_finalize_lock_acquired_ms =
+            crate::current_time_ms().unwrap_or(tick_finalize_lock_wait_start_ms);
+        if tick_finalize_lock_acquired_ms.saturating_sub(tick_finalize_lock_wait_start_ms) >= 100 {
+            info!(
+                target: "pwmd::peer",
+                "peer transport_tick step=finalize_lock_acquired ts_ms={} wait_ms={}",
+                tick_finalize_lock_acquired_ms,
+                tick_finalize_lock_acquired_ms.saturating_sub(tick_finalize_lock_wait_start_ms)
+            );
+        }
         finalize_real_tick(&mut hs, cfg, now_ms, tick_retryable, tick_success);
         update_seed_health(&mut hs, cfg, now_ms);
+        let tick_finalize_lock_release_ms =
+            crate::current_time_ms().unwrap_or(tick_finalize_lock_acquired_ms);
+        if tick_finalize_lock_release_ms.saturating_sub(tick_finalize_lock_acquired_ms) >= 100 {
+            info!(
+                target: "pwmd::peer",
+                "peer transport_tick step=finalize_lock_released ts_ms={} held_ms={}",
+                tick_finalize_lock_release_ms,
+                tick_finalize_lock_release_ms.saturating_sub(tick_finalize_lock_acquired_ms)
+            );
+        }
     }
 }
 

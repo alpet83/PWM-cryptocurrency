@@ -1,9 +1,10 @@
 //! Background RPC worker plus UI snapshot assembly for account panels.
 
 use crate::config::{base_url, http_client, parse_status_shard_label, DEBUG_FETCH_INTERVAL};
+use crate::marks_display::{effective_marks_at_height, marks_sat_pct};
 use crate::models::{
-    parse_hex_account_id, parse_u128, parse_u16, parse_u32, AcctRow, UNKNOWN_BALANCE_SENTINEL,
-    UNKNOWN_INIT_NONCE_SENTINEL,
+    parse_hex_account_id, parse_u128, parse_u16, parse_u32, parse_u64, AcctRow,
+    UNKNOWN_BALANCE_SENTINEL, UNKNOWN_INIT_NONCE_SENTINEL,
 };
 use crate::roaming::submit_roaming_intent;
 use crate::status::{
@@ -135,6 +136,9 @@ pub fn acct_row_for_id(rows: &[AcctRow], id: &AccountId, label: Option<String>) 
             initialized: false,
             nonce: 0,
             marks: 0,
+            marks_last_block: 0,
+            effective_marks: None,
+            marks_sat_pct: None,
             staked: 0,
             rescue_address: None,
             active_policies: 0,
@@ -265,6 +269,9 @@ pub fn poll_snapshot(client: &reqwest::blocking::Client) -> PollSnapshot {
                                     }
                                 },
                                 marks: parse_u32(&x["marks"]),
+                                marks_last_block: parse_u64(&x["marks_last_block"]),
+                                effective_marks: None,
+                                marks_sat_pct: None,
                                 staked: x["staked"]
                                     .as_str()
                                     .and_then(|s| s.parse::<u128>().ok())
@@ -290,6 +297,13 @@ pub fn poll_snapshot(client: &reqwest::blocking::Client) -> PollSnapshot {
                         .collect()
                 })
                 .unwrap_or_default();
+            if let Some(head) = head_height {
+                for row in &mut rows {
+                    let eff = effective_marks_at_height(row, head);
+                    row.effective_marks = Some(eff);
+                    row.marks_sat_pct = Some(marks_sat_pct(eff));
+                }
+            }
         }
         Err(e) => {
             parts.push(match e {

@@ -2,6 +2,8 @@
 
 use tracing::{info, warn};
 
+use crate::transport::peer_session::handshake_write_traced;
+
 use super::{
     current_time_ms, process_inbound_socket, run_real_transport_tick, run_seed_session,
     run_transport_tick, App, TransportConfig,
@@ -23,7 +25,7 @@ pub fn spawn_transport_loop(app: App) {
                     continue;
                 }
             };
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(&app, "transport_spawn").await;
             run_transport_tick(&mut hs, now_ms);
         }
     });

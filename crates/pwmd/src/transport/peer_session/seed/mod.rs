@@ -8,7 +8,7 @@ mod session;
 
 async fn seed_wait_ms(app: &App, cfg: &TransportConfig, seed_key: &str, now_ms: u64) -> u64 {
     let marker_wait = {
-        let hs = app.handshake.read().await;
+        let hs = crate::transport::handshake_read_traced(app, "seed_mod").await;
         hs.transport
             .seed_peers
             .get(seed_key)

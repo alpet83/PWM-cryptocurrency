@@ -46,8 +46,9 @@ impl BurnForm {
             purpose: TextInput::from_end("default".into()),
             confirm: TextInput::new(),
             active: BurnField::MarkAmount,
-            status: "Marks materialize via Claim or Stake/Unstake. Burn uses materialized marks."
-                .into(),
+            status:
+                "V5 marks: stake PWM with S, wait for blocks, then burn materialized marks with F5."
+                    .into(),
             status_is_error: false,
             flow: None,
         }
@@ -245,5 +246,6 @@ mod tests {
         assert_eq!(form.marks_available, 7);
         assert_eq!(form.beneficiary.as_str(), "aabbcc");
         assert_eq!(form.purpose.as_str(), "default");
+        assert!(!form.status.contains("Claim"));
     }
 }

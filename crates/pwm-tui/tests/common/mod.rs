@@ -4,7 +4,7 @@
 pub use ::pwm_tui::test_support as pwm_tui;
 pub use ::pwm_tui::test_support::{
     choose_identity, default_wallet_candidate, f6_build_send_form, identity_lock_status_suffix,
-    load_wallet_identity, merge_rpc_health, move_selection_down, move_selection_up,
+    load_wallet_identity, merge_rpc_health, mk_acct_row, move_selection_down, move_selection_up,
     nonce_404_account_hint, nonce_from_account_body, owner_and_receivers, parse_nonce_json,
     preflight_recipient_rpc, preflight_sel_init_auto, preflight_xfer_dst, receiver_table_len,
     selected_to_receiver, signing_material_for_sender, submit_roaming_intent, text_input_set_text,

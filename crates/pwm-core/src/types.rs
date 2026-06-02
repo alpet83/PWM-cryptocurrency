@@ -5,6 +5,8 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::domain_index;
+use crate::tx::PolicyKind;
+use crate::MARKS_CAP;
 
 /// 32-byte account identifier (see `WHITE_SPEC_v0`).
 pub type AccountId = [u8; 32];
@@ -258,32 +260,37 @@ pub fn render_acct_id_ui(id: &AccountId) -> String {
     format!("pwm1-{domain_hint}-f{flags:08X}-t{tail}")
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeferredPolicyEntry {
+    pub policy: PolicyKind,
+    pub activate_at_height: u64,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Account {
     pub signing_pubkey: [u8; 32],
     pub derivation_index: u32,
     pub balance_pwm: u128,
-    pub staked: u128,
-    #[serde(default, deserialize_with = "de_marks_compat")]
-    pub marks: u32,
+    #[serde(default, alias = "staked")]
+    pub staked_pwm_raw: u128,
+    #[serde(default, alias = "marks", deserialize_with = "de_marks_compat")]
+    pub stored_marks: u32,
+    #[serde(default)]
+    pub marks_last_block: u64,
     pub initialized: bool,
     pub index: u32,
     pub flags: u32,
     pub nonce: u64,
-    #[serde(default)]
-    pub last_claim_unix_time: u64,
-    #[serde(default)]
-    pub last_claim_anchor_ref: u64,
-    #[serde(default, rename = "last_free_claim_utc_day")]
-    pub free_claim_utc_day: Option<u64>,
-    #[serde(default)]
-    pub last_stake_change_height: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rescue_address: Option<AccountId>,
     #[serde(default, skip_serializing_if = "is_zero_u16")]
     pub active_policies: u16,
     #[serde(default, skip_serializing_if = "is_zero_u16")]
     pub dormant_policies: u16,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deferred_policies: Vec<DeferredPolicyEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ipv4_claimed_phase: Option<u8>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub finalized: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -309,11 +316,11 @@ fn is_false(v: &bool) -> bool {
 }
 
 fn migrate_marks_legacy(raw: u128) -> u32 {
-    if raw <= u32::MAX as u128 {
+    if raw <= MARKS_CAP as u128 {
         return raw as u32;
     }
     let scaled = raw / crate::display::PWM_RAW_SCALE;
-    scaled.min(u32::MAX as u128) as u32
+    scaled.min(MARKS_CAP as u128) as u32
 }
 
 fn de_marks_compat<'de, D>(deserializer: D) -> Result<u32, D::Error>
@@ -347,19 +354,18 @@ impl Account {
             signing_pubkey: pubkey,
             derivation_index,
             balance_pwm: balance,
-            staked: 0,
-            marks: 0,
+            staked_pwm_raw: 0,
+            stored_marks: 0,
+            marks_last_block: 0,
             initialized: true,
             index: 0,
             flags: 0,
             nonce: 0,
-            last_claim_unix_time: 0,
-            last_claim_anchor_ref: 0,
-            free_claim_utc_day: None,
-            last_stake_change_height: 0,
             rescue_address: None,
             active_policies: 0,
             dormant_policies: 0,
+            deferred_policies: Vec::new(),
+            ipv4_claimed_phase: None,
             finalized: false,
             owner_kind: String::new(),
             owner_display_name: String::new(),

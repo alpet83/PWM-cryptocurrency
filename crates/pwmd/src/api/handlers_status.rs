@@ -101,7 +101,7 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
         peer_error_at_ms,
     ) = {
         let cfg = a.transport_config.read().await;
-        let hs = a.handshake.read().await;
+        let hs = crate::transport::handshake_read_traced(&a, "api_status").await;
         let live = hs
             .peers
             .values()
@@ -159,7 +159,7 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
         genesis_mismatch_peer_hint,
         genesis_mismatch_unix_ms,
     ) = {
-        let hs = a.handshake.read().await;
+        let hs = crate::transport::handshake_read_traced(&a, "api_status").await;
         (
             hs.validation_ctx.expected_genesis_hash.clone(),
             if hs.genesis_guard.blocked {

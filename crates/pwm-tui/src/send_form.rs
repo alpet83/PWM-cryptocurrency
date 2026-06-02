@@ -17,6 +17,7 @@ pub enum SendField {
 
 pub struct SendForm {
     pub from: String,
+    pub balance_units: u128,
     pub to: TextInput,
     pub to_editable: bool,
     pub amount: TextInput,
@@ -113,6 +114,7 @@ impl SendForm {
         };
         Self {
             from,
+            balance_units: 0,
             to: TextInput::from_end(to),
             to_editable,
             amount: TextInput::new(),

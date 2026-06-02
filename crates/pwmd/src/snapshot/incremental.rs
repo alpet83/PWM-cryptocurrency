@@ -704,6 +704,8 @@ mod tests {
             &cfg,
             SnapshotLoadOpts {
                 verify_chain: false,
+                anchor_sk: None,
+                anchor_idx: 0,
             },
         )
         .expect("timed")

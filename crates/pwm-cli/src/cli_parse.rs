@@ -5,7 +5,7 @@ use pwm_core::{parse_acct_id_ui, AccountId};
 pub(crate) const ADDRESS_FORMAT_HINT: &str =
     "pretty pwm1-<label_or_$hex!>-f<flags8hex>-t<tail52hex>, canonical pwm1..., legacy PWMv0-... / hex";
 
-pub(crate) fn hex32(s: &str) -> Result<[u8; 32], String> {
+pub fn hex32(s: &str) -> Result<[u8; 32], String> {
     let v = hex::decode(s.trim()).map_err(|e| e.to_string())?;
     if v.len() != 32 {
         return Err("need 32 bytes hex".into());
@@ -15,7 +15,7 @@ pub(crate) fn hex32(s: &str) -> Result<[u8; 32], String> {
     Ok(a)
 }
 
-pub(crate) fn parse_domain(s: &str) -> Result<u16, String> {
+pub fn parse_domain(s: &str) -> Result<u16, String> {
     let t = s.trim();
     if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
         return u16::from_str_radix(hex, 16).map_err(|e| e.to_string());
@@ -30,7 +30,7 @@ pub(crate) fn parse_domain(s: &str) -> Result<u16, String> {
         .map_err(|e| e.to_string())
 }
 
-pub(crate) fn master_seed(s: &str) -> Result<[u8; 32], String> {
+pub fn master_seed(s: &str) -> Result<[u8; 32], String> {
     hex32(s)
 }
 

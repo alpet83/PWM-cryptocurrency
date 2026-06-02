@@ -1,6 +1,7 @@
 //! Operator bridge federation controls (recover from sticky refusal without full restart).
 
 use super::common::ensure_ready;
+use crate::transport::handshake_write_traced;
 use crate::App;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -11,7 +12,7 @@ pub(super) async fn v1_bridge_federation_reset(
     State(a): State<App>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     ensure_ready(&a).await?;
-    let mut hs = a.handshake.write().await;
+    let mut hs = handshake_write_traced(&a, "api_handlers_bridge").await;
     hs.bridge_trust.refused = false;
     hs.bridge_trust.refusal_reason = None;
     Ok(StatusCode::NO_CONTENT)

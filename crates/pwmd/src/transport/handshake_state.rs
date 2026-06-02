@@ -111,11 +111,26 @@ pub(crate) struct SyncPeerState {
     pub(crate) sync_log_done: bool,
     /// Last peer tip goal (height) for which we printed `Sync progress` at 100% / rem=0; avoids per-HB spam.
     pub(crate) sync_pct100_goal: Option<u64>,
+    /// Last wall-clock moment when we reported unchanged deep catch-up remainder.
+    pub(crate) sync_stall_ms: u64,
+    /// Last observed catch-up remainder (`head_h - local_h`) for stall reporting.
+    pub(crate) sync_stall_rem: u64,
+    /// Last continuity break height detected on live header path.
+    pub(crate) fork_h: Option<u64>,
+    /// Local tip height at last continuity break.
+    pub(crate) fork_tip: u64,
+    /// Repeated continuity break count for same `(fork_h, fork_tip)`.
+    pub(crate) fork_n: u8,
+    /// Local tip hash captured at continuity break.
+    pub(crate) fork_local: String,
+    /// First remote `prev_hash` captured at continuity break.
+    pub(crate) fork_prev: String,
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ClusterAttestState {
     pub(crate) rounds: HashMap<(u64, u32), ClusterRoundState>,
+    pub(crate) sent_key_by_node: HashMap<String, (u64, u32)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -126,6 +141,8 @@ pub(crate) struct ClusterRoundState {
     pub(crate) proposer_id: Option<String>,
     /// Wall-clock ms when the proposer's `ClusterPropose` was accepted (`T_attest` RFC §9 anchor).
     pub(crate) propose_opened_at_ms: Option<u64>,
+    /// Bounded proposer-side resend count for rounds with `got=0` attests.
+    pub(crate) propose_retry_n: u8,
     pub(crate) attesters: HashMap<String, String>,
 }
 

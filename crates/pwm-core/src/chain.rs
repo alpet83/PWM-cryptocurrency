@@ -2,6 +2,7 @@
 
 use crate::block::{hdr_hash, txs_root, Block, BlockHdr};
 use crate::genesis::GenCfg;
+use crate::marks::compute_block_reward;
 use crate::state::{digest, State};
 use crate::tx::SignedTx;
 use ed25519_dalek::SigningKey;
@@ -111,7 +112,7 @@ impl Chain {
 
         let mut st = self.st.clone();
         for tx in &txs {
-            if let Err(e) = st.apply_tx_with_ctx(tx, height, ts) {
+            if let Err(e) = st.apply_tx_with_ctx(tx, height, ts, &self.cfg) {
                 return Err((format!("tx: {e}"), txs));
             }
         }
@@ -128,13 +129,8 @@ impl Chain {
         if self.cfg.is_legacy_policy() {
             st.reward_producer(&prod_acct, self.cfg.block_reward);
         } else {
-            let season_ppm = self.cfg.season_ppm(ts);
-            st.reward_producer_v2(
-                &prod_acct,
-                self.cfg.block_reward,
-                self.cfg.pwm_stake_min,
-                season_ppm,
-            );
+            let rew = compute_block_reward(&self.cfg, height);
+            st.reward_producer_v2(&prod_acct, rew, self.cfg.pwm_stake_min, 1_000_000);
         }
 
         let state_root = digest(&st);
@@ -345,7 +341,7 @@ mod tests {
         let mut c = Chain::boot(g, sks);
         {
             let acc = c.st.accounts.get_mut(&aid).expect("validator");
-            acc.staked = 250_000;
+            acc.staked_pwm_raw = 250_000;
         }
         c.cfg.policy_ver = 1;
         c.cfg.pwm_stake_min = 500_000;
@@ -356,7 +352,7 @@ mod tests {
         let acc = c.st.accounts.get(&aid).expect("validator");
         assert_eq!(acc.balance_pwm, 1_000_100);
         // Genesis marks from 1 PWM balance; seal does not call accrue_marks.
-        assert_eq!(acc.marks, 1);
+        assert_eq!(acc.stored_marks, 1);
     }
 
     #[test]
@@ -366,7 +362,7 @@ mod tests {
         let mut c = Chain::boot(g, sks);
         {
             let acc = c.st.accounts.get_mut(&aid).expect("validator");
-            acc.staked = 250_000;
+            acc.staked_pwm_raw = 250_000;
         }
         c.cfg.policy_ver = 2;
         c.cfg.pwm_stake_min = 200_000;
@@ -376,7 +372,27 @@ mod tests {
         c.seal(vec![]).expect("seal");
         let acc = c.st.accounts.get(&aid).expect("validator");
         assert_eq!(acc.balance_pwm, 1_000_050);
-        assert_eq!(acc.marks, 1);
+        assert_eq!(acc.stored_marks, 1);
+    }
+
+    #[test]
+    fn policy_v2_uses_float_reward() {
+        let (g, sks) = crate::genesis::dev_net();
+        let aid = g.accounts[0].acct;
+        let mut c = Chain::boot(g, sks);
+        {
+            let acc = c.st.accounts.get_mut(&aid).expect("validator");
+            acc.staked_pwm_raw = 300_000;
+        }
+        c.cfg.policy_ver = 2;
+        c.cfg.pwm_stake_min = 200_000;
+        c.cfg.base_emission_per_block = 240;
+        c.cfg.season_coeff_ppm = 250_000;
+        c.cfg.block_reward = 999;
+
+        c.seal(vec![]).expect("seal");
+        let acc = c.st.accounts.get(&aid).expect("validator");
+        assert_eq!(acc.balance_pwm, 1_000_060);
     }
 
     /// Empty seal does not accrue marks; accounts keep genesis-seeded marks only.
@@ -385,10 +401,10 @@ mod tests {
         let (g, sks) = crate::genesis::dev_net();
         let aid = g.accounts[0].acct;
         let mut c = Chain::boot(g, sks);
-        let want = c.st.accounts.get(&aid).expect("acct").marks;
-        c.st.accounts.get_mut(&aid).expect("acct").staked = 250_000;
+        let want = c.st.accounts.get(&aid).expect("acct").stored_marks;
+        c.st.accounts.get_mut(&aid).expect("acct").staked_pwm_raw = 250_000;
         c.seal(vec![]).expect("seal");
-        let got = c.st.accounts.get(&aid).expect("acct").marks;
+        let got = c.st.accounts.get(&aid).expect("acct").stored_marks;
         assert_eq!(got, want, "seal must not accrue marks from stake");
     }
 

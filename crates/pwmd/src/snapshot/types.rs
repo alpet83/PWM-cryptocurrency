@@ -7,8 +7,9 @@ use pwm_core::tx::{
     ActivationMode, CosignPolicy, CosignRole, Cosignature, InitPolicyEntry, InitV4Extension,
     PolicyAction, PolicyKind, SignedTx, TxBody,
 };
-use pwm_core::types::Account;
+use pwm_core::types::{Account, DeferredPolicyEntry};
 use pwm_core::State as ChainState;
+use pwm_core::MARKS_CAP;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::{Deserializer, Serializer};
@@ -33,6 +34,8 @@ pub(crate) enum BlocksStored {
 pub(crate) struct SnapshotData {
     pub(crate) version: u32,
     pub(crate) genesis_accounts: Vec<SnapshotGenesisRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) genesis_anchor: Option<SnapshotGenAnchor>,
     pub(crate) blocks: Vec<Block>,
     #[serde(serialize_with = "serialize_snapshot_state")]
     #[serde(deserialize_with = "deserialize_snapshot_state")]
@@ -48,7 +51,8 @@ pub(crate) struct SnapshotData {
     pub(crate) checkpoint_height: u64,
 }
 
-pub(crate) const SNAPSHOT_VERSION: u32 = 2;
+pub(crate) const SNAPSHOT_VERSION: u32 = 3;
+pub(super) const SNAPSHOT_V2: u32 = 2;
 pub(super) const SNAPSHOT_V1: u32 = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -73,6 +77,48 @@ pub(super) struct SnapshotDataV2 {
     blocks_stored: BlocksStored,
     #[serde(default)]
     checkpoint_height: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(super) struct SnapshotDataV3 {
+    version: u32,
+    genesis_accounts: Vec<SnapshotGenesisRowV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    genesis_anchor: Option<SnapshotGenAnchorV3>,
+    blocks: Vec<BlockV2>,
+    state: SnapshotStateV3,
+    #[serde(default)]
+    roaming: SnapshotRoamingV2,
+    #[serde(default)]
+    cross_shard: SnapshotCrossShardV2,
+    #[serde(default)]
+    blocks_stored: BlocksStored,
+    #[serde(default)]
+    checkpoint_height: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct SnapshotGenAnchor {
+    pub(crate) schema_v: u32,
+    pub(crate) genesis_state_root: [u8; 32],
+    pub(crate) gencfg_digest: [u8; 32],
+    pub(crate) block1_hdr_hash: [u8; 32],
+    pub(crate) signer_prod_idx: u32,
+    #[serde(
+        serialize_with = "serialize_hex64",
+        deserialize_with = "deserialize_hex64"
+    )]
+    pub(crate) signature: [u8; 64],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SnapshotGenAnchorV3 {
+    schema_v: u32,
+    genesis_state_root: String,
+    gencfg_digest: String,
+    block1_hdr_hash: String,
+    signer_prod_idx: u32,
+    signature: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -182,6 +228,11 @@ enum TxBodyV2 {
         mark_amount: String,
         beneficiary: Option<String>,
     },
+    ClaimIpv4Batch {
+        phase: u8,
+        batch_root: String,
+        registry_sig: String,
+    },
     Claim {
         mode: String,
         claim_units: String,
@@ -269,9 +320,6 @@ struct SnapshotCrossShardFactV2 {
 struct SnapshotStateV2 {
     accounts: Vec<SnapshotStateRowV2>,
     fee_pool: String,
-    // Legacy mirror field: accepted on read for compatibility, omitted on write.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    marks_quota: Vec<SnapshotQuotaRowV2>,
     #[serde(default)]
     imported_set: Vec<String>,
     #[serde(default)]
@@ -285,9 +333,19 @@ struct SnapshotStateRowV2 {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct SnapshotQuotaRowV2 {
+struct SnapshotStateV3 {
+    accounts: Vec<SnapshotStateRowV3>,
+    fee_pool: String,
+    #[serde(default)]
+    imported_set: Vec<String>,
+    #[serde(default)]
+    exported_registry: Vec<SnapshotExportRowV2>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SnapshotStateRowV3 {
     id: String,
-    quota: String,
+    account: SnapshotAccountV3,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -315,6 +373,44 @@ struct SnapshotAccountV2 {
     active_policies: u16,
     #[serde(default)]
     dormant_policies: u16,
+    #[serde(default)]
+    finalized: bool,
+    #[serde(default)]
+    owner_kind: String,
+    #[serde(default)]
+    owner_display_name: String,
+    #[serde(default)]
+    owner_country_hint: String,
+    #[serde(default)]
+    company_metadata_commitment: Option<String>,
+    #[serde(default)]
+    external_verification_ref: Option<String>,
+    #[serde(default)]
+    requested_domain_lo: Option<u8>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct SnapshotAccountV3 {
+    signing_pubkey: String,
+    derivation_index: u32,
+    balance_pwm: String,
+    staked_pwm_raw: String,
+    stored_marks: String,
+    marks_last_block: u64,
+    initialized: bool,
+    index: u32,
+    flags: u32,
+    nonce: u64,
+    #[serde(default)]
+    rescue_address: Option<String>,
+    #[serde(default)]
+    active_policies: u16,
+    #[serde(default)]
+    dormant_policies: u16,
+    #[serde(default)]
+    deferred_policies: Vec<DeferredPolicyEntry>,
+    #[serde(default)]
+    ipv4_claimed_phase: Option<u8>,
     #[serde(default)]
     finalized: bool,
     #[serde(default)]
@@ -482,18 +578,9 @@ struct SnapshotStateRow {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct SnapshotQuotaRow {
-    id: [u8; 32],
-    quota: u32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 struct SnapshotStateWire {
     accounts: Vec<SnapshotStateRow>,
     fee_pool: u128,
-    // Legacy mirror field: accepted on read for compatibility, omitted on write.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    marks_quota: Vec<SnapshotQuotaRow>,
     #[serde(default)]
     imported_set: Vec<[u8; 32]>,
     #[serde(default)]
@@ -555,16 +642,16 @@ impl From<Account> for SnapshotAccountWire {
             signing_pubkey: value.signing_pubkey,
             derivation_index: value.derivation_index,
             balance_pwm: value.balance_pwm,
-            staked: value.staked,
-            marks: value.marks,
+            staked: value.staked_pwm_raw,
+            marks: value.stored_marks,
             initialized: value.initialized,
             index: value.index,
             flags: value.flags,
             nonce: value.nonce,
-            last_claim_unix_time: value.last_claim_unix_time,
-            last_claim_anchor_ref: value.last_claim_anchor_ref,
-            free_claim_utc_day: value.free_claim_utc_day,
-            last_stake_change_height: value.last_stake_change_height,
+            last_claim_unix_time: 0,
+            last_claim_anchor_ref: value.marks_last_block,
+            free_claim_utc_day: None,
+            last_stake_change_height: value.marks_last_block,
             rescue_address: value.rescue_address,
             active_policies: value.active_policies,
             dormant_policies: value.dormant_policies,
@@ -586,16 +673,15 @@ impl From<SnapshotAccountWire> for Account {
             signing_pubkey: value.signing_pubkey,
             derivation_index: value.derivation_index,
             balance_pwm: value.balance_pwm,
-            staked: value.staked,
-            marks: value.marks,
+            staked_pwm_raw: value.staked,
+            stored_marks: value.marks,
+            marks_last_block: value
+                .last_claim_anchor_ref
+                .max(value.last_stake_change_height),
             initialized: value.initialized,
             index: value.index,
             flags: value.flags,
             nonce: value.nonce,
-            last_claim_unix_time: value.last_claim_unix_time,
-            last_claim_anchor_ref: value.last_claim_anchor_ref,
-            free_claim_utc_day: value.free_claim_utc_day,
-            last_stake_change_height: value.last_stake_change_height,
             rescue_address: value.rescue_address,
             active_policies: value.active_policies,
             dormant_policies: value.dormant_policies,
@@ -626,8 +712,6 @@ where
     SnapshotStateWire {
         accounts,
         fee_pool: state.fee_pool,
-        // marks_quota is a removed legacy mirror; canonical snapshots no longer emit it.
-        marks_quota: Vec::new(),
         imported_set: state.imported_set.iter().copied().collect(),
         exported_registry: state
             .exported_registry
@@ -657,7 +741,6 @@ where
             )));
         }
     }
-    validate_quota_rows(wire.marks_quota, &accounts).map_err(serde::de::Error::custom)?;
     let mut imported_set = BTreeSet::new();
     for export_id in wire.imported_set {
         if !imported_set.insert(export_id) {
@@ -728,6 +811,21 @@ fn hex_v2<const N: usize>(value: &str, field: &str) -> Result<[u8; N], String> {
     Ok(out)
 }
 
+fn serialize_hex64<S>(value: &[u8; 64], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&hex_of(value))
+}
+
+fn deserialize_hex64<'de, D>(deserializer: D) -> Result<[u8; 64], D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    hex_v2::<64>(&s, "genesis_anchor.signature").map_err(serde::de::Error::custom)
+}
+
 fn dec_v2(value: &str, field: &str) -> Result<u128, String> {
     if value.is_empty() {
         return Err(format!("{field}: invalid decimal string: empty"));
@@ -749,16 +847,16 @@ fn dec_v2(value: &str, field: &str) -> Result<u128, String> {
 
 fn dec_v2_marks(value: &str, field: &str) -> Result<u32, String> {
     let raw = dec_v2(value, field)?;
-    if raw <= u32::MAX as u128 {
+    if raw <= MARKS_CAP as u128 {
         return Ok(raw as u32);
     }
     let scaled = raw / pwm_core::PWM_RAW_SCALE;
-    Ok(scaled.min(u32::MAX as u128) as u32)
+    Ok(scaled.min(MARKS_CAP as u128) as u32)
 }
 
 fn dec_v2_u32(value: &str, field: &str) -> Result<u32, String> {
     let raw = dec_v2(value, field)?;
-    Ok(raw.min(u32::MAX as u128) as u32)
+    Ok(raw.min(MARKS_CAP as u128) as u32)
 }
 
 fn policy_kind_to_str(kind: PolicyKind) -> &'static str {
@@ -782,18 +880,38 @@ fn policy_kind_from_str(raw: &str, path: &str) -> Result<PolicyKind, String> {
     }
 }
 
-fn activation_to_str(mode: ActivationMode) -> &'static str {
+fn activation_to_str(mode: ActivationMode) -> String {
     match mode {
-        ActivationMode::Dormant => "dormant",
-        ActivationMode::Immediately => "immediately",
+        ActivationMode::Dormant => "dormant".to_string(),
+        ActivationMode::Immediately => "immediately".to_string(),
+        ActivationMode::Deferred { activate_at_height } => {
+            format!("deferred:{activate_at_height}")
+        }
     }
 }
 
 fn activation_from_str(raw: &str, path: &str) -> Result<ActivationMode, String> {
+    if let Some(h_raw) = raw.strip_prefix("deferred:") {
+        let activate_at_height = h_raw
+            .parse::<u64>()
+            .map_err(|e| format!("{path}: invalid deferred activation height '{h_raw}': {e}"))?;
+        return Ok(ActivationMode::Deferred { activate_at_height });
+    }
+    if let Some(h_raw) = raw.strip_prefix("deferred/") {
+        let activate_at_height = h_raw
+            .parse::<u64>()
+            .map_err(|e| format!("{path}: invalid deferred activation height '{h_raw}': {e}"))?;
+        return Ok(ActivationMode::Deferred { activate_at_height });
+    }
     match raw {
         "dormant" => Ok(ActivationMode::Dormant),
         "immediately" => Ok(ActivationMode::Immediately),
-        _ => Err(format!("{path}: expected dormant|immediately")),
+        "deferred" => Err(format!(
+            "{path}: deferred activation requires height (expected deferred:<u64>)"
+        )),
+        _ => Err(format!(
+            "{path}: expected dormant|immediately|deferred:<u64>"
+        )),
     }
 }
 
@@ -801,7 +919,7 @@ fn policy_action_to_v2(value: &PolicyAction) -> PolicyActionV2 {
     match value {
         PolicyAction::SetPolicy { policy, activation } => PolicyActionV2::SetPolicy {
             policy: policy_kind_to_str(*policy).to_string(),
-            activation: activation_to_str(*activation).to_string(),
+            activation: activation_to_str(*activation),
         },
         PolicyAction::ActivatePolicy { policy_id } => PolicyActionV2::ActivatePolicy {
             policy_id: *policy_id,
@@ -841,7 +959,7 @@ fn init_v4_to_v2(value: &InitV4Extension) -> InitV4ExtV2 {
             .iter()
             .map(|row| InitPolicyV2 {
                 policy: policy_kind_to_str(row.policy).to_string(),
-                activation: activation_to_str(row.activation).to_string(),
+                activation: activation_to_str(row.activation),
             })
             .collect(),
         cosign_policy: value.cosign_policy.as_ref().map(|x| CosignPolicyV2 {
@@ -889,39 +1007,32 @@ fn init_v4_from_v2(value: InitV4ExtV2, path: &str) -> Result<InitV4Extension, St
     })
 }
 
-fn validate_quota_rows(
-    rows: Vec<SnapshotQuotaRow>,
-    accounts: &BTreeMap<[u8; 32], Account>,
-) -> Result<(), String> {
-    let mut seen = BTreeSet::new();
-    for row in rows {
-        if !seen.insert(row.id) {
-            return Err(format!(
-                "snapshot state contract error: duplicate account id {} in state.marks_quota",
-                hex::encode(row.id)
-            ));
-        }
-        let Some(account) = accounts.get(&row.id) else {
-            return Err(format!(
-                "snapshot state contract error: marks_quota id {} is not present in state.accounts",
-                hex::encode(row.id)
-            ));
-        };
-        if row.quota != account.marks {
-            return Err(format!(
-                "snapshot state contract error: marks_quota mismatch for id {}: quota={} marks={}",
-                hex::encode(row.id),
-                row.quota,
-                account.marks
-            ));
-        }
+pub(super) fn data_to_v3(value: &SnapshotData) -> SnapshotDataV3 {
+    SnapshotDataV3 {
+        version: SNAPSHOT_VERSION,
+        genesis_accounts: value
+            .genesis_accounts
+            .iter()
+            .map(|row| SnapshotGenesisRowV2 {
+                acct: hex_of(&row.acct),
+                pubkey: hex_of(&row.pubkey),
+                der_idx: row.der_idx,
+            })
+            .collect(),
+        genesis_anchor: value.genesis_anchor.as_ref().map(anchor_to_v3),
+        blocks: value.blocks.iter().map(block_to_v2).collect(),
+        state: state_to_v3(&value.state),
+        roaming: roaming_to_v2(&value.roaming),
+        cross_shard: cross_shard_to_v2(&value.cross_shard),
+        blocks_stored: value.blocks_stored,
+        checkpoint_height: value.checkpoint_height,
     }
-    Ok(())
 }
 
+#[allow(dead_code)]
 pub(super) fn data_to_v2(value: &SnapshotData) -> SnapshotDataV2 {
     SnapshotDataV2 {
-        version: SNAPSHOT_VERSION,
+        version: SNAPSHOT_V2,
         genesis_accounts: value
             .genesis_accounts
             .iter()
@@ -940,7 +1051,7 @@ pub(super) fn data_to_v2(value: &SnapshotData) -> SnapshotDataV2 {
     }
 }
 
-pub(super) fn data_from_v2(value: SnapshotDataV2) -> Result<SnapshotData, String> {
+pub(super) fn data_from_v3(value: SnapshotDataV3) -> Result<SnapshotData, String> {
     if value.version != SNAPSHOT_VERSION {
         return Err(format!(
             "version: unsupported snapshot version {}, expected {}",
@@ -961,17 +1072,80 @@ pub(super) fn data_from_v2(value: SnapshotDataV2) -> Result<SnapshotData, String
                 })
             })
             .collect::<Result<Vec<_>, String>>()?,
+        genesis_anchor: value.genesis_anchor.map(anchor_from_v3).transpose()?,
         blocks: value
             .blocks
             .into_iter()
             .enumerate()
             .map(|(i, block)| block_from_v2(block, &format!("blocks[{i}]")))
             .collect::<Result<Vec<_>, String>>()?,
-        state: state_from_v2(value.state, "state")?,
+        state: state_from_v3(value.state, "state")?,
         roaming: roaming_from_v2(value.roaming)?,
         cross_shard: cross_shard_from_v2(value.cross_shard)?,
         blocks_stored: value.blocks_stored,
         checkpoint_height: value.checkpoint_height,
+    })
+}
+
+pub(super) fn data_from_v2(value: SnapshotDataV2) -> Result<SnapshotData, String> {
+    if value.version != SNAPSHOT_V2 {
+        return Err(format!(
+            "version: unsupported snapshot version {}, expected {}",
+            value.version, SNAPSHOT_V2
+        ));
+    }
+    let migration_height = value.checkpoint_height.max(value.blocks.len() as u64);
+    Ok(SnapshotData {
+        version: SNAPSHOT_VERSION,
+        genesis_accounts: value
+            .genesis_accounts
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| {
+                Ok(SnapshotGenesisRow {
+                    acct: hex_v2(&row.acct, &format!("genesis_accounts[{i}].acct"))?,
+                    pubkey: hex_v2(&row.pubkey, &format!("genesis_accounts[{i}].pubkey"))?,
+                    der_idx: row.der_idx,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+        genesis_anchor: None,
+        blocks: value
+            .blocks
+            .into_iter()
+            .enumerate()
+            .map(|(i, block)| block_from_v2(block, &format!("blocks[{i}]")))
+            .collect::<Result<Vec<_>, String>>()?,
+        state: state_from_v2(value.state, "state", migration_height)?,
+        roaming: roaming_from_v2(value.roaming)?,
+        cross_shard: cross_shard_from_v2(value.cross_shard)?,
+        blocks_stored: value.blocks_stored,
+        checkpoint_height: value.checkpoint_height,
+    })
+}
+
+fn anchor_to_v3(value: &SnapshotGenAnchor) -> SnapshotGenAnchorV3 {
+    SnapshotGenAnchorV3 {
+        schema_v: value.schema_v,
+        genesis_state_root: hex_of(&value.genesis_state_root),
+        gencfg_digest: hex_of(&value.gencfg_digest),
+        block1_hdr_hash: hex_of(&value.block1_hdr_hash),
+        signer_prod_idx: value.signer_prod_idx,
+        signature: hex_of(&value.signature),
+    }
+}
+
+fn anchor_from_v3(value: SnapshotGenAnchorV3) -> Result<SnapshotGenAnchor, String> {
+    Ok(SnapshotGenAnchor {
+        schema_v: value.schema_v,
+        genesis_state_root: hex_v2(
+            &value.genesis_state_root,
+            "genesis_anchor.genesis_state_root",
+        )?,
+        gencfg_digest: hex_v2(&value.gencfg_digest, "genesis_anchor.gencfg_digest")?,
+        block1_hdr_hash: hex_v2(&value.block1_hdr_hash, "genesis_anchor.block1_hdr_hash")?,
+        signer_prod_idx: value.signer_prod_idx,
+        signature: hex_v2(&value.signature, "genesis_anchor.signature")?,
     })
 }
 
@@ -1113,19 +1287,14 @@ fn body_to_v2(value: &TxBody) -> TxBodyV2 {
             mark_amount: dec_of_u32(*mark_amount),
             beneficiary: beneficiary.as_ref().map(hex_of),
         },
-        TxBody::Claim {
-            mode,
-            claim_units,
-            anchor_ref,
-            fee,
-        } => TxBodyV2::Claim {
-            mode: match mode {
-                pwm_core::tx::ClaimMode::Free => "free".to_string(),
-                pwm_core::tx::ClaimMode::Paid => "paid".to_string(),
-            },
-            claim_units: dec_of_u32(*claim_units),
-            anchor_ref: *anchor_ref,
-            fee: dec_of(*fee),
+        TxBody::ClaimIPv4Batch {
+            phase,
+            batch_root,
+            registry_sig,
+        } => TxBodyV2::ClaimIpv4Batch {
+            phase: *phase,
+            batch_root: hex_of(batch_root),
+            registry_sig: hex_of(registry_sig),
         },
         TxBody::Export {
             to,
@@ -1183,21 +1352,16 @@ fn body_from_v2(value: TxBodyV2, path: &str) -> Result<TxBody, String> {
                 .map(|v| hex_v2(v, &format!("{path}.beneficiary")))
                 .transpose()?,
         }),
-        TxBodyV2::Claim {
-            mode,
-            claim_units,
-            anchor_ref,
-            fee,
-        } => Ok(TxBody::Claim {
-            mode: match mode.as_str() {
-                "free" => pwm_core::tx::ClaimMode::Free,
-                "paid" => pwm_core::tx::ClaimMode::Paid,
-                _ => return Err(format!("{path}.mode: expected free|paid")),
-            },
-            claim_units: dec_v2_u32(&claim_units, &format!("{path}.claim_units"))?,
-            anchor_ref,
-            fee: dec_v2(&fee, &format!("{path}.fee"))?,
+        TxBodyV2::ClaimIpv4Batch {
+            phase,
+            batch_root,
+            registry_sig,
+        } => Ok(TxBody::ClaimIPv4Batch {
+            phase,
+            batch_root: hex_v2(&batch_root, &format!("{path}.batch_root"))?,
+            registry_sig: hex_v2(&registry_sig, &format!("{path}.registry_sig"))?,
         }),
+        TxBodyV2::Claim { .. } => Err(format!("{path}: tx body variant `claim` is retired in V5")),
         TxBodyV2::Export {
             to,
             target_domain,
@@ -1230,6 +1394,7 @@ fn body_from_v2(value: TxBodyV2, path: &str) -> Result<TxBody, String> {
     }
 }
 
+#[allow(dead_code)]
 fn state_to_v2(value: &ChainState) -> SnapshotStateV2 {
     SnapshotStateV2 {
         accounts: value
@@ -1241,8 +1406,6 @@ fn state_to_v2(value: &ChainState) -> SnapshotStateV2 {
             })
             .collect(),
         fee_pool: dec_of(value.fee_pool),
-        // marks_quota is a removed legacy mirror; canonical snapshots no longer emit it.
-        marks_quota: Vec::new(),
         imported_set: value.imported_set.iter().map(hex_of).collect(),
         exported_registry: value
             .exported_registry
@@ -1257,7 +1420,36 @@ fn state_to_v2(value: &ChainState) -> SnapshotStateV2 {
     }
 }
 
-fn state_from_v2(value: SnapshotStateV2, path: &str) -> Result<ChainState, String> {
+fn state_to_v3(value: &ChainState) -> SnapshotStateV3 {
+    SnapshotStateV3 {
+        accounts: value
+            .accounts
+            .iter()
+            .map(|(id, account)| SnapshotStateRowV3 {
+                id: hex_of(id),
+                account: account_to_v3(account),
+            })
+            .collect(),
+        fee_pool: dec_of(value.fee_pool),
+        imported_set: value.imported_set.iter().map(hex_of).collect(),
+        exported_registry: value
+            .exported_registry
+            .iter()
+            .map(|(export_id, row)| SnapshotExportRowV2 {
+                export_id: hex_of(export_id),
+                to: hex_of(&row.to),
+                target_domain: row.target_domain,
+                amount: dec_of(row.amount),
+            })
+            .collect(),
+    }
+}
+
+fn state_from_v2(
+    value: SnapshotStateV2,
+    path: &str,
+    migration_height: u64,
+) -> Result<ChainState, String> {
     let wire = SnapshotStateWire {
         accounts: value
             .accounts
@@ -1269,22 +1461,12 @@ fn state_from_v2(value: SnapshotStateV2, path: &str) -> Result<ChainState, Strin
                     account: account_from_v2(
                         row.account,
                         &format!("{path}.accounts[{i}].account"),
+                        migration_height,
                     )?,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?,
         fee_pool: dec_v2(&value.fee_pool, &format!("{path}.fee_pool"))?,
-        marks_quota: value
-            .marks_quota
-            .into_iter()
-            .enumerate()
-            .map(|(i, row)| {
-                Ok(SnapshotQuotaRow {
-                    id: hex_v2(&row.id, &format!("{path}.marks_quota[{i}].id"))?,
-                    quota: dec_v2_marks(&row.quota, &format!("{path}.marks_quota[{i}].quota"))?,
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?,
         imported_set: value
             .imported_set
             .into_iter()
@@ -1314,21 +1496,68 @@ fn state_from_v2(value: SnapshotStateV2, path: &str) -> Result<ChainState, Strin
     state_from_wire(wire).map_err(|e| format!("{path}: {e}"))
 }
 
+fn state_from_v3(value: SnapshotStateV3, path: &str) -> Result<ChainState, String> {
+    let wire = SnapshotStateWire {
+        accounts: value
+            .accounts
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| {
+                Ok(SnapshotStateRow {
+                    id: hex_v2(&row.id, &format!("{path}.accounts[{i}].id"))?,
+                    account: SnapshotAccountWire::from(account_from_v3(
+                        row.account,
+                        &format!("{path}.accounts[{i}].account"),
+                    )?),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+        fee_pool: dec_v2(&value.fee_pool, &format!("{path}.fee_pool"))?,
+        imported_set: value
+            .imported_set
+            .into_iter()
+            .enumerate()
+            .map(|(i, id)| hex_v2(&id, &format!("{path}.imported_set[{i}]")))
+            .collect::<Result<Vec<_>, String>>()?,
+        exported_registry: value
+            .exported_registry
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| {
+                Ok(SnapshotExportRow {
+                    export_id: hex_v2(
+                        &row.export_id,
+                        &format!("{path}.exported_registry[{i}].export_id"),
+                    )?,
+                    to: hex_v2(&row.to, &format!("{path}.exported_registry[{i}].to"))?,
+                    target_domain: row.target_domain,
+                    amount: dec_v2(
+                        &row.amount,
+                        &format!("{path}.exported_registry[{i}].amount"),
+                    )?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+    };
+    state_from_wire(wire).map_err(|e| format!("{path}: {e}"))
+}
+
+#[allow(dead_code)]
 fn account_to_v2(value: &Account) -> SnapshotAccountV2 {
     SnapshotAccountV2 {
         signing_pubkey: hex_of(&value.signing_pubkey),
         derivation_index: value.derivation_index,
         balance_pwm: dec_of(value.balance_pwm),
-        staked: dec_of(value.staked),
-        marks: dec_of_u32(value.marks),
+        staked: dec_of(value.staked_pwm_raw),
+        marks: dec_of_u32(value.stored_marks),
         initialized: value.initialized,
         index: value.index,
         flags: value.flags,
         nonce: value.nonce,
-        last_claim_unix_time: value.last_claim_unix_time,
-        last_claim_anchor_ref: value.last_claim_anchor_ref,
-        free_claim_utc_day: value.free_claim_utc_day,
-        last_stake_change_height: value.last_stake_change_height,
+        last_claim_unix_time: 0,
+        last_claim_anchor_ref: value.marks_last_block,
+        free_claim_utc_day: None,
+        last_stake_change_height: value.marks_last_block,
         rescue_address: value.rescue_address.as_ref().map(hex_of),
         active_policies: value.active_policies,
         dormant_policies: value.dormant_policies,
@@ -1343,7 +1572,38 @@ fn account_to_v2(value: &Account) -> SnapshotAccountV2 {
     }
 }
 
-fn account_from_v2(value: SnapshotAccountV2, path: &str) -> Result<SnapshotAccountWire, String> {
+fn account_to_v3(value: &Account) -> SnapshotAccountV3 {
+    SnapshotAccountV3 {
+        signing_pubkey: hex_of(&value.signing_pubkey),
+        derivation_index: value.derivation_index,
+        balance_pwm: dec_of(value.balance_pwm),
+        staked_pwm_raw: dec_of(value.staked_pwm_raw),
+        stored_marks: dec_of_u32(value.stored_marks),
+        marks_last_block: value.marks_last_block,
+        initialized: value.initialized,
+        index: value.index,
+        flags: value.flags,
+        nonce: value.nonce,
+        rescue_address: value.rescue_address.as_ref().map(hex_of),
+        active_policies: value.active_policies,
+        dormant_policies: value.dormant_policies,
+        deferred_policies: value.deferred_policies.clone(),
+        ipv4_claimed_phase: value.ipv4_claimed_phase,
+        finalized: value.finalized,
+        owner_kind: value.owner_kind.clone(),
+        owner_display_name: value.owner_display_name.clone(),
+        owner_country_hint: value.owner_country_hint.clone(),
+        company_metadata_commitment: value.company_metadata_commitment.as_ref().map(hex_of),
+        external_verification_ref: value.external_verification_ref.clone(),
+        requested_domain_lo: value.requested_domain_lo,
+    }
+}
+
+fn account_from_v2(
+    value: SnapshotAccountV2,
+    path: &str,
+    migration_height: u64,
+) -> Result<SnapshotAccountWire, String> {
     Ok(SnapshotAccountWire {
         signing_pubkey: hex_v2(&value.signing_pubkey, &format!("{path}.signing_pubkey"))?,
         derivation_index: value.derivation_index,
@@ -1354,10 +1614,10 @@ fn account_from_v2(value: SnapshotAccountV2, path: &str) -> Result<SnapshotAccou
         index: value.index,
         flags: value.flags,
         nonce: value.nonce,
-        last_claim_unix_time: value.last_claim_unix_time,
-        last_claim_anchor_ref: value.last_claim_anchor_ref,
-        free_claim_utc_day: value.free_claim_utc_day,
-        last_stake_change_height: value.last_stake_change_height,
+        last_claim_unix_time: 0,
+        last_claim_anchor_ref: migration_height,
+        free_claim_utc_day: None,
+        last_stake_change_height: migration_height,
         rescue_address: value
             .rescue_address
             .as_deref()
@@ -1365,6 +1625,41 @@ fn account_from_v2(value: SnapshotAccountV2, path: &str) -> Result<SnapshotAccou
             .transpose()?,
         active_policies: value.active_policies,
         dormant_policies: value.dormant_policies,
+        finalized: value.finalized,
+        owner_kind: value.owner_kind,
+        owner_display_name: value.owner_display_name,
+        owner_country_hint: value.owner_country_hint,
+        company_metadata_commitment: value
+            .company_metadata_commitment
+            .as_deref()
+            .map(|v| hex_v2(v, &format!("{path}.company_metadata_commitment")))
+            .transpose()?,
+        external_verification_ref: value.external_verification_ref,
+        requested_domain_lo: value.requested_domain_lo,
+    })
+}
+
+fn account_from_v3(value: SnapshotAccountV3, path: &str) -> Result<Account, String> {
+    Ok(Account {
+        signing_pubkey: hex_v2(&value.signing_pubkey, &format!("{path}.signing_pubkey"))?,
+        derivation_index: value.derivation_index,
+        balance_pwm: dec_v2(&value.balance_pwm, &format!("{path}.balance_pwm"))?,
+        staked_pwm_raw: dec_v2(&value.staked_pwm_raw, &format!("{path}.staked_pwm_raw"))?,
+        stored_marks: dec_v2_marks(&value.stored_marks, &format!("{path}.stored_marks"))?,
+        marks_last_block: value.marks_last_block,
+        initialized: value.initialized,
+        index: value.index,
+        flags: value.flags,
+        nonce: value.nonce,
+        rescue_address: value
+            .rescue_address
+            .as_deref()
+            .map(|v| hex_v2(v, &format!("{path}.rescue_address")))
+            .transpose()?,
+        active_policies: value.active_policies,
+        dormant_policies: value.dormant_policies,
+        deferred_policies: value.deferred_policies,
+        ipv4_claimed_phase: value.ipv4_claimed_phase,
         finalized: value.finalized,
         owner_kind: value.owner_kind,
         owner_display_name: value.owner_display_name,
@@ -1455,7 +1750,6 @@ fn state_from_wire(wire: SnapshotStateWire) -> Result<ChainState, String> {
             ));
         }
     }
-    validate_quota_rows(wire.marks_quota, &accounts)?;
     let mut imported_set = BTreeSet::new();
     for export_id in wire.imported_set {
         if !imported_set.insert(export_id) {
@@ -1503,30 +1797,52 @@ impl SnapshotData {
 #[cfg(test)]
 mod tests {
     use super::{
-        account_from_v2, account_to_v2, tx_from_v2, tx_to_v2, Account, CosignatureV2, SignedTxV2,
-        SnapshotAccountWire,
+        account_from_v2, account_from_v3, account_to_v2, account_to_v3, tx_from_v2, tx_to_v2,
+        Account, CosignatureV2, InitPolicyV2, InitV4ExtV2, PolicyActionV2, SignedTxV2,
+        SnapshotAccountV2, TxBodyV2,
     };
-    use pwm_core::tx::{CosignRole, Cosignature, SignedTx, TxBody};
+    use pwm_core::tx::PolicyKind;
+    use pwm_core::tx::{ActivationMode, CosignRole, Cosignature, SignedTx, TxBody};
+    use pwm_core::types::DeferredPolicyEntry;
 
     #[test]
-    fn acct_free_claim_day_rt() {
-        let expected_day = 20_510;
+    fn acct_v3_keeps_v5_fields() {
         let account = Account {
-            free_claim_utc_day: Some(expected_day),
+            staked_pwm_raw: 42,
+            stored_marks: 7,
+            marks_last_block: 99,
+            deferred_policies: vec![DeferredPolicyEntry {
+                policy: PolicyKind::SenderFilter,
+                activate_at_height: 123,
+            }],
+            ipv4_claimed_phase: Some(2),
             ..Account::default()
         };
 
-        let wire: SnapshotAccountWire = account.clone().into();
-        assert_eq!(wire.free_claim_utc_day, Some(expected_day));
+        let v3 = account_to_v3(&account);
+        let from_v3 = account_from_v3(v3, "state.accounts[0].account").expect("v3 account parse");
+        assert_eq!(from_v3, account);
+    }
 
-        let from_wire: Account = wire.into();
-        assert_eq!(from_wire.free_claim_utc_day, Some(expected_day));
+    #[test]
+    fn acct_v2_uses_snap_h() {
+        let migration_height = 4321;
+        let v2 = SnapshotAccountV2 {
+            signing_pubkey: hex::encode([0u8; 32]),
+            balance_pwm: "11".into(),
+            staked: "22".into(),
+            marks: "33".into(),
+            last_claim_unix_time: 999_999,
+            last_claim_anchor_ref: 7,
+            free_claim_utc_day: Some(20_510),
+            last_stake_change_height: 8,
+            ..SnapshotAccountV2::default()
+        };
 
-        let v2 = account_to_v2(&from_wire);
-        assert_eq!(v2.free_claim_utc_day, Some(expected_day));
-
-        let from_v2 = account_from_v2(v2, "state.accounts[0].account").expect("v2 account parse");
-        assert_eq!(from_v2.free_claim_utc_day, Some(expected_day));
+        let migrated = account_from_v2(v2, "state.accounts[0].account", migration_height)
+            .expect("v2 account parse");
+        let account: Account = migrated.into();
+        assert_eq!(account.marks_last_block, migration_height);
     }
 
     #[test]
@@ -1570,5 +1886,102 @@ mod tests {
         };
         let legacy_decoded = tx_from_v2(legacy, "blocks[0].txs[0]").expect("legacy tx from v2");
         assert!(legacy_decoded.cosigns.is_empty());
+    }
+
+    #[test]
+    fn tx_set_pol_def_rt() {
+        let tx = SignedTx {
+            domain_code: 1,
+            signer_pk: [1u8; 32],
+            derivation_index: 2,
+            nonce: 3,
+            body: TxBody::Policy {
+                target_account: [9u8; 32],
+                action: pwm_core::tx::PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 777,
+                    },
+                },
+                fee: 10,
+            },
+            burn_purpose: None,
+            import_fee: None,
+            import_provenance: None,
+            init_v4: None,
+            cosigns: Vec::new(),
+            signature: [4u8; 64],
+        };
+
+        let wire = tx_to_v2(&tx);
+        let decoded = tx_from_v2(wire, "blocks[0].txs[0]").expect("tx from v2");
+        assert_eq!(decoded, tx);
+    }
+
+    #[test]
+    fn tx_init_pol_def_rt() {
+        let wire = SignedTxV2 {
+            domain_code: 1,
+            signer_pk: hex::encode([1u8; 32]),
+            derivation_index: 2,
+            nonce: 3,
+            body: TxBodyV2::Init { index: 1, flags: 0 },
+            burn_purpose: None,
+            import_fee: None,
+            import_provenance: None,
+            init_v4: Some(InitV4ExtV2 {
+                owner_kind: "company".to_string(),
+                owner_display_name: "Acme".to_string(),
+                owner_country_hint: "CY".to_string(),
+                company_metadata_commitment: hex::encode([7u8; 32]),
+                external_verification_ref: "https://example.org/ref".to_string(),
+                requested_domain_lo: 0,
+                rescue_address: None,
+                initial_policies: vec![InitPolicyV2 {
+                    policy: "sender_filter".to_string(),
+                    activation: "deferred:123".to_string(),
+                }],
+                cosign_policy: None,
+            }),
+            cosigns: Vec::new(),
+            signature: hex::encode([2u8; 64]),
+        };
+
+        let decoded = tx_from_v2(wire, "blocks[0].txs[0]").expect("tx from v2");
+        let wire_back = tx_to_v2(&decoded);
+        let TxBodyV2::Init { .. } = wire_back.body else {
+            panic!("expected init body");
+        };
+        let init = wire_back.init_v4.expect("init_v4");
+        assert_eq!(init.initial_policies.len(), 1);
+        assert_eq!(init.initial_policies[0].policy, "sender_filter");
+        assert_eq!(init.initial_policies[0].activation, "deferred:123");
+    }
+
+    #[test]
+    fn tx_v2_deferred_needs_h() {
+        let wire = SignedTxV2 {
+            domain_code: 1,
+            signer_pk: hex::encode([1u8; 32]),
+            derivation_index: 2,
+            nonce: 3,
+            body: TxBodyV2::Policy {
+                target_account: hex::encode([9u8; 32]),
+                action: PolicyActionV2::SetPolicy {
+                    policy: "sender_filter".to_string(),
+                    activation: "deferred".to_string(),
+                },
+                fee: "1".to_string(),
+            },
+            burn_purpose: None,
+            import_fee: None,
+            import_provenance: None,
+            init_v4: None,
+            cosigns: Vec::new(),
+            signature: hex::encode([2u8; 64]),
+        };
+
+        let err = tx_from_v2(wire, "blocks[0].txs[0]").expect_err("deferred must include height");
+        assert!(err.contains("requires height"));
     }
 }

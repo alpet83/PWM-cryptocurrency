@@ -94,3 +94,27 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 pub fn text_input_set_text(input: &mut TextInput, s: impl Into<String>) {
     input.set_text(s.into());
 }
+
+/// Canonical AcctRow fixture defaults for integration tests.
+pub fn mk_acct_row(id: AccountId) -> AcctRow {
+    AcctRow {
+        id,
+        id_hex: hex::encode(id),
+        balance_pwm: 0,
+        initialized: true,
+        nonce: 0,
+        marks: 0,
+        marks_last_block: 0,
+        effective_marks: None,
+        marks_sat_pct: None,
+        staked: 0,
+        rescue_address: None,
+        active_policies: 0,
+        dormant_policies: 0,
+        finalized: false,
+        owner_kind: String::new(),
+        owner_name: String::new(),
+        owner_country: String::new(),
+        label: None,
+    }
+}

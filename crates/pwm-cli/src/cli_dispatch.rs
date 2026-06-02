@@ -1,11 +1,11 @@
 //! CLI command dispatch (`run` orchestration after Parse).
 
 use crate::{
-    cmd_addr, cmd_book, cmd_genesis, cmd_key, cmd_node, cmd_offchain, cmd_roaming, cmd_tx,
-    cmd_wallet, Cli, Cmd, WalletCmd,
+    cmd_account, cmd_addr, cmd_book, cmd_genesis, cmd_key, cmd_node, cmd_offchain, cmd_roaming,
+    cmd_tx, cmd_wallet, Cli, Cmd, WalletCmd,
 };
 
-pub(crate) fn run(cli: Cli) {
+pub fn run(cli: Cli) {
     let rpc_base = cli.rpc.trim_end_matches('/').to_string();
     let wallet_passphrase = cli.wallet_passphrase.clone();
     let genesis_passphrase = cli.genesis_passphrase.clone();
@@ -118,12 +118,16 @@ pub(crate) fn run(cli: Cli) {
                 initial_policies: initial_policy,
             },
         ),
+        Cmd::AccountInfo { account, wallet } => {
+            cmd_account::run_account_info(&rpc_base, account, wallet, upgrade_wallet)
+        }
         Cmd::TxPolicySet {
             wallet,
             master,
             domain,
             policy,
             activation,
+            activate_at_height,
             fee,
         } => cmd_tx::run_tx_policy_set(
             &rpc_base,
@@ -134,6 +138,7 @@ pub(crate) fn run(cli: Cli) {
             upgrade_wallet,
             policy,
             activation,
+            activate_at_height,
             fee,
         ),
         Cmd::TxPolicyActivate {
@@ -252,33 +257,17 @@ pub(crate) fn run(cli: Cli) {
             wallet,
             master,
             domain,
-            claim_mode,
-            claim_units,
-            all,
-            anchor_ref,
-            fee,
+            ..
         } => {
-            let mode = match cmd_tx::parse_claim_mode_cli(&claim_mode) {
-                Ok(m) => m,
-                Err(e) => crate::exit_user_error(&e),
-            };
-            let units = if all || claim_units == 0 {
-                pwm_core::tx::CLAIM_ALL
-            } else {
-                claim_units
-            };
-            cmd_tx::run_tx_claim(
-                &rpc_base,
+            let _ = (
                 wallet,
                 master,
                 domain,
-                wallet_passphrase.as_deref(),
+                wallet_passphrase,
                 upgrade_wallet,
-                mode,
-                units,
-                anchor_ref,
-                fee,
+                rpc_base,
             );
+            crate::exit_user_error("tx-claim is retired in V5");
         }
         Cmd::TxExport {
             wallet,

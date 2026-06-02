@@ -1,4 +1,7 @@
 # Shared workspace artifacts (one debug/ tree for pwm-cli + pwmd and other members).
-# Resolved relative to the workspace root (directory containing the root Cargo.toml).
+# Keep build output outside the project drive so local builds do not fill P:.
+[env]
+PATH = { value = "C:\\msys64\\ucrt64\\bin;${PATH}", relative = false, force = true }
+
 [build]
-target-dir = "../rust-target-shared"
+target-dir = "F:\\pwm-test\\shared"

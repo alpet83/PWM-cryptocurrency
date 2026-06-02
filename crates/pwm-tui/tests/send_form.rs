@@ -156,14 +156,8 @@ fn nonce_404_acct_nf_only() {
 #[test]
 fn recv_panel_has_new_row() {
     let rows = vec![AcctRow {
-        id: [1u8; 32],
-        id_hex: "01".repeat(32),
         balance_pwm: 1,
-        initialized: true,
-        nonce: 0,
-        marks: 0,
-        staked: 0,
-        label: None,
+        ..mk_acct_row([1u8; 32])
     }];
     assert_eq!(receiver_table_len(&rows), 2);
     assert!(selected_to_receiver(&rows, 0).is_none());
@@ -175,24 +169,12 @@ fn recv_panel_has_new_row() {
 fn recv_sel_clamps_last() {
     let rows = vec![
         AcctRow {
-            id: [1u8; 32],
-            id_hex: "01".repeat(32),
             balance_pwm: 1,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            ..mk_acct_row([1u8; 32])
         },
         AcctRow {
-            id: [2u8; 32],
-            id_hex: "02".repeat(32),
             balance_pwm: 2,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            ..mk_acct_row([2u8; 32])
         },
     ];
     let mut sel = 0usize;
@@ -355,24 +337,14 @@ fn owner_recv_wallet_pref() {
     let other = [3u8; 32];
     let rows = vec![
         AcctRow {
-            id: other,
-            id_hex: hex::encode(other),
             balance_pwm: 1,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(other),
+            ..mk_acct_row(other)
         },
         AcctRow {
-            id: owner,
-            id_hex: hex::encode(owner),
             balance_pwm: 2,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(owner),
+            ..mk_acct_row(owner)
         },
     ];
     let identity = IdentitySource::Wallet(WalletIdentity {
@@ -406,14 +378,9 @@ fn owner_recv_book() {
     let book_b = [2u8; 32];
     let rows = vec![
         AcctRow {
-            id: owner,
-            id_hex: hex::encode(owner),
             balance_pwm: 9,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(owner),
+            ..mk_acct_row(owner)
         },
         AcctRow {
             id: book_a,
@@ -422,7 +389,17 @@ fn owner_recv_book() {
             initialized: true,
             nonce: 1,
             marks: 0,
+            marks_last_block: 0,
+            effective_marks: None,
+            marks_sat_pct: None,
             staked: 0,
+            rescue_address: None,
+            active_policies: 0,
+            dormant_policies: 0,
+            finalized: false,
+            owner_kind: String::new(),
+            owner_name: String::new(),
+            owner_country: String::new(),
             label: None,
         },
     ];
@@ -469,34 +446,19 @@ fn owner_recv_owned_idx() {
     let peer = [1u8; 32];
     let rows = vec![
         AcctRow {
-            id: owner_a,
-            id_hex: hex::encode(owner_a),
             balance_pwm: 5,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(owner_a),
+            ..mk_acct_row(owner_a)
         },
         AcctRow {
-            id: owner_b,
-            id_hex: hex::encode(owner_b),
             balance_pwm: 7,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(owner_b),
+            ..mk_acct_row(owner_b)
         },
         AcctRow {
-            id: peer,
-            id_hex: hex::encode(peer),
             balance_pwm: 1,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(peer),
+            ..mk_acct_row(peer)
         },
     ];
     let identity = IdentitySource::Wallet(WalletIdentity {
@@ -543,14 +505,9 @@ fn owner_recv_owned_idx() {
 fn owner_recv_book_own() {
     let owner = [9u8; 32];
     let rows = vec![AcctRow {
-        id: owner,
-        id_hex: hex::encode(owner),
         balance_pwm: 9,
-        initialized: true,
-        nonce: 0,
-        marks: 0,
-        staked: 0,
-        label: None,
+        id_hex: hex::encode(owner),
+        ..mk_acct_row(owner)
     }];
     let identity = IdentitySource::Wallet(WalletIdentity {
         account_id: owner,
@@ -621,24 +578,14 @@ fn f6_row_owner_sender() {
     });
     let owner_rows = vec![
         AcctRow {
-            id: selected,
-            id_hex: hex::encode(selected),
             balance_pwm: 1,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(selected),
+            ..mk_acct_row(selected)
         },
         AcctRow {
-            id: active,
-            id_hex: hex::encode(active),
             balance_pwm: 2,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(active),
+            ..mk_acct_row(active)
         },
     ];
     let form =
@@ -870,14 +817,9 @@ fn cy_act_reject_db_sk() {
     assert!(err.contains("signing key for m/0/"), "{err}");
 
     let owner_rows = vec![AcctRow {
-        id: cy,
-        id_hex: hex::encode(cy),
         balance_pwm: 1,
-        initialized: true,
-        nonce: 0,
-        marks: 0,
-        staked: 0,
-        label: None,
+        id_hex: hex::encode(cy),
+        ..mk_acct_row(cy)
     }];
     let err = match f6_build_send_form(&identity, &owner_rows, 0, &[], 0) {
         Ok(_) => panic!("F6 must block before submit"),
@@ -895,34 +837,19 @@ fn owner_recv_seed_v2() {
     let third = [7u8; 32];
     let rows = vec![
         AcctRow {
-            id: first,
-            id_hex: hex::encode(first),
             balance_pwm: 5,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(first),
+            ..mk_acct_row(first)
         },
         AcctRow {
-            id: second,
-            id_hex: hex::encode(second),
             balance_pwm: 7,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(second),
+            ..mk_acct_row(second)
         },
         AcctRow {
-            id: third,
-            id_hex: hex::encode(third),
             balance_pwm: 1,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(third),
+            ..mk_acct_row(third)
         },
     ];
     let (owner_rows, active_owner_idx, receivers) =
@@ -947,14 +874,9 @@ fn owner_recv_keep_lo0() {
     allowed[1] = 0x01;
     let rows = vec![
         AcctRow {
-            id: owner,
-            id_hex: hex::encode(owner),
             balance_pwm: 9,
-            initialized: true,
-            nonce: 0,
-            marks: 0,
-            staked: 0,
-            label: None,
+            id_hex: hex::encode(owner),
+            ..mk_acct_row(owner)
         },
         AcctRow {
             id: lo_zero,
@@ -963,7 +885,17 @@ fn owner_recv_keep_lo0() {
             initialized: true,
             nonce: 1,
             marks: 0,
+            marks_last_block: 0,
+            effective_marks: None,
+            marks_sat_pct: None,
             staked: 0,
+            rescue_address: None,
+            active_policies: 0,
+            dormant_policies: 0,
+            finalized: false,
+            owner_kind: String::new(),
+            owner_name: String::new(),
+            owner_country: String::new(),
             label: Some("lo_zero".into()),
         },
         AcctRow {
@@ -973,7 +905,17 @@ fn owner_recv_keep_lo0() {
             initialized: true,
             nonce: 2,
             marks: 0,
+            marks_last_block: 0,
+            effective_marks: None,
+            marks_sat_pct: None,
             staked: 0,
+            rescue_address: None,
+            active_policies: 0,
+            dormant_policies: 0,
+            finalized: false,
+            owner_kind: String::new(),
+            owner_name: String::new(),
+            owner_country: String::new(),
             label: Some("allowed".into()),
         },
     ];

@@ -1,6 +1,7 @@
 //! Outbound seed dialing: local node hello builder and retry classification.
 
 use super::*;
+use crate::transport::peer_session::{handshake_read_traced, handshake_write_traced};
 use serde::Deserialize;
 
 fn retryable_connect_outcome(
@@ -141,7 +142,7 @@ pub(crate) async fn attempt_seed_connect(
     Option<String>,
 ) {
     let genesis_hash = {
-        let hs = app.handshake.read().await;
+        let hs = handshake_read_traced(app, "dial").await;
         hs.validation_ctx.expected_genesis_hash.clone()
     };
     let chain_tip_height = {
@@ -215,7 +216,7 @@ pub(crate) async fn attempt_seed_connect(
                 .node_id
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string());
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "dial").await;
             hs.genesis_guard.blocked = true;
             hs.genesis_guard.mismatch_total = hs.genesis_guard.mismatch_total.saturating_add(1);
             hs.genesis_guard.last_mismatch = Some(GenesisMismatchSnapshot {
@@ -278,7 +279,7 @@ pub(crate) async fn attempt_seed_connect(
         Some(v) => v,
         None => return retryable_connect_outcome(format!("seed {seed} no_matching_peer_hello")),
     };
-    let mut hs = app.handshake.write().await;
+    let mut hs = handshake_write_traced(app, "dial").await;
     let node_id = remote.node.node_id.clone();
     match process_incoming_peer_hello(
         &mut hs,

@@ -1,7 +1,7 @@
 //! Seed outbound TCP connect with sticky trusted-session skip logic.
 
 use super::super::super::*;
-use super::super::{has_sticky_trusted_session, sticky_session_window_ms};
+use super::super::{handshake_write_traced, has_sticky_trusted_session, sticky_session_window_ms};
 
 pub(super) async fn seed_try_tcp_connect(
     app: &App,
@@ -11,7 +11,7 @@ pub(super) async fn seed_try_tcp_connect(
     now_ms: u64,
 ) -> Option<tokio::net::TcpStream> {
     {
-        let mut hs = app.handshake.write().await;
+        let mut hs = handshake_write_traced(app, "seed_connect").await;
         let sticky_window_ms = sticky_session_window_ms(cfg);
         if has_sticky_trusted_session(&hs, seed_key, now_ms, sticky_window_ms) {
             record_reconnect(
@@ -61,7 +61,7 @@ pub(super) async fn seed_try_tcp_connect(
             Some(v)
         }
         Ok(Err(e)) => {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "seed_connect").await;
             warn!(
                 target: "pwmd::peer",
                 "peer tcp connect failed seed={} remote={} error={}",
@@ -80,6 +80,7 @@ pub(super) async fn seed_try_tcp_connect(
                 .snapshot
                 .session_retrying_total
                 .saturating_add(1);
+            drop(hs);
             tokio::time::sleep(std::time::Duration::from_millis(
                 super::super::peer_retry_sleep_ms(cfg, seed_key, now_ms),
             ))
@@ -87,7 +88,7 @@ pub(super) async fn seed_try_tcp_connect(
             None
         }
         Err(_) => {
-            let mut hs = app.handshake.write().await;
+            let mut hs = handshake_write_traced(app, "seed_connect").await;
             warn!(
                 target: "pwmd::peer",
                 "peer tcp connect timeout seed={} remote={} timeout_ms={}",
@@ -108,6 +109,7 @@ pub(super) async fn seed_try_tcp_connect(
                 .snapshot
                 .session_retrying_total
                 .saturating_add(1);
+            drop(hs);
             tokio::time::sleep(std::time::Duration::from_millis(
                 super::super::peer_retry_sleep_ms(cfg, seed_key, now_ms),
             ))

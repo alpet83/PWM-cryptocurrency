@@ -291,6 +291,116 @@ pub struct ImportProvenanceOut {
     pub amount: u128,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SealControlIn {
+    pub mode: crate::SealControlMode,
+    #[serde(default)]
+    pub verbose_default: Option<bool>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SealStep {
+    Preflight,
+    Lease,
+    Propose,
+    GatePoll,
+    GateWait,
+    SealCommit,
+    StepAll,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SealStepIn {
+    pub step: SealStep,
+    #[serde(default)]
+    pub verbose: Option<bool>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub target_h: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SealSyncOut {
+    pub sync_n: u64,
+    pub live_n: u64,
+    pub peer_tip_max: u64,
+    pub max_lag: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SealLeaseOut {
+    pub state: String,
+    pub allow_seal: bool,
+    pub owner_id: String,
+    pub term: u64,
+    pub expires_at_ms: u64,
+    pub last_tip: u64,
+    pub fence: u64,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SealRoundOut {
+    pub height: u64,
+    pub round: u32,
+    pub got: u64,
+    pub need: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub propose_opened_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SealStatusOut {
+    pub mode: crate::SealControlMode,
+    pub tip_h: u64,
+    pub target_h: u64,
+    pub sync_ready: SealSyncOut,
+    pub lease: SealLeaseOut,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub round: Option<SealRoundOut>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_step: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_step_ms: Option<u64>,
+    pub verbose_active: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SealGateOut {
+    pub got: u64,
+    pub need: u8,
+    pub elapsed_ms: Option<u64>,
+    pub obs: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SealStepOut {
+    pub ok: bool,
+    pub step: SealStep,
+    pub target_h: u64,
+    pub tip_h_after: u64,
+    pub duration_ms: u64,
+    pub detail: String,
+    pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gate: Option<SealGateOut>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync: Option<SealSyncOut>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SealControlOut {
+    pub mode: crate::SealControlMode,
+    pub verbose_default: bool,
+    pub tip_h: u64,
+    pub target_h: u64,
+    pub verbose_active: bool,
+}
+
 #[derive(Serialize)]
 pub struct FlowTraceOut {
     pub rows: Vec<crate::state::FlowTraceRow>,
@@ -354,6 +464,7 @@ pub struct AcctOut {
     pub local_view_only: bool,
     pub staked: String,
     pub marks: u32,
+    pub marks_last_block: u64,
     pub initialized: bool,
     pub nonce: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -376,6 +487,8 @@ pub struct AcctOut {
     pub external_verification_ref: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requested_domain_lo: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipv4_claimed_phase: Option<u8>,
 }
 
 #[derive(Serialize)]

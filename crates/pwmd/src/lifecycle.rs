@@ -2,6 +2,7 @@
 //! `spawn_snapshot_loader` logs `Instant`-based stages on target `pwmd::startup::snapshot`.
 
 use crate::api::common::{rollback_commit, take_bak};
+use crate::block_timing;
 use crate::bootstrap::app_from_genesis_id;
 use crate::config::PwmdConfig;
 use crate::debug_dump::{align_mid_on, mid_wait_ms};
@@ -15,6 +16,7 @@ use crate::snapshot::{
 };
 use crate::state::{App, InitState};
 use crate::storage_namespace;
+use crate::transport::record_cluster_prop_tick;
 use crate::RuntimeIdentityMode;
 use crate::{
     cors_for_listen, digest, federation::spawn_federation_sweep_loop, router,
@@ -26,15 +28,673 @@ use pwm_core::tx::{SignedTx, TxBody};
 use pwm_core::SealTimeMode;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use tracing::{error, info, warn};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tracing::{debug, error, info, warn};
 
 pub const AUTOSNAPSHOT_BLOCK_INTERVAL: u64 = crate::snapshot::epoch::SNAP_CHK_BLK_IV;
 /// Standby sync checkpoint interval (height 1 and then every N blocks).
 pub const STANDBY_SYNC_FLUSH_IV: u64 = 100;
+const SEAL_HOUR_MS: u64 = 3_600_000;
+const CLUSTER_ATTEST_JITTER_MS: u64 = 500;
+const SEAL_DRIFT_WINDOW_BLOCKS: u64 = 100;
+const SEAL_DRIFT_STEP_PPM: u64 = 10_000;
+const PPM_DENOM: u64 = 1_000_000;
+/// ±1% envelope around nominal seal cadence (owner invariant).
+const SEAL_ENVELOPE_LO_NUM: u64 = 990;
+const SEAL_ENVELOPE_HI_NUM: u64 = 1010;
+const SEAL_ENVELOPE_DENOM: u64 = 1000;
+/// Deadband on |actual-expected|/expected below which drift adjust is skipped (0.1%).
+const SEAL_DRIFT_DEADBAND_PPM: u64 = 1_000;
+/// Wall-clock window for proposer seal-loop suppression aggregate (owner observability).
+const SEAL_SUPPRESS_WINDOW_SEC: u64 = 100;
+/// Suppression percent threshold above which the 100s summary emits at ERROR level.
+const SEAL_SUPPRESS_ALERT_PCT: f64 = 1.0;
+/// Wall-clock poll cadence for the proposer deadline scheduler (variant C).
+/// Under load gates re-check every 10 ms; under no load it bounds idle sleep.
+const SEAL_POLL_INTERVAL_MS: u64 = 50;
+/// Idle pause when no attester peer is connected and quorum is impossible.
+/// Slow enough to keep CPU/log quiet, fast enough to react when attester joins.
+const SEAL_WAIT_PEER_MS: u64 = 500;
+/// Liveness window for an attester peer record: `now - last_seen_ms` must be ≤ this.
+const ATTESTER_LIVE_WINDOW_MS: u64 = 5_000;
+/// Bounded proposer resend attempts after `got=0` quorum timeout.
+const CLUSTER_PROP_RETRY_CAP: u8 = 2;
 
 pub(crate) fn autosnap_hit(h: u64) -> bool {
     h > 0 && h % AUTOSNAPSHOT_BLOCK_INTERVAL == 0
+}
+
+pub(crate) fn cluster_pending_summary_hit(h: u64) -> bool {
+    h > 0 && h % 10 == 0
+}
+
+pub(crate) fn lease_renew_log_hit(last_tip: &std::sync::atomic::AtomicU64, h: u64) -> bool {
+    if h != 1 && h % 10 != 0 {
+        return false;
+    }
+    loop {
+        let prev = last_tip.load(Ordering::Acquire);
+        if prev == h {
+            return false;
+        }
+        if last_tip
+            .compare_exchange(prev, h, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            return true;
+        }
+    }
+}
+
+pub(crate) fn seal_interval_ms(blocks_per_hour: u64) -> Result<u64, String> {
+    if blocks_per_hour == 0 {
+        return Err("genesis blocks_per_hour must be greater than zero".to_string());
+    }
+    Ok((SEAL_HOUR_MS / blocks_per_hour).max(1))
+}
+
+pub(crate) fn cluster_timing_ms(seal_ms: u64) -> u64 {
+    // RFC16 timing is genesis-derived: quorum timeout gets one nominal seal tick plus slack.
+    let seal_ms = seal_ms.max(1);
+    seal_ms
+        .saturating_mul(2)
+        .max(seal_ms.saturating_add(CLUSTER_ATTEST_JITTER_MS))
+}
+
+pub(crate) fn cluster_prop_ms(seal_ms: u64, heartbeat_ms: u64) -> u64 {
+    heartbeat_ms.max(1).min(seal_ms.max(1))
+}
+
+fn apply_cluster_timing(
+    cluster: &mut crate::ClusterCfg,
+    transport: &mut crate::TransportConfig,
+    bph: u64,
+) -> Result<u64, String> {
+    let seal_ms = seal_interval_ms(bph)?;
+    if cluster.enabled {
+        cluster.attest_timeout_ms = cluster_timing_ms(seal_ms);
+        // Heartbeat must not exceed seal cadence on any cluster role: attester
+        // ACKs gate proposer's quorum, so a 1500ms attester heartbeat starves a
+        // 1000ms proposer seal loop (~50% suppression). Cap heartbeat = min of
+        // configured value and seal_ms for proposer, attester, and any future
+        // committer role. RFC16 §timing.
+        transport.heartbeat_interval_ms = cluster_prop_ms(seal_ms, transport.heartbeat_interval_ms);
+    }
+    Ok(seal_ms)
+}
+
+pub(crate) fn seal_drift_adjust_ms(
+    current_ms: u64,
+    actual_ms: u64,
+    expected_ms: u64,
+) -> (u64, i64) {
+    if current_ms <= 1 || expected_ms == 0 || actual_ms == expected_ms {
+        return (current_ms.max(1), 0);
+    }
+    let cap = current_ms.saturating_mul(SEAL_DRIFT_STEP_PPM) / PPM_DENOM;
+    if cap == 0 {
+        return (current_ms, 0);
+    }
+    let next = if actual_ms > expected_ms {
+        current_ms.saturating_sub(cap).max(1)
+    } else {
+        current_ms.saturating_add(cap)
+    };
+    let delta = next as i128 - current_ms as i128;
+    let ppm = delta.saturating_mul(PPM_DENOM as i128) / current_ms as i128;
+    (next, ppm as i64)
+}
+
+/// True when |actual-expected|/expected < 0.1% (deadband). Skips drift adjust to avoid
+/// jitter-driven oscillation; nominal-aligned ticks stay anchored at current cadence.
+pub(crate) fn seal_drift_in_deadband(actual_ms: u64, expected_ms: u64) -> bool {
+    if expected_ms == 0 {
+        return false;
+    }
+    let diff = actual_ms.max(expected_ms) - actual_ms.min(expected_ms);
+    diff.saturating_mul(PPM_DENOM) / expected_ms < SEAL_DRIFT_DEADBAND_PPM
+}
+
+/// Clamps `effective_ms` to the owner ±1% envelope around `nominal_ms`. Returns
+/// the clamped value plus a flag for the log line. Integer math, saturating.
+pub(crate) fn seal_drift_clamp_envelope(nominal_ms: u64, effective_ms: u64) -> (u64, bool) {
+    if nominal_ms == 0 {
+        return (effective_ms.max(1), false);
+    }
+    let lo = nominal_ms.saturating_mul(SEAL_ENVELOPE_LO_NUM) / SEAL_ENVELOPE_DENOM;
+    let hi = nominal_ms.saturating_mul(SEAL_ENVELOPE_HI_NUM) / SEAL_ENVELOPE_DENOM;
+    let lo = lo.max(1);
+    if effective_ms < lo {
+        (lo, true)
+    } else if effective_ms > hi {
+        (hi, true)
+    } else {
+        (effective_ms, false)
+    }
+}
+
+/// Reports envelope offset as a signed percentage of `nominal_ms` (post-clamp).
+/// Used purely for the `envelope_pct` log field; safe for `nominal_ms == 0`.
+pub(crate) fn seal_envelope_pct(nominal_ms: u64, effective_ms: u64) -> f64 {
+    if nominal_ms == 0 {
+        return 0.0;
+    }
+    let delta = effective_ms as i128 - nominal_ms as i128;
+    (delta as f64) * 100.0 / (nominal_ms as f64)
+}
+
+/// Grid-aligned next seal deadline: the first multiple of `nominal_ms` strictly
+/// greater than `now_ms`. For `bph=3600` (nominal=1000ms) this snaps every seal
+/// attempt onto the next wall-clock second, so operator logs across nodes line
+/// up on shared second boundaries.
+pub(crate) fn align_next_seal_ms(now_ms: u64, nominal_ms: u64) -> u64 {
+    let nominal = nominal_ms.max(1);
+    let bucket = now_ms / nominal;
+    bucket.saturating_add(1).saturating_mul(nominal)
+}
+
+/// True when wall-clock has reached the scheduled seal deadline.
+pub(crate) fn should_attempt_seal(now_ms: u64, deadline_ms: u64) -> bool {
+    now_ms >= deadline_ms
+}
+
+/// Proposer ahead-trigger: once per `next_seal_time_ms`, fire when
+/// `now_ms >= next_seal - ahead_ms` but before the seal deadline.
+pub(crate) fn should_fire_seal_ahead(
+    now_ms: u64,
+    next_seal_time_ms: u64,
+    ahead_ms: u64,
+    fired_for_deadline: Option<u64>,
+) -> bool {
+    if ahead_ms == 0 {
+        return false;
+    }
+    if fired_for_deadline == Some(next_seal_time_ms) {
+        return false;
+    }
+    let trigger_at = next_seal_time_ms.saturating_sub(ahead_ms);
+    now_ms >= trigger_at && now_ms < next_seal_time_ms
+}
+
+/// Bounded sleep until the next deadline check (variant C poll scheduler).
+/// Always returns at least 1 ms; if the deadline has passed but a gate keeps
+/// the proposer from sealing, sleep `poll_ms` so retries are paced.
+pub(crate) fn poll_sleep_ms(now_ms: u64, deadline_ms: u64, poll_ms: u64) -> u64 {
+    let poll = poll_ms.max(1);
+    if now_ms >= deadline_ms {
+        return poll;
+    }
+    let remain = deadline_ms - now_ms;
+    remain.min(poll).max(1)
+}
+
+/// Gate fast-path is proposer-only and only when the first gate probe failed.
+pub(crate) fn gate_recheck_needed(is_prop: bool, gate_ok: bool) -> bool {
+    is_prop && !gate_ok
+}
+
+/// Returns true when a trusted attester peer is fresh enough to count toward quorum.
+/// `connected` means the live `PeerRecord` showed `status == Connected`, and
+/// `last_seen_ms` is the latest heartbeat / hello / wire activity time.
+pub(crate) fn attester_alive(
+    connected: bool,
+    last_seen_ms: u64,
+    now_ms: u64,
+    live_window_ms: u64,
+) -> bool {
+    if !connected {
+        return false;
+    }
+    if last_seen_ms == 0 {
+        return false;
+    }
+    now_ms.saturating_sub(last_seen_ms) <= live_window_ms
+}
+
+/// Cluster proposer preflight decision before running record/cluster_gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SealPreflight {
+    /// Quorum is reachable: continue into propose tick + cluster gate.
+    Ready,
+    /// No live attester peers: skip propose + gate work, slow-sleep, log throttled.
+    WaitingAttester,
+}
+
+/// Pure preflight rule: Ready only when at least `quorum_k` live attesters
+/// (proposer excluded) are connected. Single-node / disabled cluster maps to
+/// Ready via `cluster_enabled=false`.
+pub(crate) fn cluster_seal_preflight(
+    cluster_enabled: bool,
+    live_attesters: u8,
+    quorum_k: u8,
+) -> SealPreflight {
+    if !cluster_enabled {
+        return SealPreflight::Ready;
+    }
+    if live_attesters >= quorum_k {
+        SealPreflight::Ready
+    } else {
+        SealPreflight::WaitingAttester
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AttSyncCtx {
+    now_ms: u64,
+    local_h: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct AttSyncRes {
+    pub(crate) live_n: u8,
+    pub(crate) sync_n: u8,
+    pub(crate) local_h: u64,
+    pub(crate) peer_tip_max: u64,
+}
+
+/// Counts live and sync-ready cluster attesters.
+///
+/// Sync-ready means the attester is currently live and has no local fork-lock
+/// marker for the proposer's next gate height. Proposer preflight intentionally
+/// does **not** hard-gate on `sync_live.tip_h` lag because attest path readiness
+/// is protocol-level (attester validates parent apply before signing).
+pub(crate) async fn count_sync_ready_attesters(app: &App) -> AttSyncRes {
+    let now_ms = crate::current_time_ms().unwrap_or(0);
+    let local_h = {
+        let g = app.inner.read().await;
+        g.chain.tip_h()
+    };
+    let hs = crate::transport::handshake_read_traced(&app, "lifecycle").await;
+    count_sync_ready_hs(
+        &hs,
+        &app.cluster_cfg.members,
+        app.node_instance_id.trim(),
+        AttSyncCtx { now_ms, local_h },
+    )
+}
+
+/// Canonical member-id from a trusted peer: instance_id is the cluster member id.
+/// This must match RFC16 attest path logic in transport peer-session.
+fn trusted_member_id(peer: &crate::transport::TrustedPeer) -> Option<&str> {
+    peer.instance_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+}
+
+fn member_in_cfg(member_id: &str, members: &[String]) -> bool {
+    members.iter().any(|m| m.trim() == member_id)
+}
+
+/// Shared pure counting logic for sync-ready attester preflight.
+fn count_sync_ready_hs(
+    hs: &crate::transport::HandshakeState,
+    members: &[String],
+    local_member_id: &str,
+    ctx: AttSyncCtx,
+) -> AttSyncRes {
+    let local_member_id = local_member_id.trim();
+    let mut out = AttSyncRes {
+        local_h: ctx.local_h,
+        ..AttSyncRes::default()
+    };
+    for (node_id, trusted) in hs.trusted_peers.iter() {
+        if !trusted.cluster_attest_enabled {
+            continue;
+        }
+        if !matches!(trusted.cluster_role, ClusterRole::Attester) {
+            continue;
+        }
+        let Some(member_id) = trusted_member_id(trusted) else {
+            continue;
+        };
+        if !local_member_id.is_empty() && member_id == local_member_id {
+            continue;
+        }
+        if !member_in_cfg(member_id, members) {
+            continue;
+        }
+        let Some(rec) = hs.peers.get(node_id) else {
+            continue;
+        };
+        let liveish = crate::transport::is_peer_liveish(&rec.status);
+        if !attester_alive(
+            liveish,
+            rec.last_seen_ms,
+            ctx.now_ms,
+            ATTESTER_LIVE_WINDOW_MS,
+        ) {
+            continue;
+        }
+        out.live_n = out.live_n.saturating_add(1);
+
+        let Some(sync) = hs.sync_live.peers.get(node_id) else {
+            out.sync_n = out.sync_n.saturating_add(1);
+            continue;
+        };
+        let peer_h = sync.tip_h;
+        if peer_h > 0 {
+            out.peer_tip_max = out.peer_tip_max.max(peer_h);
+        }
+        // Keep lag only as observability input; no hard preflight suppression.
+        let _lag = ctx.local_h.saturating_sub(peer_h);
+        let fork_lock = sync.fork_h == Some(ctx.local_h.saturating_add(1)) && sync.fork_n >= 3;
+        if !fork_lock {
+            out.sync_n = out.sync_n.saturating_add(1);
+        }
+    }
+    out
+}
+
+/// Percent of suppressed iterations within a window (0.0 when no ticks).
+pub(crate) fn compute_suppress_pct(ticks: u64, suppressed: u64) -> f64 {
+    if ticks == 0 {
+        return 0.0;
+    }
+    (suppressed as f64) * 100.0 / (ticks as f64)
+}
+
+/// True when suppression percent crosses the owner alert threshold (>1.0%).
+pub(crate) fn is_suppress_alert(pct: f64) -> bool {
+    pct > SEAL_SUPPRESS_ALERT_PCT
+}
+
+/// Reason last seal slot was suppressed (operator attribution).
+/// Note: `WaitingAttester` is not a slot reason — preflight skips opening a slot
+/// when no attester is live, so it cannot appear here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SuppressReason {
+    LeaseFence,
+    ClusterGate,
+    SlotSkipped,
+}
+
+impl SuppressReason {
+    pub(crate) fn as_tag(self) -> &'static str {
+        match self {
+            SuppressReason::LeaseFence => "lease_fence",
+            SuppressReason::ClusterGate => "cluster_gate",
+            SuppressReason::SlotSkipped => "slot_skipped",
+        }
+    }
+}
+
+/// Rolling slot-level counters for proposer seal-loop suppression aggregation.
+/// Window is 100s of wall clock; counters reset after each emit. One **slot**
+/// corresponds to a single grid deadline attempt, not to every poll iteration —
+/// many polls during the same waiting slot still count as one attempt. This is
+/// the operator-meaningful denominator (~1 slot/s on bph=3600).
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct SealSuppressWindow {
+    /// Slots opened in this window (≤ window_sec / nominal_s in steady state).
+    pub slots: u64,
+    /// Slots that missed seal deadline (one strike max per slot).
+    pub slot_supp: u64,
+    /// Sealed heights produced in this window (any cause).
+    pub sealed_in: u64,
+    /// Gate waits inside attest timeout envelope (A path).
+    pub wait_att: u64,
+    /// Gate hard timeouts (B path).
+    pub gate_to: u64,
+    /// Active slot deadline_ms; `None` between attempts.
+    pub active_deadline_ms: Option<u64>,
+    /// Suppression evaluation start for the active slot.
+    pub attempt_start_ms: Option<u64>,
+    /// True once a suppression strike was recorded for this active slot.
+    pub supp_marked: bool,
+    /// Last suppression cause inside this window (best-effort attribution).
+    pub last_reason: Option<SuppressReason>,
+    /// `tip+1` seal target: at most one wait counter per height per window.
+    pub wait_marked_h: Option<u64>,
+    /// `tip+1` seal target: at most one timeout counter per height per window.
+    pub timeout_marked_h: Option<u64>,
+    /// `tip+1` seal target: at most one suppression strike per height per window.
+    pub strike_marked_h: Option<u64>,
+}
+
+/// One-shot operator logs for cluster gate outcomes (per seal target height).
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ClusterGateDedup {
+    missing_round_h: Option<u64>,
+    invalid_binding_h: Option<u64>,
+    invalid_proposer_h: Option<u64>,
+    quorum_wait_h: Option<u64>,
+    quorum_timeout_h: Option<u64>,
+    waiting_sync_h: Option<u64>,
+}
+
+impl ClusterGateDedup {
+    fn claim(slot: &mut Option<u64>, h: u64) -> bool {
+        if *slot == Some(h) {
+            false
+        } else {
+            *slot = Some(h);
+            true
+        }
+    }
+
+    pub(crate) fn should_log_missing_round(&mut self, h: u64) -> bool {
+        Self::claim(&mut self.missing_round_h, h)
+    }
+
+    pub(crate) fn should_log_invalid_binding(&mut self, h: u64) -> bool {
+        Self::claim(&mut self.invalid_binding_h, h)
+    }
+
+    pub(crate) fn should_log_invalid_proposer(&mut self, h: u64) -> bool {
+        Self::claim(&mut self.invalid_proposer_h, h)
+    }
+
+    pub(crate) fn should_log_quorum_timeout(&mut self, h: u64) -> bool {
+        Self::claim(&mut self.quorum_timeout_h, h)
+    }
+
+    pub(crate) fn should_log_quorum_wait(&mut self, h: u64) -> bool {
+        Self::claim(&mut self.quorum_wait_h, h)
+    }
+
+    pub(crate) fn should_log_wait_sync(&mut self, h: u64) -> bool {
+        Self::claim(&mut self.waiting_sync_h, h)
+    }
+
+    pub(crate) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl SealSuppressWindow {
+    pub(crate) fn mk_new() -> Self {
+        Self::default()
+    }
+
+    /// Opens a slot for `deadline_ms` if it differs from the currently active one.
+    /// Returns `true` when a new slot was actually counted.
+    pub(crate) fn begin_slot(&mut self, deadline_ms: u64, now_ms: u64) -> bool {
+        if self.active_deadline_ms == Some(deadline_ms) {
+            return false;
+        }
+        // A new deadline arrived without finishing the prior slot → count it as
+        // a skipped slot only if this slot had no prior suppression strike.
+        if self.active_deadline_ms.is_some() && !self.supp_marked {
+            self.slot_supp = self.slot_supp.saturating_add(1);
+            self.last_reason = Some(SuppressReason::SlotSkipped);
+        }
+        self.active_deadline_ms = Some(deadline_ms);
+        self.attempt_start_ms = Some(now_ms);
+        self.supp_marked = false;
+        self.slots = self.slots.saturating_add(1);
+        true
+    }
+
+    /// Records one gate-wait observation for `target_h` (`tip+1`), once per height.
+    pub(crate) fn note_wait_for_height(&mut self, target_h: u64) -> bool {
+        if self.wait_marked_h == Some(target_h) {
+            return false;
+        }
+        self.wait_marked_h = Some(target_h);
+        self.wait_att = self.wait_att.saturating_add(1);
+        true
+    }
+
+    /// Records one gate-timeout observation for `target_h` (`tip+1`), once per height.
+    pub(crate) fn note_to_for_height(&mut self, target_h: u64) -> bool {
+        if self.timeout_marked_h == Some(target_h) {
+            return false;
+        }
+        self.timeout_marked_h = Some(target_h);
+        self.gate_to = self.gate_to.saturating_add(1);
+        true
+    }
+
+    /// Records one suppression strike for the active slot once nominal window elapsed.
+    /// Returns `true` when a strike was recorded on this call.
+    pub(crate) fn eval_supp(
+        &mut self,
+        now_ms: u64,
+        nominal_ms: u64,
+        reason: SuppressReason,
+    ) -> bool {
+        self.eval_supp_for_height(now_ms, nominal_ms, reason, None)
+    }
+
+    /// Like [`Self::eval_supp`] but refuses a second strike for the same `target_h`.
+    pub(crate) fn eval_supp_for_height(
+        &mut self,
+        now_ms: u64,
+        nominal_ms: u64,
+        reason: SuppressReason,
+        target_h: Option<u64>,
+    ) -> bool {
+        if let Some(h) = target_h {
+            if self.strike_marked_h == Some(h) {
+                return false;
+            }
+        }
+        if self.active_deadline_ms.is_none() || self.supp_marked {
+            return false;
+        }
+        let nominal_ms = nominal_ms.max(1);
+        let Some(start_ms) = self.attempt_start_ms else {
+            self.attempt_start_ms = Some(now_ms);
+            return false;
+        };
+        if now_ms.saturating_sub(start_ms) <= nominal_ms {
+            return false;
+        }
+        self.slot_supp = self.slot_supp.saturating_add(1);
+        self.last_reason = Some(reason);
+        self.supp_marked = true;
+        if let Some(h) = target_h {
+            self.strike_marked_h = Some(h);
+        }
+        self.attempt_start_ms = Some(now_ms.saturating_add(SEAL_POLL_INTERVAL_MS));
+        true
+    }
+
+    /// Closes the active slot as sealed (success), no suppression strike.
+    pub(crate) fn close_sealed(&mut self) {
+        self.sealed_in = self.sealed_in.saturating_add(1);
+        self.active_deadline_ms = None;
+        self.attempt_start_ms = None;
+        self.supp_marked = false;
+    }
+
+    pub(crate) fn reset(&mut self) {
+        // Preserve no in-flight slot across emits: a slot that crossed the
+        // window boundary still counts in the closing window.
+        *self = Self::default();
+    }
+}
+
+/// Rolling counters for proposer seal-ahead (eager propose) over the same 100s
+/// wall window as [`SealSuppressWindow`].
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct SealAheadWindow {
+    /// Ahead triggers that passed attester preflight and set `cluster_prop_nudge`.
+    pub fired: u64,
+    /// Ahead window reached but preflight was `WaitingAttester`.
+    pub preflight_skip: u64,
+    /// Sum of `next_seal_time_ms - now_ms` at fire time (for avg lead).
+    pub lead_ms_sum: u64,
+}
+
+impl SealAheadWindow {
+    pub(crate) fn mk_new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn note_fired(&mut self, lead_ms: u64) {
+        self.fired = self.fired.saturating_add(1);
+        self.lead_ms_sum = self.lead_ms_sum.saturating_add(lead_ms);
+    }
+
+    pub(crate) fn note_preflight_skip(&mut self) {
+        self.preflight_skip = self.preflight_skip.saturating_add(1);
+    }
+
+    pub(crate) fn avg_lead_ms(&self) -> u64 {
+        if self.fired == 0 {
+            0
+        } else {
+            self.lead_ms_sum / self.fired
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+/// One-line ahead analytics for a 100s window (replaces per-slot INFO spam).
+fn emit_ahead_summary(ahead_ms: u64, win: &SealAheadWindow) {
+    if ahead_ms == 0 {
+        return;
+    }
+    info!(
+        "seal_ahead_summary window_sec={} ahead_ms={} fired={} preflight_skip={} avg_lead_ms={}",
+        SEAL_SUPPRESS_WINDOW_SEC,
+        ahead_ms,
+        win.fired,
+        win.preflight_skip,
+        win.avg_lead_ms(),
+    );
+}
+
+/// Emits the operator-visible seal-loop suppression summary for one 100s window.
+/// Level escalates to ERROR (red via logging.rs color_level_tag) when suppression
+/// exceeds 1.0%; otherwise INFO. On ERROR the last suppression reason tag is
+/// appended for operator attribution.
+fn emit_suppress_summary(win: &SealSuppressWindow) {
+    let struck = win.slot_supp;
+    let pct = compute_suppress_pct(win.slots, struck);
+    let reason_tag = win
+        .last_reason
+        .map(SuppressReason::as_tag)
+        .unwrap_or("none");
+    if is_suppress_alert(pct) {
+        error!(
+            "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={} last_reason={}",
+            SEAL_SUPPRESS_WINDOW_SEC,
+            win.slots,
+            win.wait_att,
+            win.gate_to,
+            struck,
+            pct,
+            win.sealed_in,
+            reason_tag,
+        );
+    } else {
+        info!(
+            "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={}",
+            SEAL_SUPPRESS_WINDOW_SEC,
+            win.slots,
+            win.wait_att,
+            win.gate_to,
+            struck,
+            pct,
+            win.sealed_in,
+        );
+    }
 }
 
 fn snap_startup_mode(backend: &SnapshotBackend, stored: BlocksStored) -> &'static str {
@@ -55,7 +715,7 @@ fn tx_kind(tx: &SignedTx) -> &'static str {
         TxBody::Stake { .. } => "stake",
         TxBody::Unstake { .. } => "unstake",
         TxBody::BurnMark { .. } => "burn_mark",
-        TxBody::Claim { .. } => "claim",
+        TxBody::ClaimIPv4Batch { .. } => "claim_ipv4_batch",
         TxBody::Export { .. } => "export",
         TxBody::Import { .. } => "import",
         TxBody::Policy { .. } => "policy",
@@ -93,10 +753,11 @@ fn first_bad_tx_ctx(
     txs: &[SignedTx],
     blk_h: u64,
     blk_ts: u64,
+    gen_cfg: &pwm_core::GenCfg,
 ) -> Option<(usize, String)> {
     let mut sim = st.clone();
     for (i, tx) in txs.iter().enumerate() {
-        if let Err(err) = sim.apply_tx_with_ctx(tx, blk_h, blk_ts) {
+        if let Err(err) = sim.apply_tx_with_ctx(tx, blk_h, blk_ts, gen_cfg) {
             return Some((i, err.to_string()));
         }
     }
@@ -163,28 +824,21 @@ fn derive_seal_role(config: &PwmdConfig) -> SealRole {
 }
 
 async fn req_graceful_stop(app: &App, height: u64, stop_h: u64) {
-    if let Some(ref backend) = app.autosnapshot_backend {
-        let save_res = {
-            let inner = app.inner.read().await;
-            backend.save_seal_persist(&inner, SealPersistMode::ShutdownFull)
-        };
-        if let Err(e) = save_res {
-            error!(
-                "debug-stop-height persist failed at height={} stop_h={}: {}",
-                height, stop_h, e
-            );
-            return;
-        }
+    let res = crate::api::handlers_shutdown::graceful_shutdown_request(
+        app,
+        crate::api::handlers_shutdown::ShutdownReason::DebugStop,
+    )
+    .await;
+    if let Err(e) = res {
+        error!(
+            "debug-stop-height persist failed at height={} stop_h={}: {}",
+            height, stop_h, e
+        );
     }
-    if let Ok(mut slot) = app.shutdown_tx.lock() {
-        if let Some(tx) = slot.take() {
-            let _ = tx.send(());
-            info!(
-                "debug-stop-height reached; graceful shutdown triggered at height={} stop_h={}",
-                height, stop_h
-            );
-        }
-    }
+    info!(
+        "debug-stop-height reached; graceful shutdown triggered at height={} stop_h={}",
+        height, stop_h
+    );
 }
 
 async fn apply_snapshot_init_state(
@@ -275,7 +929,7 @@ async fn maybe_align_mid(app: &App) {
     tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
 }
 
-async fn run_lease_gate(app: &App) -> bool {
+pub(crate) async fn run_lease_gate(app: &App) -> bool {
     if app.deployment_profile != DeploymentProfile::SingleSealer {
         return true;
     }
@@ -318,11 +972,13 @@ async fn run_lease_gate(app: &App) -> bool {
             LeaseEvent::Renew => {
                 let h = rt.last_tip;
                 // Cadence matches `sealed height={}` (first block + every 10) — renewals are per-block noise otherwise.
-                if h == 1 || h % 10 == 0 {
+                if lease_renew_log_hit(&app.lease_renew_log_tip, h) {
                     info!(
                         "seal_lease_renewed owner={} term={} fence={} expires_at_ms={} tip_h={}",
                         rt.owner_id, rt.term, rt.fence, rt.expires_at_ms, h
                     );
+                } else if h == 1 || h % 10 == 0 {
+                    debug!("seal_lease_renewed_duplicate_suppressed tip_h={}", h);
                 }
             }
             LeaseEvent::Takeover => {
@@ -345,7 +1001,10 @@ async fn run_lease_gate(app: &App) -> bool {
     step.allow_seal
 }
 
-pub(crate) async fn run_cluster_gate(app: &App) -> bool {
+pub(crate) async fn run_cluster_gate(
+    app: &App,
+    mut log_dedup: Option<&mut ClusterGateDedup>,
+) -> bool {
     if !app.cluster_cfg.enabled {
         return true;
     }
@@ -354,27 +1013,49 @@ pub(crate) async fn run_cluster_gate(app: &App) -> bool {
         g.chain.tip_h().saturating_add(1)
     };
     let round = 0u32;
-    let hs = app.handshake.read().await;
+    let hs = crate::transport::handshake_read_traced(&app, "lifecycle").await;
     let Some(state) = hs.cluster_attest.rounds.get(&(next_h, round)) else {
-        warn!(
-            "seal_suppressed_by_cluster reason=quorum_pending detail=missing_round_state height={} round={} k={} n={}",
-            next_h,
-            round,
-            app.cluster_cfg.quorum_k,
-            app.cluster_cfg.quorum_n
-        );
+        let log_ok = log_dedup
+            .as_deref_mut()
+            .map(|d| d.should_log_missing_round(next_h))
+            .unwrap_or(true);
+        if log_ok {
+            if next_h <= 2 {
+                info!(
+                    "seal_suppressed_by_cluster reason=quorum_pending detail=missing_round_state height={} round={} k={} n={} phase=startup",
+                    next_h,
+                    round,
+                    app.cluster_cfg.quorum_k,
+                    app.cluster_cfg.quorum_n
+                );
+            } else {
+                warn!(
+                    "seal_suppressed_by_cluster reason=quorum_pending detail=missing_round_state height={} round={} k={} n={}",
+                    next_h,
+                    round,
+                    app.cluster_cfg.quorum_k,
+                    app.cluster_cfg.quorum_n
+                );
+            }
+        }
         return false;
     };
     let vote_ok = !state.vote_object.trim().is_empty();
     let cand_ok = !state.candidate_hash.trim().is_empty();
     if !vote_ok || !cand_ok {
-        warn!(
-            "seal_suppressed_by_cluster reason=invalid_proposal detail=binding_incomplete height={} round={} vote_object_present={} candidate_hash_present={}",
-            next_h,
-            round,
-            vote_ok,
-            cand_ok
-        );
+        let log_ok = log_dedup
+            .as_deref_mut()
+            .map(|d| d.should_log_invalid_binding(next_h))
+            .unwrap_or(true);
+        if log_ok {
+            warn!(
+                "seal_suppressed_by_cluster reason=invalid_proposal detail=binding_incomplete height={} round={} vote_object_present={} candidate_hash_present={}",
+                next_h,
+                round,
+                vote_ok,
+                cand_ok
+            );
+        }
         return false;
     }
     let proposer_ok = state
@@ -382,10 +1063,16 @@ pub(crate) async fn run_cluster_gate(app: &App) -> bool {
         .as_deref()
         .is_some_and(|id| app.cluster_cfg.members.iter().any(|m| m == id));
     if !proposer_ok {
-        warn!(
-            "seal_suppressed_by_cluster reason=invalid_proposal detail=proposer_not_member height={} round={}",
-            next_h, round
-        );
+        let log_ok = log_dedup
+            .as_deref_mut()
+            .map(|d| d.should_log_invalid_proposer(next_h))
+            .unwrap_or(true);
+        if log_ok {
+            warn!(
+                "seal_suppressed_by_cluster reason=invalid_proposal detail=proposer_not_member height={} round={}",
+                next_h, round
+            );
+        }
         return false;
     }
     // RFC16 §7: `k` counts distinct attester ACKs and excludes the proposer.
@@ -398,40 +1085,256 @@ pub(crate) async fn run_cluster_gate(app: &App) -> bool {
             member != proposer && app.cluster_cfg.members.iter().any(|m| m == member)
         })
         .count() as u8;
+    let propose_opened_at_ms = state.propose_opened_at_ms;
+    drop(hs);
     if ack_n < app.cluster_cfg.quorum_k {
         let now_ms = crate::current_time_ms().unwrap_or(0);
-        if let Some(t0) = state.propose_opened_at_ms {
+        if let Some(t0) = propose_opened_at_ms {
             if now_ms.saturating_sub(t0) > app.cluster_cfg.attest_timeout_ms {
-                warn!(
-                    "seal_suppressed_by_cluster reason=quorum_timeout detail=attestations_missing height={} round={} got={} need={} elapsed_ms={} limit_ms={}",
-                    next_h,
-                    round,
-                    ack_n,
-                    app.cluster_cfg.quorum_k,
-                    now_ms.saturating_sub(t0),
-                    app.cluster_cfg.attest_timeout_ms
-                );
+                if ack_n == 0 {
+                    if let Some(retry_n) = crate::transport::maybe_retry_round(
+                        app,
+                        next_h,
+                        round,
+                        CLUSTER_PROP_RETRY_CAP,
+                    )
+                    .await
+                    {
+                        app.cluster_prop_nudge
+                            .store(true, std::sync::atomic::Ordering::Release);
+                        warn!(
+                            "cluster_gate_round_reopen height={} round={} reason=got_zero retry={}/{}",
+                            next_h,
+                            round,
+                            retry_n,
+                            CLUSTER_PROP_RETRY_CAP
+                        );
+                        return false;
+                    }
+                }
+                let log_ok = log_dedup
+                    .as_deref_mut()
+                    .map(|d| d.should_log_quorum_timeout(next_h))
+                    .unwrap_or(true);
+                if log_ok {
+                    warn!(
+                        "seal_suppressed_by_cluster reason=quorum_timeout detail=attestations_missing height={} round={} got={} need={} elapsed_ms={} limit_ms={}",
+                        next_h,
+                        round,
+                        ack_n,
+                        app.cluster_cfg.quorum_k,
+                        now_ms.saturating_sub(t0),
+                        app.cluster_cfg.attest_timeout_ms
+                    );
+                }
                 return false;
             }
         }
-        warn!(
-            "seal_suppressed_by_cluster reason=quorum_pending detail=attestations_missing height={} round={} got={} need={}",
-            next_h,
-            round,
-            ack_n,
-            app.cluster_cfg.quorum_k
-        );
+        let log_ok = log_dedup
+            .as_deref_mut()
+            .map(|d| d.should_log_quorum_wait(next_h))
+            .unwrap_or(true);
+        if log_ok {
+            debug!(
+                "seal_suppressed_by_cluster reason=quorum_pending detail=attestations_missing height={} round={} got={} need={} phase=pre_timeout",
+                next_h,
+                round,
+                ack_n,
+                app.cluster_cfg.quorum_k
+            );
+        }
         return false;
     }
     true
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GateBlock {
+    Wait,
+    Timeout,
+}
+
+pub(crate) async fn run_gate_obs(app: &App) -> Option<GateBlock> {
+    if !app.cluster_cfg.enabled || !matches!(app.cluster_cfg.role, ClusterRole::Proposer) {
+        return None;
+    }
+    let next_h = {
+        let g = app.inner.read().await;
+        g.chain.tip_h().saturating_add(1)
+    };
+    let round = 0u32;
+    let hs = crate::transport::handshake_read_traced(&app, "lifecycle").await;
+    let Some(state) = hs.cluster_attest.rounds.get(&(next_h, round)) else {
+        return Some(GateBlock::Wait);
+    };
+    let proposer = state.proposer_id.as_deref().unwrap_or_default();
+    let ack_n = state
+        .attesters
+        .keys()
+        .filter(|id| {
+            let member = id.as_str();
+            member != proposer && app.cluster_cfg.members.iter().any(|m| m == member)
+        })
+        .count() as u8;
+    if ack_n >= app.cluster_cfg.quorum_k {
+        return None;
+    }
+    let now_ms = crate::current_time_ms().unwrap_or(0);
+    if let Some(t0) = state.propose_opened_at_ms {
+        if now_ms.saturating_sub(t0) > app.cluster_cfg.attest_timeout_ms {
+            return Some(GateBlock::Timeout);
+        }
+    }
+    Some(GateBlock::Wait)
+}
+
+pub(crate) async fn seal_manual_paused(app: &App) -> bool {
+    if !app.cluster_cfg.enabled || !matches!(app.cluster_cfg.role, ClusterRole::Proposer) {
+        return false;
+    }
+    app.seal_manual.read().await.mode.is_manual_rpc()
+}
+
 pub fn spawn_seal_loop(app: App) {
     tokio::spawn(async move {
-        let mut iv = tokio::time::interval(std::time::Duration::from_secs(2));
+        let bph = {
+            let g = app.inner.read().await;
+            g.chain.cfg.blocks_per_hour
+        };
+        let interval_ms = match seal_interval_ms(bph) {
+            Ok(ms) => ms,
+            Err(err) => {
+                error!("seal loop disabled: {}", err);
+                return;
+            }
+        };
+        info!(
+            "seal_cadence genesis_blocks_per_hour={} seal_interval_ms={}",
+            bph, interval_ms
+        );
+        let nominal_ms = interval_ms;
+        // Owner re-anchor at process start: effective always begins at nominal
+        // so the ±1% envelope cannot inherit pre-restart windup (RFC: owner invariant).
+        // Note: variant C scheduler — `effective_ms` is no longer the cadence driver
+        // (no sleep(effective_ms) at loop head). It is still kept as a `seal_cadence_drift`
+        // observable so soak operators see realized wall vs expected per 100-block window.
+        let mut effective_ms = nominal_ms;
+        let mut drift_window_h = {
+            let g = app.inner.read().await;
+            g.chain.tip_h()
+        };
+        let mut drift_window_at = Instant::now();
+        let mut pending_ticks_since_last_sealed = 0u64;
+        // Seal turn watchdog: count deadline-phase loop passes ("microcycles") per turn
+        // and raise a one-shot alert when the turn is spinning too long.
+        let mut turn_watch_deadline_ms: Option<u64> = None;
+        let mut turn_watch_microcycles: u32 = 0;
+        let mut turn_watch_alerted = false;
+        let mut seal_pt = block_timing::ProfileTime::default();
+        let mut seal_turn_start_at: Option<Instant> = None;
+        // Owner observability: aggregate suppression % over a 100s wall window.
+        // Active only when this node is a cluster proposer; attester/follower paths return early
+        // before any of these counters are touched.
+        let is_proposer =
+            app.cluster_cfg.enabled && matches!(app.cluster_cfg.role, ClusterRole::Proposer);
+        let mut supp_win = SealSuppressWindow::mk_new();
+        let mut ahead_win = SealAheadWindow::mk_new();
+        let mut gate_log_dedup = ClusterGateDedup::default();
+        let mut supp_at = Instant::now();
+        let seal_ahead_ms_cfg = app.cluster_cfg.seal_ahead_ms;
+        let mut attester_was_ready = false;
+        let mut ahead_fired_for: Option<u64> = None;
+        // Variant C deadline scheduler: poll wall-clock until `next_seal_time_ms`,
+        // grid-aligned to multiples of `nominal_ms`. On `bph=3600` this means seals
+        // are attempted on second boundaries. Gates re-check every poll without
+        // sleeping a full nominal between attempts.
+        let mut next_seal_time_ms =
+            align_next_seal_ms(crate::current_time_ms().unwrap_or(0), nominal_ms);
+        info!(
+            "seal_scheduler mode=deadline_poll poll_ms={} nominal_ms={} grid=multiples_of_nominal next_seal_time_ms={}",
+            SEAL_POLL_INTERVAL_MS, nominal_ms, next_seal_time_ms
+        );
         loop {
-            iv.tick().await;
+            if app
+                .shutdown_requested
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                info!("seal loop exiting: shutdown requested");
+                break;
+            }
+            let now_ms = crate::current_time_ms().unwrap_or(0);
+            if let Some(bt) = app.block_timing.as_ref() {
+                let _ = block_timing::try_flush_once(bt);
+            }
+            if seal_manual_paused(&app).await {
+                tokio::time::sleep(Duration::from_millis(SEAL_POLL_INTERVAL_MS)).await;
+                continue;
+            }
+            if is_proposer && seal_ahead_ms_cfg > 0 {
+                if should_fire_seal_ahead(
+                    now_ms,
+                    next_seal_time_ms,
+                    seal_ahead_ms_cfg,
+                    ahead_fired_for,
+                ) {
+                    let att = count_sync_ready_attesters(&app).await;
+                    let preflight =
+                        cluster_seal_preflight(true, att.sync_n, app.cluster_cfg.quorum_k);
+                    if matches!(preflight, SealPreflight::Ready) {
+                        app.cluster_prop_nudge
+                            .store(true, std::sync::atomic::Ordering::Release);
+                        record_cluster_prop_tick(&app).await;
+                        ahead_fired_for = Some(next_seal_time_ms);
+                        let lead_ms = next_seal_time_ms.saturating_sub(now_ms);
+                        ahead_win.note_fired(lead_ms);
+                    } else {
+                        ahead_win.note_preflight_skip();
+                    }
+                }
+            }
+            if !should_attempt_seal(now_ms, next_seal_time_ms) {
+                turn_watch_deadline_ms = None;
+                turn_watch_microcycles = 0;
+                turn_watch_alerted = false;
+                let sleep_ms = poll_sleep_ms(now_ms, next_seal_time_ms, SEAL_POLL_INTERVAL_MS);
+                if is_proposer {
+                    tokio::select! {
+                        _ = app.seal_wake.notified() => {},
+                        _ = tokio::time::sleep(Duration::from_millis(sleep_ms)) => {},
+                    }
+                } else {
+                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+                }
+                continue;
+            }
+            if turn_watch_deadline_ms != Some(next_seal_time_ms) {
+                turn_watch_deadline_ms = Some(next_seal_time_ms);
+                turn_watch_microcycles = 0;
+                turn_watch_alerted = false;
+            }
+            turn_watch_microcycles = turn_watch_microcycles.saturating_add(1);
+            if is_proposer && !turn_watch_alerted && turn_watch_microcycles > 20 {
+                warn!(
+                    "seal_turn_watchdog stage=attempt_phase microcycles={} deadline_ms={} now_ms={} pending_ticks_since_last_sealed={}",
+                    turn_watch_microcycles,
+                    next_seal_time_ms,
+                    now_ms,
+                    pending_ticks_since_last_sealed
+                );
+                turn_watch_alerted = true;
+            }
+            if is_proposer && supp_at.elapsed() >= Duration::from_secs(SEAL_SUPPRESS_WINDOW_SEC) {
+                emit_suppress_summary(&supp_win);
+                supp_win.reset();
+                emit_ahead_summary(seal_ahead_ms_cfg, &ahead_win);
+                ahead_win.reset();
+                supp_at = Instant::now();
+            }
+            // Deadline reached: every suppress-continue below pauses one poll tick before
+            // re-checking the gate so the loop does not spin on a stale deadline.
+            let poll_pause = Duration::from_millis(SEAL_POLL_INTERVAL_MS);
             if !app.init.read().await.allows_chain_progress() {
+                tokio::time::sleep(poll_pause).await;
                 continue;
             }
             if app.debug_disable_seal_loop {
@@ -446,6 +1349,7 @@ pub fn spawn_seal_loop(app: App) {
                         req_graceful_stop(&app, h, stop_h).await;
                     }
                 }
+                tokio::time::sleep(poll_pause).await;
                 continue;
             }
             if app.cluster_cfg.enabled && matches!(app.cluster_cfg.role, ClusterRole::Attester) {
@@ -459,9 +1363,85 @@ pub fn spawn_seal_loop(app: App) {
                         req_graceful_stop(&app, h, stop_h).await;
                     }
                 }
+                tokio::time::sleep(poll_pause).await;
                 continue;
             }
+            if is_proposer {
+                // Preflight: do not propose / poll the cluster gate while no attester peer
+                // is live. This kills the startup wall of `missing_round_state` warnings
+                // and prevents the suppression denominator from inflating before quorum
+                // is even reachable.
+                let att = count_sync_ready_attesters(&app).await;
+                let preflight = cluster_seal_preflight(true, att.sync_n, app.cluster_cfg.quorum_k);
+                if matches!(preflight, SealPreflight::WaitingAttester) {
+                    let gate_h = att.local_h.saturating_add(1).max(1);
+                    let should_warn = gate_log_dedup.should_log_wait_sync(gate_h);
+                    if should_warn {
+                        warn!(
+                            "cluster_attest_waiting_sync height={} live_synced_attesters={} live_connected_attesters={} quorum_k={} cluster_n={} max_tip_lag={} proposer_tip={} attester_tip_max={}",
+                            gate_h,
+                            att.sync_n,
+                            att.live_n,
+                            app.cluster_cfg.quorum_k,
+                            app.cluster_cfg.quorum_n,
+                            app.cluster_cfg.att_max_tip_lag,
+                            att.local_h,
+                            att.peer_tip_max
+                        );
+                    }
+                    attester_was_ready = false;
+                    tokio::time::sleep(Duration::from_millis(SEAL_WAIT_PEER_MS)).await;
+                    continue;
+                }
+                if !attester_was_ready {
+                    info!(
+                        "cluster_attest_ready live_synced_attesters={} live_connected_attesters={} quorum_k={} max_tip_lag={}",
+                        att.sync_n,
+                        att.live_n,
+                        app.cluster_cfg.quorum_k,
+                        app.cluster_cfg.att_max_tip_lag
+                    );
+                    attester_was_ready = true;
+                }
+                // Open / re-confirm the current grid slot exactly once per deadline.
+                let slot_new = supp_win.begin_slot(next_seal_time_ms, now_ms);
+                if slot_new {
+                    seal_pt.start(Some(now_ms));
+                    seal_turn_start_at = Some(Instant::now());
+                    seal_pt.checkpoint_at("slot_open", now_ms);
+                    if let Some(bt) = app.block_timing.as_ref() {
+                        let g = app.inner.read().await;
+                        let h = g.chain.tip_h().saturating_add(1);
+                        drop(g);
+                        block_timing::note_t0(
+                            bt,
+                            block_timing::T0Ctx {
+                                h,
+                                r: 0,
+                                t_ms: block_timing::now_ms_f64(),
+                                grid_ms: next_seal_time_ms,
+                                nom_ms: nominal_ms,
+                            },
+                        );
+                    }
+                    record_cluster_prop_tick(&app).await;
+                }
+            }
+            let gate_target_h = {
+                let g = app.inner.read().await;
+                g.chain.tip_h().saturating_add(1)
+            };
+            seal_pt.checkpoint("lease_gate_begin");
             if !run_lease_gate(&app).await {
+                seal_pt.checkpoint("lease_gate_blocked");
+                if is_proposer {
+                    supp_win.eval_supp_for_height(
+                        now_ms,
+                        nominal_ms,
+                        SuppressReason::LeaseFence,
+                        Some(gate_target_h),
+                    );
+                }
                 let h = {
                     let g = app.inner.read().await;
                     g.chain.tip_h()
@@ -471,9 +1451,41 @@ pub fn spawn_seal_loop(app: App) {
                         req_graceful_stop(&app, h, stop_h).await;
                     }
                 }
+                tokio::time::sleep(poll_pause).await;
                 continue;
             }
-            if !run_cluster_gate(&app).await {
+            seal_pt.checkpoint("lease_gate_ok");
+            // Gate fast-path: after deadline, if quorum flips to ready during this
+            // same poll tick, re-check once and seal immediately (no extra poll sleep).
+            // Invariant preserved: this branch runs only after should_attempt_seal().
+            seal_pt.checkpoint("cluster_gate_begin");
+            let mut gate_ok = run_cluster_gate(&app, Some(&mut gate_log_dedup)).await;
+            let gate_recheck_used = gate_recheck_needed(is_proposer, gate_ok);
+            if gate_recheck_used {
+                seal_pt.checkpoint("cluster_gate_recheck_begin");
+                gate_ok = run_cluster_gate(&app, Some(&mut gate_log_dedup)).await;
+                seal_pt.checkpoint("cluster_gate_recheck_done");
+            }
+            if !gate_ok {
+                seal_pt.checkpoint("cluster_gate_blocked");
+                pending_ticks_since_last_sealed = pending_ticks_since_last_sealed.saturating_add(1);
+                if is_proposer {
+                    match run_gate_obs(&app).await {
+                        Some(GateBlock::Wait) => {
+                            supp_win.note_wait_for_height(gate_target_h);
+                        }
+                        Some(GateBlock::Timeout) => {
+                            supp_win.note_to_for_height(gate_target_h);
+                        }
+                        None => {}
+                    }
+                    supp_win.eval_supp_for_height(
+                        now_ms,
+                        nominal_ms,
+                        SuppressReason::ClusterGate,
+                        Some(gate_target_h),
+                    );
+                }
                 let h = {
                     let g = app.inner.read().await;
                     g.chain.tip_h()
@@ -483,10 +1495,30 @@ pub fn spawn_seal_loop(app: App) {
                         req_graceful_stop(&app, h, stop_h).await;
                     }
                 }
+                tokio::time::sleep(poll_pause).await;
                 continue;
             }
+            seal_pt.checkpoint("cluster_gate_ok");
+            if let Some(bt) = app.block_timing.as_ref() {
+                block_timing::note_gate_ok(
+                    bt,
+                    block_timing::SendCtx {
+                        h: gate_target_h,
+                        r: 0,
+                        t_ms: block_timing::now_ms_f64(),
+                    },
+                );
+            }
+            // Variant C: capture the next deadline *before* attempting to seal so a post-seal
+            // operational delay does not stack into the next interval. Only commit
+            // `next_seal_time_ms = scheduled_next` on `Ok(seal)`; on Err / retry path the
+            // deadline stays put and the next iteration may re-attempt immediately.
+            let scheduled_next =
+                align_next_seal_ms(crate::current_time_ms().unwrap_or(0), nominal_ms);
             maybe_align_mid(&app).await;
+            seal_pt.checkpoint("before_write_lock");
             let mut g = app.inner.write().await;
+            seal_pt.checkpoint("after_write_lock");
             let now_h = g.chain.tip_h();
             let expired = g.roaming_pool.expire_by_height(now_h);
             if expired > 0 {
@@ -496,12 +1528,30 @@ pub fn spawn_seal_loop(app: App) {
             let st_before = g.chain.st.clone();
             let persist_back = app.autosnapshot_backend.is_some() && autosnap_hit(now_h + 1);
             let bak_opt = persist_back.then(|| take_bak(&g));
+            seal_pt.checkpoint("before_chain_seal");
             match g.chain.seal(txs) {
                 Ok(()) => {
+                    let seal_done_ms = crate::current_time_ms().unwrap_or(now_ms);
+                    seal_pt.checkpoint_at("after_chain_seal", seal_done_ms);
+                    next_seal_time_ms = scheduled_next;
+                    turn_watch_deadline_ms = None;
+                    turn_watch_microcycles = 0;
+                    turn_watch_alerted = false;
                     let h = g.chain.tip_h();
                     let stop_h = app.debug_stop_height;
+                    if is_proposer {
+                        supp_win.close_sealed();
+                    }
                     if h == 1 || h % 10 == 0 {
                         info!("sealed height={}", h);
+                    }
+                    if cluster_pending_summary_hit(h) {
+                        info!(
+                            "cluster_gate_pending_summary pending_ticks_since_last_sealed={} sealed_h={}",
+                            pending_ticks_since_last_sealed,
+                            h
+                        );
+                        pending_ticks_since_last_sealed = 0;
                     }
                     if let Some(blk) = g.chain.blocks.back() {
                         let txs = blk.txs.clone();
@@ -518,8 +1568,65 @@ pub fn spawn_seal_loop(app: App) {
                         .autosnapshot_backend
                         .as_ref()
                         .and_then(|backend| periodic_snap_save(backend, &g, h, "seal"));
+                    if let Some(bt) = app.block_timing.as_ref() {
+                        let wall_total_ms = seal_turn_start_at
+                            .as_ref()
+                            .map(|started_at| {
+                                (started_at.elapsed().as_secs_f64() * 100.0).round() / 100.0
+                            })
+                            .unwrap_or(0.0);
+                        block_timing::note_seal(
+                            bt,
+                            block_timing::SealCtx {
+                                h,
+                                r: 0,
+                                seal_ms: block_timing::now_ms_f64(),
+                                wall_total_ms,
+                                pending_ticks: pending_ticks_since_last_sealed,
+                                gate_recheck: gate_recheck_used,
+                                autosnap: persist_back,
+                                supp_strike: supp_win.supp_marked,
+                                attest_to: supp_win.timeout_marked_h == Some(h),
+                                nom_ms: nominal_ms,
+                                grid_ms: next_seal_time_ms,
+                                profile_json: seal_pt
+                                    .json_stats_with_precision("{\"scope\":\"seal\"}", 2),
+                            },
+                        );
+                    }
                     drop(g);
                     periodic_snap_finish(&app, h, bak_opt, save_result).await;
+                    let drift_blocks = h.saturating_sub(drift_window_h);
+                    if drift_blocks >= SEAL_DRIFT_WINDOW_BLOCKS {
+                        let actual_ms = drift_window_at.elapsed().as_millis() as u64;
+                        let expected_ms = drift_blocks.saturating_mul(nominal_ms);
+                        // Deadband: skip adjust when drift is below 0.1% to avoid jitter oscillation.
+                        // adjust_pct in the log is the per-step adjust fraction (ppm/10_000),
+                        // not the envelope offset; envelope_pct is reported separately post-clamp.
+                        let (adjusted_ms, adjust_ppm) =
+                            if seal_drift_in_deadband(actual_ms, expected_ms) {
+                                (effective_ms, 0)
+                            } else {
+                                seal_drift_adjust_ms(effective_ms, actual_ms, expected_ms)
+                            };
+                        let (clamped_ms, clamp_applied) =
+                            seal_drift_clamp_envelope(nominal_ms, adjusted_ms);
+                        let envelope_pct = seal_envelope_pct(nominal_ms, clamped_ms);
+                        info!(
+                            "seal_cadence_drift blocks={} nominal_ms={} effective_ms={} actual_ms={} expected_ms={} adjust_pct={:.4} envelope_pct={:.4} clamp_applied={}",
+                            drift_blocks,
+                            nominal_ms,
+                            clamped_ms,
+                            actual_ms,
+                            expected_ms,
+                            adjust_ppm as f64 / 10_000.0,
+                            envelope_pct,
+                            clamp_applied
+                        );
+                        effective_ms = clamped_ms;
+                        drift_window_h = h;
+                        drift_window_at = Instant::now();
+                    }
                     if let Some(stop_h) = stop_h {
                         if h >= stop_h {
                             req_graceful_stop(&app, h, stop_h).await;
@@ -536,7 +1643,8 @@ pub fn spawn_seal_loop(app: App) {
                                 continue;
                             }
                         };
-                        let drop_at = first_bad_tx_ctx(&g.chain.st, &txs, blk_h, blk_ts);
+                        let drop_at =
+                            first_bad_tx_ctx(&g.chain.st, &txs, blk_h, blk_ts, &g.chain.cfg);
                         if let Some((i, err)) = drop_at {
                             warn!(
                                 "seal skip: evicting unapplicable tx at index {} ({}), requeueing {} others",
@@ -561,6 +1669,49 @@ pub fn spawn_seal_loop(app: App) {
                     };
                     g.pool.prepend_block(replay);
                 }
+            }
+        }
+    });
+}
+
+fn spawn_shutdown_signal_task(app: App) {
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(sig) => sig,
+                Err(err) => {
+                    error!("shutdown signal setup failed: {}", err);
+                    return;
+                }
+            };
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    let _ = crate::api::handlers_shutdown::graceful_shutdown_request(
+                        &app,
+                        crate::api::handlers_shutdown::ShutdownReason::Signal("SIGINT"),
+                    ).await;
+                }
+                _ = sigterm.recv() => {
+                    let _ = crate::api::handlers_shutdown::graceful_shutdown_request(
+                        &app,
+                        crate::api::handlers_shutdown::ShutdownReason::Signal("SIGTERM"),
+                    ).await;
+                }
+            }
+            return;
+        }
+
+        #[cfg(not(unix))]
+        {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                let _ = crate::api::handlers_shutdown::graceful_shutdown_request(
+                    &app,
+                    crate::api::handlers_shutdown::ShutdownReason::Signal("SIGINT"),
+                )
+                .await;
             }
         }
     });
@@ -600,8 +1751,14 @@ pub(crate) fn spawn_snapshot_loader(app: App) {
             let g = app.inner.read().await;
             g.chain.cfg.clone()
         };
+        let anchor_sk = {
+            let g = app.inner.read().await;
+            g.chain.val_sks.first().cloned()
+        };
         let opts = SnapshotLoadOpts {
             verify_chain: app.snapshot_verify_chain,
+            anchor_sk,
+            anchor_idx: 0,
         };
         match backend.load(&cfg, opts) {
             Ok((Some(snap), io_ph)) => {
@@ -764,6 +1921,21 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
     if app.log_ctl.is_none() {
         app.log_ctl = crate::logging::runtime_log_ctl();
     }
+    let bph = {
+        let g = app.inner.read().await;
+        g.chain.cfg.blocks_per_hour
+    };
+    let mut cluster_cfg = config.cluster.clone();
+    let mut transport_cfg = config.transport.clone();
+    let seal_ms = apply_cluster_timing(&mut cluster_cfg, &mut transport_cfg, bph)?;
+    if cluster_cfg.seal_ahead_ms > 0 && cluster_cfg.seal_ahead_ms >= seal_ms {
+        let clamped = seal_ms.saturating_sub(1).max(1);
+        warn!(
+            "cluster seal_ahead_ms={} >= seal_interval_ms={}; clamping to {}",
+            cluster_cfg.seal_ahead_ms, seal_ms, clamped
+        );
+        cluster_cfg.seal_ahead_ms = clamped;
+    }
     app.op_token = std::env::var("PWM_ADMIN_TOKEN")
         .ok()
         .map(|v| v.trim().to_string())
@@ -801,7 +1973,7 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
     }
     {
         let mut tc = app.transport_config.write().await;
-        *tc = config.transport.clone();
+        *tc = transport_cfg.clone();
     }
     {
         let mut st = app.init.write().await;
@@ -818,8 +1990,13 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
     app.debug_stop_height = config.debug_stop_height;
     app.debug_dump = config.debug_dump.clone();
     app.debug_disable_seal_loop = config.debug_disable_seal_loop;
+    app.lab_seal_api = config.lab_seal_api;
     app.deployment_profile = config.deployment_profile;
     app.seal_role = derive_seal_role(&config);
+    {
+        let mut manual = app.seal_manual.write().await;
+        manual.mode = config.seal_control_mode;
+    }
     app.lease_cfg = LeaseCfg {
         ttl_ms: config.seal_lease_ttl_ms,
         takeover_ms: config.seal_takeover_timeout_ms,
@@ -838,7 +2015,16 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
             Arc::new(crate::lease_backend::ProcessLocalLeaseBackend)
         }
     };
-    app.cluster_cfg = config.cluster.clone();
+    app.cluster_cfg = cluster_cfg;
+    app.block_timing = config.cluster.block_timing_path.as_ref().map(|p| {
+        block_timing::BlockTimingCfg::mk_new(
+            true,
+            p.clone(),
+            config.identity.cluster_id.clone(),
+            app.node_instance_id.clone(),
+            format!("pwmd/{}", env!("CARGO_PKG_VERSION")),
+        )
+    });
     if let Ok(mut slot) = app.lease_last_err.lock() {
         *slot = None;
     }
@@ -936,13 +2122,16 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
     }
     if app.cluster_cfg.enabled {
         info!(
-            "cluster_attest enabled=true role={:?} members={} quorum={}/{} tx_catchup_ms={} attest_timeout_ms={} note=s2_lease_orthogonal",
+            "cluster_attest enabled=true role={:?} members={} quorum={}/{} blocks_per_hour={} seal_interval_ms={} attest_timeout_ms={} heartbeat_interval_ms={} seal_ahead_ms={} note=s2_lease_orthogonal_genesis_timing",
             app.cluster_cfg.role,
             app.cluster_cfg.members.join(","),
             app.cluster_cfg.quorum_k,
             app.cluster_cfg.quorum_n,
-            app.cluster_cfg.tx_catchup_ms,
-            app.cluster_cfg.attest_timeout_ms
+            bph,
+            seal_ms,
+            app.cluster_cfg.attest_timeout_ms,
+            transport_cfg.heartbeat_interval_ms,
+            app.cluster_cfg.seal_ahead_ms
         );
     } else {
         info!("cluster_attest enabled=false");
@@ -967,14 +2156,15 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
     spawn_snapshot_loader(app.clone());
     spawn_seal_loop(app.clone());
     spawn_federation_sweep_loop(app.clone());
-    if config.transport.enabled {
-        spawn_peer_listener_loop(app.clone(), config.transport.clone());
+    if transport_cfg.enabled {
+        spawn_peer_listener_loop(app.clone(), transport_cfg.clone());
     }
-    if config.transport.enabled && !config.transport.peer_seeds.is_empty() {
-        spawn_stateful_transport_loop(app.clone(), config.transport.clone());
+    if transport_cfg.enabled && !transport_cfg.peer_seeds.is_empty() {
+        spawn_stateful_transport_loop(app.clone(), transport_cfg.clone());
     } else {
         spawn_transport_loop(app.clone());
     }
+    spawn_shutdown_signal_task(app.clone());
     let (shutdown_done_tx, shutdown_done_rx) = tokio::sync::oneshot::channel::<()>();
     {
         let mut slot = app
@@ -1036,19 +2226,30 @@ pub async fn run() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        autosnap_hit, run_cluster_gate, run_lease_gate, spawn_seal_loop, tx_bal_diffs,
-        AUTOSNAPSHOT_BLOCK_INTERVAL,
+        align_next_seal_ms, apply_cluster_timing, attester_alive, autosnap_hit,
+        cluster_pending_summary_hit, cluster_prop_ms, cluster_seal_preflight, cluster_timing_ms,
+        compute_suppress_pct, count_sync_ready_hs, gate_recheck_needed, is_suppress_alert,
+        lease_renew_log_hit, poll_sleep_ms, record_cluster_prop_tick, run_cluster_gate,
+        run_gate_obs, run_lease_gate, seal_drift_adjust_ms, seal_drift_clamp_envelope,
+        seal_drift_in_deadband, seal_envelope_pct, seal_interval_ms, should_attempt_seal,
+        should_fire_seal_ahead, spawn_seal_loop, tx_bal_diffs, AttSyncCtx, ClusterGateDedup,
+        GateBlock, SealAheadWindow, SealPreflight, SealSuppressWindow, SuppressReason,
+        AUTOSNAPSHOT_BLOCK_INTERVAL, SEAL_POLL_INTERVAL_MS,
     };
     use crate::bootstrap::app_from_genesis_id;
     use crate::config::GenesisSource;
+    use crate::config::TransportConfig;
     use crate::handshake::ClusterRole;
+    use crate::handshake::HandshakeValidationCtx;
     use crate::identity::default_runtime_identity_neutral;
     use crate::state::InitState;
+    use crate::transport::{HandshakeState, PeerClass, PeerRecord, PeerStatus, TrustedPeer};
+    use crate::ClusterCfg;
     use crate::DevLane;
     use ed25519_dalek::SigningKey;
     use pwm_core::block::hdr_hash;
     use pwm_core::hd::{account_id_from_parts, domain_of_account_id};
-    use pwm_core::tx::{ClaimMode, SignedTx, TxBody};
+    use pwm_core::tx::{SignedTx, TxBody};
     use pwm_core::types::Account;
     use pwm_core::SealTimeMode;
     use slip10_ed25519::derive_ed25519_private_key;
@@ -1061,6 +2262,816 @@ mod tests {
         assert_eq!(AUTOSNAPSHOT_BLOCK_INTERVAL, 100);
         let hits: Vec<u64> = (1..=300).filter(|h| autosnap_hit(*h)).collect();
         assert_eq!(hits, vec![100, 200, 300]);
+    }
+
+    #[test]
+    fn cluster_pending_summary_decade() {
+        let hits: Vec<u64> = (1..=30)
+            .filter(|h| cluster_pending_summary_hit(*h))
+            .collect();
+        assert_eq!(hits, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn lease_renew_log_dedupe() {
+        let last = std::sync::atomic::AtomicU64::new(0);
+        assert!(!lease_renew_log_hit(&last, 9));
+        assert!(lease_renew_log_hit(&last, 10));
+        assert!(!lease_renew_log_hit(&last, 10));
+        assert!(lease_renew_log_hit(&last, 20));
+    }
+
+    #[test]
+    fn seal_interval_from_bph() {
+        assert_eq!(seal_interval_ms(3600).expect("3600 bph"), 1000);
+        assert_eq!(seal_interval_ms(1800).expect("1800 bph"), 2000);
+        assert_eq!(seal_interval_ms(3_600_001).expect("high bph"), 1);
+        assert!(seal_interval_ms(0).is_err());
+    }
+
+    #[test]
+    fn cluster_timing_from_bph() {
+        let seal_ms = seal_interval_ms(3600).expect("3600 bph");
+        assert_eq!(cluster_timing_ms(seal_ms), 2000);
+        assert_eq!(cluster_prop_ms(seal_ms, 1500), 1000);
+        assert_eq!(cluster_prop_ms(seal_ms, 500), 500);
+    }
+
+    /// Cluster enabled + Attester: heartbeat is capped to seal_ms (was 1500ms default).
+    #[test]
+    fn cluster_apply_attester_hb() {
+        let mut cluster = ClusterCfg {
+            enabled: true,
+            role: ClusterRole::Attester,
+            ..ClusterCfg::default()
+        };
+        let mut transport = TransportConfig::default();
+        assert_eq!(transport.heartbeat_interval_ms, 1500);
+        let seal_ms =
+            apply_cluster_timing(&mut cluster, &mut transport, 3600).expect("apply_cluster_timing");
+        assert_eq!(seal_ms, 1000);
+        assert_eq!(transport.heartbeat_interval_ms, 1000);
+        assert_eq!(cluster.attest_timeout_ms, 2000);
+    }
+
+    /// Cluster enabled + Proposer: heartbeat cap behavior unchanged (regression guard).
+    #[test]
+    fn cluster_apply_proposer_hb() {
+        let mut cluster = ClusterCfg {
+            enabled: true,
+            role: ClusterRole::Proposer,
+            ..ClusterCfg::default()
+        };
+        let mut transport = TransportConfig::default();
+        let seal_ms =
+            apply_cluster_timing(&mut cluster, &mut transport, 3600).expect("apply_cluster_timing");
+        assert_eq!(seal_ms, 1000);
+        assert_eq!(transport.heartbeat_interval_ms, 1000);
+    }
+
+    /// Cluster disabled: timing fields stay at defaults; heartbeat is not touched.
+    #[test]
+    fn cluster_apply_disabled_noop() {
+        let mut cluster = ClusterCfg::default();
+        let mut transport = TransportConfig::default();
+        let seal_ms =
+            apply_cluster_timing(&mut cluster, &mut transport, 3600).expect("apply_cluster_timing");
+        assert_eq!(seal_ms, 1000);
+        assert_eq!(transport.heartbeat_interval_ms, 1500);
+        assert_eq!(cluster.attest_timeout_ms, 1000);
+    }
+
+    /// Configured heartbeat below seal cadence is preserved (min-of semantics).
+    #[test]
+    fn cluster_apply_keeps_short_hb() {
+        let mut cluster = ClusterCfg {
+            enabled: true,
+            role: ClusterRole::Attester,
+            ..ClusterCfg::default()
+        };
+        let mut transport = TransportConfig {
+            heartbeat_interval_ms: 500,
+            ..TransportConfig::default()
+        };
+        let seal_ms =
+            apply_cluster_timing(&mut cluster, &mut transport, 3600).expect("apply_cluster_timing");
+        assert_eq!(seal_ms, 1000);
+        assert_eq!(transport.heartbeat_interval_ms, 500);
+    }
+
+    #[test]
+    fn drift_slow_decreases_clamped() {
+        let (next, ppm) = seal_drift_adjust_ms(1000, 120_000, 100_000);
+        assert_eq!(next, 990);
+        assert_eq!(ppm, -10_000);
+    }
+
+    #[test]
+    fn drift_fast_increases_clamped() {
+        let (next, ppm) = seal_drift_adjust_ms(1000, 90_000, 100_000);
+        assert_eq!(next, 1010);
+        assert_eq!(ppm, 10_000);
+    }
+
+    #[test]
+    fn drift_exact_noop() {
+        let (next, ppm) = seal_drift_adjust_ms(1000, 100_000, 100_000);
+        assert_eq!(next, 1000);
+        assert_eq!(ppm, 0);
+    }
+
+    /// Envelope pins windup floor: 257 must clamp to 990 when nominal=1000.
+    #[test]
+    fn envelope_pins_windup_floor() {
+        let (clamped, hit) = seal_drift_clamp_envelope(1000, 257);
+        assert_eq!(clamped, 990);
+        assert!(hit);
+    }
+
+    /// Envelope caps fast-path increases at +1% of nominal.
+    #[test]
+    fn envelope_caps_fast_increase() {
+        let (clamped, hit) = seal_drift_clamp_envelope(1000, 1200);
+        assert_eq!(clamped, 1010);
+        assert!(hit);
+    }
+
+    /// Inside-envelope values are returned untouched with no clamp flag.
+    #[test]
+    fn envelope_inside_no_clamp() {
+        let (clamped, hit) = seal_drift_clamp_envelope(1000, 1003);
+        assert_eq!(clamped, 1003);
+        assert!(!hit);
+        let (clamped, hit) = seal_drift_clamp_envelope(1000, 999);
+        assert_eq!(clamped, 999);
+        assert!(!hit);
+    }
+
+    /// 100 sustained slow windows cannot drive effective below the envelope floor.
+    #[test]
+    fn envelope_slow_loop_stable() {
+        let nominal = 1000u64;
+        let mut effective = nominal;
+        for _ in 0..100 {
+            let actual = 120_000u64;
+            let expected = 100_000u64;
+            let (next, _ppm) = seal_drift_adjust_ms(effective, actual, expected);
+            let (clamped, _hit) = seal_drift_clamp_envelope(nominal, next);
+            effective = clamped;
+            assert!(
+                effective >= 990,
+                "effective drifted below floor: {}",
+                effective
+            );
+            assert!(
+                effective <= 1010,
+                "effective drifted above ceiling: {}",
+                effective
+            );
+        }
+        assert_eq!(effective, 990);
+    }
+
+    /// 100 sustained fast windows pin effective at the envelope ceiling.
+    #[test]
+    fn envelope_fast_loop_stable() {
+        let nominal = 1000u64;
+        let mut effective = nominal;
+        for _ in 0..100 {
+            let (next, _ppm) = seal_drift_adjust_ms(effective, 90_000, 100_000);
+            let (clamped, _hit) = seal_drift_clamp_envelope(nominal, next);
+            effective = clamped;
+            assert!(effective >= 990);
+            assert!(effective <= 1010);
+        }
+        assert_eq!(effective, 1010);
+    }
+
+    /// Deadband skips adjust when actual is within 0.1% of expected.
+    #[test]
+    fn deadband_skips_tight_drift() {
+        assert!(seal_drift_in_deadband(100_050, 100_000));
+        assert!(!seal_drift_in_deadband(101_000, 100_000));
+        assert!(seal_drift_in_deadband(100_000, 100_000));
+    }
+
+    /// Reported envelope_pct stays within ±1.0 after clamp.
+    #[test]
+    fn envelope_pct_bounded() {
+        let (clamped, _) = seal_drift_clamp_envelope(1000, 257);
+        let pct = seal_envelope_pct(1000, clamped);
+        assert!(
+            pct >= -1.0 && pct <= 1.0,
+            "envelope_pct out of range: {}",
+            pct
+        );
+        let (clamped, _) = seal_drift_clamp_envelope(1000, 5000);
+        let pct = seal_envelope_pct(1000, clamped);
+        assert!(
+            pct >= -1.0 && pct <= 1.0,
+            "envelope_pct out of range: {}",
+            pct
+        );
+    }
+
+    /// Grid alignment lands on the next multiple of nominal_ms for bph=3600.
+    #[test]
+    fn deadline_grid_bph_3600() {
+        assert_eq!(align_next_seal_ms(0, 1000), 1000);
+        assert_eq!(align_next_seal_ms(1, 1000), 1000);
+        assert_eq!(align_next_seal_ms(999, 1000), 1000);
+        assert_eq!(align_next_seal_ms(1000, 1000), 2000);
+        assert_eq!(align_next_seal_ms(10_035, 1000), 11_000);
+    }
+
+    /// Grid alignment honors arbitrary nominal_ms and guards nominal_ms==0.
+    #[test]
+    fn deadline_grid_misc_nominal() {
+        assert_eq!(align_next_seal_ms(0, 2000), 2000);
+        assert_eq!(align_next_seal_ms(2_500, 2000), 4000);
+        // nominal_ms=0 falls back to 1ms grid so we never divide by zero.
+        assert_eq!(align_next_seal_ms(42, 0), 43);
+    }
+
+    /// should_attempt_seal flips exactly at the deadline.
+    #[test]
+    fn deadline_attempt_edge() {
+        assert!(!should_attempt_seal(999, 1000));
+        assert!(should_attempt_seal(1000, 1000));
+        assert!(should_attempt_seal(1001, 1000));
+    }
+
+    #[test]
+    fn seal_ahead_trigger_window() {
+        assert!(!should_fire_seal_ahead(899, 1000, 100, None));
+        assert!(should_fire_seal_ahead(900, 1000, 100, None));
+        assert!(should_fire_seal_ahead(999, 1000, 100, None));
+        assert!(!should_fire_seal_ahead(1000, 1000, 100, None));
+        assert!(!should_fire_seal_ahead(900, 1000, 100, Some(1000)));
+        assert!(!should_fire_seal_ahead(900, 1000, 0, None));
+    }
+
+    #[test]
+    fn seal_ahead_window_avg_lead() {
+        let mut win = SealAheadWindow::mk_new();
+        assert_eq!(win.avg_lead_ms(), 0);
+        win.note_fired(100);
+        win.note_fired(80);
+        assert_eq!(win.fired, 2);
+        assert_eq!(win.avg_lead_ms(), 90);
+        win.note_preflight_skip();
+        assert_eq!(win.preflight_skip, 1);
+        win.reset();
+        assert_eq!(win.fired, 0);
+    }
+
+    /// Poll sleep is bounded by the deadline gap and never returns zero.
+    #[test]
+    fn poll_sleep_bounded_gap() {
+        // Far from deadline: sleep is capped at SEAL_POLL_INTERVAL_MS.
+        assert_eq!(poll_sleep_ms(0, 500, SEAL_POLL_INTERVAL_MS), 10);
+        // Close to deadline: sleep shrinks to the remaining gap.
+        assert_eq!(poll_sleep_ms(995, 1000, SEAL_POLL_INTERVAL_MS), 5);
+        // Deadline passed: paced retry equal to poll interval.
+        assert_eq!(poll_sleep_ms(1000, 1000, SEAL_POLL_INTERVAL_MS), 10);
+        assert_eq!(poll_sleep_ms(1500, 1000, SEAL_POLL_INTERVAL_MS), 10);
+        // poll_ms=0 is clamped to 1.
+        assert_eq!(poll_sleep_ms(995, 1000, 0), 1);
+    }
+
+    /// Recheck probe is only needed for proposer when first gate check failed.
+    #[test]
+    fn gate_recheck_policy() {
+        assert!(!gate_recheck_needed(false, false));
+        assert!(!gate_recheck_needed(true, true));
+        assert!(gate_recheck_needed(true, false));
+    }
+
+    /// Scheduler invariant: a suppressed iteration must not advance the deadline.
+    /// We model the loop by capturing `scheduled_next` only when seal succeeds.
+    #[test]
+    fn deadline_holds_on_suppress() {
+        let nominal = 1000u64;
+        let mut deadline = align_next_seal_ms(0, nominal);
+        // Suppressed attempt at t=1000: gates close, deadline must stay at 1000.
+        let now_a = 1000u64;
+        assert!(should_attempt_seal(now_a, deadline));
+        // Simulate gate fail -> do NOT update deadline.
+        assert_eq!(deadline, 1000);
+        // Successful seal at t=1300 advances deadline to next grid boundary.
+        let now_b = 1300u64;
+        let scheduled = align_next_seal_ms(now_b, nominal);
+        deadline = scheduled;
+        assert_eq!(deadline, 2000);
+    }
+
+    /// compute_suppress_pct returns 0.0 on empty windows (no ticks).
+    #[test]
+    fn suppress_pct_empty_window() {
+        assert_eq!(compute_suppress_pct(0, 0), 0.0);
+        assert_eq!(compute_suppress_pct(0, 5), 0.0);
+    }
+
+    /// compute_suppress_pct: 93 of 100 ticks → 93.0%.
+    #[test]
+    fn suppress_pct_typical_share() {
+        let pct = compute_suppress_pct(100, 93);
+        assert!((pct - 93.0).abs() < 1e-9, "pct={pct}");
+    }
+
+    /// is_suppress_alert escalates strictly above the 1.0% owner threshold.
+    #[test]
+    fn alert_above_one_pct() {
+        assert!(!is_suppress_alert(0.0));
+        assert!(!is_suppress_alert(1.0));
+        assert!(is_suppress_alert(1.01));
+        assert!(is_suppress_alert(93.0));
+    }
+
+    /// begin_slot counts the deadline once, regardless of how many polls revisit it.
+    #[test]
+    fn slot_open_idempotent() {
+        let mut win = SealSuppressWindow::mk_new();
+        let opened1 = win.begin_slot(1000, 10);
+        let opened2 = win.begin_slot(1000, 11);
+        let opened3 = win.begin_slot(1000, 12);
+        assert!(opened1);
+        assert!(!opened2);
+        assert!(!opened3);
+        assert_eq!(win.slots, 1);
+        assert_eq!(win.slot_supp, 0);
+    }
+
+    /// Many gate-fail polls inside nominal interval do not accrue suppression.
+    #[test]
+    fn slot_polls_no_inflate() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        for now in (1_010..=1_200).step_by(10) {
+            assert!(!win.eval_supp(now, 1_000, SuppressReason::ClusterGate));
+        }
+        assert_eq!(win.slots, 1);
+        assert_eq!(win.slot_supp, 0);
+        assert!(!win.supp_marked);
+    }
+
+    /// After nominal interval elapses, exactly one suppression strike is recorded.
+    #[test]
+    fn slot_single_strike_after_nominal() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        assert!(!win.eval_supp(2_000, 1_000, SuppressReason::ClusterGate));
+        assert!(win.eval_supp(2_001, 1_000, SuppressReason::ClusterGate));
+        assert!(!win.eval_supp(2_011, 1_000, SuppressReason::ClusterGate));
+        assert_eq!(win.slot_supp, 1);
+        assert_eq!(win.last_reason, Some(SuppressReason::ClusterGate));
+        assert!(win.supp_marked);
+        assert_eq!(win.attempt_start_ms, Some(2_011));
+    }
+
+    /// Seal within the same nominal interval records success without suppression.
+    #[test]
+    fn slot_seal_inside_nominal() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        assert!(!win.eval_supp(1_300, 1_000, SuppressReason::ClusterGate));
+        win.close_sealed();
+        assert_eq!(win.slots, 1);
+        assert_eq!(win.slot_supp, 0);
+        assert_eq!(win.sealed_in, 1);
+        let pct = compute_suppress_pct(win.slots, win.slot_supp);
+        assert_eq!(pct, 0.0);
+    }
+
+    /// Sealed close clears suppression for the closed slot.
+    #[test]
+    fn slot_sealed_clears() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        win.eval_supp(2_001, 1_000, SuppressReason::LeaseFence);
+        win.close_sealed();
+        assert_eq!(win.slots, 1);
+        assert_eq!(win.slot_supp, 1);
+        assert_eq!(win.sealed_in, 1);
+        assert!(win.active_deadline_ms.is_none());
+        assert!(win.attempt_start_ms.is_none());
+        assert!(!win.supp_marked);
+    }
+
+    /// New deadline after one recorded suppression does not add duplicate strike.
+    #[test]
+    fn slot_skip_no_dup_mark() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        assert!(win.eval_supp(2_001, 1_000, SuppressReason::ClusterGate));
+        win.begin_slot(2000, 2_010);
+        assert_eq!(win.slots, 2);
+        assert_eq!(win.slot_supp, 1);
+    }
+
+    /// Crossing deadline without prior strike records slot_skipped once.
+    #[test]
+    fn slot_skip_on_new_grid() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        win.begin_slot(2000, 2_000);
+        assert_eq!(win.slots, 2);
+        assert_eq!(win.slot_supp, 1);
+        assert_eq!(win.last_reason, Some(SuppressReason::SlotSkipped));
+    }
+
+    /// Window model: 35 sealed in-time, 65 with one strike each.
+    #[test]
+    fn slot_steady_cy_window() {
+        let mut win = SealSuppressWindow::mk_new();
+        for i in 0..35u64 {
+            let d = (i + 1) * 1000;
+            win.begin_slot(d, d);
+            win.close_sealed();
+        }
+        for i in 35..100u64 {
+            let d = (i + 1) * 1000;
+            win.begin_slot(d, d);
+            assert!(win.eval_supp(d + 1001, 1_000, SuppressReason::ClusterGate));
+        }
+        assert_eq!(win.slots, 100);
+        assert_eq!(win.slot_supp, 65);
+        assert_eq!(win.sealed_in, 35);
+        let pct = compute_suppress_pct(win.slots, win.slot_supp);
+        assert!((pct - 65.0).abs() < 1e-9, "pct={pct}");
+    }
+
+    /// Wait/timeout counters are split from strike counter and preserved in reset window.
+    #[test]
+    fn slot_wait_to_split() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        assert!(win.note_wait_for_height(42));
+        assert!(!win.note_wait_for_height(42));
+        assert!(win.note_to_for_height(42));
+        assert!(!win.note_to_for_height(42));
+        assert!(win.eval_supp(2_001, 1_000, SuppressReason::ClusterGate));
+        assert_eq!(win.wait_att, 1);
+        assert_eq!(win.gate_to, 1);
+        assert_eq!(win.slot_supp, 1);
+        win.reset();
+        assert_eq!(win.wait_att, 0);
+        assert_eq!(win.gate_to, 0);
+    }
+
+    /// One WARN-equivalent wait/to/strike per seal target height (no poll inflation).
+    #[test]
+    fn slot_height_dedup_blocks_repeat() {
+        let mut win = SealSuppressWindow::mk_new();
+        let h = 33_201u64;
+        win.begin_slot(1000, 1_000);
+        assert!(win.note_wait_for_height(h));
+        assert!(!win.note_wait_for_height(h));
+        assert!(win.note_to_for_height(h));
+        assert!(!win.note_to_for_height(h));
+        assert!(win.eval_supp_for_height(2_001, 1_000, SuppressReason::ClusterGate, Some(h)));
+        win.begin_slot(2000, 2_000);
+        assert!(!win.eval_supp_for_height(3_002, 1_000, SuppressReason::ClusterGate, Some(h)));
+        assert_eq!(win.slot_supp, 1);
+    }
+
+    #[test]
+    fn cluster_gate_dedup_once_h() {
+        let mut d = ClusterGateDedup::default();
+        assert!(d.should_log_quorum_timeout(100));
+        assert!(!d.should_log_quorum_timeout(100));
+        assert!(d.should_log_quorum_wait(100));
+        assert!(!d.should_log_quorum_wait(100));
+        assert!(d.should_log_quorum_timeout(101));
+        d.reset();
+        assert!(d.should_log_quorum_timeout(100));
+        assert!(d.should_log_quorum_wait(100));
+    }
+
+    /// Reset zeros every counter so the next 100s window starts clean.
+    #[test]
+    fn supp_window_reset_zeros() {
+        let mut win = SealSuppressWindow::mk_new();
+        win.begin_slot(1000, 1_000);
+        win.eval_supp(2_001, 1_000, SuppressReason::LeaseFence);
+        win.reset();
+        assert_eq!(win.slots, 0);
+        assert_eq!(win.slot_supp, 0);
+        assert_eq!(win.sealed_in, 0);
+        assert!(win.active_deadline_ms.is_none());
+        assert!(win.attempt_start_ms.is_none());
+        assert!(!win.supp_marked);
+        assert!(win.last_reason.is_none());
+    }
+
+    /// Preflight: cluster disabled is always Ready (single-node devnet).
+    #[test]
+    fn preflight_cluster_disabled() {
+        let p = cluster_seal_preflight(false, 0, 1);
+        assert_eq!(p, SealPreflight::Ready);
+    }
+
+    /// Preflight: WaitingAttester when no live attester meets quorum_k.
+    #[test]
+    fn preflight_waits_no_peer() {
+        assert_eq!(
+            cluster_seal_preflight(true, 0, 1),
+            SealPreflight::WaitingAttester
+        );
+        assert_eq!(
+            cluster_seal_preflight(true, 1, 2),
+            SealPreflight::WaitingAttester
+        );
+    }
+
+    /// Preflight: Ready as soon as live_attesters >= quorum_k.
+    #[test]
+    fn preflight_ready_on_quorum() {
+        assert_eq!(cluster_seal_preflight(true, 1, 1), SealPreflight::Ready);
+        assert_eq!(cluster_seal_preflight(true, 3, 2), SealPreflight::Ready);
+    }
+
+    /// Attester liveness: connected + fresh last_seen wins; stale / disconnected fail.
+    #[test]
+    fn attester_alive_window() {
+        let now = 10_000u64;
+        let win = 5_000u64;
+        assert!(attester_alive(true, 9_000, now, win));
+        assert!(attester_alive(true, 5_000, now, win));
+        assert!(!attester_alive(true, 4_999, now, win));
+        assert!(!attester_alive(false, 9_999, now, win));
+        // last_seen_ms == 0 means we never saw a hello: not alive.
+        assert!(!attester_alive(true, 0, now, win));
+    }
+
+    fn mk_hs() -> HandshakeState {
+        HandshakeState::new(
+            HandshakeValidationCtx {
+                expected_network_id: "devnet".to_string(),
+                expected_genesis_hash: None,
+                skew_window_ms: 30_000,
+            },
+            0x10,
+        )
+    }
+
+    fn mk_trusted(node_id: &str, instance_id: Option<&str>, role: ClusterRole) -> TrustedPeer {
+        TrustedPeer {
+            node_id: node_id.to_string(),
+            cluster_id: "cy".to_string(),
+            pubkey: [7u8; 32],
+            domain_hi: 0x10,
+            instance_id: instance_id.map(str::to_string),
+            cluster_attest_enabled: true,
+            cluster_role: role,
+        }
+    }
+
+    fn mk_peer(node_id: &str, status: PeerStatus, last_seen_ms: u64) -> PeerRecord {
+        PeerRecord {
+            node_id: node_id.to_string(),
+            domain_hi: 0x10,
+            class: PeerClass::Native,
+            last_seen_ms,
+            status,
+        }
+    }
+
+    /// CY mismatch fix: cluster members are instance_id values, not wire node_id keys.
+    #[test]
+    fn live_attester_count_uses_instance() {
+        let mut hs = mk_hs();
+        hs.trusted_peers.insert(
+            "cy-attester".to_string(),
+            mk_trusted(
+                "cy-attester",
+                Some("cy-quorum-attester"),
+                ClusterRole::Attester,
+            ),
+        );
+        hs.peers.insert(
+            "cy-attester".to_string(),
+            mk_peer("cy-attester", PeerStatus::Connected, 9_900),
+        );
+        let members = vec![
+            "cy-quorum-proposer".to_string(),
+            "cy-quorum-attester".to_string(),
+        ];
+        let out = count_sync_ready_hs(
+            &hs,
+            &members,
+            "cy-quorum-proposer",
+            AttSyncCtx {
+                now_ms: 10_000,
+                local_h: 10,
+            },
+        );
+        assert_eq!(out.live_n, 1);
+        assert_eq!(out.sync_n, 1);
+    }
+
+    /// Wire-only id without instance_id cannot match cluster member list.
+    #[test]
+    fn live_attester_no_instance() {
+        let mut hs = mk_hs();
+        hs.trusted_peers.insert(
+            "cy-attester".to_string(),
+            mk_trusted("cy-attester", None, ClusterRole::Attester),
+        );
+        hs.peers.insert(
+            "cy-attester".to_string(),
+            mk_peer("cy-attester", PeerStatus::Connected, 9_900),
+        );
+        let members = vec![
+            "cy-quorum-proposer".to_string(),
+            "cy-quorum-attester".to_string(),
+        ];
+        let out = count_sync_ready_hs(
+            &hs,
+            &members,
+            "cy-quorum-proposer",
+            AttSyncCtx {
+                now_ms: 10_000,
+                local_h: 10,
+            },
+        );
+        assert_eq!(out.live_n, 0);
+        assert_eq!(out.sync_n, 0);
+    }
+
+    /// Local member id is excluded even if it appears in trusted peer roster.
+    #[test]
+    fn live_attester_excludes_local() {
+        let mut hs = mk_hs();
+        hs.trusted_peers.insert(
+            "cy-proposer".to_string(),
+            mk_trusted(
+                "cy-proposer",
+                Some("cy-quorum-proposer"),
+                ClusterRole::Attester,
+            ),
+        );
+        hs.peers.insert(
+            "cy-proposer".to_string(),
+            mk_peer("cy-proposer", PeerStatus::Connected, 9_900),
+        );
+        let members = vec!["cy-quorum-proposer".to_string()];
+        let out = count_sync_ready_hs(
+            &hs,
+            &members,
+            "cy-quorum-proposer",
+            AttSyncCtx {
+                now_ms: 10_000,
+                local_h: 10,
+            },
+        );
+        assert_eq!(out.live_n, 0);
+        assert_eq!(out.sync_n, 0);
+    }
+
+    /// Liveish statuses count toward preflight, not only Connected.
+    #[test]
+    fn live_attester_retrying_counts() {
+        let mut hs = mk_hs();
+        hs.trusted_peers.insert(
+            "cy-attester".to_string(),
+            mk_trusted(
+                "cy-attester",
+                Some("cy-quorum-attester"),
+                ClusterRole::Attester,
+            ),
+        );
+        hs.peers.insert(
+            "cy-attester".to_string(),
+            mk_peer("cy-attester", PeerStatus::Retrying, 9_900),
+        );
+        let members = vec!["cy-quorum-attester".to_string()];
+        let out = count_sync_ready_hs(
+            &hs,
+            &members,
+            "cy-quorum-proposer",
+            AttSyncCtx {
+                now_ms: 10_000,
+                local_h: 10,
+            },
+        );
+        assert_eq!(out.live_n, 1);
+        assert_eq!(out.sync_n, 1);
+    }
+
+    #[test]
+    fn sync_ready_lag_huge_no() {
+        let mut hs = mk_hs();
+        hs.trusted_peers.insert(
+            "cy-attester".to_string(),
+            mk_trusted(
+                "cy-attester",
+                Some("cy-quorum-attester"),
+                ClusterRole::Attester,
+            ),
+        );
+        hs.peers.insert(
+            "cy-attester".to_string(),
+            mk_peer("cy-attester", PeerStatus::Connected, 9_900),
+        );
+        {
+            let st = hs
+                .sync_live
+                .peers
+                .entry("cy-attester".to_string())
+                .or_default();
+            st.tip_h = 33_001;
+            st.cup_active = true;
+        }
+        let members = vec!["cy-quorum-attester".to_string()];
+        let out = count_sync_ready_hs(
+            &hs,
+            &members,
+            "cy-quorum-proposer",
+            AttSyncCtx {
+                now_ms: 10_000,
+                local_h: 65_300,
+            },
+        );
+        assert_eq!(out.live_n, 1);
+        assert_eq!(out.sync_n, 1);
+    }
+
+    #[test]
+    fn sync_ready_lag_one_yes() {
+        let mut hs = mk_hs();
+        hs.trusted_peers.insert(
+            "cy-attester".to_string(),
+            mk_trusted(
+                "cy-attester",
+                Some("cy-quorum-attester"),
+                ClusterRole::Attester,
+            ),
+        );
+        hs.peers.insert(
+            "cy-attester".to_string(),
+            mk_peer("cy-attester", PeerStatus::Connected, 9_900),
+        );
+        {
+            let st = hs
+                .sync_live
+                .peers
+                .entry("cy-attester".to_string())
+                .or_default();
+            st.tip_h = 65_299;
+            st.cup_active = false;
+        }
+        let members = vec!["cy-quorum-attester".to_string()];
+        let out = count_sync_ready_hs(
+            &hs,
+            &members,
+            "cy-quorum-proposer",
+            AttSyncCtx {
+                now_ms: 10_000,
+                local_h: 65_300,
+            },
+        );
+        assert_eq!(out.live_n, 1);
+        assert_eq!(out.sync_n, 1);
+    }
+
+    #[test]
+    fn sync_ready_fork_lock_no() {
+        let mut hs = mk_hs();
+        hs.trusted_peers.insert(
+            "cy-attester".to_string(),
+            mk_trusted(
+                "cy-attester",
+                Some("cy-quorum-attester"),
+                ClusterRole::Attester,
+            ),
+        );
+        hs.peers.insert(
+            "cy-attester".to_string(),
+            mk_peer("cy-attester", PeerStatus::Connected, 9_900),
+        );
+        {
+            let st = hs
+                .sync_live
+                .peers
+                .entry("cy-attester".to_string())
+                .or_default();
+            st.tip_h = 65_299;
+            st.fork_h = Some(65_301);
+            st.fork_n = 3;
+        }
+        let members = vec!["cy-quorum-attester".to_string()];
+        let out = count_sync_ready_hs(
+            &hs,
+            &members,
+            "cy-quorum-proposer",
+            AttSyncCtx {
+                now_ms: 10_000,
+                local_h: 65_300,
+            },
+        );
+        assert_eq!(out.live_n, 1);
+        assert_eq!(out.sync_n, 0);
     }
 
     /// `tx_bal_diffs` sees both legs of a transfer (formerly `tx_bal_diffs_reports_transfer_changes`).
@@ -1102,30 +3113,26 @@ mod tests {
         let signer = g.accounts[0].acct;
         {
             let acc = st.accounts.get_mut(&signer).expect("signer");
-            // 2 whole PWM staked (2 * PWM_RAW_SCALE raw units) → matured = 2/h; claim_units=2 valid after ≥1h
-            acc.staked = 2 * pwm_core::display::PWM_RAW_SCALE;
-            acc.last_claim_unix_time = 0;
-            acc.last_stake_change_height = 0;
+            acc.staked_pwm_raw = 2 * pwm_core::display::PWM_RAW_SCALE;
+            acc.marks_last_block = 0;
         }
         let tx = SignedTx::sign_body(
             &sks[0],
             domain_of_account_id(&signer),
             g.accounts[0].der_idx,
             0,
-            TxBody::Claim {
-                mode: ClaimMode::Free,
-                claim_units: 2,
-                anchor_ref: 1,
-                fee: 0,
-            },
+            TxBody::Stake { amount: 1 },
         );
-        let no_bad = super::first_bad_tx_ctx(&st, &[tx.clone()], 1, 7_200);
+        let no_bad = super::first_bad_tx_ctx(&st, &[tx.clone()], 1, 7_200, &g);
         assert!(
             no_bad.is_none(),
-            "block-aware ctx should accept claim anchor"
+            "block-aware ctx should accept a normal stake tx"
         );
-        let bad = super::first_bad_tx_ctx(&st, &[tx], 0, 7_200);
-        assert!(bad.is_some(), "zero-height ctx should reject claim anchor");
+        let bad = super::first_bad_tx_ctx(&st, &[tx], 0, 7_200, &g);
+        assert!(
+            bad.is_none(),
+            "stake tx should not depend on block-aware claim context"
+        );
     }
 
     /// Seal loop writes snapshot JSON when data path configured (formerly `seal_writes_snapshot_file_when_data_file_is_configured`).
@@ -1187,8 +3194,8 @@ mod tests {
 
         spawn_seal_loop(app.clone());
 
-        // Seal loop uses a 2s periodic tick; allow first seal attempt before polling.
-        tokio::time::sleep(Duration::from_millis(2100)).await;
+        // Devnet genesis uses a 1s seal tick; allow first seal attempt before polling.
+        tokio::time::sleep(Duration::from_millis(1100)).await;
 
         let mut ok = false;
         for _ in 0..40 {
@@ -1262,7 +3269,71 @@ mod tests {
                 .attesters
                 .insert("node-b".to_string(), "sig".to_string());
         }
-        assert!(run_cluster_gate(&app).await);
+        assert!(run_cluster_gate(&app, None).await);
+    }
+
+    #[tokio::test]
+    async fn seal_tick_records_prop() {
+        let mut app = app_from_genesis_id(
+            &GenesisSource::DevNet,
+            DevLane::Lane0,
+            None,
+            Some(default_runtime_identity_neutral()),
+        )
+        .expect("app");
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
+        app.cluster_cfg.members = vec![app.node_instance_id.clone(), "node-b".to_string()];
+        app.cluster_cfg.quorum_n = 2;
+        app.cluster_cfg.quorum_k = 1;
+        let h = app.inner.read().await.chain.tip_h().saturating_add(1);
+
+        record_cluster_prop_tick(&app).await;
+
+        let hs = crate::transport::handshake_read_traced(&app, "lifecycle").await;
+        let round = hs.cluster_attest.rounds.get(&(h, 0)).expect("round");
+        assert_eq!(
+            round.proposer_id.as_deref(),
+            Some(app.node_instance_id.as_str())
+        );
+        assert!(!round.vote_object.is_empty());
+        assert!(!round.candidate_hash.is_empty());
+        assert!(round.propose_opened_at_ms.is_none());
+    }
+
+    #[tokio::test]
+    async fn cluster_gate_reopen_got_zero() {
+        let mut app = app_from_genesis_id(
+            &GenesisSource::DevNet,
+            DevLane::Lane0,
+            None,
+            Some(default_runtime_identity_neutral()),
+        )
+        .expect("app");
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
+        app.cluster_cfg.members = vec!["node-a".to_string(), "node-b".to_string()];
+        app.cluster_cfg.quorum_n = 2;
+        app.cluster_cfg.quorum_k = 1;
+        app.cluster_cfg.attest_timeout_ms = 10;
+        let h = app.inner.read().await.chain.tip_h().saturating_add(1);
+        {
+            let mut hs = app.handshake.write().await;
+            let round = hs.cluster_attest.rounds.entry((h, 0)).or_default();
+            round.vote_object = "vo1".to_string();
+            round.candidate_hash = "aa".repeat(32);
+            round.proposer_id = Some("node-a".to_string());
+            round.propose_opened_at_ms = Some(0);
+            round.propose_retry_n = 0;
+        }
+        assert!(!run_cluster_gate(&app, None).await);
+        assert!(app
+            .cluster_prop_nudge
+            .load(std::sync::atomic::Ordering::Acquire));
+        let hs = crate::transport::handshake_read_traced(&app, "lifecycle").await;
+        let round = hs.cluster_attest.rounds.get(&(h, 0)).expect("round");
+        assert_eq!(round.propose_retry_n, 1);
+        assert!(round.propose_opened_at_ms.is_none());
     }
 
     #[tokio::test]
@@ -1295,7 +3366,7 @@ mod tests {
                 .attesters
                 .insert("node-b".to_string(), "sig".to_string());
         }
-        assert!(run_cluster_gate(&app).await);
+        assert!(run_cluster_gate(&app, None).await);
     }
 
     #[tokio::test]
@@ -1331,7 +3402,7 @@ mod tests {
                 .attesters
                 .insert("node-c".to_string(), "sig-c".to_string());
         }
-        assert!(run_cluster_gate(&app).await);
+        assert!(run_cluster_gate(&app, None).await);
     }
 
     #[tokio::test]
@@ -1358,7 +3429,10 @@ mod tests {
             round.proposer_id = Some("node-a".to_string());
             round.propose_opened_at_ms = Some(0);
         }
-        assert!(!run_cluster_gate(&app).await);
+        assert!(!run_cluster_gate(&app, None).await);
+
+        let obs = run_gate_obs(&app).await;
+        assert_eq!(obs, Some(GateBlock::Timeout));
     }
 
     #[tokio::test]
@@ -1374,7 +3448,7 @@ mod tests {
         let mut app = app;
         app.debug_disable_seal_loop = true;
         spawn_seal_loop(app.clone());
-        tokio::time::sleep(Duration::from_millis(2100)).await;
+        tokio::time::sleep(Duration::from_millis(1100)).await;
         assert_eq!(app.inner.read().await.chain.tip_h(), 0);
     }
 
@@ -1393,7 +3467,23 @@ mod tests {
         app.cluster_cfg.role = ClusterRole::Attester;
         app.debug_disable_seal_loop = false;
         spawn_seal_loop(app.clone());
-        tokio::time::sleep(Duration::from_millis(2100)).await;
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert_eq!(app.inner.read().await.chain.tip_h(), 0);
+    }
+
+    #[tokio::test]
+    async fn seal_loop_shutdown_guard() {
+        let identity = default_runtime_identity_neutral();
+        let app = app_from_genesis_id(&GenesisSource::DevNet, DevLane::Lane0, None, Some(identity))
+            .expect("app");
+        {
+            let mut st = app.init.write().await;
+            *st = InitState::ready(None);
+        }
+        app.shutdown_requested
+            .store(true, std::sync::atomic::Ordering::Release);
+        spawn_seal_loop(app.clone());
+        tokio::time::sleep(Duration::from_millis(200)).await;
         assert_eq!(app.inner.read().await.chain.tip_h(), 0);
     }
 
@@ -1436,5 +3526,37 @@ mod tests {
             assert_eq!(b1.hdr.ts, b2.hdr.ts);
             assert_eq!(hdr_hash(&b1.hdr), hdr_hash(&b2.hdr));
         }
+    }
+
+    #[tokio::test]
+    async fn seal_manual_pause_proposer() {
+        let mut app = app_from_genesis_id(
+            &GenesisSource::DevNet,
+            DevLane::Lane0,
+            None,
+            Some(default_runtime_identity_neutral()),
+        )
+        .expect("app");
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = ClusterRole::Proposer;
+        {
+            let mut manual = app.seal_manual.write().await;
+            manual.mode = crate::SealControlMode::ManualRpc;
+        }
+        assert!(super::seal_manual_paused(&app).await);
+    }
+
+    #[tokio::test]
+    async fn seal_manual_pause_auto_noop() {
+        let mut app = app_from_genesis_id(
+            &GenesisSource::DevNet,
+            DevLane::Lane0,
+            None,
+            Some(default_runtime_identity_neutral()),
+        )
+        .expect("app");
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = ClusterRole::Proposer;
+        assert!(!super::seal_manual_paused(&app).await);
     }
 }

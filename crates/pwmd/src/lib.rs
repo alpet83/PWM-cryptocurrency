@@ -12,6 +12,7 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing::{info, warn};
 
 mod api;
+mod block_timing;
 mod bootstrap;
 mod bridge_trust;
 mod config;
@@ -43,7 +44,7 @@ pub use bootstrap::{
 };
 pub use config::{
     ClusterCfg, ConsoleColorMode, DebugDumpCfg, GenesisSource, LogFileMode, LoggingConfig,
-    PersistSnapKind, PwmdConfig, TransportConfig,
+    PersistSnapKind, PwmdConfig, SealControlMode, TransportConfig,
 };
 pub use identity::{
     default_runtime_identity_neutral, neutral_listen_dir_tag, parse_cluster_domain_hi,

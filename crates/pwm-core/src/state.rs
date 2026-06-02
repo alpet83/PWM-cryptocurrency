@@ -1,17 +1,56 @@
 //! Canonical chain state: accounts map, fees, burns, import consumed IDs.
 
 use crate::crypto::verify;
+use crate::genesis::{ClaimPhaseConfig, GenCfg};
+use crate::marks::compute_lazy_marks;
 use crate::tx::{
-    export_context_is_valid, import_context_is_valid, same_hi_domain, ActivationMode, ClaimMode,
-    CosignRole, PolicyAction, PolicyKind, SignedTx, TxBody, TxError, CLAIM_ALL,
+    export_context_is_valid, import_context_is_valid, same_hi_domain, ActivationMode, CosignRole,
+    PolicyAction, PolicyKind, SignedTx, TxBody, TxError,
 };
-use crate::types::{Account, AccountId};
-use crate::PWM_RAW_SCALE;
+use crate::types::{Account, AccountId, DeferredPolicyEntry};
+use crate::MARKS_CAP;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const PPM_DENOM: u128 = 1_000_000;
+const CLAIM_IPV4_MSG_TAG: &[u8] = b"PWM/IPV4/CLAIM/V1";
+
+fn find_claim_phase(gen_cfg: &GenCfg, phase: u8) -> Result<&ClaimPhaseConfig, TxError> {
+    gen_cfg
+        .ipv4_claim_phases
+        .iter()
+        .find(|row| row.phase == phase)
+        .ok_or(TxError::PolicySchemaInvalid)
+}
+
+fn claim_ipv4_msg(phase: u8, batch_root: &[u8; 32], claimant: &AccountId) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(CLAIM_IPV4_MSG_TAG.len() + 1 + 32 + 32);
+    msg.extend_from_slice(CLAIM_IPV4_MSG_TAG);
+    msg.push(phase);
+    msg.extend_from_slice(batch_root);
+    msg.extend_from_slice(claimant);
+    msg
+}
+
+fn verify_claim_sig(
+    st: &State,
+    reg_id: &AccountId,
+    msg: &[u8],
+    registry_sig: &[u8; 64],
+) -> Result<(), TxError> {
+    let reg_pk = st
+        .accounts
+        .get(reg_id)
+        .filter(|row| row.initialized)
+        .map(|row| row.signing_pubkey)
+        .ok_or(TxError::PolicySchemaInvalid)?;
+    if verify(&reg_pk, msg, registry_sig) {
+        Ok(())
+    } else {
+        Err(TxError::BadSignature)
+    }
+}
 
 #[derive(Debug)]
 pub enum PolicyDecision {
@@ -63,9 +102,10 @@ impl State {
         tx: &SignedTx,
         inclusion_height: u64,
         block_unix_time: u64,
+        gen_cfg: &GenCfg,
     ) -> Result<(), TxError> {
         let mut st = self.clone();
-        st.apply_tx_with_ctx(tx, inclusion_height, block_unix_time)
+        st.apply_tx_with_ctx(tx, inclusion_height, block_unix_time, gen_cfg)
     }
 
     /// Dry-run on the next block after `tip_height` (mempool / RPC admission).
@@ -74,17 +114,23 @@ impl State {
         tx: &SignedTx,
         tip_height: u64,
         block_unix_time: u64,
+        gen_cfg: &GenCfg,
     ) -> Result<(), TxError> {
-        self.precheck_apply_with_ctx(tx, tip_height.saturating_add(1), block_unix_time)
+        self.precheck_apply_with_ctx(tx, tip_height.saturating_add(1), block_unix_time, gen_cfg)
+    }
+
+    fn default_ctx_cfg() -> GenCfg {
+        crate::genesis::dev_net().0
     }
 
     /// Applies one signed tx. `Init` may create an empty stub row first (white-spec).
     pub fn apply_tx(&mut self, tx: &SignedTx) -> Result<(), TxError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|_| TxError::ClaimAnchorRangeInvalid)?
+            .map_err(|_| TxError::PolicySchemaInvalid)?
             .as_secs();
-        self.apply_tx_with_ctx(tx, 0, now)
+        let gen_cfg = Self::default_ctx_cfg();
+        self.apply_tx_with_ctx(tx, 0, now, &gen_cfg)
     }
 
     /// Applies one signed tx using canonical block context for claim maturity checks.
@@ -92,7 +138,8 @@ impl State {
         &mut self,
         tx: &SignedTx,
         inclusion_height: u64,
-        block_unix_time: u64,
+        _block_unix_time: u64,
+        gen_cfg: &GenCfg,
     ) -> Result<(), TxError> {
         crate::tx::validate_tx_shape(tx)?;
         let id = tx.computed_account_id();
@@ -125,7 +172,7 @@ impl State {
             return Err(TxError::BadNonce);
         }
         let mut redir_to = None;
-        match self.evaluate_policy(tx) {
+        match self.evaluate_policy(tx, inclusion_height) {
             PolicyDecision::Allow => {}
             PolicyDecision::Reject(err) => return Err(err),
             PolicyDecision::Redirect(to) => redir_to = Some(to),
@@ -149,15 +196,10 @@ impl State {
                     a.requested_domain_lo = Some(ext.requested_domain_lo);
                     a.rescue_address = ext.rescue_address;
                     for row in &ext.initial_policies {
-                        let bit = row.policy.bit();
-                        a.active_policies &= !bit;
-                        a.dormant_policies &= !bit;
-                        match row.activation {
-                            ActivationMode::Dormant => a.dormant_policies |= bit,
-                            ActivationMode::Immediately => a.active_policies |= bit,
-                        }
+                        set_pol_mode(&mut a, row.policy, &row.activation, inclusion_height);
                     }
                 }
+                a.marks_last_block = inclusion_height;
                 a.nonce += 1;
                 self.accounts.insert(id, a);
             }
@@ -174,6 +216,7 @@ impl State {
                     return Err(TxError::Insufficient);
                 }
                 let mut from = acc;
+                touch_acct_mrks(&mut from, inclusion_height, gen_cfg);
                 from.balance_pwm -= total;
                 from.nonce += 1;
                 self.fee_pool = self.fee_pool.saturating_add(tx.body.fee_amount());
@@ -185,6 +228,7 @@ impl State {
                     self.accounts.insert(id, from);
                 } else {
                     let mut to_acc = self.accounts.get(&dst).cloned().expect("recipient gated");
+                    touch_acct_mrks(&mut to_acc, inclusion_height, gen_cfg);
                     to_acc.balance_pwm = to_acc.balance_pwm.saturating_add(*amount);
                     self.accounts.insert(id, from);
                     self.accounts.insert(dst, to_acc);
@@ -198,11 +242,9 @@ impl State {
                     return Err(TxError::Insufficient);
                 }
                 let mut a = acc;
-                apply_auto_claim(&mut a, inclusion_height, block_unix_time);
+                touch_acct_mrks(&mut a, inclusion_height, gen_cfg);
                 a.balance_pwm -= amount;
-                a.staked += amount;
-                a.last_claim_unix_time = block_unix_time;
-                a.last_stake_change_height = inclusion_height;
+                a.staked_pwm_raw += amount;
                 a.nonce += 1;
                 self.accounts.insert(id, a);
             }
@@ -210,15 +252,13 @@ impl State {
                 if !acc.initialized {
                     return Err(TxError::NotInitialized);
                 }
-                if acc.staked < *amount {
+                if acc.staked_pwm_raw < *amount {
                     return Err(TxError::Insufficient);
                 }
                 let mut a = acc;
-                apply_auto_claim(&mut a, inclusion_height, block_unix_time);
-                a.staked -= amount;
+                touch_acct_mrks(&mut a, inclusion_height, gen_cfg);
+                a.staked_pwm_raw -= amount;
                 a.balance_pwm += amount;
-                a.last_claim_unix_time = block_unix_time;
-                a.last_stake_change_height = inclusion_height;
                 a.nonce += 1;
                 self.accounts.insert(id, a);
             }
@@ -226,72 +266,33 @@ impl State {
                 if !acc.initialized {
                     return Err(TxError::NotInitialized);
                 }
+                let mut a = acc;
+                touch_acct_mrks(&mut a, inclusion_height, gen_cfg);
                 // Burn is unilateral: beneficiary is metadata, sender marks are debited locally.
-                if acc.marks < *mark_amount {
+                if a.stored_marks < *mark_amount {
                     return Err(TxError::InsufficientMarks);
                 }
-                let mut a = acc;
-                a.marks -= *mark_amount;
+                a.stored_marks -= *mark_amount;
                 a.nonce += 1;
                 self.accounts.insert(id, a);
             }
-            TxBody::Claim {
-                mode,
-                claim_units,
-                anchor_ref,
-                fee,
+            TxBody::ClaimIPv4Batch {
+                phase,
+                batch_root,
+                registry_sig,
             } => {
                 if !acc.initialized {
                     return Err(TxError::NotInitialized);
                 }
-                if *anchor_ref > inclusion_height {
-                    return Err(TxError::ClaimAnchorRangeInvalid);
+                if acc.ipv4_claimed_phase.is_some() {
+                    return Err(TxError::PolicyDenied);
                 }
-                if *anchor_ref < acc.last_claim_anchor_ref {
-                    return Err(TxError::ClaimAnchorRangeInvalid);
-                }
-                if acc.last_stake_change_height > *anchor_ref
-                    && acc.last_stake_change_height <= inclusion_height
-                {
-                    return Err(TxError::ClaimAnchorContinuityBroken);
-                }
-                let matured = matured_units_available(&acc, block_unix_time);
-                let effective_units = if *claim_units == CLAIM_ALL {
-                    matured
-                } else {
-                    *claim_units
-                };
-                if *claim_units == CLAIM_ALL && effective_units == 0 {
-                    // CLAIM_ALL with zero matured marks is a valid no-op claim.
-                    // The tx still consumes nonce, but claim windows/limits stay untouched.
-                    let mut a = acc;
-                    a.nonce += 1;
-                    self.accounts.insert(id, a);
-                    return Ok(());
-                }
-                if effective_units == 0 || effective_units > matured {
-                    return Err(TxError::ClaimOverMatured);
-                }
+                let phase_row = find_claim_phase(gen_cfg, *phase)?;
+                let msg = claim_ipv4_msg(*phase, batch_root, &id);
+                verify_claim_sig(self, &phase_row.registry_address, &msg, registry_sig)?;
                 let mut a = acc;
-                match mode {
-                    ClaimMode::Free => {
-                        let utc_day = block_unix_time / 86_400;
-                        if a.free_claim_utc_day == Some(utc_day) {
-                            return Err(TxError::FreeClaimDailyLimit);
-                        }
-                        a.free_claim_utc_day = Some(utc_day);
-                    }
-                    ClaimMode::Paid => {
-                        if a.balance_pwm < *fee {
-                            return Err(TxError::Insufficient);
-                        }
-                        a.balance_pwm -= *fee;
-                        self.fee_pool = self.fee_pool.saturating_add(*fee);
-                    }
-                }
-                a.marks = a.marks.saturating_add(effective_units);
-                a.last_claim_unix_time = block_unix_time;
-                a.last_claim_anchor_ref = inclusion_height;
+                a.balance_pwm = a.balance_pwm.saturating_add(phase_row.allocation);
+                a.ipv4_claimed_phase = Some(*phase);
                 a.nonce += 1;
                 self.accounts.insert(id, a);
             }
@@ -408,8 +409,9 @@ impl State {
                     return Err(TxError::Insufficient);
                 }
                 let mut a = acc;
+                touch_acct_mrks(&mut a, inclusion_height, gen_cfg);
                 validate_pol_action(self, &a, action, tx)?;
-                apply_policy_action(&mut a, action)?;
+                apply_policy_action(&mut a, action, inclusion_height)?;
                 a.balance_pwm -= *fee;
                 a.nonce += 1;
                 self.fee_pool = self.fee_pool.saturating_add(*fee);
@@ -420,7 +422,7 @@ impl State {
     }
 
     /// Pure policy evaluator over current state snapshot.
-    pub fn evaluate_policy(&self, tx: &SignedTx) -> PolicyDecision {
+    pub fn evaluate_policy(&self, tx: &SignedTx, chain_tip_height: u64) -> PolicyDecision {
         let sender_id = tx.computed_account_id();
         let Some(sender_acc) = self.accounts.get(&sender_id) else {
             return PolicyDecision::Reject(TxError::NoAccount);
@@ -433,19 +435,29 @@ impl State {
         if let TxBody::Transfer { to, .. } = &tx.body {
             if let Some(recipient_acc) = self.accounts.get(to).filter(|acc| acc.initialized) {
                 if recipient_acc.finalized
-                    && policy_is_active(recipient_acc, PolicyKind::RoutingEmergencyRedirect)
+                    && policy_is_active_at(
+                        recipient_acc,
+                        PolicyKind::RoutingEmergencyRedirect,
+                        chain_tip_height,
+                    )
                 {
                     return eval_emerg_redirect(self, &sender_id, recipient_acc);
                 }
-                if policy_is_active(recipient_acc, PolicyKind::RoutingSameDomainOnly)
-                    && !same_hi_domain(&sender_id, to)
+                if policy_is_active_at(
+                    recipient_acc,
+                    PolicyKind::RoutingSameDomainOnly,
+                    chain_tip_height,
+                ) && !same_hi_domain(&sender_id, to)
                 {
                     return PolicyDecision::Reject(TxError::PolicyRoutingDenied);
                 }
-                if policy_is_active(recipient_acc, PolicyKind::SenderFilter) && sender_id != *to {
+                if policy_is_active_at(recipient_acc, PolicyKind::SenderFilter, chain_tip_height)
+                    && sender_id != *to
+                {
                     return PolicyDecision::Reject(TxError::PolicySenderFiltered);
                 }
-                if policy_is_active(recipient_acc, PolicyKind::DefaultBehavior) {
+                if policy_is_active_at(recipient_acc, PolicyKind::DefaultBehavior, chain_tip_height)
+                {
                     return PolicyDecision::Reject(TxError::PolicyDenied);
                 }
             }
@@ -453,7 +465,8 @@ impl State {
 
         if let TxBody::Policy { target_account, .. } = &tx.body {
             if let Some(target_acc) = self.accounts.get(target_account) {
-                if policy_is_active(target_acc, PolicyKind::CosignRequired) && !has_valid_cosign(tx)
+                if policy_is_active_at(target_acc, PolicyKind::CosignRequired, chain_tip_height)
+                    && !has_valid_cosign(tx)
                 {
                     return PolicyDecision::Reject(TxError::PolicyMissingCosign);
                 }
@@ -469,20 +482,20 @@ impl State {
             if !a.initialized {
                 continue;
             }
-            let add = as_marks_u32(a.staked.saturating_mul(coeff) / PPM_DENOM);
-            a.marks = a.marks.saturating_add(add);
+            let add = as_marks_u32(a.staked_pwm_raw.saturating_mul(coeff) / PPM_DENOM);
+            a.stored_marks = a.stored_marks.saturating_add(add);
         }
     }
 
     /// V2 marks path: stake gate + seasonal ppm.
     pub fn accrue_marks_v2(&mut self, coeff: u128, stake_min: u128, season_ppm: u128) {
         for a in self.accounts.values_mut() {
-            if !a.initialized || a.staked < stake_min {
+            if !a.initialized || a.staked_pwm_raw < stake_min {
                 continue;
             }
-            let base = a.staked.saturating_mul(coeff) / PPM_DENOM;
+            let base = a.staked_pwm_raw.saturating_mul(coeff) / PPM_DENOM;
             let add = as_marks_u32(base.saturating_mul(season_ppm) / PPM_DENOM);
-            a.marks = a.marks.saturating_add(add);
+            a.stored_marks = a.stored_marks.saturating_add(add);
         }
     }
 
@@ -501,7 +514,7 @@ impl State {
         season_ppm: u128,
     ) {
         if let Some(a) = self.accounts.get_mut(producer) {
-            if a.staked < stake_min {
+            if a.staked_pwm_raw < stake_min {
                 return;
             }
             let add = reward.saturating_mul(season_ppm) / PPM_DENOM;
@@ -510,45 +523,39 @@ impl State {
     }
 }
 
-fn matured_units_available(acc: &Account, block_unix_time: u64) -> u32 {
-    if block_unix_time <= acc.last_claim_unix_time || acc.staked == 0 {
-        return 0;
-    }
-    let delta_seconds = block_unix_time - acc.last_claim_unix_time;
-    let hours = delta_seconds / 3_600;
-    let whole_pwm_staked = acc.staked / PWM_RAW_SCALE;
-    as_marks_u32(whole_pwm_staked.saturating_mul(hours as u128))
-}
-
-fn apply_auto_claim(acc: &mut Account, inclusion_height: u64, block_unix_time: u64) {
-    let matured = matured_units_available(acc, block_unix_time);
-    if matured == 0 {
-        return;
-    }
-    acc.marks = acc.marks.saturating_add(matured);
-    acc.last_claim_unix_time = block_unix_time;
-    acc.last_claim_anchor_ref = inclusion_height;
+fn touch_acct_mrks(acc: &mut Account, inclusion_height: u64, gen_cfg: &GenCfg) {
+    acc.stored_marks = compute_lazy_marks(acc, inclusion_height, gen_cfg);
+    acc.marks_last_block = inclusion_height;
 }
 
 fn as_marks_u32(value: u128) -> u32 {
-    value.min(u32::MAX as u128) as u32
+    value.min(MARKS_CAP as u128) as u32
 }
 
-fn apply_policy_action(acc: &mut Account, action: &PolicyAction) -> Result<(), TxError> {
+fn apply_policy_action(
+    acc: &mut Account,
+    action: &PolicyAction,
+    inclusion_height: u64,
+) -> Result<(), TxError> {
     match action {
         PolicyAction::SetPolicy { policy, activation } => {
-            let bit = policy.bit();
-            acc.active_policies &= !bit;
-            acc.dormant_policies &= !bit;
-            match activation {
-                ActivationMode::Dormant => acc.dormant_policies |= bit,
-                ActivationMode::Immediately => acc.active_policies |= bit,
-            }
+            set_pol_mode(acc, *policy, activation, inclusion_height);
             Ok(())
         }
         PolicyAction::ActivatePolicy { policy_id } => {
             let policy =
                 PolicyKind::from_policy_id(*policy_id).ok_or(TxError::PolicySchemaInvalid)?;
+            if let Some(row) = acc
+                .deferred_policies
+                .iter()
+                .find(|row| row.policy == policy)
+            {
+                return if inclusion_height < row.activate_at_height {
+                    Err(TxError::PolicyNotActive)
+                } else {
+                    Err(TxError::PolicyDenied)
+                };
+            }
             let bit = policy.bit();
             if acc.active_policies & bit != 0 {
                 return Ok(());
@@ -569,6 +576,14 @@ fn apply_policy_action(acc: &mut Account, action: &PolicyAction) -> Result<(), T
             if !policy.is_reversible() {
                 return Err(TxError::PolicyIrreversible);
             }
+            if let Some(idx) = acc
+                .deferred_policies
+                .iter()
+                .position(|row| row.policy == policy && inclusion_height < row.activate_at_height)
+            {
+                acc.deferred_policies.remove(idx);
+                return Ok(());
+            }
             let bit = policy.bit();
             if acc.active_policies & bit == 0 {
                 return Err(TxError::PolicyNotActive);
@@ -580,8 +595,32 @@ fn apply_policy_action(acc: &mut Account, action: &PolicyAction) -> Result<(), T
     }
 }
 
-fn policy_is_active(acc: &Account, policy: PolicyKind) -> bool {
+fn set_pol_mode(acc: &mut Account, policy: PolicyKind, activation: &ActivationMode, incl_h: u64) {
+    let bit = policy.bit();
+    acc.active_policies &= !bit;
+    acc.dormant_policies &= !bit;
+    acc.deferred_policies.retain(|row| row.policy != policy);
+    match activation {
+        ActivationMode::Dormant => acc.dormant_policies |= bit,
+        ActivationMode::Immediately => acc.active_policies |= bit,
+        ActivationMode::Deferred { activate_at_height } => {
+            acc.deferred_policies.push(DeferredPolicyEntry {
+                policy,
+                activate_at_height: *activate_at_height,
+            });
+            if *activate_at_height <= incl_h {
+                acc.active_policies |= bit;
+            }
+        }
+    }
+}
+
+fn policy_is_active_at(acc: &Account, policy: PolicyKind, chain_tip_height: u64) -> bool {
     acc.active_policies & policy.bit() != 0
+        || acc
+            .deferred_policies
+            .iter()
+            .any(|row| row.policy == policy && chain_tip_height >= row.activate_at_height)
 }
 
 fn is_finalized_blocked(body: &TxBody, acc: &Account) -> bool {
@@ -590,7 +629,7 @@ fn is_finalized_blocked(body: &TxBody, acc: &Account) -> bool {
         | TxBody::Stake { .. }
         | TxBody::Unstake { .. }
         | TxBody::BurnMark { .. }
-        | TxBody::Claim { .. }
+        | TxBody::ClaimIPv4Batch { .. }
         | TxBody::Export { .. }
         | TxBody::Import { .. } => true,
         TxBody::Policy { action, .. } => !finalized_policy_allowed(acc, action),
@@ -681,14 +720,16 @@ mod tests {
     use super::PolicyDecision;
     use super::State;
     use crate::crypto::sign;
-    use crate::genesis::dev_net;
+    use crate::genesis::{dev_net, ClaimPhaseConfig};
     use crate::hd::{account_id_from_parts, domain_of_account_id};
     use crate::tx::{
-        validate_tx_shape, ActivationMode, ClaimMode, CosignRole, Cosignature, InitPolicyEntry,
-        InitV4Extension, PolicyAction, PolicyKind, SignedTx, TxBody, TxError, CLAIM_ALL,
+        validate_tx_shape, ActivationMode, CosignRole, Cosignature, InitPolicyEntry,
+        InitV4Extension, PolicyAction, PolicyKind, SignedTx, TxBody, TxError,
     };
     use crate::types::Account;
     use crate::types::AccountId;
+    use crate::types::DeferredPolicyEntry;
+    use crate::MARKS_CAP;
     use crate::PWM_RAW_SCALE;
     use ed25519_dalek::SigningKey;
     use slip10_ed25519::derive_ed25519_private_key;
@@ -732,6 +773,57 @@ mod tests {
             seed = seed.wrapping_add(1);
         }
         panic!("failed to find unused account in same domain");
+    }
+
+    struct ClaimCtx {
+        st: State,
+        gen_cfg: crate::genesis::GenCfg,
+        reg_sk: SigningKey,
+        claim_sk: SigningKey,
+        claim_idx: u32,
+        claim_id: AccountId,
+        batch_root: [u8; 32],
+    }
+
+    fn mk_claim_ctx() -> ClaimCtx {
+        let (reg_sk, reg_idx, reg_id) = user_sk0(&[0x44; 32]);
+        let (claim_sk, claim_idx, claim_id) = user_sk0(&[0x45; 32]);
+        eprintln!("V5_CLAIM_TEST_REG_ID_HEX={}", hex::encode(reg_id));
+        eprintln!(
+            "V5_CLAIM_TEST_REG_PK_HEX={}",
+            hex::encode(reg_sk.verifying_key().to_bytes())
+        );
+        eprintln!("V5_CLAIM_TEST_CLAIM_ID_HEX={}", hex::encode(claim_id));
+        eprintln!(
+            "V5_CLAIM_TEST_CLAIM_PK_HEX={}",
+            hex::encode(claim_sk.verifying_key().to_bytes())
+        );
+        let mut st = State::default();
+        st.accounts.insert(
+            reg_id,
+            Account::genesis_funded(reg_sk.verifying_key().to_bytes(), reg_idx, 0),
+        );
+        st.accounts.insert(
+            claim_id,
+            Account::genesis_funded(claim_sk.verifying_key().to_bytes(), claim_idx, 77),
+        );
+
+        let mut gen_cfg = dev_net().0;
+        gen_cfg.ipv4_claim_phases = vec![ClaimPhaseConfig {
+            phase: 7,
+            registry_address: reg_id,
+            allocation: 500,
+        }];
+
+        ClaimCtx {
+            st,
+            gen_cfg,
+            reg_sk,
+            claim_sk,
+            claim_idx,
+            claim_id,
+            batch_root: [0xAB; 32],
+        }
     }
 
     /// Init stub then transfer validator→peer debits fee pool (formerly `apply_tx_init_then_transfer_happy_path`).
@@ -1113,6 +1205,151 @@ mod tests {
         assert!(matches!(e, TxError::BadNonce));
     }
 
+    #[test]
+    fn claim_ipv4_batch_happy_apply() {
+        let mut ctx = mk_claim_ctx();
+        let before = ctx.st.get(&ctx.claim_id).expect("claimant before").clone();
+        let msg = super::claim_ipv4_msg(7, &ctx.batch_root, &ctx.claim_id);
+        let registry_sig = sign(&ctx.reg_sk, &msg);
+        let tx = SignedTx::sign_body(
+            &ctx.claim_sk,
+            domain_of_account_id(&ctx.claim_id),
+            ctx.claim_idx,
+            before.nonce,
+            TxBody::ClaimIPv4Batch {
+                phase: 7,
+                batch_root: ctx.batch_root,
+                registry_sig,
+            },
+        );
+
+        eprintln!(
+            "V5_CLAIM_TEST_TX_JSON={}",
+            serde_json::to_string_pretty(&tx).expect("ser")
+        );
+        eprintln!("V5_CLAIM_TEST_BATCH_ROOT={}", hex::encode(ctx.batch_root));
+
+        ctx.st
+            .apply_tx_with_ctx(&tx, 1, 0, &ctx.gen_cfg)
+            .expect("claim must apply");
+        let after = ctx.st.get(&ctx.claim_id).expect("claimant after");
+        assert_eq!(after.balance_pwm, before.balance_pwm + 500);
+        assert_eq!(after.ipv4_claimed_phase, Some(7));
+        assert_eq!(after.nonce, before.nonce + 1);
+    }
+
+    #[test]
+    fn claim_ipv4_phase_unknown() {
+        let mut ctx = mk_claim_ctx();
+        let before = ctx.st.clone();
+        let msg = super::claim_ipv4_msg(9, &ctx.batch_root, &ctx.claim_id);
+        let tx = SignedTx::sign_body(
+            &ctx.claim_sk,
+            domain_of_account_id(&ctx.claim_id),
+            ctx.claim_idx,
+            0,
+            TxBody::ClaimIPv4Batch {
+                phase: 9,
+                batch_root: ctx.batch_root,
+                registry_sig: sign(&ctx.reg_sk, &msg),
+            },
+        );
+
+        let err = ctx
+            .st
+            .apply_tx_with_ctx(&tx, 1, 0, &ctx.gen_cfg)
+            .expect_err("unknown phase must fail");
+        assert!(matches!(err, TxError::PolicySchemaInvalid));
+        assert_eq!(ctx.st.accounts, before.accounts);
+        assert_eq!(ctx.st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn claim_ipv4_sig_bad_reject() {
+        let mut ctx = mk_claim_ctx();
+        let before = ctx.st.clone();
+        let (bad_sk, _, _) = user_sk0(&[0x46; 32]);
+        let msg = super::claim_ipv4_msg(7, &ctx.batch_root, &ctx.claim_id);
+        let tx = SignedTx::sign_body(
+            &ctx.claim_sk,
+            domain_of_account_id(&ctx.claim_id),
+            ctx.claim_idx,
+            0,
+            TxBody::ClaimIPv4Batch {
+                phase: 7,
+                batch_root: ctx.batch_root,
+                registry_sig: sign(&bad_sk, &msg),
+            },
+        );
+
+        let err = ctx
+            .st
+            .apply_tx_with_ctx(&tx, 1, 0, &ctx.gen_cfg)
+            .expect_err("bad registry signature must fail");
+        assert!(matches!(err, TxError::BadSignature));
+        assert_eq!(ctx.st.accounts, before.accounts);
+        assert_eq!(ctx.st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn claim_ipv4_double_reject() {
+        let mut ctx = mk_claim_ctx();
+        let claim = ctx
+            .st
+            .accounts
+            .get_mut(&ctx.claim_id)
+            .expect("claimant row");
+        claim.ipv4_claimed_phase = Some(1);
+        let before = ctx.st.clone();
+        let msg = super::claim_ipv4_msg(7, &ctx.batch_root, &ctx.claim_id);
+        let tx = SignedTx::sign_body(
+            &ctx.claim_sk,
+            domain_of_account_id(&ctx.claim_id),
+            ctx.claim_idx,
+            0,
+            TxBody::ClaimIPv4Batch {
+                phase: 7,
+                batch_root: ctx.batch_root,
+                registry_sig: sign(&ctx.reg_sk, &msg),
+            },
+        );
+
+        let err = ctx
+            .st
+            .apply_tx_with_ctx(&tx, 1, 0, &ctx.gen_cfg)
+            .expect_err("double claim must fail");
+        assert!(matches!(err, TxError::PolicyDenied));
+        assert_eq!(ctx.st.accounts, before.accounts);
+        assert_eq!(ctx.st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    fn claim_ipv4_uninit_reject() {
+        let mut ctx = mk_claim_ctx();
+        ctx.st.accounts.insert(ctx.claim_id, Account::default());
+        let before = ctx.st.clone();
+        let msg = super::claim_ipv4_msg(7, &ctx.batch_root, &ctx.claim_id);
+        let tx = SignedTx::sign_body(
+            &ctx.claim_sk,
+            domain_of_account_id(&ctx.claim_id),
+            ctx.claim_idx,
+            0,
+            TxBody::ClaimIPv4Batch {
+                phase: 7,
+                batch_root: ctx.batch_root,
+                registry_sig: sign(&ctx.reg_sk, &msg),
+            },
+        );
+
+        let err = ctx
+            .st
+            .apply_tx_with_ctx(&tx, 1, 0, &ctx.gen_cfg)
+            .expect_err("uninitialized claimant must fail");
+        assert!(matches!(err, TxError::NotInitialized));
+        assert_eq!(ctx.st.accounts, before.accounts);
+        assert_eq!(ctx.st.fee_pool, before.fee_pool);
+    }
+
     /// Quota debit burn skips balancePWM (formerly `burn_mark_debits_quota_without_touching_balance`).
     #[test]
     fn burn_quota_skip_bal_chg() {
@@ -1123,7 +1360,7 @@ mod tests {
         let dom_v = domain_of_account_id(&aid_v);
         let before = st.get(&aid_v).expect("validator").clone();
         let fee_pool_before = st.fee_pool;
-        st.accounts.get_mut(&aid_v).expect("validator").marks = 25;
+        st.accounts.get_mut(&aid_v).expect("validator").stored_marks = 25;
 
         let burn = SignedTx::sign_body(
             sk_v,
@@ -1140,7 +1377,7 @@ mod tests {
         let after = st.get(&aid_v).expect("validator after burn");
         assert_eq!(after.balance_pwm, before.balance_pwm);
         assert_eq!(after.nonce, before.nonce + 1);
-        assert_eq!(after.marks, 18);
+        assert_eq!(after.stored_marks, 18);
         assert_eq!(st.fee_pool, fee_pool_before);
     }
 
@@ -1152,7 +1389,7 @@ mod tests {
         let sk_v = &sks[0];
         let aid_v = g.accounts[0].acct;
         let dom_v = domain_of_account_id(&aid_v);
-        st.accounts.get_mut(&aid_v).expect("validator").marks = 3;
+        st.accounts.get_mut(&aid_v).expect("validator").stored_marks = 3;
         let before = st.get(&aid_v).expect("validator").clone();
         let fee_pool_before = st.fee_pool;
 
@@ -1183,7 +1420,7 @@ mod tests {
         let aid_v = g.accounts[0].acct;
         let dom_v = domain_of_account_id(&aid_v);
 
-        st.accounts.get_mut(&aid_v).expect("sender").marks = 40;
+        st.accounts.get_mut(&aid_v).expect("sender").stored_marks = 40;
         let sender_before = st.get(&aid_v).expect("sender before").clone();
         let fee_pool_before = st.fee_pool;
         let sender_hi = dom_v.to_be_bytes()[0];
@@ -1205,7 +1442,7 @@ mod tests {
         let sender_after = st.get(&aid_v).expect("sender after");
         assert_eq!(sender_after.balance_pwm, sender_before.balance_pwm);
         assert_eq!(st.fee_pool, fee_pool_before);
-        assert_eq!(sender_after.marks, 34);
+        assert_eq!(sender_after.stored_marks, 34);
     }
 
     /// Foreign-domain beneficiary burn debits sender marks (V2-7: cross-domain allowed).
@@ -1216,7 +1453,7 @@ mod tests {
         let sk_v = &sks[0];
         let aid_v = g.accounts[0].acct;
         let dom_v = domain_of_account_id(&aid_v);
-        st.accounts.get_mut(&aid_v).expect("validator").marks = 20;
+        st.accounts.get_mut(&aid_v).expect("validator").stored_marks = 20;
         let before = st.get(&aid_v).expect("validator").clone();
         let fee_pool_before = st.fee_pool;
 
@@ -1242,7 +1479,7 @@ mod tests {
             .expect("cross-domain beneficiary must apply");
 
         let after = st.get(&aid_v).expect("validator after burn");
-        assert_eq!(after.marks, 15);
+        assert_eq!(after.stored_marks, 15);
         assert_eq!(after.nonce, before.nonce + 1);
         assert_eq!(after.balance_pwm, before.balance_pwm);
         assert_eq!(st.fee_pool, fee_pool_before);
@@ -1705,147 +1942,6 @@ mod tests {
     }
 
     #[test]
-    fn claim_tx_materializes_marks() {
-        let (g, sks) = dev_net();
-        let mut st = g.state0();
-        let sk_v = &sks[0];
-        let aid_v = g.accounts[0].acct;
-        let dom_v = domain_of_account_id(&aid_v);
-        {
-            let acc = st.accounts.get_mut(&aid_v).expect("validator");
-            acc.staked = 2 * PWM_RAW_SCALE;
-            acc.last_claim_unix_time = 0;
-            acc.last_stake_change_height = 0;
-        }
-        let tx = SignedTx::sign_body(
-            sk_v,
-            dom_v,
-            0,
-            0,
-            TxBody::Claim {
-                mode: ClaimMode::Free,
-                claim_units: 4,
-                anchor_ref: 0,
-                fee: 0,
-            },
-        );
-        st.apply_tx_with_ctx(&tx, 10, 7_200).expect("claim apply");
-        let acc = st.get(&aid_v).expect("validator");
-        assert_eq!(acc.marks, 5);
-        assert_eq!(acc.last_claim_anchor_ref, 10);
-        assert_eq!(acc.nonce, 1);
-    }
-
-    /// CLAIM_ALL sentinel must match u32::MAX and claim matured units, not reject as over-claim.
-    #[test]
-    fn claim_all_sentinel() {
-        assert_eq!(CLAIM_ALL, u32::MAX);
-        let (g, sks) = dev_net();
-        let mut st = g.state0();
-        let sk_v = &sks[0];
-        let aid_v = g.accounts[0].acct;
-        let dom_v = domain_of_account_id(&aid_v);
-        {
-            let acc = st.accounts.get_mut(&aid_v).expect("validator");
-            acc.staked = 2 * PWM_RAW_SCALE;
-            acc.last_claim_unix_time = 0;
-            acc.last_stake_change_height = 0;
-            acc.marks = 1;
-        }
-        let tx = SignedTx::sign_body(
-            sk_v,
-            dom_v,
-            0,
-            0,
-            TxBody::Claim {
-                mode: ClaimMode::Free,
-                claim_units: CLAIM_ALL,
-                anchor_ref: 0,
-                fee: 0,
-            },
-        );
-        st.apply_tx_with_ctx(&tx, 10, 7_200)
-            .expect("claim all apply");
-        let acc = st.get(&aid_v).expect("validator");
-        assert_eq!(acc.marks, 1 + 4);
-        assert_eq!(acc.last_claim_anchor_ref, 10);
-        assert_eq!(acc.nonce, 1);
-    }
-
-    #[test]
-    fn claim_all_zero_matured_noop() {
-        let (g, sks) = dev_net();
-        let mut st = g.state0();
-        let sk_v = &sks[0];
-        let aid_v = g.accounts[0].acct;
-        let dom_v = domain_of_account_id(&aid_v);
-        let block_unix_time = 10_000;
-        let prev_claim_time = 9_900;
-        {
-            let acc = st.accounts.get_mut(&aid_v).expect("validator");
-            acc.staked = 2 * PWM_RAW_SCALE;
-            acc.marks = 0;
-            acc.last_claim_unix_time = prev_claim_time;
-            acc.last_claim_anchor_ref = 7;
-            acc.last_stake_change_height = 0;
-            acc.free_claim_utc_day = Some(block_unix_time / 86_400);
-        }
-        let tx = SignedTx::sign_body(
-            sk_v,
-            dom_v,
-            0,
-            0,
-            TxBody::Claim {
-                mode: ClaimMode::Free,
-                claim_units: CLAIM_ALL,
-                anchor_ref: 7,
-                fee: 0,
-            },
-        );
-        st.apply_tx_with_ctx(&tx, 10, block_unix_time)
-            .expect("claim all zero matured must be no-op success");
-        let acc = st.get(&aid_v).expect("validator");
-        assert_eq!(acc.marks, 0);
-        assert_eq!(acc.nonce, 1);
-        assert_eq!(acc.last_claim_unix_time, prev_claim_time);
-        assert_eq!(acc.last_claim_anchor_ref, 7);
-        assert_eq!(acc.free_claim_utc_day, Some(block_unix_time / 86_400));
-    }
-
-    #[test]
-    fn precheck_tip_next_ctx() {
-        let (g, sks) = dev_net();
-        let mut st = g.state0();
-        let sk_v = &sks[0];
-        let aid_v = g.accounts[0].acct;
-        let dom_v = domain_of_account_id(&aid_v);
-        {
-            let acc = st.accounts.get_mut(&aid_v).expect("validator");
-            acc.staked = 2 * PWM_RAW_SCALE;
-            acc.last_claim_unix_time = 0;
-            acc.last_stake_change_height = 0;
-        }
-        let tx = SignedTx::sign_body(
-            sk_v,
-            dom_v,
-            0,
-            0,
-            TxBody::Claim {
-                mode: ClaimMode::Free,
-                claim_units: 2,
-                anchor_ref: 1,
-                fee: 0,
-            },
-        );
-        st.precheck_apply_tip(&tx, 0, 7_200)
-            .expect("tip+1 context must accept anchor_ref=1");
-        let err = st
-            .precheck_apply_with_ctx(&tx, 0, 7_200)
-            .expect_err("zero context must reject anchor_ref=1");
-        assert!(matches!(err, TxError::ClaimAnchorRangeInvalid));
-    }
-
-    #[test]
     fn stake_autoclaim_zero_matured() {
         let (g, sks) = dev_net();
         let mut st = g.state0();
@@ -1854,47 +1950,54 @@ mod tests {
         let dom_v = domain_of_account_id(&aid_v);
         {
             let acc = st.accounts.get_mut(&aid_v).expect("validator");
-            acc.staked = 3 * PWM_RAW_SCALE;
-            acc.last_claim_unix_time = 10_000;
+            acc.staked_pwm_raw = 3 * PWM_RAW_SCALE;
+            acc.marks_last_block = 10_000;
         }
-        let before_marks = st.get(&aid_v).expect("validator").marks;
+        let before_marks = st.get(&aid_v).expect("validator").stored_marks;
         let tx = SignedTx::sign_body(sk_v, dom_v, 0, 0, TxBody::Stake { amount: 1 });
-        st.apply_tx_with_ctx(&tx, 12, 10_100).expect("stake apply");
+        st.apply_tx_with_ctx(&tx, 12, 10_100, &g)
+            .expect("stake apply");
         let after = st.get(&aid_v).expect("validator");
-        assert_eq!(after.marks, before_marks);
+        assert_eq!(after.stored_marks, before_marks);
     }
 
-    /// 1 whole PWM staked for 1 hour yields 1 mark unit (V2-5 formula).
+    /// 1 whole PWM staked for 1 hour yields 1 mark unit in lazy touch flow.
     #[test]
     fn marks_1pwm_1h() {
-        let acc = Account {
-            staked: 1_000_000,
-            last_claim_unix_time: 0,
+        let (cfg, _) = dev_net();
+        let mut acc = Account {
+            staked_pwm_raw: 1_000_000,
+            marks_last_block: 0,
             ..Default::default()
         };
-        assert_eq!(super::matured_units_available(&acc, 3_600), 1);
+        super::touch_acct_mrks(&mut acc, cfg.blocks_per_hour, &cfg);
+        assert_eq!(acc.stored_marks, 1);
     }
 
-    /// Sub-1-PWM stake truncates whole PWM before multiplying by hours.
+    /// Sub-1-PWM stake truncates whole PWM before lazy generation.
     #[test]
     fn marks_sub1pwm_trunc() {
-        let acc = Account {
-            staked: 500_000,
-            last_claim_unix_time: 0,
+        let (cfg, _) = dev_net();
+        let mut acc = Account {
+            staked_pwm_raw: 500_000,
+            marks_last_block: 0,
             ..Default::default()
         };
-        assert_eq!(super::matured_units_available(&acc, 36_000), 0);
+        super::touch_acct_mrks(&mut acc, cfg.blocks_per_hour * 10, &cfg);
+        assert_eq!(acc.stored_marks, 0);
     }
 
-    /// Large (staked_pwm × hours) saturates at u32::MAX marks.
+    /// 1M PWM stake reaches MARKS_CAP with ceil saturation window.
     #[test]
     fn marks_saturation_u32() {
-        let acc = Account {
-            staked: u32::MAX as u128 * PWM_RAW_SCALE,
-            last_claim_unix_time: 0,
+        let (cfg, _) = dev_net();
+        let mut acc = Account {
+            staked_pwm_raw: 1_000_000u128 * PWM_RAW_SCALE,
+            marks_last_block: 0,
             ..Default::default()
         };
-        assert_eq!(super::matured_units_available(&acc, 3_600 * 100), u32::MAX);
+        super::touch_acct_mrks(&mut acc, cfg.blocks_per_hour * 4_295, &cfg);
+        assert_eq!(acc.stored_marks, MARKS_CAP);
     }
 
     /// Legacy snapshot JSON: huge raw marks divide by PWM_RAW_SCALE and clamp to u32.
@@ -1905,7 +2008,7 @@ mod tests {
             serde_json::to_string(&[0u8; 32]).unwrap()
         );
         let acc: Account = serde_json::from_str(&json).unwrap();
-        assert_eq!(acc.marks, 7_000_000_u32);
+        assert_eq!(acc.stored_marks, 7_000_000_u32);
     }
 
     #[test]
@@ -1964,9 +2067,9 @@ mod tests {
         let mut st = g.state0();
         let aid = g.accounts[0].acct;
         let acc = st.accounts.get_mut(&aid).expect("validator");
-        acc.staked = 199_999;
+        acc.staked_pwm_raw = 199_999;
         st.accrue_marks_v2(10_000, 200_000, 1_000_000);
-        assert_eq!(st.accounts.get(&aid).expect("validator").marks, 1);
+        assert_eq!(st.accounts.get(&aid).expect("validator").stored_marks, 1);
     }
 
     #[test]
@@ -1975,9 +2078,12 @@ mod tests {
         let mut st = g.state0();
         let aid = g.accounts[0].acct;
         let acc = st.accounts.get_mut(&aid).expect("validator");
-        acc.staked = 300_000;
+        acc.staked_pwm_raw = 300_000;
         st.accrue_marks_v2(10_000, 1, 500_000);
-        assert_eq!(st.accounts.get(&aid).expect("validator").marks, 1_501);
+        assert_eq!(
+            st.accounts.get(&aid).expect("validator").stored_marks,
+            1_501
+        );
     }
 
     #[test]
@@ -1986,7 +2092,7 @@ mod tests {
         let mut st = g.state0();
         let aid = g.accounts[0].acct;
         let acc = st.accounts.get_mut(&aid).expect("validator");
-        acc.staked = 50_000;
+        acc.staked_pwm_raw = 50_000;
         let bal0 = acc.balance_pwm;
         st.reward_producer_v2(&aid, 100, 100_000, 500_000);
         assert_eq!(st.accounts.get(&aid).expect("validator").balance_pwm, bal0);
@@ -2080,6 +2186,126 @@ mod tests {
     }
 
     #[test]
+    fn policy_set_deferred_stores_entry() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let sk = &sks[0];
+        let aid = g.accounts[0].acct;
+        let dom = domain_of_account_id(&aid);
+        let nonce = st.get(&aid).expect("sender").nonce;
+
+        let set = SignedTx::sign_body(
+            sk,
+            dom,
+            g.accounts[0].der_idx,
+            nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 100,
+                    },
+                },
+                fee: 11,
+            },
+        );
+        st.apply_tx_with_ctx(&set, 10, 0, &g)
+            .expect("deferred policy set");
+        let acc = st.get(&aid).expect("after set");
+        assert_eq!(acc.dormant_policies & PolicyKind::SenderFilter.bit(), 0);
+        assert_eq!(acc.active_policies & PolicyKind::SenderFilter.bit(), 0);
+        assert_eq!(acc.deferred_policies.len(), 1);
+        assert_eq!(
+            acc.deferred_policies[0],
+            DeferredPolicyEntry {
+                policy: PolicyKind::SenderFilter,
+                activate_at_height: 100,
+            }
+        );
+    }
+
+    #[test]
+    fn init_deferred_active_at_h() {
+        let (g, _) = dev_net();
+        let mut st = State::default();
+        let (sk, idx, aid) = user_sk0(&[0xE1; 32]);
+        let dom = domain_of_account_id(&aid);
+        let mut init = SignedTx::sign_body(&sk, dom, idx, 0, TxBody::Init { index: 1, flags: 2 });
+        init.set_init_v4_signed(
+            &sk,
+            Some(InitV4Extension {
+                owner_kind: "company".to_string(),
+                owner_display_name: "Acme Deferred".to_string(),
+                owner_country_hint: "CY".to_string(),
+                company_metadata_commitment: [5u8; 32],
+                external_verification_ref: "https://example.org/kyb-deferred".to_string(),
+                requested_domain_lo: 0,
+                rescue_address: None,
+                initial_policies: vec![InitPolicyEntry {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 5,
+                    },
+                }],
+                cosign_policy: None,
+            }),
+        );
+        st.apply_tx_with_ctx(&init, 5, 0, &g)
+            .expect("init with deferred policy");
+        let acc = st.get(&aid).expect("account");
+        assert_ne!(acc.active_policies & PolicyKind::SenderFilter.bit(), 0);
+        assert_eq!(acc.deferred_policies.len(), 1);
+        assert_eq!(
+            acc.deferred_policies[0],
+            DeferredPolicyEntry {
+                policy: PolicyKind::SenderFilter,
+                activate_at_height: 5,
+            }
+        );
+    }
+
+    #[test]
+    fn init_deferred_inactive_pre_h() {
+        let (g, _) = dev_net();
+        let mut st = State::default();
+        let (sk, idx, aid) = user_sk0(&[0xE2; 32]);
+        let dom = domain_of_account_id(&aid);
+        let mut init = SignedTx::sign_body(&sk, dom, idx, 0, TxBody::Init { index: 2, flags: 3 });
+        init.set_init_v4_signed(
+            &sk,
+            Some(InitV4Extension {
+                owner_kind: "company".to_string(),
+                owner_display_name: "Acme Deferred Future".to_string(),
+                owner_country_hint: "CY".to_string(),
+                company_metadata_commitment: [6u8; 32],
+                external_verification_ref: "https://example.org/kyb-deferred-future".to_string(),
+                requested_domain_lo: 0,
+                rescue_address: None,
+                initial_policies: vec![InitPolicyEntry {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 6,
+                    },
+                }],
+                cosign_policy: None,
+            }),
+        );
+        st.apply_tx_with_ctx(&init, 5, 0, &g)
+            .expect("init with future deferred policy");
+        let acc = st.get(&aid).expect("account");
+        assert_eq!(acc.active_policies & PolicyKind::SenderFilter.bit(), 0);
+        assert_eq!(acc.deferred_policies.len(), 1);
+        assert_eq!(
+            acc.deferred_policies[0],
+            DeferredPolicyEntry {
+                policy: PolicyKind::SenderFilter,
+                activate_at_height: 6,
+            }
+        );
+    }
+
+    #[test]
     fn policy_route_deny_no_mut() {
         let (g, sks) = dev_net();
         let mut st = g.state0();
@@ -2139,7 +2365,7 @@ mod tests {
             TxBody::Stake { amount: 1 },
         );
         let err = st
-            .apply_tx_with_ctx(&tx, 10, 1_000)
+            .apply_tx_with_ctx(&tx, 10, 1_000, &g)
             .expect_err("finalized sender must be blocked");
         assert!(matches!(err, TxError::PolicyAccountFinalized));
     }
@@ -2320,10 +2546,10 @@ mod tests {
             },
         );
         let pre_err = st
-            .precheck_apply_with_ctx(&tx, 10, 1_000)
+            .precheck_apply_with_ctx(&tx, 10, 1_000, &g)
             .expect_err("precheck reject");
         let app_err = st
-            .apply_tx_with_ctx(&tx, 10, 1_000)
+            .apply_tx_with_ctx(&tx, 10, 1_000, &g)
             .expect_err("apply reject");
         assert!(matches!(pre_err, TxError::PolicyRoutingDenied));
         assert!(matches!(app_err, TxError::PolicyRoutingDenied));
@@ -2362,11 +2588,214 @@ mod tests {
                 fee: 1,
             },
         );
-        let decision = st.evaluate_policy(&tx);
+        let decision = st.evaluate_policy(&tx, 0);
         assert!(matches!(
             decision,
             PolicyDecision::Reject(TxError::PolicySenderFiltered)
         ));
+    }
+
+    #[test]
+    // policy_deferred_auto_activates_at_height
+    fn policy_deferred_auto_at_h() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let target_id = g.accounts[0].acct;
+        let target_dom = domain_of_account_id(&target_id);
+        let set = SignedTx::sign_body(
+            &sks[0],
+            target_dom,
+            g.accounts[0].der_idx,
+            st.get(&target_id).expect("target").nonce,
+            TxBody::Policy {
+                target_account: target_id,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 100,
+                    },
+                },
+                fee: 1,
+            },
+        );
+        st.apply_tx_with_ctx(&set, 10, 0, &g)
+            .expect("set deferred sender filter");
+
+        let sender_hi = target_dom.to_be_bytes()[0];
+        let (sender_sk, sender_idx, sender_id) = user_sk_new_domain(&st, 0xA4, sender_hi);
+        let sender_dom = domain_of_account_id(&sender_id);
+        let init_sender = SignedTx::sign_body(
+            &sender_sk,
+            sender_dom,
+            sender_idx,
+            0,
+            TxBody::Init {
+                index: 77,
+                flags: 0,
+            },
+        );
+        st.apply_tx_with_ctx(&init_sender, 11, 0, &g)
+            .expect("init sender");
+        let tx = SignedTx::sign_body(
+            &sender_sk,
+            sender_dom,
+            sender_idx,
+            st.get(&sender_id).expect("sender").nonce,
+            TxBody::Transfer {
+                to: target_id,
+                amount: 1,
+                fee: 1,
+            },
+        );
+        assert!(matches!(st.evaluate_policy(&tx, 99), PolicyDecision::Allow));
+        assert!(matches!(
+            st.evaluate_policy(&tx, 100),
+            PolicyDecision::Reject(TxError::PolicySenderFiltered)
+        ));
+    }
+
+    #[test]
+    // policy_deferred_activate_before_height_rejected
+    fn policy_deferred_act_pre_h() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let aid = g.accounts[0].acct;
+        let dom = domain_of_account_id(&aid);
+        let set = SignedTx::sign_body(
+            &sks[0],
+            dom,
+            g.accounts[0].der_idx,
+            st.get(&aid).expect("acct").nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 100,
+                    },
+                },
+                fee: 1,
+            },
+        );
+        st.apply_tx_with_ctx(&set, 10, 0, &g)
+            .expect("set deferred policy");
+        let before = st.clone();
+
+        let act = SignedTx::sign_body(
+            &sks[0],
+            dom,
+            g.accounts[0].der_idx,
+            st.get(&aid).expect("acct").nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::SenderFilter.policy_id(),
+                },
+                fee: 1,
+            },
+        );
+        let err = st
+            .apply_tx_with_ctx(&act, 99, 0, &g)
+            .expect_err("activate before deferred height must fail");
+        assert!(matches!(err, TxError::PolicyNotActive));
+        assert_eq!(st.accounts, before.accounts);
+        assert_eq!(st.fee_pool, before.fee_pool);
+    }
+
+    #[test]
+    // policy_deferred_activate_at_height_rejected
+    fn policy_deferred_act_at_h() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let aid = g.accounts[0].acct;
+        let dom = domain_of_account_id(&aid);
+        let set = SignedTx::sign_body(
+            &sks[0],
+            dom,
+            g.accounts[0].der_idx,
+            st.get(&aid).expect("acct").nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 100,
+                    },
+                },
+                fee: 1,
+            },
+        );
+        st.apply_tx_with_ctx(&set, 10, 0, &g)
+            .expect("set deferred policy");
+
+        let act = SignedTx::sign_body(
+            &sks[0],
+            dom,
+            g.accounts[0].der_idx,
+            st.get(&aid).expect("acct").nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::SenderFilter.policy_id(),
+                },
+                fee: 1,
+            },
+        );
+        let err = st
+            .apply_tx_with_ctx(&act, 100, 0, &g)
+            .expect_err("activate at deferred height must fail as already active");
+        assert!(matches!(err, TxError::PolicyDenied));
+    }
+
+    #[test]
+    // policy_deferred_deactivate_before_height
+    fn policy_deferred_deact_pre_h() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let aid = g.accounts[0].acct;
+        let dom = domain_of_account_id(&aid);
+        let set = SignedTx::sign_body(
+            &sks[0],
+            dom,
+            g.accounts[0].der_idx,
+            st.get(&aid).expect("acct").nonce,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::SetPolicy {
+                    policy: PolicyKind::SenderFilter,
+                    activation: ActivationMode::Deferred {
+                        activate_at_height: 100,
+                    },
+                },
+                fee: 1,
+            },
+        );
+        st.apply_tx_with_ctx(&set, 10, 0, &g)
+            .expect("set deferred policy");
+        let before = st.get(&aid).expect("acct before deact").nonce;
+
+        let deact = SignedTx::sign_body(
+            &sks[0],
+            dom,
+            g.accounts[0].der_idx,
+            before,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::DeactivatePolicy {
+                    policy_id: PolicyKind::SenderFilter.policy_id(),
+                },
+                fee: 1,
+            },
+        );
+        st.apply_tx_with_ctx(&deact, 99, 0, &g)
+            .expect("deactivate pending deferred policy");
+        let acc = st.get(&aid).expect("acct");
+        assert!(acc
+            .deferred_policies
+            .iter()
+            .all(|row| row.policy != PolicyKind::SenderFilter));
+        assert_eq!(acc.active_policies & PolicyKind::SenderFilter.bit(), 0);
+        assert_eq!(acc.dormant_policies & PolicyKind::SenderFilter.bit(), 0);
     }
 
     #[test]

@@ -203,7 +203,7 @@ impl<'a> RelayTrace<'a> {
 
 async fn select_target(app: &App, rel: RelayTrace<'_>) -> Result<RelayTarget, RelayErr> {
     {
-        let hs = app.handshake.read().await;
+        let hs = crate::transport::handshake_read_traced(app, "relay").await;
         if hs.bridge_trust.refused {
             return Err(relay_err(
                 StatusCode::CONFLICT,
@@ -253,7 +253,7 @@ async fn select_target(app: &App, rel: RelayTrace<'_>) -> Result<RelayTarget, Re
     let mut last = None;
     let expected_network_id = app.identity.network_id.clone();
     let expected_genesis_hash = {
-        let hs = app.handshake.read().await;
+        let hs = crate::transport::handshake_read_traced(app, "relay").await;
         hs.validation_ctx.expected_genesis_hash.clone()
     };
     for seed in http_bases {
@@ -347,7 +347,7 @@ async fn post_peer_hello(
         "relay: POST /v1/peer/hello"
     );
     let genesis_hash = {
-        let hs = app.handshake.read().await;
+        let hs = crate::transport::handshake_read_traced(app, "relay").await;
         hs.validation_ctx.expected_genesis_hash.clone()
     };
     let now_ms = crate::current_time_ms().map_err(|e| {

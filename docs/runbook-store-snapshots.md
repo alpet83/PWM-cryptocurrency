@@ -17,7 +17,7 @@
 - `epochs/pwm-epochs-manifest.json` использует отдельный `schema_v` контракт для Epoch Snapshot.
 - Текущий runtime принимает только `schema_v = 1`; unsupported versions отклоняются явной ошибкой `unsupported epoch manifest schema ...`.
 - Это не связано с genesis schema (`schema_version`) и snapshot wire version (`version` в `pwm-data.json`).
-- В этом слайсе не добавляется runtime-семантика Bootstrap Snapshot / pruning / cleanup-chain.
+- Runtime Bootstrap / pruning — [RFC 0020](rfc/20-bootstrap-snapshot-pruned-distribution.md). Epoch genesis anchor (ADR 0008) — предварительная привязка к `--genesis-file` на trust load.
 
 ## Focused replay gate (V3)
 

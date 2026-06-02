@@ -80,6 +80,31 @@ RFC фиксирует wire-уровень reject-контракта для Clai
 - Контракт рассчитан на аддитивное расширение без breaking-переопределения существующих `error.code`.
 - V4 policy codes are additive and MUST NOT change the semantics of existing Claim/Burn/Import codes.
 
+## V5 Addendum: retired ClaimTx wire surface
+
+**Status:** Active for MVP V5.
+
+V5 retires standalone `ClaimTx` and claim/free-day state. The Claim error codes listed above remain historical V2 compatibility labels and are not active validation outcomes for newly submitted V5 transactions.
+
+Normative V5 changes:
+
+- submitted legacy `ClaimTx` is rejected as an unsupported schema/transaction kind, for example `TX_SCHEMA_UNSUPPORTED` or `E_SCHEMA_INVALID` depending on the existing decode layer;
+- lazy marks generation during account touch is not reported as `tx_kind=claim` and does not use `claim_mode=explicit|auto`;
+- `BURN_MARK` over-balance checks use the effective lazy mark balance after RFC 0012 v2 touch semantics;
+- V5 policy rejects for deferred activation use existing V4 policy codes:
+  - `ActivatePolicy` before `activate_at_height` -> `E_POLICY_NOT_ACTIVE`;
+  - redundant `ActivatePolicy` at or after `activate_at_height` -> `E_POLICY_DENIED` with an "already active" message.
+
+Retired active-scope codes:
+
+- `E_ANCHOR_RANGE_INVALID`
+- `E_ANCHOR_CONTINUITY_BROKEN`
+- `E_ANCHOR_STATE_UNAVAILABLE`
+- `E_CLAIM_UNITS_INVALID`
+- `E_CLAIM_OVER_MATURED`
+- `E_FREE_CLAIM_DAILY_LIMIT`
+- `E_REORG_STATE_MISMATCH` when used only for claim/free-day state
+
 ## Out-of-Scope
 
 - Изменение consensus/policy правил за пределами RFC 0011-0013.

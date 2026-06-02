@@ -191,12 +191,15 @@ Route selection is protocol-derived from fixed-`domain_hi` comparison and MUST N
 
 ```text
 if tx_type == BURN_MARK:
-    assert sender.marks_quota >= mark_amount
+  touch sender under RFC 0012 v2
+  assert sender.stored_marks >= mark_amount
     allow fee == 0 in baseline profile
     apply burn-specific recipient rules
 ```
 
 Cross-domain burn context does not require target-shard state mutation; proof is handled in source shard.
+
+For V5 this burn check uses the effective lazy mark balance after touch semantics, not the retired `marks_quota` field from historical claim-era drafts.
 
 ---
 
@@ -240,7 +243,7 @@ Semantics:
 - `requested_domain_lo > 0` means registration against a rented or requested corporate namespace and must follow lease/auction policy.
 - Metadata storage is hybrid: short public fields (`owner_kind`, `owner_display_name`, `owner_country_hint`) are canonical on-chain text with strict byte limits; long, mutable, or private metadata is represented by `company_metadata_commitment` plus `external_verification_ref`.
 - `rescue_address` is optional, but emergency routing activation is impossible without it.
-- `initial_policies[]` may install policies with `activation = immediately` or `activation = dormant`; policies that are not present in `INIT` can be added later by `PolicyTx`.
+- `initial_policies[]` may install policies with `activation = immediately`, `activation = dormant`, or `activation = deferred { activate_at_height }`; policies that are not present in `INIT` can be added later by `PolicyTx`.
 - `cosign_policy` links corporate registration to multisig/membership rules and is also reused by emergency routing activation when applicable.
 
 This subsection is an implementable V4 profile, but field byte limits, canonical text encoding, and exact serialization live in RFC 0007 and implementation tickets.
@@ -264,16 +267,21 @@ PolicyAction {
   DeactivatePolicy { policy_id }
 }
 
-ActivationMode = Dormant | Immediately
+ActivationMode = Dormant | Immediately | Deferred { activate_at_height: u64 }
 ```
 
-> **Draft extension:** third mode **`Deferred`** and chain-height scheduling are specified in [ADR 0005](../adr/0005-policy-deferred-activation.md). Not evaluator-normative for shipped V4 until RFC 0006/0007 are updated accordingly.
+V5 promotes `Deferred { activate_at_height }` to the normative activation model. The detailed contract is [ADR 0005](../adr/0005-policy-deferred-activation.md).
 
 Rules:
 
 - `SetPolicy { activation = Immediately }` installs and activates the policy in the same state transition.
 - `SetPolicy { activation = Dormant }` stores the policy without affecting ordinary transaction validation until an `ActivatePolicy` is accepted.
-- `DeactivatePolicy` is allowed only for reversible policies. System policies may be explicitly irreversible.
+- `SetPolicy { activation = Deferred { activate_at_height } }` stores the policy and makes it evaluator-active when `current_chain_height >= activate_at_height`.
+- `ActivatePolicy` before `activate_at_height` is rejected with `E_POLICY_NOT_ACTIVE`.
+- `ActivatePolicy` at or after `activate_at_height` is rejected with `E_POLICY_DENIED` and an "already active" message, because deferred activation is automatic by height.
+- `DeactivatePolicy` is allowed only for reversible policies. For `Deferred` entries where `current_chain_height < activate_at_height`, deactivation removes the pending deferred entry.
+- If `activate_at_height <= inclusion_height`, the policy is active immediately when `SetPolicy` is applied.
+- `activate_at_height` is an absolute chain height; wall-clock time MUST NOT affect activation.
 - `PolicyTx` pays a normal fee and increments the target account nonce; it never transfers PWM value to the target.
 - `PolicyTx` is the only V4 mechanism for dynamic policy updates. `INIT` may only install initial policies during account registration.
 
@@ -405,7 +413,7 @@ evaluate_policy(tx, read_only_state):
   return PolicyDecision::Allow | Redirect | Reject
 ```
 
-`evaluate_policy` MUST be a pure function: no state writes, no callbacks, no IO, and no dependency on wall-clock state outside the block context already supplied to validation.
+`evaluate_policy` MUST be a pure function: no state writes, no callbacks, no IO, and no dependency on wall-clock state outside the block context already supplied to validation. For deferred policies, the evaluator receives the current chain height and treats a deferred policy as active exactly when `current_chain_height >= activate_at_height`.
 
 ### 10.1 MVP V4-3 minimal semantics
 

@@ -1,9 +1,5 @@
 # Agent prompt: Colloquium / CQDS parallel LLM track (PWM)
 
-Скопируйте блок для документирования **параллельной** ветки разработки через чаты Colloquium-DevSpace и внешних агентов. Это **задел на оркестрируемую разработку**, не обязательный процесс для каждой задачи.
-
----
-
 You may use **Colloquium-DevSpace (CQDS)** as a **parallel** channel to Cursor agents:
 
 - CQDS exposes MCP tools for projects, files, exec in the Linux project environment, chats, etc. (see workspace rules: `cq_list_projects`, `cq_select_project`, `cq_project_ctl`, `cq_exec`, …).
@@ -27,7 +23,3 @@ When orchestrating:
 
 - **Coding agent** (`docs/AGENT_PROMPT_coding.md`) — may call `cq_project_ctl` when MCP is available.
 - **Review agent** (`docs/AGENT_PROMPT_review.md`) — независимый аудит без правок **продуктового** кода; может коммитить отчёт в `docs/reviews/` и поля тикета. Может читать заметки CQDS, если их вложили в запрос на ревью.
-
----
-
-_End of Colloquium parallel track prompt._

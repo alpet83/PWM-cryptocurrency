@@ -13,7 +13,7 @@
 Файл: `scripts/cy_cluster_policy_matrix_e2e.ps1`.
 
 1. (Опционально) `./scripts/demo-devnet-start.ps1` — генерация генезиса и демо-кошелька.
-2. Очистка state при `-CleanState` (`tmp/state-cy-proposer`, `tmp/state-cy-attester`, `tmp/cy-lab-peers.yaml`, …).
+2. Очистка state при `-CleanState`: **сначала zip-бэкап** в `tmp/archives/devnet-state_<timestamp>_<label>.zip`, затем удаление `tmp/state-cy-*`, `tmp/cy-lab-peers.yaml`, … (`-SkipArchive` отключает бэкап).
 3. Для каждого `k` в `1..CyWalletCount`: `addr-bruteforce` с детерминированным master (32 нулевых байта + последний байт `k`), домен CY, вывод отдельного YAML в `tmp/cy-matrix-{k}.yaml`.
 4. Старт proposer и attester, ожидание `GET …/v1/status`.
 5. `tx-init` премайна (индекс `287292` как в других demo-скриптах).

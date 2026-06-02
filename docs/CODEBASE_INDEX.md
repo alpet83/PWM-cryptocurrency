@@ -1,9 +1,9 @@
 # PWM Cryptocurrency — Codebase Index
 
-> Generated: 2026-05-01
+> Generated: 2026-05-22
 > Language: Rust 2021 Edition
 > Build System: Cargo Workspace
-> Version: v0.1.33 (pwmd)
+> Version: v0.1.55 (pwmd)
 
 ---
 
@@ -26,7 +26,8 @@
 |--------|------|----------------|
 | **lib** | `lib.rs` | Public re-exports; defines the crate's public API surface |
 | **crypto** | `crypto.rs` | BLAKE3 hashing, Ed25519 sign/verify, block header signing payload |
-| **types** | `types.rs` | `AccountId` (32-byte), `Account` struct, bech32DX encoding, human-readable address formatting |
+| **types** | `types.rs` | Core account and ledger data types, address payload primitives |
+| **display** | `display.rs` | Human-readable address formatting and display helpers |
 | **hd** | `hd.rs` | SLIP-0010 Ed25519 HD derivation (`m/0'/i`), account ID generation, domain extraction, brute-force cluster address finder |
 | **tx** | `tx.rs` | Transaction types (`Init`, `Transfer`, `Stake`, `Unstake`, `BurnMark`, `Export`, `Import`), `SignedTx`, signature validation, fee computation, export/import ID logic |
 | **block** | `block.rs` | `BlockHdr` (PoA signed header), `Block` (header + txs), Merkle root over transactions |
@@ -35,11 +36,16 @@
 | **mempool** | `mempool.rs` | `Mpool`: bounded FIFO transaction queue for block sealing |
 | **genesis** | `genesis.rs` | `GenCfg`, `GRow`, `VRow`, reward policy, dev-net factory (`dev_net()`) |
 | **domain_index** | `domain_index.rs` | Phase 1B domain registry: 195 countries + 11 sectors, domain categories (Regulatory, Sector, Reserve, Witness), lookup by raw code / hi-byte / label |
+| **bridge_commitment** | `bridge_commitment.rs` | Bridge/export commitment payload types and hashing helpers |
 | **address_book** | `address_book.rs` | `AddressBookEntry` (string or labeled), recipient domain/address validation, YAML-safe address book append |
 | **wallet_crypto** | `wallet_crypto.rs` | ChaCha20-Poly1305 + PBKDF2-HMAC-SHA256 wallet encryption/decryption (shared between CLI & TUI) |
+| **wallet_io** | `wallet_io.rs` | Shared wallet file IO helpers and persistence glue |
 | **wallet_read** | `wallet_read.rs` | Minimal wallet YAML parsing for read-only operations (TUI, thin tools), header normalization |
 | **offchain** | `offchain.rs` | Offchain batch Merkle root + Ed25519 provider signature (stub, no on-chain bridge yet) |
 | **ser_bin** | `ser_bin.rs` | Binary serialization helpers (e.g., Ed25519 64-byte sig for serde) |
+| **ser_json_u128** | `ser_json_u128.rs` | JSON serde helpers for `u128` string/number compatibility |
+| **rpc** | `rpc.rs` | Shared RPC-facing payloads and helper structs used by clients/daemon |
+| **reject_wire** | `reject_wire.rs` | Wire-level reject reason enums and transport-safe serialization |
 
 ### Key Types & Structures
 
@@ -68,23 +74,29 @@
 | Module | File | Responsibility |
 |--------|------|----------------|
 | **main** | `main.rs` | CLI entry point: argument parsing (clap), config assembly, node launch |
-| **lib** | `lib.rs` | Public re-exports, CORS helper, test suite (~1300+ lines of integration tests) |
-| **api** | `api.rs` | REST API router: `/v1/status`, `/v1/head`, `/v1/tx`, `/v1/account/*`, `/v1/peers`, `/v1/peer/hello`, `/v1/roaming-intents`, `/v1/export-readiness`, federation endpoints |
+| **lib** | `lib.rs` | Public exports, shared helpers, crate-level test entry points |
+| **api/** | `api/mod.rs` + handlers | Router assembly plus endpoint-specific handlers for status, tx, roaming, peers, federation, bridge, shutdown |
+| **bin/** | `bin/*.rs` | Auxiliary binaries: snapshot repair, ClickHouse import, lease probe |
 | **config** | `config.rs` | `PwmdConfig`: listen addr, genesis source, data file, shard, identity, transport, logging |
 | **identity** | `identity.rs` | `ShardId` (A/B), `RuntimeIdentity`, `RuntimeIdentityMode` (Explicit/Neutral/Alias), domain-based storage namespaces |
 | **bootstrap** | `bootstrap.rs` | App factories: dev-net, genesis JSON, with/without shard, with/without identity |
 | **state** | `state.rs` | `App` (shared state container), `Inner` (chain + pool + roaming + cross-shard + federation), `InitState` lifecycle |
 | **lifecycle** | `lifecycle.rs` | Node run loop: autosnapshot (every 100 blocks), seal loop, transport spawning, summary logging (every 500 blocks) |
-| **transport** | `transport.rs` | P2P transport: seed peer connection, NodeHello handshake, heartbeat, peer classification (native/foreign), backoff policies, soak confidence, churn tracking, runaway reconnect guard |
+| **transport/** | `transport/mod.rs` + submodules | P2P transport: dial/spawn/lifecycle, incoming hello, health metrics, peer policy, peer session state |
 | **handshake** | `handshake.rs` | `NodeHello` protocol: network/genesis/cluster/node validation, Ed25519 signature, replay nonce cache, rejection reasons |
 | **relay** | `relay.rs` | Peer relay one-window: HTTP relay to seed peers, export handoff, import relay, genesis fetch stub |
 | **roaming** | `roaming.rs` | Cross-shard roaming: `RoamingPool`, `ExportReadiness` preflight, intent lifecycle (queued/exported/relayed/imported/expired/failed), active locks |
 | **ledger** | `ledger.rs` | `CrossShardLedger`: export/import fact tracking, summary generation, stuck transaction detection |
 | **federation** | `federation.rs` | Federation shard height dictionary: gossip via heartbeat, merge rows, sweep loop, snapshot API |
-| **snapshot** | `snapshot.rs` | JSON snapshot load/save: genesis bundle (schema v4, encrypted validator keys), state persistence, roaming pool serialization |
+| **snapshot/** | `snapshot/mod.rs` + submodules | Snapshot IO, genesis load/store, incremental persistence, repair, telemetry, ClickHouse export helpers |
 | **tx_policy** | `tx_policy.rs` | Transaction policy: shard routing by domain category, recipient validation, import provenance prefilter, duplicate import guard, recipient init gate |
 | **logging** | `logging.rs` | Custom tracing subscriber: file sink with rotation, console output, ANSI colors, TX delta logging, `NodeLogger` |
 | **wire_serde** | `wire_serde.rs` | Wire-format serde helpers (u128 compatible deserialization) |
+| **bridge_trust** | `bridge_trust.rs` | Bridge trust-state evaluation and guardrails for handoff/import flows |
+| **lease / lease_backend** | `lease.rs`, `lease_backend.rs` | Lease coordination primitives and backend implementation helpers |
+| **peer_list** | `peer_list.rs` | Shared peer list normalization and storage helpers |
+| **debug_dump** | `debug_dump.rs` | Runtime debug dump output for operator diagnostics |
+| **slice20_e2e_tests** | `slice20_e2e_tests.rs` | Large end-to-end support and regression tests kept outside runtime modules |
 
 ### REST API Endpoints
 
@@ -110,9 +122,16 @@
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **main** | `main.rs` | CLI entry point (clap subcommands): wallet ops, tx submission, genesis tools, address book, batch signing, brute-force |
-| **wallet** | `wallet.rs` | Wallet YAML management: v3 schema, account CRUD, address book, seed/key protection, backup/recovery, upgrade v2->v3 |
-| **bruteforce** | `bruteforce.rs` | Address brute-force engine: domain + flag matching, progress tracking, ETA calculation, resume from index |
+| **main** | `main.rs` | Thin CLI entry point wiring parser, dispatcher, exit handling |
+| **cli_parse / cli_cmd** | `cli_parse.rs`, `cli_cmd.rs` | Clap command tree and typed command definitions |
+| **cli_dispatch** | `cli_dispatch.rs` | Top-level command dispatch into feature-specific handlers |
+| **cli_config / cli_exit** | `cli_config.rs`, `cli_exit.rs` | CLI runtime config loading and stable exit-code mapping |
+| **cmd_* modules** | `cmd_*.rs` | Command implementations: wallet, tx, node, roaming, genesis, address book, offchain, keys, address formatting |
+| **wallet/** | `wallet/*` | Wallet schema, migration, persistence, unlock/signing helpers |
+| **wallet_shell** | `wallet_shell.rs` | Interactive wallet shell helpers and prompts |
+| **rpc_helpers** | `rpc_helpers.rs` | Shared blocking RPC helpers for CLI workflows |
+| **signer** | `signer.rs` | Signing helper layer shared across wallet and tx commands |
+| **bruteforce / purpose_expand** | `bruteforce.rs`, `purpose_expand.rs` | Address brute-force engine and purpose-path expansion helpers |
 
 ### CLI Subcommands
 
@@ -152,7 +171,15 @@
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **main** | `main.rs` | Single-file TUI (~6400 lines): ratatui + crossterm, account table, send flow, wallet unlock, roaming status |
+| **main** | `main.rs` | TUI binary bootstrap and runtime entry |
+| **lib** | `lib.rs` | Shared TUI exports and module wiring |
+| **status / history / account_view** | `status.rs`, `history.rs`, `account_view.rs` | Read models and panes for status, history, account inspection |
+| **send / stake / burn forms** | `send_form.rs`, `stake_form.rs`, `burn_form.rs` | Interactive transaction forms and validation state |
+| **wallet / signing** | `wallet.rs`, `signing.rs` | Wallet unlock state, signing material, passphrase flows |
+| **rpc_account / tx_submit** | `rpc_account.rs`, `tx_submit.rs` | RPC fetch/submit glue for account and transaction actions |
+| **tui_loop / modals / selection** | `tui_loop.rs`, `modals.rs`, `selection.rs` | Event loop, modal dialogs, keyboard/navigation state |
+| **models / config / test_support** | `models.rs`, `config.rs`, `test_support.rs` | Shared view models, config, test scaffolding |
+| **roaming** | `roaming.rs` | Cross-shard roaming status views and actions |
 
 ### TUI Features
 

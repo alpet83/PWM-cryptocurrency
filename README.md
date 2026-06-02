@@ -6,17 +6,17 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ![pwm-tui operator UI (demo)](tui-demo-screenshot.png)
 
-## Current status (MVP v4 policy runtime closed)
+## Current status (MVP v5 — implementation complete; release sign-off pending)
 
-- **MVP v4 policy runtime is closed** (Sprints V4-1..V4-6, 2026-05-17).
+- **MVP v4 policy runtime remains the closed baseline** (Sprints V4-1..V4-6, 2026-05-17): dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing with finalized account behavior, and cosign envelope hooks.
+- **Active publication milestone is MVP v5** (tokenomics hardening + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02). **Owner sign-off / public release tag may still be pending** — treat as implementation-complete devnet, not a fully shipped product announcement.
 - **Clean public devnet quickstart exists**: from a clean clone, a deterministic demo genesis path is documented and verified (premine target `21,000,000,000 PWM` = `21_000_000_000_000_000 raw`).
-- **Public `/v1` API baseline includes V4 policy runtime details** in `docs/api-v1.md` (account policy inspection fields, `PolicyTx` submit path, structured `E_POLICY_*` rejects).
-- **Epoch Snapshot schema + replay gate are in place** as the V3 trust baseline for state reload/replay behavior.
+- **Public `/v1` API baseline** in `docs/api-v1.md` covers V4 policy runtime (`PolicyTx`, structured `E_POLICY_*` rejects) and V5 additive account fields (`marks_last_block`, lazy marks semantics).
+- **Epoch Snapshot schema v3 + genesis anchor light (ADR 0008)** in the pwmd snapshot stack — trust baseline for state reload/replay with light genesis binding.
 - **ADR package is published** in `docs/adr/` for foundation architecture boundaries.
 - **Runtime log-control RPC is operator/debug-only** and explicitly outside the stable public API contract.
-- **V4 policy runtime contract is live:** dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing with finalized account behavior, and cosign envelope hooks.
 
-**What works today (post-V4 closeout):**
+**What works today (V5 closeout + V4 policy baseline):**
 
 - **Integrated public-devnet smoke is covered for read API endpoints:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
 - **`POST /v1/tx` carries V4 policy flow** (`PolicyTx` included) with structured rejects per RFC 14 additive policy codes (`E_POLICY_*`).
@@ -24,7 +24,9 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 - **Two spec-level geo-shards** as two `pwmd` processes with different `domain_hi` (e.g. `0x10` / `0x20`), separate `--state-root`, and a **tested** happy path for peering over **real transport** with reciprocal `--transport-peer-seed` peers.
 - **Same-shard** transfers and usual account lifecycle (`INIT`, `TRANSFER`, staking hooks) via RPC and CLI/TUI.
-- **Unified `marks` balance and `BURN_MARK`:** current MVP v2 uses `Account.marks` as the single marks counter. Per-block marks accrual in `Chain::seal` has been removed; genesis/claim paths populate usable marks, and `BURN_MARK` debits the same counter. CLI `tx-burn-mark --amount N [--purpose P]` prints current marks before submit; TUI shows a `Marks` column and F5 burn form with `Current marks` header; `--purpose` supports `{utc_time}` / `{utc_timestamp}` placeholders.
+- **Lazy marks + `BURN_MARK` (V5):** marks accrue lazily from **staked PWM only** (`marks_last_block` cursor, `effective_marks` at poll/touch, `u32::MAX` saturation). **`ClaimTx` is retired**; IPv4 allocation uses on-chain **`ClaimIPv4Batch`** (registry-gated). CLI `tx-burn-mark --amount N [--purpose P]`; TUI: Marks column with saturation, detail pane shows **effective** marks (+ optional accrual hint); **F5 burn** path is stake → wait for block height → burn (materializes lazy marks). `--purpose` supports `{utc_time}` / `{utc_timestamp}`. Operator path: [v5-tui-marks-operator-path.md](docs/runbooks/v5-tui-marks-operator-path.md).
+- **Float inflation in seal:** dynamic `block_reward` via `season_coeff_ppm` (~5% annual target).
+- **Deferred policy activation:** `ActivationMode::Deferred { activate_at_height }` — CLI `tx-policy-set --activation deferred --activate-at-height N`.
 - **Cross-shard value move** via the explicit **EXPORT → relay/handoff → IMPORT** flow: source and target shards cooperate through configured seed trust; CLI `tx-send` / TUI and `tx-export` / `tx-import` match the [Sprint 13 as-implemented contract](docs/rfc/9-crossdomain-roaming.md). See [ROAMING-SAMPLE.md](docs/ROAMING-SAMPLE.md) and [ROAMING_COMPLETION.md](docs/ROAMING_COMPLETION.md).
 - **Federated bridge trust** (including refusal and recovery paths) is part of the runtime contract; see [WHITE_SPEC_v0.md](docs/WHITE_SPEC_v0.md) §7.5 and operator notes in [pwmd.md](docs/pwmd.md).
 - **Persistence:** primary path is **JsonFile** (summary `pwm-data.json`, `epochs/` JSONL, manifest; trust-default load vs audit replay). Optionally **`pwmd` can persist snapshots to ClickHouse** (cargo feature `clickhouse-snapshot`): load semantics differ from JsonFile (CH uses full replay validation today). See **Snapshot storage backends** below and [guide-node-storage-and-snapshot.md](docs/guide-node-storage-and-snapshot.md).
@@ -96,8 +98,13 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 ## Key docs
 
 - README (Russian): [README-ru.md](README-ru.md)
-- MVP v4 policy runtime plan (closed): `docs/plans/mvp_v4.md`
-- Concept roadmap / current milestone map: `docs/CONCEPT_ROADMAP.md`
+- Concept progress / whitepaper coverage map (published): `docs/CONCEPT_PROGRESS.md`
+- MVP v5 tokenomics hardening plan (active milestone): `docs/plans/mvp_v5.md`
+- Post-MVP anti-abuse target model (EN, for international readers): [docs/Post_MVP_target_model(anti-abuse)-en.md](docs/Post_MVP_target_model(anti-abuse)-en.md) — canonical Russian: [docs/Post_MVP_target_model(anti-abuse).md](docs/Post_MVP_target_model(anti-abuse).md)
+- V5 TUI marks operator path: `docs/runbooks/v5-tui-marks-operator-path.md`
+- V5 devnet operator smoke: `docs/runbooks/devnet-v5-operator-smoke.md`
+- V5 pre-publish polish gate (optional): `docs/reviews/20260602-v5-prepublish-polish-integrated-review.md`
+- MVP v4 policy runtime plan (closed prior milestone): `docs/plans/mvp_v4.md`
 - API freeze skeleton (`/v1/*`): `docs/api-v1.md`
 - Public devnet quickstart: `docs/runbooks/demo-devnet-quickstart.md`
 - ADR package index: `docs/adr/README.md`

@@ -51,6 +51,20 @@ This means old blocks remain on disk for audit/rebuild, but routine startup does
 
 Default JsonFile startup trusts the local summary plus manifest as the disk checkpoint. It validates genesis identity, summary/manifest agreement, tail linkage, PoA header signatures, `tx_root`, and final state root. It does not replay all historical transactions.
 
+**Genesis anchor (ADR 0008):** trust load checks that the snapshot is tied to the same genesis as `--genesis-file`:
+
+- `genesis_state_root` and `gencfg_digest` must match the loaded `GenCfg` when `genesis_anchor` is present;
+- single-validator `genesis_anchor.signature` (fool-guard against careless disk edits);
+- when `checkpoint_height >= 1`, **block height=1** is loaded from epochs and verified (`prev_gen`, header hash, PoA sig, light replay of txs into `state0()`) — **even on legacy bypass** (see env below).
+
+Legacy snapshots without `genesis_anchor` are **migrated on load** (warn + persist on next save) when preflight passes and the node has a validator signing key; otherwise use `--snapshot-verify-chain` once.
+
+**Emergency legacy bypass (unsafe):** `PWM_SNAPSHOT_ANCHOR_MIGRATE=1` allows trust load of an old snapshot **without** `genesis_anchor` and **without** signing a new anchor at load. This does **not** skip block@1 preflight when `checkpoint_height >= 1`, and does **not** replace `--snapshot-verify-chain` for a full genesis→tip audit. Use only for one-off recovery; prefer migrate-on-load or verify-chain.
+
+If block 1 was pruned from disk, startup fails with `missing genesis anchor block1 (pruned)` until epoch `e0` is restored.
+
+See [adr/0008-snapshot-genesis-anchor-light.md](adr/0008-snapshot-genesis-anchor-light.md).
+
 Use this for ordinary restarts on a trusted disk.
 
 ### Audit: full replay

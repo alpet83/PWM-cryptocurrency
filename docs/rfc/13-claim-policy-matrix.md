@@ -80,6 +80,39 @@ Claim отклоняется при любом из условий:
 - Для межшардового `IMPORT` применяется policy baseline variant B: комиссия импорта зачисляется в `fee_pool` target-шарда после успешного apply.
 - Нормативный минимум `min_import_fee = 0.01 PWM` (в минимальных единицах сети параметризуется как integer-значение `MIN_IMPORT_FEE_UNITS`).
 
+## V5 Addendum: Claim policy matrix retired
+
+**Status:** Active for MVP V5.
+
+RFC 0012 v2 removes explicit `ClaimTx` and replaces claim materialization with lazy account touch semantics. Therefore the claim-specific policy matrix from this RFC is no longer active for V5.
+
+Retired active-scope checks:
+
+- standalone `ClaimTx` phase path (`mempool -> preflight -> apply`);
+- `anchor_ref` range and monotonicity;
+- continuity-breaking predicates;
+- canonical anchor snapshot availability;
+- free-day limits;
+- over-matured / over-claim checks;
+- `claim_units` and `CLAIM_ALL` handling.
+
+Retired active-scope error classes:
+
+- `E_ANCHOR_RANGE_INVALID`
+- `E_ANCHOR_CONTINUITY_BROKEN`
+- `E_ANCHOR_STATE_UNAVAILABLE`
+- `E_CLAIM_UNITS_INVALID`
+- `E_CLAIM_OVER_MATURED`
+- `E_FREE_CLAIM_DAILY_LIMIT`
+- `E_REORG_STATE_MISMATCH` when used only for claim/free-day state
+
+V5 replacement policy:
+
+- Account touch during `TRANSFER`, `STAKE`, `UNSTAKE`, `BURN_MARK`, `PolicyTx`, and `INIT` computes lazy marks by RFC 0012 v2.
+- Saturated accounts produce a no-op generation delta and remain valid.
+- `BURN_MARK` checks the effective lazy mark balance after touch and before burn.
+- There is no separate mempool/preflight verdict for lazy mark generation because it is an internal deterministic state effect, not a transaction type.
+
 ## Out-of-Scope
 
 - JSON reject shape и обязательные API поля.

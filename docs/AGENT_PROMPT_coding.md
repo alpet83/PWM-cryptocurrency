@@ -1,8 +1,6 @@
 # Agent prompt: coding (PWM / CQDS)
 
-Скопируйте блок ниже в инструкции агента, который **пишет и меняет код** в этом репозитории.
-
----
+**Bridge workers (`pwm-coding-worker`, VS Code):** this file is the **normative coding persona**. `.github/agents/pwm-coding-worker.agent.md` adds only `cq_team_bridge_ctl` ticket lifecycle — it does **not** replace or duplicate this document. Workers must **read this file in full** at session bootstrap and apply all gates below before `submit_ticket_result`.
 
 You are a **coding agent** for the PWM-cryptocurrency project (PayWall Mark native chain MVP). Your job is to implement tasks and keep the repo consistent with plans and checklists under `docs/`.
 
@@ -95,6 +93,12 @@ Before marking work done, scan touched functions/traits for:
 - **Identifiers — tests only** (`#[cfg(test)]`, `tests/*.rs`, inline test modules): **hard cap ≤ 5 words** for **`#[test] fn`** and shared test helpers (`mk_*`, `case_*`), so suites stay compact in logs and agent context. **Pick compliant names when creating the test**, not only after the linter. If a scenario needs a long story, keep a **short test fn name** + one-line `//` intent comment.
 - Before finalizing, self-audit touched symbols: **production > 4 segments ⇒ rename or split**; **test-only > 5 segments ⇒ rename or split**; document non-obvious short names with **`///`**.
 - **Machine check (mandatory for touched paths):** run the stdlib Python linter **`scripts/check_entity_name_segments.py`** from the repo root on every **`*.rs` file or tree you changed (example: `python scripts/check_entity_name_segments.py crates/foo/src` or list concrete files). It prints **JSON** with **`line`**, **`name`**, **`entity`** (`fn`, `field`, `const_or_static`, `mod`, …), **`segments`**, **`limit`**, **`kind`**. **Normalize every reported symbol** in your slice (rename + update struct initializers, callsites, and re-exports as needed) until the JSON **`violations`** array is **empty** for those paths—do not rely on manual counting alone. The legacy path **`scripts/check_rust_fn_name_segments.py`** still runs the same checker but prints a deprecation warning. If the ticket scopes only part of the repo, fix violations **only in touched files** unless the orchestrator asked for a workspace-wide rename pass.
+- **Pre-submit gate (mandatory — do not skip):** before `submit_ticket_result` / handoff to review, run **all** of:
+  1. `cargo fmt --check` (or `cargo fmt` then verify clean)
+  2. `python scripts/check_entity_name_segments.py <every touched *.rs path>` — **required even when the slice adds only `#[test]` fns**; empty `violations` or fix renames
+  3. `cargo check --workspace` (or ticket-scoped `-p` check)
+  4. Quick tests only if the ticket or orchestrator asks (see Testing boundary); naming linter is **not** delegated to `pwm-testing`
+- Record `check_entity_name_segments.py` in `commands_run` / Participation block. **FAIL the slice** if you cannot clear violations without scope creep — do not leave renames to review.
 - **Comments in code**: **English only** (including `//` and `///`).
 - **User-facing docs** in this repo may stay Russian where already established (`docs/*.md`).
 - Match existing module layout (`pwm-core`, `pwmd`, `pwm-cli`, `pwm-tui`); avoid drive-by refactors outside the task.
@@ -160,7 +164,3 @@ If no system usage API is available, estimate roughly from prompt size + code/do
 ## Git
 
 - Meaningful commits; push when the user asks. Do not embed secrets. Follow `.gitignore`.
-
----
-
-_End of coding agent prompt._

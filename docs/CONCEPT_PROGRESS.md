@@ -1,7 +1,8 @@
-# CONCEPT_PROGRESS.md — Прогресс MVP v2 к реализации DRAFT_WHITEPAPER
+# CONCEPT_PROGRESS.md — Прогресс MVP v2 + V5 к реализации DRAFT_WHITEPAPER
 
-**Дата:** 2026-05-22  
-**Цель:** Оценить насколько текущая реализация (MVP v2) покрывает концепт из `DRAFT_WHITEPAPER.md`.  
+**Дата:** 2026-06-02  
+**Цель:** Оценить насколько текущая реализация (база MVP v2 + прогресс MVP v5 токеномики) покрывает концепт из `DRAFT_WHITEPAPER.md`.  
+**Публикация:** этот файл — **внешняя** карта покрытия; внутренний роадмап версий/ADR — [`CONCEPT_ROADMAP.md`](CONCEPT_ROADMAP.md) (не публикуется, не индексируется в README).  
 **Уровни готовности:** ✅ Полностью | 🔶 Частично / MVP-форма | 🔄 В работе | ⏳ Запланировано (план/roadmap) | ❌ Не начато / Defer
 
 ---
@@ -12,7 +13,7 @@
 |---|---|---|
 | §1 Introduction — концепция и цели | ✅ | Концепция зафиксирована, документация согласована |
 | §2 Purpose — анти-спам, псевдоавторизация | 🔶 | `BURN_MARK` реализован (CLI + TUI F5), но интеграция с внешними системами (email, messengers) — defer |
-| §3 Economic model — эмиссия, инфляция, марки | 🔶 | Эмиссия PWM через V2-3 (киты + сезонность); марки accrue/burn работают; инфляция float + IPv4 capping — defer |
+| §3 Economic model — эмиссия, инфляция, марки | 🔶 | V5: lazy marks (staked-only, `u32::MAX` cap), float `block_reward` в seal, `ClaimIPv4Batch` on-chain; эмиссия PWM V2-3; полная IPv4 registry/off-chain фазность и 21B genesis amounts — defer |
 | §4 Адресация, кластеры, HD-derivation, honeypots | 🔶 | HD-derivation (SLIP-0010), domain_code, bech32DX — реализованы; honeypots — не начато |
 | §4.4 PQC (quantum-safe signatures) | ❌ | Ed25519; Dilithium/SPHINCS+ — явно defer |
 | §5 Dumb Contracts (политики, multisig, CLTV) | 🔶 | Базовые policy hooks (recipient domain, TTL, sender filter, routing, default) — RFC/спеки; runtime — не реализован |
@@ -21,7 +22,7 @@
 | §8 Offchain burning + L3 | 🔶 | Offchain stub (`docs/OFFCHAIN_STUB.md`, `offchain-batch`); batch Merkle demo — без продакшн интеграции |
 | §9 AI integration | ❌ | Концепт описан, код не начат |
 | §10 Business model | ✅ | Описано в WP; не требует кода |
-| §11 Roadmap (Phases 1–4) | 🔄 | Phase 1–2 в работе (MVP v2); Phase 3–4 — будущее |
+| §11 Roadmap (Phases 1–4) | 🔄 | V2–V5 спринтовые gates закрыты (см. §3b); Phase 3–4 (V6+ PoS, offchain prod) — будущее |
 | §12 Long-term (media trust, deepfake) | ❌ | Видение, не требует текущей реализации |
 
 ---
@@ -40,9 +41,13 @@
 | Cross-shard EXPORT/IMPORT + replay protection | §4 (sharding) | Sprint 13–15; bridge trust refusal, one-window closure | ✅ |
 | Seasonal emission coefficient (лето/зима) | §3 | V2-3: `season_coeff_ppm`, `GenCfg` policy v2 | ✅ |
 | Stake threshold для эмиссии (~100k PWM) | §3 | V2-3: `pwm_stake_min` в `GenCfg` | ✅ (MVP) |
-| Marks accrual formula (1 PWM × 1 hour = 1 mark) | §3 | V2-5: `matured = (staked / 1_000_000) * hours` | ✅ |
-| Marks type normalization (u32) | §3 | V2-5: `Account.marks: u32` | ✅ |
-| Block reward to producer | §3 | `RewPol::ToProducerAccount` → policy-gated v2 | ✅ |
+| Marks accrual formula (1 PWM × 1 hour = 1 mark) | §3 | V5-3: lazy `compute_lazy_marks` (staked-only, `blocks_per_hour`); V2-5 legacy superseded | ✅ |
+| Marks storage + lazy cursor | §3 | `stored_marks: u32`, `marks_last_block: u64`, `effective_marks` at poll/touch | ✅ |
+| Float inflation in seal | §3 | V5-3: `compute_block_reward` + `season_coeff_ppm` в `Chain::seal` | ✅ |
+| Deferred policy activation | §5 | V5-4: `ActivationMode::Deferred { activate_at_height }`, evaluator auto-activate | ✅ |
+| IPv4 claim on-chain (`ClaimIPv4Batch`) | §3 | V5-5: registry-sig gated apply; legacy `ClaimTx` retired | ✅ |
+| Snapshot genesis anchor (light) | — | ADR 0008 **Implemented**; `genesis_anchor` в snapshot v3 wire | ✅ |
+| Block reward to producer | §3 | V5 float reward + `RewPol::ToProducerAccount` | ✅ |
 | Genesis funding + validator set | §3 | `genesis.rs`: `GenCfg`, `GRow`, `dev_net()` | ✅ |
 | Persistence (JsonFile + ClickHouse optional) | — | Epoch JSONL, manifest, autosnapshot | ✅ |
 
@@ -66,7 +71,7 @@
 | TRANSFER | §3 | `TRANSFER { to, amount, fee }` | ✅ |
 | STAKE / UNSTAKE | §3 | CLI + TUI (F7 / Shift+F7) | ✅ |
 | BURN_MARK | §2, §7 | CLI `tx-burn-mark --amount --purpose` + TUI F5 | ✅ |
-| ClaimTx (explicit + auto-claim) | §3 | V2: free/paid, maturity, anchor ref | ✅ |
+| ClaimTx (explicit + auto-claim) | §3 | **V5: retired**; марки — lazy touch; IPv4 — `ClaimIPv4Batch` | 🔶 |
 | EXPORT / IMPORT (cross-shard) | §4 | Sprint 13+; provenance, replay guard | ✅ |
 | Dumb contracts — policy engine | §5 | RFC hooks (routing, TTL, sender filter, default); runtime — нет | ⏳ |
 | Dumb contracts — CLTV | §5 | Не реализовано | ❌ |
@@ -82,7 +87,7 @@
 | CLI: key-gen, addr-derive, tx-init/send/stake/unstake/burn/claim/export/import | §3 | `pwm-cli` — все базовые команды | ✅ |
 | CLI: wallet-first path (`--wallet`, encrypted) | §3.5 | Phase 1: encrypted wallet, backup/recover | ✅ |
 | TUI: account table (PWM / Staked / Marks / Init) | — | Таблица с панелями Owner/Receivers | ✅ |
-| TUI: F5 Burn form (auto-claim, marks display) | §7 | V2-4 + V2-6 + V2-7: full burn flow | ✅ |
+| TUI: F5 Burn form (effective marks, saturation) | §7 | V5-6 + pre-publish polish: `effective_marks` в detail/F5, saturation column, без Claim UX; runbook [v5-tui-marks-operator-path.md](runbooks/v5-tui-marks-operator-path.md) | ✅ |
 | TUI: F6 Send form | — | Phase 1: validate, submit, status | ✅ |
 | TUI: F7 Stake / Shift+F7 Unstake forms | §3 | V2-6: stake/unstake forms | ✅ |
 | TUI: wallet lock/encrypt controls (F3/F4) | — | Phase 1 | ✅ |
@@ -109,13 +114,13 @@
 | Компонент | WP Spec | Реализация | Статус |
 |---|---|---|---|
 | Base issue: 21B coins | §3 | Genesis funding — фиксированное, не 21B | 🔶 (devnet) |
-| IPv4 capping distribution | §3 | Не реализовано | ❌ |
-| Floating annual inflation (~5%) | §3 | Фиксированный `block_reward` → policy-gated v2 | 🔶 |
-| Seasonal variation (лето/зима) | §3 | V2-3: `season_coeff_ppm` | ✅ |
-| Marks generation daily from staking | §3 | Per-block accrual, maturity formula | ✅ |
-| Lazy marks saturation | Roadmap V5 | Целевая модель: накопление до `u32::MAX` без индивидуального TTL/lot accounting | ⏳ |
-| Marks burn only (no tradeable balance) | §3 | `marks` — отдельный счётчик, не переводимый | ✅ |
-| Unified marks balance (v2) | §3 | V2-2: `marks_quota` → единый `marks` | ✅ |
+| IPv4 capping distribution | §3 | V5-5: on-chain `ClaimIPv4Batch` + phase gate; полный registry/off-chain bootstrap — defer | 🔶 |
+| Floating annual inflation (~5%) | §3 | V5-3: динамический `block_reward` в seal (~5% target + `season_coeff_ppm`) | ✅ |
+| Seasonal variation (лето/зима) | §3 | V2-3 + V5 seal: `season_coeff_ppm` | ✅ |
+| Marks generation from staking | §3 | V5 lazy engine: staked-only, cap `u32::MAX`, cursor `marks_last_block: u64` | ✅ |
+| Lazy marks saturation | Roadmap V5 | V5-3 engine + V5-6 TUI saturation column/detail; см. [plans/mvp_v5.md](plans/mvp_v5.md) | ✅ |
+| Marks burn only (no tradeable balance) | §3 | `stored_marks` — отдельный счётчик, не переводимый | ✅ |
+| Legacy `marks_quota` mirror (pwmd snapshot) | §3 | Удалён 2026-06-02 (pre-publish polish); canonical — `stored_marks` + lazy engine | ✅ |
 
 ### 2.7 Инфраструктура и DevOps
 
@@ -146,6 +151,23 @@
 | **V2-8** | Same-shard sync v1 (slices 0–5) | ✅ Готово | Slice 6 → V2-9 |
 | **V2-9** | RFC 16 cluster attestation | ✅ Закрыт (спринтовой gate) | См. `docs/reviews/20260510-v2-9-slice-bc-review.md`; legacy V2-8 slice 6 — `blocked`, не требуется для закрытия |
 
+### 3b. Спринты MVP v5 — статус (sprint-final + pre-publish 2026-06-02)
+
+| Gate | Описание | Статус | Артефакт |
+|---|---|---|---|
+| **V5-1** | RFC/ADR freeze (lazy marks, float inflation, ADR 0005–0007) | ✅ | [reviews/20260523-v5-sprint1-spec-adr-freeze-rereview.md](reviews/20260523-v5-sprint1-spec-adr-freeze-rereview.md) |
+| **V5-2** | Core model: `marks_last_block`, deferred policies, `ClaimIPv4Batch`, schema v3 | ✅ | [reviews/20260524-v5-s2-review-fixes-rereview.md](reviews/20260524-v5-s2-review-fixes-rereview.md) |
+| **V5-3** | Lazy marks engine + float inflation в seal | ✅ | `tasks/done/20260524-v5-sprint3-lazy-marks-inflation.json` |
+| **V5-4** | Deferred activation (`activate_at_height`) | ✅ | `tasks/done/20260524-v5-sprint4-deferred-activation.json` |
+| **V5-5** | IPv4 `ClaimIPv4Batch` on-chain | ✅ | `tasks/done/20260524-v5-sprint5-ipv4-claim-onchain.json` |
+| **V5-6** | TUI marks saturation / effective display | ✅ | `tasks/done/20260524-v5-sprint6-tui-marks-saturation.json` |
+| **V5-7** | CLI `account-info`, deferred policy CLI, genesis-21b doc | ✅ | `tasks/done/20260524-v5-sprint7-cli-genesis-doc.json` |
+| **V5-8** | Integrated gate + operator closeout | ✅ | [plans/mvp_v5.md](plans/mvp_v5.md); `tasks/20260524-v5-sprint8-operator-closeout.json` |
+| **V5-9** | CY cluster E2E (bootstrap, marks soak, mass burn) | ✅ | `tasks/done/20260530-v5-sprint-final-closeout.json` |
+| **Pre-publish** | TUI operator UX, genesis anchor land, `marks_quota` cleanup | ✅ | [reviews/20260602-v5-prepublish-polish-integrated-review.md](reviews/20260602-v5-prepublish-polish-integrated-review.md); ADR [0008](adr/0008-snapshot-genesis-anchor-light.md) |
+
+**Owner sign-off:** сводные критерии V5 в [CONCEPT_ROADMAP.md](CONCEPT_ROADMAP.md) (§ MVP V5) — часть чекбоксов остаётся pending до явного owner close.
+
 ---
 
 ## 4. Что уже возможно (demonstration-ready)
@@ -160,6 +182,9 @@
 6. **Same-shard sync** — ведомая нода догоняет tip, mempool gossip, block delivery.
 7. **Cluster attestation** — 2-of-2 и 2-of-3 по RFC 16, wire + негативные harness; ведомая same-shard нода вне кластера догоняет tip (приёмка спринта).
 8. **Persistence** — JsonFile epoch-режим, autosnapshot, опционально ClickHouse.
+9. **V5 lazy marks** — stake → poll head показывает `effective_marks` → F5 burn materialize; saturation в таблице/detail (runbook [v5-tui-marks-operator-path.md](runbooks/v5-tui-marks-operator-path.md)).
+10. **IPv4 claim batch** — on-chain `ClaimIPv4Batch` с registry-sig (devnet authority path).
+11. **Genesis anchor light** — snapshot v3 `genesis_anchor` по ADR 0008 при trust-load/migrate.
 
 ---
 
@@ -171,9 +196,8 @@
 | **Dumb contracts runtime** — policy engine execution, routing/TTL/filter | WP §5, WHITE_SPEC §9 | Средний (RFC готов, код нет) |
 | **Arbitrator** — зональный арбитр, freeze/reversal | WP §6 | Низкий (defer) |
 | **PQC** — quantum-safe signatures | WP §4.4 | Низкий (defer) |
-| **IPv4 capping** — распределение по адресам | WP §3 | Низкий (defer) |
-| **Full inflation model** — float ~5% annual | WP §3 | Средний (частично через season_coeff) |
-| **Lazy marks saturation polish** | Roadmap V5 | Средний (cap/account-touch semantics, UX насыщения) |
+| **IPv4 capping (production registry + фазы)** | WP §3 | Средний (on-chain batch есть; off-chain registry/bootstrap — defer) |
+| **Owner sign-off V5 сводных критериев** | [CONCEPT_ROADMAP.md](CONCEPT_ROADMAP.md) § MVP V5 | Средний (gates V5-1…V5-9 ✅; чеклисты owner pending) |
 | **Offchain burning production** | WP §8 | Средний (stub есть) |
 | **X-PWM email header integration** | WP §7 | Низкий (defer) |
 | **AI API integration** | WP §9 | Низкий (defer) |
@@ -189,7 +213,7 @@
 1. **Консенсусный пивот** (multi-sealer → single proposer + cluster attestation) **для спринтового gate закрыт** (V2-9). Остаётся продуктовая полировка и long-run soak на реальных стендах.
 2. **Policy engine gap:** WHITE_SPEC §9 описывает политики (routing, TTL, filter, default), но runtime execution не реализован. Это критический пробел для WP §5 «dumb contracts».
 3. **Масштабирование offchain:** stub batch-burn есть, но нет production-ready API для интеграций (email platforms, messengers).
-4. **Lazy marks cap semantics:** старая WP-модель TTL заменена roadmap-решением: ленивое накопление до потолка без индивидуального срока жизни марок; остаётся уточнить account-touch semantics и UX насыщения.
+4. **Lazy marks (остаток):** движок и TUI saturation shipped (V5-3/V5-6, pre-publish polish). Остаётся операторский нит: accrual hint в TUI использует `DEF_BLOCKS_PER_HOUR`, не live genesis `/v1/status` — см. integrated review NIT-UX-1.
 5. **Genesis amounts:** текущий devnet genesis ≠ 21B coins из WP; это нормально для dev, но потребует отдельного genesis-файла для демо.
 
 ---
@@ -198,13 +222,14 @@
 
 | Категория | Покрытие |
 |---|---|
-| **Реализовано и работает** | ~45% концепта |
-| **MVP-форма / частично** | ~25% (экономика базовая, политики как RFC, offchain stub) |
-| **Запланировано / в работе** | ~10% (расширенные cluster fault tests, policy runtime) |
-| **Defer / не начато** | ~15% (PQC, arbitrator, IPv4 capping, AI integration, lazy marks saturation polish, honeypots) |
+| **Реализовано и работает** | ~50% концепта (рост за счёт V5 tokenomics: lazy marks, float seal, IPv4 batch, genesis anchor) |
+| **MVP-форма / частично** | ~25% (21B genesis amounts, IPv4 registry фазы, dumb contracts runtime, offchain stub) |
+| **Запланировано / в работе** | ~8% (owner V5 sign-off, расширенные cluster fault tests) |
+| **Defer / не начато** | ~15% (PQC, arbitrator, production IPv4 registry, AI integration, honeypots) |
 
-**Общий вывод:** MVP v2 закрывает **основной технический каркас** блокчейн-ядра (консенсус, шардинг, синхронизация, эмиссия, марки, клиенты). Следующие критические шаги к demonstration-ready концепту:
+**Общий вывод:** MVP v2 + **закрытый спринтовый gate V5** дают **основной технический каркас** и **токеномику марок/инфляции** в devnet-форме. Следующие критические шаги к demonstration-ready концепту:
 - Опционально: **расширенный fault-matrix** для cluster (§11) и операторские soak на длинных цепочках
 - Реализация **policy engine runtime** для dumb contracts (§5 WP)
 - Минимальная **offchain burn API** для демо интеграций (§7–8 WP)
-- Подготовка **демо genesis** с реалистичными amounts и валидаторами
+- Подготовка **демо genesis** с реалистичными amounts и валидаторами (дизайн: [genesis-21b-design.md](genesis-21b-design.md); runtime 21B — open)
+- **Owner sign-off** сводных критериев V5 и live-genesis TUI accrual hint (опционально)

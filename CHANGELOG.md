@@ -4,6 +4,113 @@ Notable behavior and documentation changes. Section timestamps are **UTC**, deri
 
 ---
 
+## 2026-05-30T14:00Z — MVP v5 sprint-final closeout (`tasks/done/20260530-v5-sprint-final-closeout.json`)
+
+### Added
+
+- **V5-9 CY E2E:** live cluster soak — s1/bootstrap PASS, s2-rerun marks saturation soak PASS (PARTIAL: 2 staked), s3/mass burn batches PASS; umbrella done (2026-05-30).
+- **Doc alignment audit:** 12-file inventory across plans/runbooks/checklists/spec/reviews; V5-9 gate row in MVP-checklist and CONCEPT_ROADMAP.
+- **TUI marks operator runbook:** `docs/runbooks/v5-tui-marks-operator-path.md` — S → wait blocks → F5 path, ClaimTx vs ClaimIPv4Batch distinction.
+
+### Changed
+
+- **MVP-checklist.md:** §0v5 updated with V5-9 gate; header changed from "(in progress)" to "(CY E2E PASS; sprint-final closeout in review)".
+- **CONCEPT_ROADMAP.md:** V5-8 [x], V5-9 [x] added; V5 status updated from `🔄 In Progress` to `✅ CY E2E PASS`.
+- **Runbook gate:** s2 ticket ID corrected to `20260531-v5-cy-e2e-s2-marks-saturation-soak-rerun`.
+- **GLOSSARY.md:** sprint-final pass — lazy marks, saturation, deferred, ClaimIPv4Batch terms confirmed.
+
+---
+
+## 2026-05-24T22:00Z — MVP v5 CLI + genesis doc closeout (`tasks/done/20260524-v5-sprint7-cli-genesis-doc.json`)
+
+### Added
+
+- **`pwm account-info`:** stored/effective marks, saturation pct, `marks_last_block`, staked at head height.
+- **`tx-policy-set` deferred:** `--activation deferred --activate-at-height N`; validation error without height.
+- **`docs/genesis-21b-design.md`:** 21B allocation table, IPv4-weighted formula, phasing placeholder.
+
+### Changed
+
+- **Gate:** slices 1–3 coding → review → testing PASS — commits `ebeb161`, `fed8426`, `5a82bf8`; slice2 testing rerun corrected pwm-cli gate (`cargo test -p pwm-cli`, not `--lib`).
+
+---
+
+## 2026-05-24T20:00Z — MVP v5 TUI marks saturation closeout (`tasks/done/20260524-v5-sprint6-tui-marks-saturation.json`)
+
+### Added
+
+- **pwmd API:** additive `marks_last_block` on `/v1/account(s)` for lazy marks cursor.
+- **pwm-tui `marks_display`:** `compute_lazy_marks` at poll head height; saturation pct formatting.
+- **TUI table:** Owner/Receivers Marks column shows effective saturation (eff/cap pct); SAT at cap.
+
+### Changed
+
+- **Gate:** slices 1–2 coding → review → testing PASS — commits `2d5c6cb`, `8b69a3a`; review [20260524-v5-s6-slice2-ui-saturation-column-review.md](docs/reviews/20260524-v5-s6-slice2-ui-saturation-column-review.md).
+
+---
+
+## 2026-05-24T18:00Z — MVP v5 IPv4 Claim on-chain closeout (`tasks/done/20260524-v5-sprint5-ipv4-claim-onchain.json`)
+
+### Added
+
+- **`ClaimIPv4Batch` apply path:** phase lookup from `GenCfg.ipv4_claim_phases`, registry ed25519 verify (`PWM/IPV4/CLAIM/V1` message), credit `allocation` to claimant, set `ipv4_claimed_phase`.
+- **Reject matrix tests:** unknown phase, bad registry sig, double-claim, not initialized.
+
+### Changed
+
+- **Gate:** slices 1–2 coding → review → testing PASS — commits `f016074`, `795d170`; review [20260524-v5-s5-slice2-reject-fixture-review.md](docs/reviews/20260524-v5-s5-slice2-reject-fixture-review.md).
+
+---
+
+## 2026-05-24T16:00Z — MVP v5 deferred activation closeout (`tasks/done/20260524-v5-sprint4-deferred-activation.json`)
+
+### Added
+
+- **`ActivationMode::Deferred { activate_at_height }`:** serde/signing tag 2; `SetPolicy` stores `DeferredPolicyEntry` in `Account.deferred_policies`.
+- **Height-gated evaluator:** `evaluate_policy(tx, chain_tip_height)` treats deferred policies as active when `height >= activate_at_height`.
+- **Apply rejects (ADR 0005):** `ActivatePolicy` before height → `PolicyNotActive`; at/after height → `PolicyDenied` (already auto-active); `DeactivatePolicy` removes pending deferred entry.
+- **Snapshot wire:** `deferred:<u64>` encode/decode for activation strings; v3 `deferred_policies` roundtrip tests.
+
+### Changed
+
+- **Normative docs:** RFC 6 §7.3.2 and RFC 7 §5.5 aligned with ADR 0005 deferred activation rules.
+- **Gate:** all three slices coding → review → testing PASS — [20260524-v5-s4-slice3-spec-tests-review.md](docs/reviews/20260524-v5-s4-slice3-spec-tests-review.md).
+
+---
+
+## 2026-05-24T14:00Z — MVP v5 lazy marks + float inflation closeout (`tasks/done/20260524-v5-sprint3-lazy-marks-inflation.json`)
+
+### Added
+
+- **`crates/pwm-core/src/marks.rs`:** pure `compute_lazy_marks` (RFC 0012 v2, integer **ceil** `satur_hours`) and `compute_block_reward` (RFC 0019).
+- **State touch (RFC 0012 v2):** `touch_acct_mrks` via `compute_lazy_marks`; full touch matrix (Transfer/Stake/Unstake/BurnMark/Policy); `GenCfg` in `apply_tx_with_ctx`.
+- **Chain seal:** `compute_block_reward(&cfg, height)` as V5 float inflation source; integration test `policy_v2_uses_float_reward`.
+
+### Changed
+
+- **Review-fixes (`9086d96`):** slice1 test naming policy.
+- **dev_net:** `base_emission_per_block` calibrated for slice3 seal path.
+- **Gate:** all three slices coding → review → testing PASS — [20260524-v5-s3-slice3-chain-seal-review.md](docs/reviews/20260524-v5-s3-slice3-chain-seal-review.md).
+
+---
+
+## 2026-05-24T12:00Z — MVP v5 core state model closeout (`tasks/done/20260524-v5-sprint2-core-model.json`)
+
+### Added
+
+- **GenCfg V5 fields:** `blocks_per_hour`, `marks_per_coin_per_hour`, `base_emission_per_block`, `season_coeff_ppm` (u64), `ipv4_claim_phases` / `ClaimPhaseConfig`.
+- **Account V5 shape:** `marks_last_block` (chain-height cursor), `deferred_policies`, `ipv4_claimed_phase`; legacy claim-era fields removed.
+- **Tx model:** `TxBody::ClaimIPv4Batch` shape with deferred on-chain apply (V5-5); legacy `ClaimTx` / `claim_mark` wire retired with structured error path.
+- **Snapshot schema v3:** migration from v2, height-based `marks_last_block` repair semantics.
+
+### Changed
+
+- **Review-fixes (`87af492`):** aligned `marks_last_block` to inclusion height (RFC 0012 v2), `season_coeff_ppm` to u64 (RFC 0019), explicit `claim_mark` wire deserialize test.
+- **Process:** default slice conveyor is now **`pwm-coding` → `pwm-review` → `pwm-testing`** (orchestrator prompts updated).
+- **Gate:** integrated V5-2 closeout after rereview + testing PASS — `docs/reviews/20260524-v5-s2-review-fixes-rereview.md`.
+
+---
+
 ## 2026-05-17T11:00Z — MVP v4 policy engine runtime closeout (`tasks/20260517-v4-sprint6-closeout.json`)
 
 ### Added

@@ -73,6 +73,34 @@ RFC фиксирует tx-контракт для V2-1: обязательное
 - Новые клиенты по умолчанию формируют `BurnMarkTx v2`.
 - `ClaimTx` вводится как новый тип и не меняет валидность старых не-claim транзакций.
 
+## V5 Addendum: ClaimTx retired from active scope
+
+**Status:** Active for MVP V5.
+
+V5 keeps `BurnMarkTx v2` unchanged and retires the explicit claim transaction path. Marks are no longer materialized by `tx_type = "claim_mark"`; they are accumulated lazily by RFC 0012 v2 and applied through account touch semantics.
+
+Normative V5 changes:
+
+- `ClaimTx` / `tx_type = "claim_mark"` is deprecated and removed from the V5 active wire contract.
+- `mode = free|paid`, `claim_units`, `anchor_ref`, `CLAIM_ALL = u32::MAX`, and claim fee-mode rules are historical V2 fields only.
+- Nodes implementing V5 MUST NOT accept newly submitted `ClaimTx` as a valid transaction.
+- Snapshot or log readers MAY retain compatibility code for historical data, but it MUST NOT mint marks through the retired claim path.
+- `BurnMarkTx v2` remains valid and continues to burn marks from the account's effective lazy mark balance.
+
+The following V2 claim error codes are retired from the active V5 tx schema:
+
+- `CLAIM_REQUIRED_FIELD_MISSING`
+- `CLAIM_MODE_INVALID`
+- `CLAIM_FEE_MODE_CONFLICT`
+- `CLAIM_NONCE_INVALID`
+- `CLAIM_DELTA_INVALID`
+- `CLAIM_ANCHOR_RANGE_INVALID`
+- `CLAIM_ANCHOR_CONTINUITY_BROKEN`
+- `CLAIM_OVER_MATURED`
+- `FREE_CLAIM_DAILY_LIMIT`
+
+Implementations may map a submitted legacy claim transaction to `TX_SCHEMA_UNSUPPORTED` or an equivalent stable schema-reject code.
+
 ## Out-of-Scope
 
 - Формулы maturity/state и инварианты reorg (RFC 0012).

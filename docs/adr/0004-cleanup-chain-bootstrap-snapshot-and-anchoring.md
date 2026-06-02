@@ -48,10 +48,25 @@ Roadmap V3 и риски R10-R12 требуют заранее развести 
 - Все изменения в текущих `Epoch Snapshot` docs/runtime должны явно помечаться как operational layer, не как pruning-final architecture.
 - До начала pruning-работ нужен отдельный implementation RFC/ADR с форматом, подписями и правилами восстановления.
 
+## Связь с Epoch genesis anchor (ADR 0008) и RFC 0020
+
+Реализация pruning **не должна** обходить привязку к genesis.
+
+| Слой | Документ | Подписи | Prune |
+|------|----------|---------|-------|
+| Epoch Snapshot (сейчас) | [ADR 0008](0008-snapshot-genesis-anchor-light.md) | 1× fool-guard | block@1 preflight на диске |
+| Bootstrap Snapshot (будущее) | [RFC 0020](../rfc/20-bootstrap-snapshot-pruned-distribution.md) | k-of-n активных validators шарда | state bundle + cleanup-chain |
+
+**Эволюция дайджеста:** `genesis_state_root` + `gencfg_digest` + `chain_origin_hdr_hash` (block 1) — общие для epoch anchor и `genesis_fingerprint` в Bootstrap. Код digest — один (`pwm-core` / `pwmd::snapshot`).
+
+**Дистрибуция pruned chain:** новый узел загружает Bootstrap Snapshot с кворумом подписей; epoch tail опционален. Без опубликованного Bootstrap + cleanup-chain commit prune старых epoch **запрещён** (normative intent RFC 0020 §6).
+
 ## Ссылки
 
 - `docs/CONCEPT_ROADMAP.md`
 - `docs/guide-node-storage-and-snapshot.md`
 - `docs/runbook-store-snapshots.md`
 - `docs/rfc/5-genesis-and-bootstrap.md`
+- [RFC 0020: Bootstrap Snapshot и pruned distribution](../rfc/20-bootstrap-snapshot-pruned-distribution.md)
+- [ADR 0008: Epoch genesis anchor](0008-snapshot-genesis-anchor-light.md)
 - `docs/plans/mvp_v3.md`

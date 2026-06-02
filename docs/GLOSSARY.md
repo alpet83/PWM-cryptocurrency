@@ -221,6 +221,7 @@
 ### Bootstrap Snapshot {#term-bootstrap-snapshot-v3}
 
 - **Простыми словами:** **будущий** архивный формат «тяжёлого» снимка для долгого хранения и восстановления после pruning; в **V3** он описан в ADR как направление, **без** полной реализации в runtime.
+- **Связь с epoch anchor (2026):** перед pruning опора — [ADR 0008](adr/0008-snapshot-genesis-anchor-light.md) (`genesis_state_root`, `gencfg_digest`, block@1); Bootstrap добавляет **k-of-n** подписи validators шарда и cleanup-chain — [RFC 0020](rfc/20-bootstrap-snapshot-pruned-distribution.md).
 
 ### Cleanup-chain (цепочка архивных обязательств) {#term-cleanup-chain-v3}
 
@@ -247,12 +248,12 @@
 
 ### `ActivationMode` {#term-activation-mode}
 
-- **Простыми словами:** режим установки политики: **Dormant** означает «положить в аккаунт, но пока не применять», **Immediately** — «сразу включить».
-- **Где встречается:** `SetPolicy { policy, activation }`, `init_v4.initial_policies`.
+- **Простыми словами:** режим установки политики: **Dormant** — «положить в аккаунт, но пока не применять»; **Immediately** — «сразу включить»; **Deferred { activate_at_height }** — «активна автоматически, когда высота цепи достигнет заданного значения» (без wall-clock).
+- **Где встречается:** `SetPolicy { policy, activation }`, `init_v4.initial_policies`, snapshot wire `deferred:<height>`.
 
 ### `evaluate_policy` {#term-evaluate-policy}
 
-- **Простыми словами:** чистая функция проверки политики: читает транзакцию и состояние, возвращает «разрешить / отказать / перенаправить», но сама ничего не записывает.
+- **Простыми словами:** чистая функция проверки политики: читает транзакцию, состояние и **высоту цепи** (для deferred-политик), возвращает «разрешить / отказать / перенаправить», но сама ничего не записывает.
 - **Зачем в проекте:** preflight и apply должны давать один и тот же policy reject; мутация балансов и флагов делается только в apply-path после детерминированного решения.
 
 ### Hybrid corporate INIT / `init_v4` {#term-init-v4}
@@ -281,6 +282,67 @@
 
 ---
 
+## MVP V5: токеномика (марки, инфляция, IPv4 claim) {#thema-v5-tokenomics}
+
+Короткие определения для закрытого **MVP V5 Tokenomics Hardening**. Подробнее: [план V5](plans/mvp_v5.md), RFC 0012 (lazy marks v2), RFC 0019 (float inflation), RFC 0011/0013/0014 (ClaimTx retirement), ADR 0005 (deferred activation), ADR 0006/0007.
+
+### Ленивые марки / Lazy marks {#term-lazy-marks}
+
+- **Простыми словами:** очки верности (англ. loyalty points) за хранение застейканных монет. Накапливаются **лениво** — не при каждом блоке, а при следующем обращении к аккаунту: система считает, сколько часов прошло с последнего прикосновения, и дописывает накопленное за один раз. Максимум — `u32::MAX` (насыщение, saturation).
+- **Формула (RFC 0012 v2):** `delta_hours = (current_height − marks_last_block) / blocks_per_hour`; `generated = staked_coins × marks_per_coin_per_hour × effective_hours` (ограничено горизонтом насыщения).
+- **Где встречается:** `Account.marks` (хранимые), `effective_marks` (вычисленный, возвращается API `/v1/account`), `marks_last_block` (курсор высоты).
+
+### `marks_last_block` {#term-marks-last-block}
+
+- **Простыми словами:** номер блока, на котором марки аккаунта последний раз фактически пересчитывались (курсор ленивых марок). Используется в формуле lazy marks для вычисления `delta_blocks`.
+- **Важно:** возвращается в ответе `/v1/account` и в выводе `pwm account-info`; PASS_EVIDENCE слайса 4 фиксирует, что поле равно 1 после первого блока.
+
+### Float inflation / `compute_block_reward` {#term-float-inflation}
+
+- **Простыми словами:** динамическая (плавающая) награда за блок, вычисляемая из годового целевого процента инфляции (~5%) и текущей суммарной эмиссии через коэффициент сезона `season_coeff_ppm`. Заменяет фиксированный `block_reward` в `GenCfg`.
+- **Где встречается:** `GenCfg.inflation` (V5), `compute_block_reward` в `pwm-core`; RFC 0019.
+
+### `ClaimIPv4Batch` {#term-claim-ipv4-batch}
+
+- **Простыми словами:** on-chain транзакция, позволяющая аккаунту заявить права на IPv4-адрес (или пакет адресов) в рамках определённой фазы distribution. Требует подписи реестра (`registry` — 32-байтный публичный ключ, прописанный в `GenCfg.claim_phases`), а двойная заявка отклоняется.
+- **Зачем:** связывает сетевые ресурсы (IPv4) с аккаунтом on-chain; allocation-баланс добавляется автоматически при успешном apply.
+- **Где встречается:** `TxBody::ClaimIPv4Batch`, `Account.ipv4_claimed_phase`, API `POST /v1/tx`; слайс3 PASS_EVIDENCE фиксирует `delta=1000000` на balance.
+
+### `ipv4_claimed_phase` {#term-ipv4-claimed-phase}
+
+- **Простыми словами:** поле аккаунта, хранящее номер фазы IPv4 claim, которую уже использовал данный аккаунт. Защита от повторного использования `ClaimIPv4Batch` в той же фазе.
+- **Где встречается:** `Account.ipv4_claimed_phase`, ответ `/v1/account`, PASS_EVIDENCE слайса3.
+
+### Deferred policy activation {#term-deferred-policy}
+
+- **Простыми словами:** политика, установленная через `tx-policy-set --activation deferred --activate-at-height H`, становится активной автоматически, как только цепь достигает высоты H — без дополнительной транзакции активации. Оператор не может вручную активировать её раньше (команда вернёт ненулевой код до высоты H).
+- **Где встречается:** `ActivationMode::Deferred`, snapshot wire `deferred:<height>`, ADR 0005; слайс2 PASS_EVIDENCE зафиксировал `activate_exit_before=2` и `stored_active_policies=0` при head=20.
+
+### `PASS_EVIDENCE` {#term-pass-evidence}
+
+- **Простыми словами:** машиночитаемая строка в конце smoke-отчёта (`tmp/devnet_v5_operator_smoke_*.md`), подтверждающая успешное прохождение конкретного сценария оператором. Содержит `slice=`, ключевые наблюдаемые значения и хэши участников, чтобы тест можно было воспроизвести или перепроверить без чтения всего лога.
+- **Формат:** `PASS_EVIDENCE: slice=<name> <key>=<value> ...` — одна строка, grep-stable.
+- **Где встречается:** `scripts/devnet_v5_operator_smoke.ps1`, отчёты `tmp/devnet_v5_operator_smoke_*.md`.
+
+### `AccountInfoOnly` (режим smoke) {#term-account-info-only}
+
+- **Простыми словами:** режим запуска `scripts/devnet_v5_operator_smoke.ps1 -AccountInfoOnly`, при котором проверяется только вывод `pwm account-info` — наличие полей `marks_stored`, `marks_effective`, `marks_sat_pct`, `marks_last_block` со ставными значениями; все остальные сценарии пропускаются.
+- **Зачем:** позволяет изолированно верифицировать CLI-выдачу после V5-7 без повторного прогона тяжёлых deferred/IPv4 сценариев.
+
+---
+
+### Sprint-final closeout additions (2026-05-30) {#term-v5-closeout-new}
+
+- **Простыми словами:** термины, добавленные или уточнённые в ходе V5 sprint-final review:
+  - **Marks saturation (насыщение):** достижение потолка `u32::MAX` (4 294 967 295) — колонка TUI показывает 100%, дальнейшее начисление блокируется. Генезис-аккаунты могут стартовать уже насыщенными.
+  - **Bootstrap / s1 gate:** стабилизация кластера с двумя узлами (proposer + attester); проверка кворума, синхронизация, рост высоты ~100 блоков без ошибок.
+  - **Soak / s2 gate:** многочасовой прогон кластера с периодическим опросом накопления марок на staked-аккаунтах до насыщения. s2-rerun: живой прогон с REST-харнессом и early-exit при достижении MARKS_CAP.
+  - **Mass burn / s3 gate:** отправка серии `BurnMark` транзакций в работающий кластер с проверкой seal-стабильности и отсутствия лавины reject.
+  - **Runbook gate:** раздел в soak-runbook, перечисляющий ticket IDs, harness paths и canonical report paths для каждого E2E слайса.
+  - **Doc alignment review:** аудит всех V5-релевантных документов (планов, runbook, чеклистов, роадмапа) на соответствие V5-семантике, корректность gate-статусов и отсутствие устаревших ссылок.
+
+---
+
 ## Алфавитный указатель
 
 ### Латиница (A–Z)
@@ -289,9 +351,18 @@
 |----------------|--------|
 | A ADR (V3 foundation package) | [ADR V3](#term-adr-v3-package) |
 | A `ActivationMode` | [ActivationMode](#term-activation-mode) |
+| A `AccountInfoOnly` (smoke mode) | [AccountInfoOnly](#term-account-info-only) |
 | A API freeze `/v1/*` | [API freeze V3](#term-api-freeze-v1) |
 | A attester | [Attester](#term-attester) |
 | A auto-attest (incoming propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
+| C `ClaimIPv4Batch` | [ClaimIPv4Batch](#term-claim-ipv4-batch) |
+| C `compute_block_reward` / float inflation | [Float inflation](#term-float-inflation) |
+| D Deferred policy activation | [Deferred policy](#term-deferred-policy) |
+| I `ipv4_claimed_phase` | [ipv4_claimed_phase](#term-ipv4-claimed-phase) |
+| L Lazy marks | [Lazy marks](#term-lazy-marks) |
+| M `marks_last_block` | [marks_last_block](#term-marks-last-block) |
+| P `PASS_EVIDENCE` | [PASS_EVIDENCE](#term-pass-evidence) |
+| S Sprint-final closeout (V5) | [Sprint-final closeout](#term-v5-closeout-new) |
 | B Bootstrap Snapshot (future) | [Bootstrap Snapshot](#term-bootstrap-snapshot-v3) |
 | B `binding_mismatch` | [binding_mismatch](#term-binding-mismatch) |
 | C capability / `PWM_PROTOCOL_VERSION` | [Capability / версия](#term-capability-version) |
@@ -326,6 +397,14 @@
 | Термин | Ссылка |
 |--------|--------|
 | Активный набор кворума | [Relay pool vs quorum](#term-relay-pool) |
+| AccountInfoOnly (режим smoke) | [AccountInfoOnly](#term-account-info-only) |
+| ClaimIPv4Batch | [ClaimIPv4Batch](#term-claim-ipv4-batch) |
+| Float инфляция / `compute_block_reward` | [Float inflation](#term-float-inflation) |
+| ipv4_claimed_phase | [ipv4_claimed_phase](#term-ipv4-claimed-phase) |
+| Курсор марок (`marks_last_block`) | [marks_last_block](#term-marks-last-block) |
+| Ленивые марки (lazy marks) | [Lazy marks](#term-lazy-marks) |
+| Отложенная активация политики | [Deferred policy](#term-deferred-policy) |
+| PASS_EVIDENCE | [PASS_EVIDENCE](#term-pass-evidence) |
 | API freeze `/v1/*` (V3) | [API freeze V3](#term-api-freeze-v1) |
 | Архитектурные записи ADR (V3) | [ADR V3](#term-adr-v3-package) |
 | Авто-аттестация (входящий propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
@@ -360,4 +439,4 @@
 
 ---
 
-*Информация согласована с обзорами V2-9, RFC 16, блоком MVP V3 foundation и блоком MVP V4 policy runtime по состоянию на 2026-05; при изменении протокола сверяйте первоисточники в `docs/rfc/` и актуальных планах `docs/plans/`.*
+*Информация согласована с обзорами V2-9, RFC 16, блоком MVP V3 foundation, блоком MVP V4 policy runtime и блоком MVP V5 tokenomics hardening по состоянию на 2026-05-28; при изменении протокола сверяйте первоисточники в `docs/rfc/` и актуальных планах `docs/plans/`.*

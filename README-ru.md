@@ -6,17 +6,17 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ![Интерфейс оператора pwm-tui (демо)](tui-demo-screenshot.png)
 
-## Текущий статус (MVP v4 policy runtime закрыт)
+## Текущий статус (MVP v5 — реализация завершена; sign-off релиза pending)
 
-- **MVP v4 policy runtime закрыт** (спринты V4-1..V4-6, 2026-05-17).
+- **MVP v4 policy runtime остаётся закрытым baseline** (спринты V4-1..V4-6, 2026-05-17): dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing с finalized-поведением аккаунта и cosign-envelope.
+- **Активный publication milestone — MVP v5** (укрепление токеномики + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02). **Owner sign-off / public release tag могут быть ещё pending** — это implementation-complete devnet, а не объявление полностью отгруженного продукта.
 - **Есть чистый public-devnet quickstart**: из clean clone документирован детерминированный demo genesis path с проверкой premine (`21_000_000_000 PWM` = `21_000_000_000_000_000 raw`).
-- **`/v1` API baseline включает детали V4 policy runtime** в `docs/api-v1.md` (inspection-поля аккаунта, путь отправки `PolicyTx`, структурированные `E_POLICY_*` reject).
-- **Схема Epoch Snapshot и replay-determinism gate зафиксированы** как V3-база доверия для загрузки/реплея состояния.
+- **`/v1` API baseline** в `docs/api-v1.md` покрывает V4 policy runtime (`PolicyTx`, структурированные `E_POLICY_*` reject) и V5 additive поля аккаунта (`marks_last_block`, семантика lazy marks).
+- **Epoch Snapshot schema v3 + genesis anchor light (ADR 0008)** в стеке снапшотов pwmd — trust baseline для загрузки/реплея с лёгкой привязкой к genesis.
 - **ADR-пакет опубликован** в `docs/adr/` и задаёт архитектурные границы foundation-слоя.
 - **Runtime log-control RPC относится к operator/debug поверхности** и явно не входит в стабильный public API.
-- **Контракт V4 policy runtime в рантайме активен:** dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing с finalized-поведением аккаунта и cosign-envelope.
 
-**Что уже работает (после закрытия V4):**
+**Что уже работает (V5 closeout + V4 policy baseline):**
 
 - **Интегрированный public-devnet smoke покрывает read API:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
 - **`POST /v1/tx` покрывает V4 policy flow** (включая `PolicyTx`) и возвращает структурированные policy rejects из RFC 14 (`E_POLICY_*`).
@@ -24,7 +24,9 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 - **Два spec-level geo-шарда** — два процесса `pwmd` с разным `domain_hi` (например `0x10` / `0x20`), отдельный `--state-root` у каждого и **отработанный** happy path для связи по **реальному транспорту** с взаимными `--transport-peer-seed`.
 - **Внутришардовые** переводы и обычный жизненный цикл счёта (`INIT`, `TRANSFER`, задел под стейкинг) через RPC, CLI и TUI.
-- **Единый баланс `marks` и `BURN_MARK`:** текущий MVP v2 использует `Account.marks` как единственный счётчик марок. Начисление марок на каждом `Chain::seal` удалено; usable marks приходят через genesis/claim-контур, а `BURN_MARK` списывает тот же счётчик. CLI `tx-burn-mark --amount N [--purpose P]` перед отправкой показывает текущие marks; в TUI есть колонка `Marks` и форма сжигания по F5 с заголовком `Current marks`; `--purpose` поддерживает плейсхолдеры `{utc_time}` / `{utc_timestamp}`.
+- **Lazy marks + `BURN_MARK` (V5):** марки начисляются лениво только с **staked PWM** (`marks_last_block` cursor, `effective_marks` при poll/touch, насыщение до `u32::MAX`). **`ClaimTx` снят с контура**; IPv4 allocation — on-chain **`ClaimIPv4Batch`** (registry-gated). CLI `tx-burn-mark --amount N [--purpose P]`; TUI: колонка Marks с saturation, detail pane показывает **effective** marks (+ опциональный accrual hint); **F5 burn** — stake → ожидание высоты цепи → burn (материализует lazy marks). `--purpose` поддерживает `{utc_time}` / `{utc_timestamp}`. Операторский путь: [v5-tui-marks-operator-path.md](docs/runbooks/v5-tui-marks-operator-path.md).
+- **Float inflation в seal:** динамический `block_reward` через `season_coeff_ppm` (~5% annual target).
+- **Deferred policy activation:** `ActivationMode::Deferred { activate_at_height }` — CLI `tx-policy-set --activation deferred --activate-at-height N`.
 - **Межшардовое перемещение стоимости** по явной цепочке **EXPORT → relay/handoff → IMPORT**: source и target согласуются через доверие к настроенным seed; `tx-send` / TUI и `tx-export` / `tx-import` соответствуют [контракту Sprint 13 как реализовано](docs/rfc/9-crossdomain-roaming.md). Подробнее: [ROAMING-SAMPLE.md](docs/ROAMING-SAMPLE.md), [ROAMING_COMPLETION.md](docs/ROAMING_COMPLETION.md).
 - **Федеративный мост** (включая отказ в доверии и пути восстановления) — часть рантайм-контракта; см. [WHITE_SPEC_v0.md](docs/WHITE_SPEC_v0.md) §7.5 и операторские заметки в [docs/pwmd.md](docs/pwmd.md).
 - **Персистентность:** основной путь — **JsonFile** (сводный `pwm-data.json`, `epochs/`, манифест; trust-default vs аудит-реплей). Опционально **`pwmd` может писать снапшоты в ClickHouse** (feature `clickhouse-snapshot`); семантика загрузки отличается от JsonFile (см. раздел **Backend хранения** ниже и [guide-node-storage-and-snapshot.md](docs/guide-node-storage-and-snapshot.md)).
@@ -96,8 +98,13 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 ## Ключевые документы
 
 - README (English): [README.md](README.md)
-- План MVP v4 policy runtime (закрыт): `docs/plans/mvp_v4.md`
-- Концептуальный roadmap / актуальная карта версий: `docs/CONCEPT_ROADMAP.md`
+- Прогресс концепта / карта покрытия whitepaper (публикуется): `docs/CONCEPT_PROGRESS.md`
+- План MVP v5 tokenomics hardening (активный milestone): `docs/plans/mvp_v5.md`
+- Целевая post-MVP anti-abuse модель (RU, канонический): [docs/Post_MVP_target_model(anti-abuse).md](docs/Post_MVP_target_model(anti-abuse).md) — English translation: [docs/Post_MVP_target_model(anti-abuse)-en.md](docs/Post_MVP_target_model(anti-abuse)-en.md)
+- V5 TUI marks operator path: `docs/runbooks/v5-tui-marks-operator-path.md`
+- V5 devnet operator smoke: `docs/runbooks/devnet-v5-operator-smoke.md`
+- V5 pre-publish polish gate (опционально): `docs/reviews/20260602-v5-prepublish-polish-integrated-review.md`
+- План MVP v4 policy runtime (закрытый prior milestone): `docs/plans/mvp_v4.md`
 - API freeze skeleton (`/v1/*`): `docs/api-v1.md`
 - Quickstart public devnet: `docs/runbooks/demo-devnet-quickstart.md`
 - Индекс ADR-пакета: `docs/adr/README.md`

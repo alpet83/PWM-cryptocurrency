@@ -1,84 +1,100 @@
-# ADR 0005: Отложенная активация политики (`Deferred`) — минимальный путь V4.x
+# ADR 0005: Deferred policy activation by chain height
 
-## Статус
+## Status
 
-**Draft.** Фиксирует намерение и контрактные границы до кодовых работ. Ship реализации — отдельный тикет (V4.x), после принятия ADR без противоречий с RFC 0006/0007.
+**Accepted.** This ADR is the normative V5 contract for `ActivationMode::Deferred { activate_at_height }`. It covers policy activation scheduling only. Address flags, non-disableable profiles, and delayed transfer/conservation semantics are specified separately and are not part of this ADR.
 
-## Контекст
+## Context
 
-- В `docs/CONCEPT_ROADMAP.md` (Post‑V4 / V5 policy hardening) заложены расширения: третий режим активации (`deferred`), поле времени/высоты активации, далее связка с **address flags**, **mandatory non‑disableable** политиками и **delayed‑transfer («conservation»)**.
-- Полный блок (flags + conservation + mempool/seal semantics) сознательно **не входит** в этот ADR — слишком много связных блокеров консенсуса.
-- Цель этого ADR — **минимальный изолированный шаг**: только календарь активации **уже существующего** набора enum‑политик (RFC 6/7 baseline V4), без новой адресной семантики и без отложенного включения обычного `Transfer` в блок.
+MVP V4 introduced dedicated `PolicyTx`, per-account policy state, `Dormant` and `Immediately` activation modes, emergency routing, and structured `E_POLICY_*` rejects.
 
-## Решение (архитектурное)
+V5 needs a minimal deterministic third activation mode so operators can schedule policy activation by chain height before broader address-flag work lands. The important boundary is simplicity: no VM, no callbacks, no wall-clock dependency, no delayed execution queue for ordinary transfers.
 
-### 1. Новый режим активации
+## Decision
 
-Расширить нормативную модель (после реализации):
+Extend the normative policy model:
 
 ```text
-ActivationMode = Dormant | Immediately | Deferred
+ActivationMode =
+  Dormant
+  Immediately
+  Deferred { activate_at_height: u64 }
 
-SetPolicy {
-  policy: PolicyKind,
-  activation: ActivationMode,
-  deferred_param?: DeferredActivationParam   // присутствует только если activation == Deferred
-}
+PolicyAction =
+  SetPolicy { policy, activation }
+  ActivatePolicy { policy_id }
+  DeactivatePolicy { policy_id }
+```
 
-DeferredActivationParam {
-  activate_at_height: u64    // включительно; высота **цепи** после включения блока с SetPolicy
+`SetPolicy { activation = Deferred { activate_at_height } }` installs the policy and records its activation height. The policy is evaluator-active when:
+
+```text
+current_chain_height >= activate_at_height
+```
+
+No separate `ActivatePolicy` transaction is required after the height is reached.
+
+## Normative Rules
+
+- The only time source is chain height. Wall-clock timestamps, local node time, and time zones MUST NOT affect activation.
+- `activate_at_height` is an absolute chain height, not a relative delay.
+- If `activate_at_height <= inclusion_height`, the policy is active immediately after the `SetPolicy` transaction is applied.
+- If `activate_at_height > inclusion_height`, the policy is stored as pending and becomes active automatically in evaluator reads at or after that height.
+- `ActivatePolicy` before `activate_at_height` MUST be rejected with `E_POLICY_NOT_ACTIVE`.
+- `ActivatePolicy` at or after `activate_at_height` MUST be rejected with `E_POLICY_DENIED` and an "already active" message, because deferred activation is automatic by height and no extra state transition is required.
+- `DeactivatePolicy` before `activate_at_height` is allowed only for reversible policies and removes the pending deferred activation.
+- Irreversible/system policies keep their existing irreversibility rules.
+- `evaluate_policy` remains pure: it receives read-only state plus current chain height and returns a decision without state mutation.
+
+## Genesis Height Convention
+
+For `initial_policies[]` in genesis or extended `INIT`:
+
+- `activate_at_height` is interpreted against the same chain height numbering exposed by `head.height`.
+- A deferred policy with `activate_at_height = 0` is active from genesis.
+- A deferred policy with `activate_at_height = N` is inactive for evaluator calls where `current_chain_height < N` and active where `current_chain_height >= N`.
+
+Implementation tickets MUST include replay tests around the genesis/head convention so snapshot reloads do not shift the activation boundary.
+
+## State and Snapshot
+
+V5 implementation needs a durable representation of pending deferred policies, typically:
+
+```text
+DeferredPolicyEntry {
+  policy_id,
+  policy,
+  activate_at_height: u64
 }
 ```
 
-Семантика **`Deferred`**:
+The exact Rust type is implementation-owned, but snapshot schema v3 MUST preserve enough information to replay deferred activation deterministically.
 
-1. Одна транзакция `PolicyTx` / элемент `initial_policies[]` в расширенном INIT устанавливает политику и фиксирует **`activate_at_height`**.
-2. До того как **`chain_tip_height >= activate_at_height`** (после применения соответствующего блока политики **нет** в смысле `evaluate_policy` — эквивалент «ещё не активна»: входящие/исходящие проверки, зависящие от этой политики, **не применяются**).
-3. Начиная с блока, на высоте которого впервые выполняется **`chain_tip_height >= activate_at_height`**, политика считается **активной** так же, как при `Immediately` после установки (без дополнительного `ActivatePolicy`, если только специально не решим иное в реализации — **по умолчанию auto‑activate по высоте**).
-4. `ActivatePolicy` для политики, установленной как `Deferred`, **не требуется**, если высота уже достигнута; если `ActivatePolicy` приходит до высоты — **отклонять** как конфликт сценария (или игнорировать — выбрать одно правило при кодировании; **рекомендация черновика:** отклонять с явным кодом ошибки политики/формы транзакции).
-5. `DeactivatePolicy` **разрешён** до наступления высоты, если политика помечена как обратимая — эффект: запись о будущей активации снимается.
+## Explicit Non-Goals
 
-**Детерминизм:** используется **высота цепи** (`u64`), а не wall‑clock, чтобы replay и snapshot не зависели от часовых поясов узлов. При необходимости «календарной» семантики в продукте она задаётся off‑chain переводом в целевую высоту (операторский SLA), либо отдельным будущим ADR про привязку к `MedianTimePast` блока (**вне минимального пути**, здесь явно отложено).
+- No address-flag enforcement.
+- No non-disableable policy profiles.
+- No delayed execution of ordinary `Transfer`.
+- No mempool/seal holding queue.
+- No wall-clock activation.
+- No scripts, DSL, plugins, dynamic dispatch, or external callbacks.
 
-### 2. Чистое расширение policy layer
+## Consequences
 
-Оценка `evaluate_policy(tx, snapshot)` уже опирается на read‑only состояние; добавляется условие **«активна ли политика P на высоте H»**. Никаких обратных вызовов, VM, DSL.
+- RFC 0006 and RFC 0007 must be updated to make `Deferred { activate_at_height }` evaluator-normative for V5.
+- CLI may expose `--activation deferred --activate-at-height <N>` once backend support exists.
+- Operators are responsible for converting calendar intent into chain height off-chain.
 
-### 3. Снимки и wire
+## References
 
-Реализация обязана:
+- [RFC 0006: Policy Engine](../rfc/6-policy-engine.md)
+- [RFC 0007: Transaction & State Model](../rfc/7-tx-and-state-model.md)
+- [ADR 0006: Address flags and non-disableable profiles](0006-address-flags-and-nondisableable-profiles.md)
+- [MVP v5 plan](../plans/mvp_v5.md)
 
-- сохранять в `Account` **не только** активную битовую маску политик: для `Deferred` нужна доп. запись (**вид политики** + **`activate_at_height`**) до наступления высоты;
-- протащить поле в snapshot schema с миграцией `schema_version` (детали — в тикете pwm‑coding);
-- JSON/decimal `u128` для fee на публичных поверхностях — без изменения принципа RFC 14.
+## History
 
-### 4. Совместимость с INIT `initial_policies[]`
-
-Элемент списка `initial_policies[]` в корпоративном профиле INIT допускает тот же `ActivationMode`; для `Deferred` высота задаётся **абсолютной** высотой цепи после genesis (как и для последующего `PolicyTx`). Genesis‑height convention: считать высоты согласованно с тем, как `pwmd`/core определяют `head.height` после genesis (уточняется при реализации, тестируется на replay).
-
-## Границы (явно не входит в ADR 0005)
-
-| Тема | Почему вне минимального пути |
-|------|-------------------------------|
-| **Address flags** как носитель mandatory / non‑disableable политик | Требует отдельного ADR по адресной модели и месту фиксации флагов. |
-| **`conservation` / delayed execution обычного Transfer** | Меняет mempool/seal и учёт «ожидающих» переводов; не сводится к `evaluate_policy`. |
-| Взаимодействие `Deferred` с mandatory flags | Отложено до ADR по flags; возможный follow‑up патч после **обоих** решений. |
-| **`rolled_policy_origin_set` / pruning** | ADR 0004 и отдельный цикл bootstrap. |
-
-## Последствия
-
-- После принятия ADR: последовательные шаги **RFC 0007 правка (normative)** → код **pwm‑core/pwmd/pwm-cli** → регрессия policy‑тестов → при необходимости обновление `docs/plans/mvp_v4*.md`.
-- Operator UX: расширение CLI (`tx-policy-set` / INIT) параметром высоты для `Deferred`.
-- Риск: ошибка перевода календаря в высоту (off‑chain) — операторский; протокол остаётся детерминированным по высоте.
-
-## Связанные документы
-
-- `docs/CONCEPT_ROADMAP.md` — Post‑V4 extensions; V5 policy/address hardening (полный блок).
-- `docs/rfc/6-policy-engine.md`, `docs/rfc/7-tx-and-state-model.md` — добавлены **черновые** перекрёстные примечания до normative merge.
-- `docs/plans/mvp_v4.md` — ссылка на запланированный follow‑on V4.x.
-
-## История
-
-| Дата (UTC) | Событие |
-|------------|---------|
-| 2026-05-17 | Черновик ADR 0005 (оркестратор; минимальный deferred‑only путь). |
+| Date | Event |
+|---|---|
+| 2026-05-17 | Draft ADR 0005 created as a minimal deferred-only path. |
+| 2026-05-23 | Accepted for V5-1 spec freeze; scope narrowed to chain-height policy activation only. |

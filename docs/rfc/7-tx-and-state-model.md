@@ -58,19 +58,23 @@ State {
 
 ### 3.1 Accounts (MVP core)
 
-Stores spendable balances and account metadata:
+Stores spendable balances and account metadata.
+
+For MVP V5, RFC 0012 v2 is the authoritative marks/stake-state contract. This RFC keeps the broader account envelope, but the active V5 marks fields are `stored_marks`, `staked_pwm_raw`, and `marks_last_block`.
 
 ```text id="6sz6yv"
 Account {
   balance_pwm: u128
-  staked: u128
-  marks: u128
-  marks_quota: u128
+  staked_pwm_raw: u128
+  stored_marks: u32
+  marks_last_block: u64
   initialized: bool
   index: u32
   flags: u32
 }
 ```
+
+Historical names from earlier claim-era drafts such as `staked`, `marks`, and `marks_quota` are not active V5 field names. They remain historical-only terminology unless a migration note explicitly mentions them.
 
 ---
 
@@ -202,9 +206,12 @@ MarkBurnTx {
 
 #### Effects:
 
-* burns `marks_quota` (burn-only account resource for v1 testnet baseline)
+* touches the sender account first under RFC 0012 v2 lazy accumulation semantics
+* burns from the sender's effective lazy mark balance (`stored_marks` after touch)
 * may run with `fee = 0` in baseline profile
 * no target-shard burn state mutation is required for external burn context
+
+Public JSON/API surfaces that expose `mark_amount`, `fee`, `balance_pwm`, or `staked_pwm_raw` MUST encode these `u128` values as decimal strings. Binary state roots, snapshot hashes, and signing preimages keep their canonical non-JSON representation.
 
 ---
 
@@ -234,10 +241,10 @@ PolicyAction {
   DeactivatePolicy { policy_id }
 }
 
-ActivationMode = Dormant | Immediately
+ActivationMode = Dormant | Immediately | Deferred { activate_at_height: u64 }
 ```
 
-> **Draft extension (not normative until implemented):** [ADR 0005](../adr/0005-policy-deferred-activation.md) describes a minimal third mode **`Deferred { activate_at_height }`**: policies become evaluator-active when `chain_tip_height >= activate_at_height`, without delayed execution of ordinary `Transfer` and without address flags or «conservation» semantics. The grammar in this subsection remains **baseline V4 shipped** until a normative RFC/PR lands.
+V5 makes [ADR 0005](../adr/0005-policy-deferred-activation.md) normative: `Deferred { activate_at_height }` policies become evaluator-active when `current_chain_height >= activate_at_height`, without delayed execution of ordinary `Transfer` and without address flags or conservation semantics.
 
 Rules:
 
@@ -247,10 +254,16 @@ Rules:
 * JSON/API encoding for `fee: u128` follows the existing PWM convention for large integer wire values: decimal string on public JSON surfaces, with binary/canonical signing preimage unchanged.
 * `SetPolicy { activation = Immediately }` installs and activates in one transition.
 * `SetPolicy { activation = Dormant }` stores the policy until `ActivatePolicy`.
+* `SetPolicy { activation = Deferred { activate_at_height } }` stores a pending policy that becomes active automatically by chain height.
+* If `activate_at_height <= inclusion_height`, deferred policy is active immediately when the `SetPolicy` transition is applied.
+* `ActivatePolicy` before `activate_at_height` is rejected with `E_POLICY_NOT_ACTIVE`.
+* `ActivatePolicy` at or after `activate_at_height` is rejected with `E_POLICY_DENIED` and an "already active" message.
 * `DeactivatePolicy` is valid only for policies marked reversible.
+* `DeactivatePolicy` before `activate_at_height` removes the pending deferred entry.
+* Public snapshot/persistence wire for deferred activation uses `deferred:<activate_at_height>` string form.
 * Emergency-routing activation additionally requires a signature from the `rescue_address` and finalizes the target account.
 
-Initial policies may also appear in an extended `InitTx`, but post-init updates use `PolicyTx`.
+Initial policies may also appear in an extended `InitTx`, but post-init updates use `PolicyTx`. For genesis or extended `INIT`, `activate_at_height` is an absolute height under the same convention as `head.height`: height `0` means active from genesis, and height `N` activates when evaluator context height is `>= N`.
 
 ### 5.6 Extended InitTx fields (MVP V4)
 
@@ -318,7 +331,8 @@ assert sender has sufficient balance
 assert owner signature valid
 
 if tx_type == BurnMarkTx:
-  assert sender.marks_quota >= mark_amount
+  touch sender under RFC 0012 v2
+  assert sender.stored_marks >= mark_amount
 ```
 
 ---

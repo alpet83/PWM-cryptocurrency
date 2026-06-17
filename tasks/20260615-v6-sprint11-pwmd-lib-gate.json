@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "20260615-v6-sprint11-pwmd-lib-gate",
+  "title": "V6-11 blocker: pwmd --lib integrated gate (16 failures)",
+  "status": "done",
+  "delegation_mode": "sync_task",
+  "depends_on": [
+    "20260615-v6-sprint11-closeout"
+  ],
+  "brief": "pwm-testing BLOCKED V6-11 closeout: cargo fmt PASS, pwm-core 189/0 PASS, pwmd 439 passed / 16 failed. Not V5 snap_or_mk_quota carry-forward (those tests removed). Clusters: snapshot/genesis state_root mismatch, snapshot_roaming balances, transport height drift, lifecycle timeouts, slice20 pwm-cli binary missing.",
+  "acceptance_criteria": [
+    "cargo test -p pwmd --lib: 0 failed (or documented waiver with owner approval — not default)",
+    "cargo test -p pwm-core --lib still PASS",
+    "cargo fmt --check PASS",
+    "Root cause noted in ticket notes (genesis loader vs test fixtures vs harness)"
+  ],
+  "artifacts": {
+    "parent": "tasks/20260615-v6-sprint11-closeout.json",
+    "genesis": "crates/pwmd/src/snapshot/genesis.rs",
+    "testing_notes": "delegations[pwm-testing] in parent ticket"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix pwmd --lib 16 failures for V6-11 gate",
+      "result": "PASS: cargo fmt --check OK; cargo test -p pwm-core --lib OK (189/0/1 ignored); cargo test -p pwmd --lib OK (455/0). Root causes: snapshot replay drift vs current Chain::seal semantics, stale test assumptions around cluster/sync counters, slice20 tx-init wallet index and startup timing.",
+      "done_at": "2026-06-15T19:55:00+03:00"
+    }
+  ],
+  "notes": "Testing used CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency when repo target locked. Final gate: cargo fmt --check PASS; cargo test -p pwm-core --lib PASS; cargo test -p pwmd --lib PASS (455 passed, 0 failed). Commit hash: d251fb5c1c773a651fa7e9b65f01352de778be89."
+}

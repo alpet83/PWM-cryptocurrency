@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "20260605-v6-s2-slice4-reject-stubs",
+  "title": "V6-2 slice 4: V6 reject codes + validate_tx_shape stubs",
+  "status": "done",
+  "parent_ticket": "20260605-v6-sprint2-core-model",
+  "delegations": [
+    { "agent": "pwm-coding", "result": "PASS", "done_at": "2026-06-05" },
+    { "agent": "pwm-review", "result": "PASS_WITH_NITS", "done_at": "2026-06-05" },
+    { "agent": "pwm-testing", "result": "PASS", "done_at": "2026-06-05" }
+  ],
+  "commits": ["feat(v6-2-s4): V6 reject wire codes and shape stubs"],
+  "artifacts": { "review_md": "docs/reviews/20260605-v6-s2-slice4-reject-stubs-review.md" },
+  "notes": "pwmd 0.1.67; DuplicateImport→E_EVIDENCE_DUPLICATE doc nit deferred."
+}

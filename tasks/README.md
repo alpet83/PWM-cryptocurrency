@@ -30,6 +30,7 @@ JSON-файлы здесь — **версионируемые задания** �
 Базовый формат: `YYYYMMDD-<slug>.json`, где `YYYYMMDD` — **дата создания тикета**, не плановая дата релиза/волны.
 
 - Плановую дату хранить отдельно в поле `planned_for` (формат `YYYY-MM-DD`).
+- Жёсткий дедлайн слайса — поле **`deadline`** (опционально): `{ "at": "ISO-8601Z", "timezone": "UTC", "hard": true|false, "note": "…" }`.
 - `id` и имя файла должны совпадать.
 - Если требуется исключение (осознанная future-дата в id), использовать override `PWM_ALLOW_FUTURE_TICKET_DATE=1` и зафиксировать причину в `notes`.
 
@@ -53,6 +54,7 @@ Guard встроен и в fallback share-скрипт `scripts/_orchestrator_sh
 | `status` | string | `open` \| `in_progress` \| `blocked` \| `done` \| `cancelled` |
 | `mvp_checklist` | string[] | Строки или §-ссылки из `docs/MVP-checklist.md` |
 | `brief` | string | Цель и критерии готовности (markdown ок) |
+| `deadline` | object? | `{ "at": "ISO-8601Z", "timezone": "UTC", "hard": bool, "note": string }` — опционально |
 | `delegations` | array | Элементы: `{ "agent": "pwm-coding", "prompt_summary": "…", "result": "PASS", "artifacts": [], "tokens": { "source": "estimate", "input": null, "output": null, "total": 12000, "confidence": "low" }, "done_at": null }` |
 | `commits` | string[] | Хэши локальных коммитов по этой задаче |
 | `artifacts` | object | Например `{ "review_md": "docs/reviews/foo-20260418.md" }` |

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "20260617-pwm-cli-tx-init-v3-wallet-account-index",
+  "title": "pwm-cli tx-init: подпись и init по --index для wallet v3 multi-account",
+  "status": "done",
+  "planned_for": "2026-06-17",
+  "mvp_checklist": ["docs/pwm-cli.md §tx-init", "docs/runbooks/v6-owner-stability-soak-50k.md"],
+  "brief": "Оператор ожидает, что `tx-init --index N` инициализирует аккаунт m/0/N из wallet v3. Фактически CLI подписывал дефолтным аккаунтом (min derivation_index), шлёт nonce=0 — bad nonce. Исправлено: load_wallet_account_signer(N), fetch_nonce_init_opt, activation target = init account.",
+  "repro": {
+    "wallet": "tmp/demo-genesis-wallet.yaml",
+    "target_derivation_index": 1594375,
+    "target_id_hex": "2c2ded570002a0dd4f4ee0e324928ec64534393a074c809474b523d79000728b",
+    "default_signer_index": 287292,
+    "error_before_fix": "reject: bad nonce"
+  },
+  "acceptance_criteria": [
+    "tx-init с --wallet v3: подписант = аккаунт m/0/--index из wallet accounts[]",
+    "SignedTx.derivation_index == --index; TxBody::Init.index == --index",
+    "nonce: fetch_nonce_init_opt — 0 если account not found",
+    "build_init_activation / --save-activation-tx: target = init account",
+    "v2 single-account wallet: без регрессии",
+    "Unit-тесты pwm-cli",
+    "docs/pwm-cli.md",
+    "cargo test -p pwm-cli green"
+  ],
+  "related_tickets": ["20260616-pwmd-cluster-prep-observability"],
+  "artifacts": {
+    "review_md": "docs/reviews/20260617-pwm-cli-tx-init-v3-wallet-account-index-review.md",
+    "testing_md": "tasks/20260617-pwm-cli-tx-init-v3-wallet-account-index-testing.md"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-cli/src/cmd_tx.rs", "docs/pwm-cli.md"],
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260617-pwm-cli-tx-init-v3-wallet-account-index-review.md"],
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "notes": "189 passed; added init_nonce_404_none test",
+      "artifacts": ["crates/pwm-cli/src/tests/mod.rs", "tasks/20260617-pwm-cli-tx-init-v3-wallet-account-index-testing.md"],
+      "done_at": "2026-06-17"
+    }
+  ],
+  "commits": [],
+  "notes": "Код в рабочем дереве (uncommitted). После rebuild: tx-init --index 1594375 на demo-genesis-wallet должен инициализировать pwm1-CY/2D-fED570002-…"
+}

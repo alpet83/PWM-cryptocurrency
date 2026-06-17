@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "20260605-v6-s2-slice3-chain-state-types",
+  "title": "V6-2 slice 3: V6 chain state types",
+  "status": "done",
+  "parent_ticket": "20260605-v6-sprint2-core-model",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model",
+  "branch": "v6/20260605-v6-sprint2-core-model",
+  "delegations": [
+    { "agent": "pwm-coding", "result": "PASS", "done_at": "2026-06-05" },
+    { "agent": "pwm-review", "result": "PASS_WITH_NITS", "done_at": "2026-06-05" },
+    { "agent": "pwm-testing", "result": "PASS", "done_at": "2026-06-05" }
+  ],
+  "commits": ["feat(v6-2-s3): add V6 chain state types on State"],
+  "artifacts": { "review_md": "docs/reviews/20260605-v6-s2-slice3-chain-state-types-review.md" },
+  "notes": "Conveyor 1 cycle. Snapshot v4 persistence — slice 5."
+}

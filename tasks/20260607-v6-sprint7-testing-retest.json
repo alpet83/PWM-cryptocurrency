@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint7-testing-retest",
+  "title": "V6-7 retest: pwm-testing emergency_activation + cli + test_project",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260607-v6-sprint7-emergency-sweep-coding",
+  "branch": "v6/20260607-v6-sprint7-emergency-sweep-coding",
+  "worker_lane": "testing",
+  "target_agent": "pwm-testing",
+  "parent_ticket": "20260607-v6-sprint7-emergency-sweep-coding",
+  "brief": "Bridge pwm-testing PASS: emergency_activation_, cli tests, test_project.cmd, cargo check.",
+  "acceptance_criteria": [
+    "cmd /c build_project.cmd test -p pwm-core emergency_activation_ exit 0",
+    "cmd /c build_project.cmd test -p pwm-cli prepared_activation_roundtrip tx_init_v4_cli_parse tx_pol_act exit 0",
+    "cmd /c test_project.cmd exit 0",
+    "cargo check --workspace exit 0 (pwmd dead_code warnings OK)"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "emergency_activation + cli tests + test_project in worktree",
+      "result": "PASS",
+      "notes": "All gates green; submit done",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": [
+    "85241e9",
+    "550434e"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/v6-sprint7-emergency-sweep-coding-review-20260607.md",
+    "test_launcher": "test_project.cmd",
+    "bridge_ticket": ".cqds/team-tasks/done/20260607-v6-sprint7-testing-retest.json"
+  },
+  "notes": "Bridge submit PASS."
+}

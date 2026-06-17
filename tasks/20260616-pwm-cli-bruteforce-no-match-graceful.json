@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "20260616-pwm-cli-bruteforce-no-match-graceful",
+  "title": "addr-bruteforce: graceful no-match + resume/max-try UX",
+  "status": "done",
+  "brief": "Паника expect('no match') при brute с wallet-out (resume после premine). Заменить на exit_user_error с диапазоном поиска и подсказками; печатать resume/budget до старта.",
+  "acceptance_criteria": [
+    "cmd_addr.rs: brute_force_from_index None -> exit_user_error (не panic) с resume_start_index, max_try, attempts_budget",
+    "Подсказки: увеличить max_try (absolute ceiling), --flags-mask 2, отдельный wallet-out, V7 occupied-skip backlog",
+    "stderr до brute: searching derivation indices start..=max_try (N attempts)",
+    "addr-derive expect('no match') тоже graceful если тривиально",
+    "Unit test на no-match path; cargo test -p pwm-cli — green"
+  ],
+  "notes": "User repro: demo-genesis-wallet.yaml + --expected-flags 2 + max-try 1500200 + resume after premine."
+}

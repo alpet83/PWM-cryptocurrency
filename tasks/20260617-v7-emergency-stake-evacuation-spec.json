@@ -1,0 +1,14 @@
+{
+  "id": "20260617-v7-emergency-stake-evacuation-spec",
+  "title": "ADR 0012: emergency stake evacuation spec + runbook consolidation",
+  "status": "done",
+  "brief": "Owner decision: unstake implied by emergency routing; document V7 plan (ADR 0012). Move V6 runbooks from docs/plans/runbooks to docs/runbooks.",
+  "acceptance_criteria": [
+    "docs/adr/0012-emergency-stake-evacuation.md Accepted with V7-3 implementation plan",
+    "ADR index and CONCEPT_ROADMAP V7-3 cross-refs",
+    "docs/plans/runbooks/* moved to docs/runbooks/; inbound links updated",
+    "Backlog impl ticket 20260617-v7-emergency-stake-evacuation-impl.json"
+  ],
+  "notes": "Orchestrator docs-only slice; no pwm-core changes in this ticket.",
+  "delegations": []
+}

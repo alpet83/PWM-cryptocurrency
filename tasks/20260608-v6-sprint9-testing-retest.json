@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-sprint9-testing-retest",
+  "title": "V6-9 retest: pwm-testing evidence_ + peer_score_ + test_project",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260608-v6-sprint9-slashing-peers-coding",
+  "branch": "v6/20260608-v6-sprint9-slashing-peers-coding",
+  "worker_lane": "testing",
+  "target_agent": "pwm-testing",
+  "parent_ticket": "20260608-v6-sprint9-slashing-peers-coding",
+  "brief": "Bridge pwm-testing PASS (orchestrator recovery after companion missing_reactive_inline).",
+  "acceptance_criteria": [
+    "cmd /c build_project.cmd test -p pwm-core evidence_ exit 0",
+    "cmd /c build_project.cmd test -p pwmd peer_score_ exit 0",
+    "cmd /c test_project.cmd exit 0",
+    "cmd /c build_project.cmd check --workspace exit 0 (pwmd dead_code warnings OK)"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "evidence_* + peer_score_* + workspace check in V6-9 worktree",
+      "result": "PASS",
+      "notes": "Gates green per agent-stream log; bridge submit failed missing_reactive_inline — orchestrator recovery",
+      "done_at": "2026-06-08"
+    }
+  ],
+  "commits": [
+    "7086434",
+    "abde394"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/v6-sprint9-slashing-peers-coding-review-20260608.md",
+    "bridge_ticket": ".cqds/team-tasks/failed/20260608-v6-sprint9-testing-retest.json",
+    "agent_stream": ".cqds/companion/logs/agent-streams/active_agent_copilot_testing_companion_20260608-v6-sprint9-testing-retest_20260608-183328-284301.jsonl"
+  },
+  "notes": "Orchestrator recovery: companion returncode 0, all acceptance gates passed per progress + stream log."
+}

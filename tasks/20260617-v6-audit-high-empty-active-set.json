@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "20260617-v6-audit-high-empty-active-set",
+  "planned_for": "v6-prepub-audit-fixes",
+  "title": "V6 audit HIGH-003: empty active validator set mid-chain diagnostic",
+  "status": "done",
+  "parent_umbrella": "20260603-v6-prepublication-umbrella.json",
+  "audit_ref": "docs/reviews/20260616-v6-mvp-rust-code-audit-review.md",
+  "depends_on": [],
+  "brief": "HIGH-003: extend fatal_protocol_blocker / pick_prod_idx empty-set handling beyond cold start tip_h=0 lead_h=1. Тест epoch_empty_active_set_midchain_diag. Запуск после или параллельно conservation slice — без CY cluster e2e.",
+  "acceptance_criteria": [
+    "Proposer/replay path при empty active_validator_indices даёт actionable fatal или consensus rule prevents empty set",
+    "cargo test -p pwm-core --lib and pwmd --lib targeted tests",
+    "pwm-review + pwm-testing PASS; no live cluster interference"
+  ],
+  "cluster_safety": {
+    "owner_cluster_live": true,
+    "testing": "unit/lib only; external CARGO_TARGET_DIR; no 3030/13030"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Extend empty active-set fatal diag beyond cold-start + test",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lifecycle.rs",
+        "tasks/20260617-v6-audit-high-empty-active-set.json"
+      ],
+      "done_at": "2026-06-16T08:50:00Z",
+      "notes": "mk_pick_fatal_diag теперь не ограничен tip_h==0/lead_h==1: fatal/actionable path срабатывает для любого proposer seal при пустом active_validator_indices. Добавлен regression test epoch_empty_active_midchain_diag."
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review HIGH-003 fix commit 2eba174 lifecycle.rs",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260617-v6-audit-high-empty-active-set-review.md"
+      ],
+      "done_at": "2026-06-17T15:00:00Z",
+      "notes": "PASS_WITH_NITS: bundled run_with tracing refactor; log field max_genesis_validator_stake misleading mid-chain; replay paths remain non-fatal (acceptable offline)."
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Unit/lib verification HIGH-003; external CARGO_TARGET_DIR; no cluster",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260617-v6-audit-high-empty-active-set.json"
+      ],
+      "done_at": "2026-06-17T16:30:00Z",
+      "notes": "preflight target/debug 3794MiB (removed: no). CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency: cargo fmt --check OK; pwmd epoch_empty_active_midchain_diag 1/1; pwmd prod_pick_fatal_start (filter prod_pick_fatal) 1/1; pwm-core --lib 192 passed, 1 ignored. No cluster/3030/13030."
+    }
+  ],
+  "commits": [
+    "2eba174"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260617-v6-audit-high-empty-active-set-review.md"
+  },
+  "notes": "HIGH-003 закрыт через расширение fatal диагностики в pwmd lifecycle (без смены consensus rule в pwm-core): empty active_validator_indices теперь приводит к actionable fatal для proposer и после cold-start. Прогон coding: cargo fmt --check; python scripts/check_entity_name_segments.py crates/pwmd/src/lifecycle.rs; cargo check -p pwmd; cargo clippy -p pwmd --all-targets; cargo test -p pwm-core --lib; cargo test -p pwmd --lib epoch_empty_active_midchain_diag. Cluster safety соблюдена. pwm-review: PASS_WITH_NITS — docs/reviews/20260617-v6-audit-high-empty-active-set-review.md. pwm-testing: PASS — unit/lib only, external target dir, no live cluster."
+}

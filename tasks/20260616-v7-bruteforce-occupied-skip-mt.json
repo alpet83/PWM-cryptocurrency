@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "20260616-v7-bruteforce-occupied-skip-mt",
+  "planned_for": "V7-2",
+  "title": "addr-bruteforce v2: occupied-index skip + CPU multi-thread",
+  "status": "open",
+  "mvp_checklist": [],
+  "brief": "Оптимизация pwm-cli addr-bruteforce: корректное покрытие пространства derivation при пересекающихся flags-mask профилях (skip занятых индексов из wallet v3, не max+1 resume); проектирование алгоритма и первичное CPU многопоточное внедрение (без OpenCL). Якорь: CONCEPT_ROADMAP §V7-2.",
+  "acceptance": [
+    "Occupied set: все derivation_index из wallet v3 пропускаются в цикле brute; premine на высоком индексе не блокирует поиск hits ниже",
+    "Смена (flags-mask, expected-flags) находит первый свободный matching index; пересечение масок не даёт duplicate wallet row",
+    "CPU MT: --threads (default available_parallelism, min 1); детерминированный winner = минимальный matching index как в single-thread",
+    "Regression tests: occupied skip, MT determinism, resume vs legacy max+1 fixture с high premine",
+    "pwm-cli.md + v6-owner-stability-soak runbook §addr-bruteforce: обновлена семантика resume",
+    "OpenCL/GPU вне scope; отдельный follow-up при необходимости"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "bruteforce.rs occupied skip + rayon MT + CLI --threads; detect_resume_der_index deprecate/simplify",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Детерминизм MT, wallet safety, docs contract",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Owner request 2026-06-16: lab с demo-genesis-wallet.yaml, mask 1023, общий master; выявлен gap resume (domain-only, max+1). Алгоритм: CONCEPT_ROADMAP V7-2."
+}

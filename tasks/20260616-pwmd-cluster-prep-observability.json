@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "20260616-pwmd-cluster-prep-observability",
+  "title": "pwmd+pwm-cli: cluster prep — прогресс в логах, /v1/status и CLI",
+  "status": "done",
+  "planned_for": "2026-06-17",
+  "deadline": {
+    "at": "2026-06-20T12:00:00Z",
+    "timezone": "UTC",
+    "hard": false,
+    "note": "Operator-visible prep before seal"
+  },
+  "brief": "После рестарта CY оператор видит «тишину»: proposer — seal_suppression_summary раз в ~100с без явной причины; attester — sync_catchup_stall rem=1 без percent. Нужен единый контракт cluster_prep: фаза, lag, synced/connected attesters, waiting_sec — в логах, GET /v1/status и pwm-cli. Prior attempt: Codex re-ran stale genesis ticket (20260603-v6-genesis-conservation-delay-loader) — false PASS; cluster_prep код не в main.",
+  "acceptance_criteria": [
+    "Лог proposer: при SealPreflight::WaitingAttester — периодический summary (не реже чем раз в 30с wall), с live_synced_attesters, live_connected, proposer_tip, attester_tip_max, max_tip_lag, waiting_sec",
+    "Лог attester/standby sync: при catchup lag>0 — progress line с local_h, head_h, blocks_behind и percent_complete, интервал ~10с",
+    "GET /v1/status: блок cluster_prep — phase, ready_for_seal, sync_n, live_n, peer_tip_max, local_tip, blocks_behind_max, waiting_since_ms, blocked_reason",
+    "pwm-cli: human-readable cluster_prep (--rpc proposer/attester)",
+    "Unit-тесты: throttle waiting_sync + JSON shape /v1/status; без live CY",
+    "cargo test -p pwmd + cargo test -p pwm-cli green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)",
+    "Operator note в docs/runbooks: CY restart — логи и pwm status до sealed height="
+  ],
+  "depends_on": ["20260616-pwmd-lease-self-takeover-after-restart"],
+  "related_tickets": ["20260616-pwmd-cluster-seal-sync-gate-protocol"],
+  "artifacts": {
+    "bridge_done": ".cqds/team-tasks/done/20260616-pwmd-cluster-prep-observability.json",
+    "review_md": "docs/reviews/20260616-pwmd-cluster-prep-observability-review.md",
+    "testing_md": "tasks/20260616-pwmd-cluster-prep-observability-testing.md"
+  },
+  "log_evidence": {
+    "false_submit": "Codex PASS for 20260603-v6-genesis-conservation-delay-loader (already done June 8)",
+    "review": "docs/reviews/20260616-pwmd-cluster-prep-observability-review.md PASS_WITH_NITS 7/7"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "via": "bridge-codex-companion",
+      "result": "PASS",
+      "notes": "Attempt 3; correct ticket_id; pwmd 462+ pwm-cli 180+ tests per companion",
+      "artifacts": [
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/state.rs",
+        "crates/pwmd/src/bootstrap.rs",
+        "crates/pwmd/src/transport/peer_session/sync_live.rs",
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/src/api/handlers_status.rs",
+        "crates/pwm-cli/src/cmd_status.rs",
+        "docs/runbooks/v5-cy-cluster-precloseout-soak.md"
+      ],
+      "done_at": "2026-06-16"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "notes": "7/7 AC met; nits: 30s lifecycle throttle test, mocked pwm status, blocks_behind_max docs",
+      "artifacts": ["docs/reviews/20260616-pwmd-cluster-prep-observability-review.md"],
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "notes": "pwmd 469 passed, pwm-cli 187 passed; targeted cluster_prep + sync_stall_tick green",
+      "artifacts": ["tasks/20260616-pwmd-cluster-prep-observability-testing.md"],
+      "done_at": "2026-06-17"
+    }
+  ],
+  "notes": "Конвейер закрыт: bridge coding PASS → review PASS_WITH_NITS → testing PASS. Код в рабочем дереве (uncommitted). Ниты не блокируют. Для live CY: пересобрать pwmd/pwm-cli и смотреть cluster_prep_summary (30s) / sync_catchup_progress (10s) / pwm status --rpc."
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint6-testing-retest",
+  "title": "V6-6 retest: pwm-testing policy_flag_* + test_project",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260607-v6-sprint6-cosign-flags-coding",
+  "branch": "v6/20260607-v6-sprint6-cosign-flags-coding",
+  "worker_lane": "testing",
+  "target_agent": "pwm-testing",
+  "parent_ticket": "20260607-v6-sprint6-cosign-flags-coding",
+  "brief": "Bridge pwm-testing PASS: policy_flag_ x5, test_project.cmd, cargo check.",
+  "acceptance_criteria": [
+    "cargo test -p pwm-core policy_flag_ exit 0",
+    "cmd /c test_project.cmd exit 0",
+    "cargo check --workspace exit 0 (pwmd dead_code warnings OK)"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "policy_flag_* + test_project.cmd in worktree",
+      "result": "PASS",
+      "notes": "All gates green; submit done",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": ["b3750cf", "fd08c52"],
+  "artifacts": {
+    "review_md": "docs/reviews/v6-6-cosign-non-disableable-20260607.md",
+    "test_launcher": "test_project.cmd",
+    "bridge_ticket": ".cqds/team-tasks/done/20260607-v6-sprint6-testing-retest.json"
+  },
+  "notes": "Bridge submit PASS."
+}

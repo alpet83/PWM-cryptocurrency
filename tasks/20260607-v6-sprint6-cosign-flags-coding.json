@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint6-cosign-flags-coding",
+  "title": "V6-6: COSIGN_NON_DISABLEABLE runtime enforcement",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "branch": "v6/20260607-v6-sprint6-cosign-flags-coding",
+  "mvp_checklist": [
+    "docs/plans/mvp_v6.md Sprint V6-6",
+    "docs/adr/0009-address-flags-runtime-enforcement.md",
+    "docs/adr/0006-address-flags-and-nondisableable-profiles.md"
+  ],
+  "brief": "ADR 0009 bit 0 enforced in pwm-core. Conveyor closed; merged to main.",
+  "acceptance_criteria": [
+    "Flag decoded from address bytes at validate/apply (no new Account field)",
+    "PolicyTx weaken/remove mandatory cosign on flagged address rejects E_POLICY_FLAG_NON_DISABLEABLE",
+    "Protected actions require cosign when bit 0 set (evaluate_policy path)",
+    "Emergency routing still allowed per ADR 0009 section when RFC6+0011 gates pass",
+    "cargo test -p pwm-core policy_flag_* PASS",
+    "cargo fmt; cmd /c test_project.cmd or targeted tests; cargo check --workspace if touched"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "codex_coding_companion",
+      "prompt_summary": "Implement COSIGN_NON_DISABLEABLE in pwm-core policy paths + tests",
+      "result": "PASS",
+      "artifacts": ["crates/pwm-core/src/types.rs", "crates/pwm-core/src/tx.rs", "crates/pwm-core/src/state.rs"],
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-review",
+      "source": "cursor",
+      "prompt_summary": "Review vs ADR 0009 cosign section",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/v6-6-cosign-non-disableable-20260607.md"],
+      "notes": "3 low test nits; Export cosign follow-up V6-7",
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "policy_flag_* + test_project matrix",
+      "result": "PASS",
+      "artifacts": ["tasks/20260607-v6-sprint6-testing-retest.json"],
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": ["b3750cf", "fd08c52"],
+  "artifacts": {
+    "normative": "docs/adr/0009-address-flags-runtime-enforcement.md",
+    "review_md": "docs/reviews/v6-6-cosign-non-disableable-20260607.md",
+    "retest_ticket": "tasks/20260607-v6-sprint6-testing-retest.json",
+    "bridge_coding": ".cqds/team-tasks/done/20260607-v6-sprint6-cosign-flags-coding.json"
+  },
+  "notes": "Merged to main. Follow-ups: review nits (Deferred weaken test); Export+cosign V6-7."
+}

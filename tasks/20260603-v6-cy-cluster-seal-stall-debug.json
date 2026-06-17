@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "20260603-v6-cy-cluster-seal-stall-debug",
+  "title": "DEBUG: CY cluster idle — no blocks from genesis (proposer_pick_failed)",
+  "status": "done",
+  "delegation_mode": "operator_soak",
+  "depends_on": [],
+  "brief": "Owner reports CY cluster idle after standard cy-cluster-proposer.ps1 + cy-cluster-attester.ps1 from repo root. Terminal evidence: cluster_attest_ready but cluster_primary_wait height=1 proposer_pick_failed no active validators for current epoch; sealed_in_window=0. Earlier: stale snapshot same error; port 3030/13030 bind conflict before pskill. Investigate V6 stake admission vs default genesis-custom.json, state cleanup, launcher regression since V6-10 soak.",
+  "acceptance_criteria": [
+    "Root cause identified with log/RPC evidence",
+    "Repro steps documented",
+    "Operator fix path (genesis min_validator_stake, clean state, stake funding) validated or recommended",
+    "Report tmp/v6-cy-seal-stall-debug-<UTC>.md with PASS_EVIDENCE or BLOCKED + next action"
+  ],
+  "artifacts": {
+    "terminal_log": "terminals/17.txt (owner session 2026-06-03)",
+    "genesis_default": "tmp/genesis-custom.json",
+    "genesis_lab_ref": "tmp/genesis-custom-s2c.json",
+    "launchers": [
+      "cy-cluster-proposer.ps1",
+      "cy-cluster-attester.ps1",
+      "cy-cluster-common.ps1"
+    ],
+    "v6_soak_runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "debug_report": "tmp/v6-cy-seal-stall-debug-20260615T172738Z.md"
+  },
+  "owner_evidence": {
+    "errors": [
+      "bind 127.0.0.1:3030 os error 10048 (zombie pwmd)",
+      "snapshot trust validation: height 1 proposer pick failed: no active validators for current epoch",
+      "cluster_primary_wait height=1 reason=proposer_pick_failed detail=no active validators for current epoch",
+      "sealed_in_window=0 over ~100s"
+    ],
+    "binary": "pwmd/0.1.67",
+    "validator_identity_hash": "6f85f71fdf684c9c70f82d37e8c196a9bf2b47db65585236679ba95d536b7629"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Investigate CY seal stall; confirm genesis/stake admission hypothesis; propose fix",
+      "result": "ROOT_CAUSE: V6-3 stake gate — default tmp/genesis-custom.json has validator bal=0, staked_pwm_raw=0, min_validator_stake defaults to 100_000 (missing JSON field); active validator set empty → pick_prod_idx fails. Operator fix: add min_validator_stake:0 to genesis OR PWM_DEMO_GENESIS_PATH=genesis-custom-s2c.json + clean tmp/state-cy-*. Report tmp/v6-cy-seal-stall-debug-20260615T172738Z.md PASS_EVIDENCE. Coding follow-up: genesis-build / cy-cluster lab defaults should emit min_validator_stake:0.",
+      "done_at": "2026-06-15T17:27:38Z"
+    }
+  ],
+  "notes": "Shared via bridge --testing. Orchestrator pre-read confirmed. pwm-testing: unit tests PASS; live cluster repro deferred (owner log + code path sufficient). Follow-up coding ticket recommended for demo-genesis-build / cy-cluster-common lab defaults — not product bug."
+}

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "id": "YYYYMMDD-slug",
   "planned_for": null,
+  "deadline": null,
   "title": "Краткий заголовок",
   "status": "open",
   "mvp_checklist": ["§4 …"],

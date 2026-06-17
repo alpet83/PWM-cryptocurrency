@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint4b-testing-retest",
+  "title": "V6-4b retest: pwm-testing via test_project.cmd + miss_skip",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "branch": "main",
+  "worker_lane": "testing",
+  "target_agent": "pwm-testing",
+  "parent_ticket": "20260606-v6-sprint4b-leader-failover-coding",
+  "brief": "Bridge pwm-testing PASS on main: test_project.cmd (169+3) + miss_skip_failover_seals.",
+  "acceptance_criteria": [
+    "cmd /c test_project.cmd exit 0",
+    "cargo test -p pwmd miss_skip_failover_seals exit 0",
+    "cargo fmt --check if touched; cargo check --workspace if pwmd touched"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "test_project.cmd + miss_skip_failover_seals on main",
+      "result": "PASS",
+      "artifacts": ["test_project.cmd"],
+      "notes": "CARGO_TARGET_DIR=C:\\cargo-targets\\pwm-testing; MSYS dlltool PATH for miss_skip gate",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": ["b5acbc9", "6d802b0", "53f3a31"],
+  "artifacts": {
+    "test_launcher": "test_project.cmd",
+    "review_md": "docs/reviews/20260607-v6-4b-leader-failover-review.md",
+    "bridge_ticket": ".cqds/team-tasks/done/20260607-v6-sprint4b-testing-retest.json"
+  },
+  "notes": "Bridge submit PASS. Both acceptance gates green."
+}

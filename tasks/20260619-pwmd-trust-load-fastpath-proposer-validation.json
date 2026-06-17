@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "id": "20260619-pwmd-trust-load-fastpath-proposer-validation",
+  "title": "pwmd: trust-load O(tail) — убрать genesis→tip replay в validate_snapshot_trusted",
+  "status": "done",
+  "planned_for": "2026-06-19",
+  "deadline": {
+    "at": "2026-06-22T12:00:00Z",
+    "timezone": "UTC",
+    "hard": false,
+    "note": "Beta testnet cold-start SLO: trust load seconds not 15–20 min at 125k+ tip"
+  },
+  "brief": "Архитектурный разрыв: JsonFile trust-load выбирает snapshot_load_mode=trust и грузит только TAIL_BLOCK_CAP=1000 блоков (epochs_ms ~50ms), но validate_snapshot_trusted → trust_tail_prod_idx делает полный replay 1..tip_h с load_block_at_height на каждой высоте (validate_ms ~1.1M ms @68k, ~17–20 min @125k). Snapshot v4 УЖЕ persist epoch_counter + active_validator_indices в summary state (RFC V6-3). Нужен fast-path: доверять checkpoint state для proposer schedule на tail; replay только при epoch boundary внутри tail (≤ epoch_length_blocks), не с genesis. Плюс sequential epoch scan вместо O(n²) random height loads. Progress log для trust validate (как chain_verify). Цель SLO: trust cold start @125k tip <60s на типичном beta PC (was ~15–20 min).",
+  "acceptance_criteria": [
+    "trust_tail_prod_idx (или замена): НЕ loop 1..tip_h при trust; использовать snapshot.state.active_validator_indices + epoch_counter на checkpoint",
+    "Если в tail [first_h..tip] нет epoch boundary — verify prod_idx на tail без replay (только header/sig/tx_root checks)",
+    "Если epoch boundary B попадает в tail — replay blocks только [B..tip] одним sequential pass по epoch JSONL (не load_block_at_height per height с genesis)",
+    "load_blocks_range / sequential epoch iterator — убрать повторное чтение целого JSONL на каждую высоту в hot path",
+    "Trust validate: INFO progress каждые ~10s (stage=trust_validate или reuse chain_verify pattern) с height/percent/elapsed",
+    "snapshot startup load ok: validate_ms для trust @ tip≥100k — регрессионный unit/bench test или documented benchmark in testing.md; target validate_ms << 60_000 на fixture ~10k blocks (scale linearly documented)",
+    "Full verify (--snapshot-verify-chain) поведение не ослаблено",
+    "cargo test -p pwmd snapshot incremental io — green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)",
+    "docs/guide-node-storage-and-snapshot.md: trust-load = O(tail + optional epoch tail), не genesis replay; SLO note для operators"
+  ],
+  "depends_on": [
+    "20260617-pwmd-snapshot-summary-checkpoint-lag",
+    "20260616-pwmd-chain-verify-progress-pct"
+  ],
+  "related_tickets": [
+    "20260618-pwmd-seal-loop-loading-snapshot-observability",
+    "20260603-v6-prepublication-umbrella"
+  ],
+  "log_evidence": {
+    "trust_selected": "snapshot_load_mode=trust summary_checkpoint=124924 manifest_tip=124924",
+    "slow_validate": "validate_ms=1130281 epochs_ms=36 tip_h=61008 (2026-06-16 proposer log)",
+    "root_cause_fn": "crates/pwmd/src/snapshot/io.rs trust_tail_prod_idx for h in 1..=tip_h",
+    "persisted_state": "SnapshotStateV4.active_validator_indices + epoch_counter already in pwm-data.json",
+    "rfc": "docs/rfc/addenda/v6-rfc4-validators-stake-admission.md §4 epoch boundary only"
+  },
+  "operator_gate": {
+    "live_cy": "post-merge owner re-measures snapshot startup load ok total_ms on CY @124k+",
+    "no_live_for_ac": "fixture/bench tests sufficient for merge",
+    "owner_confirm": "2026-06-17: blocks resume almost immediately after restart post-fix (vs 12+ min loading_snapshot before)"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/incremental.rs",
+        "docs/guide-node-storage-and-snapshot.md"
+      ],
+      "notes": "Implemented trust O(tail) proposer fastpath + tail-boundary sequential range replay; added trust_validate progress logs and trust regression tests.",
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260619-pwmd-trust-load-fastpath-proposer-validation-review.md"
+      ],
+      "notes": "Trust fastpath meets AC core; boundary pre-boundary None skip is trust-consistent vs RFC V6-3. Nits: tip-seeded boundary replay risky for bnd_h<tip_h+txs; AC#6 timing assert soft; doc one-liner on schedule skip window.",
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/incremental.rs"
+      ],
+      "notes": "Follow-up for review nit #1: trust_tail_prod_idx now uses direct pick_prod_idx(h, snap_state.active_validator_indices) for h>=bnd_h without replay; keeps None for h<bnd_h. Added regression test trust_prod_tail_bnd_tx_ok for bnd_h<tip_h with non-empty post-boundary txs. Removed now-unused incremental::load_blocks_range helper after replay-path deletion.",
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260619-pwmd-trust-load-fastpath-proposer-validation-testing.md"
+      ],
+      "notes": "Preflight ok (3274MiB). cargo test -p pwmd snapshot: 69/69 PASS (~63s). trust_load_skips_old_replay validate_ms=8054 (N=1105, debug). trust_prod_no_bnd_set + trust_prod_tail_bnd_tx_ok green.",
+      "done_at": "2026-06-17"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260619-pwmd-trust-load-fastpath-proposer-validation-review.md"
+  },
+  "notes": "Не путать с full_verify lag (summary_manifest_lag). Это fix trust path при aligned checkpoint. Bitcoin analogy: UTXO set at tip — не replay с genesis для header check tail."
+}

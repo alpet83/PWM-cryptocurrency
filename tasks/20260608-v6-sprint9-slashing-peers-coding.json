@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-sprint9-slashing-peers-coding",
+  "title": "V6-9: Slashing evidence stubs + peer sync scoring",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "branch": "v6/20260608-v6-sprint9-slashing-peers-coding",
+  "mvp_checklist": [
+    "docs/plans/mvp_v6.md Sprint V6-9",
+    "docs/adr/0010-slashing-evidence-stubs.md",
+    "docs/rfc/addenda/v6-rfc15-peer-sync-scoring.md"
+  ],
+  "brief": "ADR 0010 evidence append + v6-rfc15 peer scoring. Conveyor closed; merged to main.",
+  "acceptance_criteria": [
+    "pwm-core: append EvidenceRecord with deterministic record_id; reject duplicate with TxError::EvidenceDuplicate / E_EVIDENCE_DUPLICATE",
+    "Evidence apply MUST NOT change balances, staked_pwm, or active_validator_indices",
+    "Optional EvidenceTx wire/apply OR seal-internal UnavailableProposer append — at least one path covered by tests",
+    "pwmd: PeerSyncScore cache (operator-local, non-consensus); score deltas per v6-rfc15 table (+1 sync round, +1 valid blocks, -2 timeout, -5 fork/hash mismatch, -10 bridge trust refusal)",
+    "Sync/backfill peer pick order biased by score (deterministic tie-break)",
+    "Unit tests: evidence_duplicate_reject, evidence_append_no_seizure, peer_score_* deterministic deltas",
+    "cargo fmt; cargo check --workspace; cargo test -p pwm-core evidence_ PASS; cargo test -p pwmd peer_score_ or sync_score_ PASS"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "codex_coding_companion",
+      "prompt_summary": "pwm-core evidence apply + pwmd peer sync scoring/selection",
+      "result": "PASS",
+      "notes": "Recovery commit 7086434 (worker submit without git commit)",
+      "done_at": "2026-06-08"
+    },
+    {
+      "agent": "pwm-review",
+      "source": "cursor",
+      "prompt_summary": "Review vs ADR 0010 + v6-rfc15; no consensus score table",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/v6-sprint9-slashing-peers-coding-review-20260608.md"
+      ],
+      "notes": "Bridge mismatch score nit; seal hook not wired",
+      "done_at": "2026-06-08"
+    },
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "evidence_* + peer_score_* tests + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260608-v6-sprint9-testing-retest.json"
+      ],
+      "notes": "Recovery after companion missing_reactive_inline",
+      "done_at": "2026-06-08"
+    }
+  ],
+  "commits": [
+    "7086434",
+    "abde394"
+  ],
+  "artifacts": {
+    "normative": "docs/adr/0010-slashing-evidence-stubs.md",
+    "review_md": "docs/reviews/v6-sprint9-slashing-peers-coding-review-20260608.md",
+    "retest_ticket": "tasks/20260608-v6-sprint9-testing-retest.json",
+    "bridge_coding": ".cqds/team-tasks/done/20260608-v6-sprint9-slashing-peers-coding.json",
+    "worktree": ".cqds/worktrees/20260608-v6-sprint9-slashing-peers-coding"
+  },
+  "notes": "Merged to main. Follow-ups: bridge mismatch score nit; seal UnavailableProposer hook wire-up."
+}

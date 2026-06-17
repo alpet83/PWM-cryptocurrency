@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-cy-e2e-s3-conservation-delay",
+  "title": "V6 CY E2E s3: CONSERVATION delayed transfer",
+  "status": "blocked",
+  "delegation_mode": "operator_soak",
+  "parent_ticket": "20260608-v6-cy-e2e-umbrella",
+  "depends_on": [
+    "20260608-v6-cy-e2e-s2c-post-commit-retest",
+    "20260603-v6-cy-e2e-s2c-mode-b-refund"
+  ],
+  "depends_on_bridge": "20260608-v6-cy-e2e-s2c-post-commit-retest and 20260603-v6-cy-e2e-s2c-mode-b-refund under .cqds/team-tasks/done/",
+  "owner_gate": "CY running; conservation sender funded with CONSERVATION address flag; head can reach execute_at_height (see genesis delay note)",
+  "brief": "Live conservation address: outgoing Transfer pending until execute_at_height; balance unchanged until drain; then credited recipient.",
+  "acceptance_criteria": [
+    "Outgoing Transfer from conservation sender enqueued (pending_conservation / account-info), no immediate debit",
+    "After conservation_delay_blocks from enqueue height: transfer executes, recipient credited",
+    "Incoming to conservation address NOT delayed (negative control if feasible)",
+    "Report tmp/cy-e2e-v6-s3-<timestamp>.md with PASS_EVIDENCE"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "normative": "docs/adr/0009-address-flags-runtime-enforcement.md",
+    "rpc_base": "http://127.0.0.1:3030",
+    "prior_s2c_pass": "tmp/cy-e2e-v6-s2c-20260608_205548.md",
+    "report_md": "tmp/cy-e2e-v6-s3-20260608_220523.md",
+    "bridge_failed": ".cqds/team-tasks/failed/20260608-v6-cy-e2e-s3-conservation-delay.json"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "Conservation delay live smoke; poll head until execute_at_height",
+      "result": "BLOCKED",
+      "artifacts": [
+        "tmp/cy-e2e-v6-s3-20260608_220523.md"
+      ],
+      "notes": "Enqueue + incoming PASS; execute leg blocked by effective delay 86400 (loader gap). execute_at=90530 at enqueue_h=4130; head 4296.",
+      "done_at": "2026-06-08"
+    }
+  ],
+  "result_payload": {
+    "result": "BLOCKED",
+    "blocker": "Effective conservation_delay_blocks=86400 hardcoded in genesis loader; execute_at unreachable in soak window (~7.6h lab-seal).",
+    "next_action": "20260603-v6-genesis-conservation-delay-loader coding slice, then s3 execute retest with short genesis."
+  },
+  "notes": "Bridge failed/ BLOCKED — not conservation logic regression. Partial PASS evidence in report. Follow-up: loader slice + s3-execute-retest after owner rebuild/restart."
+}

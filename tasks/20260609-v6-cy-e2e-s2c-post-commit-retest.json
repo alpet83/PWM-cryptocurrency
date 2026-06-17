@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "20260609-v6-cy-e2e-s2c-post-commit-retest",
+  "title": "V6 CY E2E s2c: post-commit Mode B refund retest (pwm-testing)",
+  "status": "in_progress",
+  "delegation_mode": "operator_soak",
+  "parent_ticket": "20260608-v6-cy-e2e-umbrella",
+  "depends_on": [
+    "20260603-v6-genesis-xshard-lock-loader"
+  ],
+  "owner_gate": "CY running with genesis-custom-s2c.json (timeout=10, min_validator_stake=0); pwmd/pwm rebuilt from latest main",
+  "brief": "Formal pwm-testing retest after committed genesis-loader + cluster stability fixes. Repeat on-chain tx-export → unlock_height → Refunded; report PASS_EVIDENCE. Prior coding companion PASS: tmp/cy-e2e-v6-s2c-20260608_204139.md.",
+  "acceptance_criteria": [
+    "Live CY with s2c genesis applied (not default 604800 timeout)",
+    "tx-export with export-readiness preflight succeeds",
+    "Spendable restored to baseline minus fee after head >= unlock_height",
+    "Report tmp/cy-e2e-v6-s2c-<timestamp>.md with PASS_EVIDENCE"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "prior_pass_report": "tmp/cy-e2e-v6-s2c-20260608_204139.md",
+    "rpc_base": "http://127.0.0.1:3030"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Post-commit s2c Mode B refund confirmation on live CY",
+      "result": null,
+      "done_at": null
+    }
+  ],
+  "notes": "Share via bridge --testing. Supersedes mis-routed coding leg on 20260603-v6-cy-e2e-s2c-mode-b-refund."
+}

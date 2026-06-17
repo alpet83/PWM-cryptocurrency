@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-cy-e2e-s4-emergency-sweep",
+  "title": "V6 CY E2E s4: emergency activation_target sweep",
+  "status": "done",
+  "delegation_mode": "operator_soak",
+  "parent_ticket": "20260608-v6-cy-e2e-umbrella",
+  "depends_on": [
+    "20260608-v6-cy-e2e-s3-post-loader-retest"
+  ],
+  "depends_on_bridge": "20260608-v6-cy-e2e-s3-post-loader-retest under .cqds/team-tasks/done/",
+  "owner_gate": "CY cluster running at http://127.0.0.1:3030; test account with emergency policy + rescue cosign",
+  "brief": "fee=0 ActivatePolicy with activation_target=rescue evacuates spendable; negative prechecks for fee>0 and wrong target.",
+  "acceptance_criteria": [
+    "Prepared activation (pwm-cli tx-init or file) round-trip on CY",
+    "ActivatePolicy fee=0 accepted; balance moves to rescue",
+    "Wrong target/fee rejected on precheck",
+    "Report tmp/cy-e2e-v6-s4-<timestamp>.md with PASS_EVIDENCE"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "normative": "docs/adr/0011-policy-activation-target.md",
+    "rpc_base": "http://127.0.0.1:3030",
+    "prior_s3_pass": "tmp/cy-e2e-v6-s3-20260608_222308.md",
+    "report_md": "tmp/cy-e2e-v6-s4-20260615_170449.md",
+    "bridge_done": ".cqds/team-tasks/done/20260608-v6-cy-e2e-s4-emergency-sweep.json"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "Emergency sweep live smoke on CY",
+      "result": "PASS",
+      "artifacts": [
+        "tmp/cy-e2e-v6-s4-20260615_170449.md"
+      ],
+      "notes": "tx-init save/replay; cosign precheck; fee=0 evac 5M to rescue; negatives E_POLICY_ACTIVATION_FEE_MUST_BE_ZERO, E_POLICY_ACTIVATION_TARGET_MISMATCH",
+      "done_at": "2026-06-15"
+    }
+  ],
+  "result_payload": {
+    "result": "PASS",
+    "summary": "PASS_EVIDENCE: emergency sweep evac sender 5000000->0, rescue +5000000; negatives confirmed."
+  },
+  "notes": "Bridge done PASS. V6-10 soak waves s1+s2c+s3+s4 complete — umbrella pending owner sign-off."
+}

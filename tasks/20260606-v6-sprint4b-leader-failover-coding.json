@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "20260606-v6-sprint4b-leader-failover-coding",
+  "title": "V6-4b: RFC16 §3 miss detection + failover seal (close V6-4)",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "branch": "main",
+  "parent_ticket": "tasks/20260603-v6-sprint4-leader-rotation-coding.json",
+  "brief": "RFC16 §3 primary-miss failover on pwmd seal loop + lib harness. Conveyor closed on main.",
+  "acceptance_criteria": [
+    "Miss detection: primary proposer timeout per RFC16 §3 (profile tick or quorum timeout)",
+    "After miss, block at height+1 sealed/proposed by failover leader (active set schedule)",
+    "Integration or lib harness: induced primary miss → PASS (≤1 skipped block)",
+    "No competing multi-proposer rounds at same height",
+    "cargo fmt; cmd /c test_project.cmd (or project TEST_COMMAND); cargo check --workspace if pwmd touched",
+    "Optional UnavailableProposer evidence stub — record only, no slash"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "codex_coding_companion",
+      "result": "PASS",
+      "artifacts": ["crates/pwmd/src/lifecycle.rs", "build_project.cmd", "test_project.cmd", "scripts/build_project.sh", "scripts/test_project.sh", ".build.env"],
+      "notes": "Submit PASS; work on main not worktree",
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-review",
+      "source": "cursor",
+      "prompt_summary": "Review lifecycle failover vs RFC16 §3",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260607-v6-4b-leader-failover-review.md"],
+      "notes": "RFC16 §3 failover+harness OK; quorum-timeout miss+sync gap follow-ups deferred",
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "test_project.cmd + miss_skip harness",
+      "result": "PASS",
+      "artifacts": ["tasks/20260607-v6-sprint4b-testing-retest.json"],
+      "notes": "Retest ticket bridge submit PASS",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": ["b5acbc9", "6d802b0", "53f3a31"],
+  "artifacts": {
+    "review_md": "docs/reviews/20260607-v6-4b-leader-failover-review.md",
+    "retest_ticket": "tasks/20260607-v6-sprint4b-testing-retest.json",
+    "bridge_coding": ".cqds/team-tasks/done/20260606-v6-sprint4b-leader-failover-coding.json",
+    "depends_on_merge": "fad86d8"
+  },
+  "notes": "Closed. Follow-ups (non-blocking): quorum-timeout miss trigger; sync/snapshot height gap (issues-report.md)."
+}

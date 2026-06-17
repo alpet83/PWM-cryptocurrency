@@ -1,0 +1,23 @@
+{
+  "id": "20260617-v7-emergency-stake-evacuation-impl",
+  "title": "V7-3: emergency activation evacuates staked_pwm_raw to rescue",
+  "status": "backlog",
+  "planned_for": "2026-07-01",
+  "brief": "Implement ADR 0012: on successful routing.emergency_redirect ActivatePolicy, atomically credit activation_target.balance_pwm with victim staked_pwm_raw (same apply_tx as V6 balance evacuation). Reuse Unstake validator-set side effects. No wire change.",
+  "acceptance_criteria": [
+    "pwm-core: emergency activation zeros victim staked_pwm_raw and credits rescue balance",
+    "Validator set / epoch accounting matches organic Unstake for evacuated amount",
+    "Unit tests: stake>0 sweep; stake=0 regression; finalized victim cannot Unstake separately",
+    "CY e2e emergency wave: victim staked before activate; rescue balance includes stake",
+    "docs/runbooks/v6-owner-stability-soak-50k.md step 8 oracle updated for V7 deployment"
+  ],
+  "depends_on": [
+    "20260603-v6-prepublication-umbrella"
+  ],
+  "spec_refs": [
+    "docs/adr/0012-emergency-stake-evacuation.md",
+    "docs/adr/0011-policy-activation-target.md"
+  ],
+  "notes": "Spec accepted 2026-06-17 (owner). V6 runtime unchanged until this slice ships.",
+  "delegations": []
+}

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "20260603-v6-sprint4-leader-rotation-coding",
+  "title": "V6-4: RFC16 multi-proposer rotation + failover ≤1 block",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "branch": "v6/20260603-v6-sprint4-leader-rotation-coding",
+  "mvp_checklist": ["MVP v6 §V6-4", "docs/plans/mvp_v6.md"],
+  "brief": "Rotation (fad86d8) + V6-4b failover (6d802b0). Full RFC16 acceptance: slot formula, trust-path, cluster gate, miss→failover seal ≤1 block.",
+  "acceptance_criteria": [
+    "proposer_slot = height % active_len — DONE",
+    "trust-snapshot prod_idx parity — DONE",
+    "cluster leader mapping — DONE",
+    "miss/failover runtime ≤1 block — DONE (V6-4b)",
+    "cargo test pwm-core + pwmd cluster_prop_ + miss_skip — PASS"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "pwm-coding_64696",
+      "result": "PARTIAL",
+      "notes": "Rotation partial; failover deferred to V6-4b then closed",
+      "done_at": "2026-06-05"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260605-v6-4-leader-rotation-review.md", "docs/reviews/20260607-v6-4b-leader-failover-review.md"],
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "result": "PASS",
+      "notes": "V6-4 retest + V6-4b retest on main",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": ["fad86d8", "b5acbc9", "6d802b0", "53f3a31"],
+  "artifacts": {
+    "review_md": "docs/reviews/20260605-v6-4-leader-rotation-review.md",
+    "failover_review_md": "docs/reviews/20260607-v6-4b-leader-failover-review.md",
+    "retest_ticket": "tasks/20260605-v6-sprint4-testing-retest.json",
+    "failover_ticket": "tasks/20260606-v6-sprint4b-leader-failover-coding.json"
+  },
+  "notes": "Umbrella closed. Non-blocking follow-ups: quorum-timeout miss; sync height gap."
+}

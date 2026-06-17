@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint5-mode-b-escrow-coding",
+  "title": "V6-5: Mode B EXPORT lock + timeout refund + IMPORT release",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260607-v6-sprint5-mode-b-escrow-coding",
+  "branch": "v6/20260607-v6-sprint5-mode-b-escrow-coding",
+  "mvp_checklist": [
+    "docs/plans/mvp_v6.md § Sprint V6-5",
+    "docs/rfc/addenda/v6-rfc9-mode-b-escrow.md"
+  ],
+  "brief": "Mode B cross-shard escrow in pwm-core: EXPORT lock, seal-tick refund, IMPORT release. Conveyor closed; merged to main.",
+  "acceptance_criteria": [
+    "EXPORT apply creates atomic cross-shard lock per export_id (RFC9 addendum)",
+    "Timeout triggers refund; late IMPORT after refund rejects E_EXPORT_LOCK_REFUNDED",
+    "Happy IMPORT on target releases lock and credits receiver",
+    "Sender sees locked balance until finalize or refund",
+    "cargo fmt; cmd /c test_project.cmd or targeted pwm-core escrow tests PASS",
+    "cargo check --workspace if state/tx touched"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "codex_coding_companion",
+      "prompt_summary": "Implement Mode B lock/refund/import in pwm-core + tests",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs",
+        "crates/pwm-core/src/chain.rs",
+        "crates/pwm-core/src/tx.rs",
+        "crates/pwm-core/src/reject_wire.rs",
+        "scripts/mode_b_escrow_smoke.cmd"
+      ],
+      "notes": "Orchestrator recovery submit after companion skip",
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-review",
+      "source": "cursor",
+      "prompt_summary": "Review escrow vs v6-rfc9 addendum",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260607-v6-sprint5-mode-b-escrow-review.md"],
+      "notes": "pwmd preflight nit, federation V6-10 deferred",
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "Escrow lib tests + test_project matrix",
+      "result": "PASS",
+      "artifacts": ["tasks/20260607-v6-sprint5-testing-retest.json"],
+      "notes": "Smoke + test_project + check in worktree",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": ["937bb83", "835abdd", "7601287"],
+  "artifacts": {
+    "normative": "docs/rfc/addenda/v6-rfc9-mode-b-escrow.md",
+    "review_md": "docs/reviews/20260607-v6-sprint5-mode-b-escrow-review.md",
+    "retest_ticket": "tasks/20260607-v6-sprint5-testing-retest.json",
+    "bridge_coding": ".cqds/team-tasks/done/20260607-v6-sprint5-mode-b-escrow-coding.json"
+  },
+  "notes": "Merged to main. Follow-ups: pwmd preflight reject code (P1 review nit); cross-shard federation V6-10."
+}

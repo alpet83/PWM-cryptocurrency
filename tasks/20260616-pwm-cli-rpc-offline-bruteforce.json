@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "20260616-pwm-cli-rpc-offline-bruteforce",
+  "title": "pwm-cli: --rpc offline для addr-bruteforce без auto-init",
+  "status": "done",
+  "brief": "Явный offline режим: глобальный --rpc offline пропускает auto tx-init в addr-bruteforce без сетевых попыток; RPC-команды отклоняются с понятной ошибкой.",
+  "acceptance_criteria": [
+    "is_rpc_offline() в cli_config: trim + case-insensitive 'offline'",
+    "addr-bruteforce: при offline — skip try_auto_init, stderr hint с ручным tx-init (без connect/timeout)",
+    "cli_dispatch: tx/account/roaming/node команды exit early если --rpc offline",
+    "Локальные команды (key-gen, genesis-build, addr-*, wallet/*, off-demo) работают с --rpc offline",
+    "Unit-тесты is_rpc_offline + parse --rpc offline; docs/pwm-cli.md + runbook v6-owner-stability-soak-50k.md: заменить dead port 59999 на --rpc offline где уместно",
+    "cargo test -p pwm-cli — green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "via": "cursor-task-not-bridge",
+      "done_at": "2026-06-16"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "done_at": "2026-06-16"
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "done_at": "2026-06-16"
+    }
+  ],
+  "notes": "Renamed from 20260617-*. Closed via Cursor subagents (bridge share_ticket failed without project_id)."
+}

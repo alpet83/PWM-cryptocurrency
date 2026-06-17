@@ -1,0 +1,16 @@
+{
+  "id": "20260617-v6-prepub-docs-manuals",
+  "title": "V6 pre-publication: docs/manuals + README refresh",
+  "status": "done",
+  "parent_umbrella": "20260603-v6-prepublication-umbrella",
+  "brief": "Final doc pass before V6 mirror publish: README/README-ru MVP v6 status, fix stale V5 sign-off refs, CONCEPT_PROGRESS/roadmap alignment, operator manuals (pwm-cli, pwmd, pwm-tui), GLOSSARY sweep.",
+  "acceptance_criteria": [
+    "README.md and README-ru.md reflect MVP v6 pre-publication (V5 published)",
+    "CONCEPT_ROADMAP and MVP-checklist: no stale V5 sign-off pending",
+    "CONCEPT_PROGRESS updated for V6 coverage (at least roadmap row + date)",
+    "Key operator docs cross-link v6 runbooks and ADR 0011/0012 where relevant",
+    "Umbrella phase v6-prepub-docs-manuals marked done"
+  ],
+  "notes": "Completed with releases/v6.0.0.md and owner sign-off batch 2026-06-17.",
+  "delegations": []
+}

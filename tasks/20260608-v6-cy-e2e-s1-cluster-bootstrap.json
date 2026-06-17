@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-cy-e2e-s1-cluster-bootstrap",
+  "title": "V6 CY E2E s1: cluster bootstrap + stability",
+  "status": "done",
+  "delegation_mode": "operator_soak",
+  "parent_ticket": "20260608-v6-cy-e2e-umbrella",
+  "brief": "CY bootstrap smoke PASS: head delta 120, ERROR=0.",
+  "acceptance_criteria": [
+    "Owner confirms cluster up ≥2 min with rising head_height",
+    "scripts/cy_cluster_two_node_smoke.ps1 exit 0 against http://127.0.0.1:3030",
+    "head_height delta ≥10 over observation window",
+    "No sustained seal_suppression_summary ERROR streak in proposer logs",
+    "Report tmp/cy-e2e-v6-s1-<timestamp>.md with PASS_EVIDENCE lines"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "report_md": "tmp/cy-e2e-v6-s1-20260608_191640.md",
+    "smoke_log_dir": "tmp/cy-e2e-v6-s1-20260608_191640"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "CY s1 bootstrap smoke + log scan after owner cluster up",
+      "result": "PASS",
+      "artifacts": [
+        "tmp/cy-e2e-v6-s1-20260608_191640.md"
+      ],
+      "notes": "Bridge submit missing_reactive_inline; orchestrator recovery from report",
+      "done_at": "2026-06-08"
+    }
+  ],
+  "notes": "PASS (report tmp/cy-e2e-v6-s1-20260608_191640.md). Bridge: recovered failed→done (missing_reactive_inline)."
+}

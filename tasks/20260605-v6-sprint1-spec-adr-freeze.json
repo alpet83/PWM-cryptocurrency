@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "20260605-v6-sprint1-spec-adr-freeze",
+  "planned_for": "V6-1",
+  "title": "MVP v6 Sprint 1 — Spec / RFC / ADR freeze",
+  "status": "done",
+  "delegation_mode": "sync_task",
+  "mvp_checklist": [
+    "docs/plans/mvp_v6.md § Sprint V6-1",
+    "docs/CONCEPT_ROADMAP.md § MVP V6"
+  ],
+  "brief": "Нормативный freeze контрактов V6 до кода: RFC 4/16/9/6/10/15 addenda; ADR 0009/0010/0011; обновить ADR 0006 (enforcement=V6), adr/README, cross-refs в CONCEPT_ROADMAP. Acceptance: нет TBD по wire V6; pwm-review PASS на spec-only слайс.",
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Spec-only review: ADR 0009/0010/0011, RFC addenda v6-*, ADR 0006/README/CONCEPT_ROADMAP cross-refs",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260605-v6-sprint1-spec-adr-freeze-review.md"],
+      "tokens": {
+        "source": "estimate",
+        "input": 28000,
+        "output": 4500,
+        "total": 32500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-06-05"
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260605-v6-sprint1-spec-adr-freeze-review.md",
+    "adr_0009": "docs/adr/0009-address-flags-runtime-enforcement.md",
+    "adr_0010": "docs/adr/0010-slashing-evidence-stubs.md",
+    "adr_0011": "docs/adr/0011-policy-activation-target.md",
+    "rfc_addenda_dir": "docs/rfc/addenda/"
+  },
+  "notes": "V6-1 закрыт. Review approve with nits — оркестратор добил P1–P3 (Mode B seal-tick refund, u128 JSON cross-ref, ADR0006/README/ROADMAP hygiene). Следующий слайс: V6-2 core model + snapshot v4 (worktree)."
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "20260603-pwmd-fail-fast-protocol-blockers",
+  "title": "pwmd: exit on unrecoverable protocol blockers for node role (not passive seal wait)",
+  "status": "in_progress",
+  "delegation_mode": "sync_task",
+  "depends_on": [
+    "20260603-v6-cy-cluster-seal-stall-debug"
+  ],
+  "brief": "Owner/design: if insurmountable protocol preconditions prevent the node's role (e.g. proposer with empty active validator set at height 1), pwmd must exit with clear ERROR — not idle in seal loop with cluster_primary_wait forever. Context: V6-3 stake admission + default genesis without min_validator_stake:0 caused passive stall; snapshot path already exits (unless --keep-alive-on-snapshot-error).",
+  "acceptance_criteria": [
+    "Proposer/sealer: unrecoverable proposer_pick_failed (no active validators) at startup or first seal attempt → process exit non-zero + actionable log (genesis min_validator_stake / stake)",
+    "Attester standby: unchanged unless same blocker applies to its role",
+    "Existing --keep-alive-on-snapshot-error semantics preserved; no silent regression for recoverable failover windows",
+    "Unit or lifecycle test for empty active set fail-fast path",
+    "pwm-review + pwm-testing PASS"
+  ],
+  "artifacts": {
+    "debug_root_cause": "tasks/20260603-v6-cy-cluster-seal-stall-debug.json",
+    "report": "tmp/v6-cy-seal-stall-debug-20260615T172738Z.md",
+    "lifecycle": "crates/pwmd/src/lifecycle.rs (cluster_primary_wait / proposer_pick_failed)"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fail-fast on empty active validator set for sealing proposer",
+      "result": "PASS",
+      "done_at": "2026-06-15T17:41:28Z",
+      "commit": "3019528bff02b44a2359f42d0289c541e5a6f675",
+      "notes": "Added startup fatal blocker detection for proposer pick errors (`no active validators for current epoch`), exits with actionable ERROR, and lifecycle unit coverage for fatal/non-fatal paths."
+    }
+  ],
+  "notes": "Operator interim fix remains min_validator_stake:0 in lab genesis. This slice is UX/safety: misconfig should fail loud."
+}

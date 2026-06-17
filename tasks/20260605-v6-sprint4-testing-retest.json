@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260605-v6-sprint4-testing-retest",
+  "title": "V6-4 retest: pwm-testing via test_project.cmd",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "branch": "v6/20260603-v6-sprint4-leader-rotation-coding",
+  "worker_lane": "testing",
+  "target_agent": "pwm-testing",
+  "parent_ticket": "20260603-v6-sprint4-leader-rotation-coding",
+  "brief": "Повторный pwm-testing после test_project.cmd (PATH force). PASS: pwm-core 169 passed; pwmd cluster_prop_ 3 passed.",
+  "acceptance_criteria": [
+    "cmd /c test_project.cmd exit 0",
+    "pwm-core rotation tests PASS",
+    "pwmd cluster_prop_* PASS"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "pwm-testing_67480",
+      "result": "PASS",
+      "artifacts": ["test_project.cmd"],
+      "notes": "CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency; 169+3 tests",
+      "tokens": { "source": "estimate", "total": 21000, "confidence": "low" },
+      "done_at": "2026-06-05"
+    }
+  ],
+  "commits": ["75f3c33"],
+  "artifacts": {
+    "test_launcher": "test_project.cmd",
+    "review_md": "docs/reviews/20260605-v6-4-leader-rotation-review.md",
+    "bridge_ticket": ".cqds/team-tasks/done/20260605-v6-sprint4-testing-retest.json"
+  },
+  "notes": "Bridge submit PASS. Project mtd: BUILD_TOOLS_PATH, BUILD_COMMAND, TEST_COMMAND via update_mtd."
+}

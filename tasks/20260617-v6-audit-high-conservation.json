@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "20260617-v6-audit-high-conservation",
+  "planned_for": "v6-prepub-audit-fixes",
+  "title": "V6 audit HIGH-001/002: CONSERVATION reserve + drain observability",
+  "status": "done",
+  "parent_umbrella": "20260603-v6-prepublication-umbrella.json",
+  "audit_ref": "docs/reviews/20260616-v6-mvp-rust-code-audit-review.md",
+  "brief": "Закрыть HIGH-001 (race: pending conservation vs Export/Stake без резерва) и HIGH-002 (silent drop в drain_conservation_at_height). Предпочесть простой контракт: reject balance-affecting tx при активной pending_conservation для sender ИЛИ явный reserve — по simplicity gate в coding. Регрессионные unit-тесты в pwm-core.",
+  "acceptance_criteria": [
+    "HIGH-001: нет сценария enqueue conservation Transfer → Export/Stake → silent потеря без reject",
+    "HIGH-002: drain failure не теряет row молча — retain/requeue или structured reject path + тест",
+    "cargo fmt --check; cargo test -p pwm-core --lib (conservation-related tests)",
+    "pwm-review PASS; pwm-testing PASS без live cluster"
+  ],
+  "cluster_safety": {
+    "owner_cluster_live": true,
+    "forbidden": [
+      "cy-cluster-*.ps1",
+      "demo-devnet-start.ps1",
+      "cargo run pwmd on 3030/13030",
+      "stop/kill owner pwmd processes"
+    ],
+    "testing": "cargo test -p pwm-core --lib only; CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "state.rs conservation enqueue/drain fixes + tests",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwm-core/src/state.rs"
+      ],
+      "done_at": "2026-06-16T08:34:07Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Review conservation semantics vs ADR 0009",
+      "result": "PASS",
+      "artifacts": [
+        "docs/reviews/20260617-v6-audit-high-conservation-review.md"
+      ],
+      "done_at": "2026-06-17T12:00:00Z",
+      "notes": "PASS_WITH_NITS: eprintln vs structured log; optional Unstake/Policy regression tests; permanent drain requeue edge documented."
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "pwm-core --lib only; no cluster scripts",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260617-v6-audit-high-conservation.json"
+      ],
+      "done_at": "2026-06-17T14:30:00Z",
+      "notes": "preflight 3794MiB/4096 no remove; CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency; fmt --check OK; pwm-core --lib 192 passed 1 ignored 0 failed (~35s); conservation_* 8/8 incl export/stake race + drain requeue; pwmd skipped per cluster_safety; no live cluster scripts."
+    }
+  ],
+  "commits": [],
+  "notes": "Owner: coding OK while CY cluster soak runs; tests must not bind live ports. pwm-coding: HIGH-001 закрыт через reject конфликтующих tx при pending conservation (кроме second conservation transfer и emergency policy activation), HIGH-002 закрыт через requeue + trace при ошибке drain; добавлены regression tests conservation_export_race_reject, conservation_stake_race_reject, conservation_drain_insufficient_requeue. pwm-review: PASS_WITH_NITS — docs/reviews/20260617-v6-audit-high-conservation-review.md."
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-cy-e2e-umbrella",
+  "title": "V6-10: CY cluster pre-closeout soak (umbrella)",
+  "status": "done",
+  "delegation_mode": "operator_soak",
+  "depends_on": [
+    "20260608-v6-sprint9-slashing-peers-coding"
+  ],
+  "brief": "Живой CY cluster на V6: владелец поднимает proposer+attester; pwm-testing волнами s1→s4 по мере роста head (bootstrap, Mode B, conservation, emergency sweep). Без worktree на весь soak.",
+  "acceptance_criteria": [
+    "Child slices s1..s4 report PASS with tmp/cy-e2e-v6-*.md artifacts",
+    "Runbook followed: docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "No blocking seal/quorum/sync regressions during soak windows",
+    "Umbrella done after s1+s2+s3+s4 and owner sign-off on soak logs"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "v5_reference": "docs/runbooks/v5-cy-cluster-precloseout-soak.md",
+    "cluster_launchers": [
+      "cy-cluster-proposer.ps1",
+      "cy-cluster-attester.ps1",
+      "cy-cluster-common.ps1"
+    ]
+  },
+  "child_tickets": [
+    "20260608-v6-cy-e2e-s1-cluster-bootstrap",
+    "20260608-v6-cy-e2e-s2-mode-b-cross-shard",
+    "20260603-v6-cy-e2e-s2c-mode-b-refund",
+    "20260608-v6-cy-e2e-s2c-post-commit-retest",
+    "20260608-v6-cy-e2e-s3-conservation-delay",
+    "20260608-v6-cy-e2e-s3-post-loader-retest",
+    "20260608-v6-cy-e2e-s4-emergency-sweep"
+  ],
+  "child_status": {
+    "20260608-v6-cy-e2e-s1-cluster-bootstrap": "done",
+    "20260608-v6-cy-e2e-s2-mode-b-cross-shard": "blocked_superseded",
+    "20260603-v6-cy-e2e-s2c-mode-b-refund": "done",
+    "20260608-v6-cy-e2e-s2c-post-commit-retest": "done",
+    "20260608-v6-cy-e2e-s3-conservation-delay": "done",
+    "20260608-v6-cy-e2e-s3-post-loader-retest": "done",
+    "20260608-v6-cy-e2e-s4-emergency-sweep": "done"
+  },
+  "owner_actions": [
+    "Owner sign-off on CY soak logs (s1..s4 PASS)",
+    "Chore-commit uncommitted loader/tasks/ORCHESTRATOR-NOTES if desired",
+    "Open V6-11 closeout slice"
+  ],
+  "delegations": [],
+  "notes": "V6-10 soak waves s1/s2c/s3/s4 PASS; owner sign-off folded into V6-11 closeout ticket 20260615-v6-sprint11-closeout."
+}

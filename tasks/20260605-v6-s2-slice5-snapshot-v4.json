@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "20260605-v6-s2-slice5-snapshot-v4",
+  "title": "V6-2 slice 5: Snapshot schema v4 migration",
+  "status": "done",
+  "parent_ticket": "20260605-v6-sprint2-core-model",
+  "delegations": [
+    { "agent": "pwm-coding", "result": "PASS", "done_at": "2026-06-05" },
+    { "agent": "pwm-review", "result": "PASS_WITH_NITS", "done_at": "2026-06-05" },
+    { "agent": "pwm-testing", "result": "PASS", "done_at": "2026-06-05" }
+  ],
+  "commits": ["feat(v6-2-s5): snapshot schema v4 with V6 state wire"],
+  "notes": "60 pwmd snapshot tests + v4_replay_det_gate_ok PASS."
+}

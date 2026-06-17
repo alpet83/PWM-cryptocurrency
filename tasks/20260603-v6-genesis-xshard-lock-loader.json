@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "20260603-v6-genesis-xshard-lock-loader",
+  "title": "V6: wire cross_shard_lock_timeout_blocks in genesis loader",
+  "status": "done",
+  "parent_ticket": "20260603-v6-cy-e2e-s2c-mode-b-refund",
+  "brief": "pwmd genesis JSON loader ignored gen_cfg.cross_shard_lock_timeout_blocks; always used DEF_XSHARD_LOCK_TO (604800). Wire field into GenesisCfgV4 + parse_genesis_v4 for s2c soak.",
+  "acceptance_criteria": [
+    "GenesisCfgV4 deserializes cross_shard_lock_timeout_blocks (default 604800)",
+    "parse_genesis_v4 sets GenCfg.xshard_lock_to_blocks from JSON",
+    "Unit tests: explicit 10 and default path",
+    "cargo test -p pwmd gen_xshard_lock_to passes"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "orchestrator_inline",
+      "prompt_summary": "Point fix genesis.rs loader for Mode B timeout field",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/genesis.rs"
+      ],
+      "done_at": "2026-06-03"
+    }
+  ],
+  "commits": [
+    "de9ccb3"
+  ],
+  "notes": "Committed de9ccb3; bridge done entry for retest depends_on."
+}

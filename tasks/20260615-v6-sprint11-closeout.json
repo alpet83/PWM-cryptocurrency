@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "20260615-v6-sprint11-closeout",
+  "title": "V6-11: integrated gate + sprint-final closeout",
+  "status": "done",
+  "delegation_mode": "sync_task",
+  "depends_on": [
+    "20260608-v6-cy-e2e-umbrella"
+  ],
+  "brief": "Sprint closeout V6: MVP-checklist §0v6 sprint rows, CONCEPT_ROADMAP implementation gates, GLOSSARY sprint-final, CHANGELOG, workspace gate. Publication и owner sign-off — отдельный трек pre-publication (50k soak, rust audit, docs).",
+  "acceptance_criteria": [
+    "docs/MVP-checklist.md §0v6 sprint rows V6-1…V6-11",
+    "docs/CONCEPT_ROADMAP.md §MVP V6 implementation criteria [x]",
+    "docs/GLOSSARY.md sprint-final V6",
+    "CHANGELOG V6-10/V6-11 entries",
+    "docs/reviews/20260615-v6-sprint-final-closeout-review.md PASS_WITH_NITS",
+    "cargo fmt --check; cargo test -p pwm-core --lib; cargo test -p pwmd --lib PASS",
+    "mvp_v6.md todos V6-10/V6-11 completed"
+  ],
+  "artifacts": {
+    "plan": "docs/plans/mvp_v6.md",
+    "prepublication_umbrella": "tasks/20260603-v6-prepublication-umbrella.json",
+    "review_md": "docs/reviews/20260615-v6-sprint-final-closeout-review.md",
+    "pwmd_gate_review": "docs/reviews/20260615-v6-sprint11-pwmd-lib-gate-review.md"
+  },
+  "commits": [
+    "eaa288e",
+    "c7cd235",
+    "f4475b2",
+    "d251fb5",
+    "1b7ff57",
+    "13d1b66"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "done_at": "2026-06-15T19:00:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS (post d251fb5)",
+      "done_at": "2026-06-15T20:15:00Z"
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "PASS — d251fb5",
+      "done_at": "2026-06-15T19:55:00Z"
+    }
+  ],
+  "notes": "Sprint gates closed 2026-06-15. Owner clarified: publication after pre-publication umbrella (50k stability soak, rust audit, docs/manuals) — see tasks/20260603-v6-prepublication-umbrella.json."
+}

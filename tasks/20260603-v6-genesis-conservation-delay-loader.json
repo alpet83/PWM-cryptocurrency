@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "20260603-v6-genesis-conservation-delay-loader",
+  "title": "V6: wire conservation_delay_blocks in genesis loader",
+  "status": "done",
+  "parent_ticket": "20260608-v6-cy-e2e-s3-conservation-delay",
+  "depends_on": [
+    "20260603-v6-genesis-xshard-lock-loader"
+  ],
+  "brief": "pwmd genesis JSON loader ignores gen_cfg.conservation_delay_blocks; always uses DEF_CONSERV_DELAY_BLOCKS (86400). Wire field into GenesisCfgV4 + parse_genesis_v4 for s3 soak (mirror de9ccb3 xshard fix).",
+  "acceptance_criteria": [
+    "GenesisCfgV4 deserializes conservation_delay_blocks (default 86400)",
+    "parse_genesis_v4 sets GenCfg.conservation_delay_blocks from JSON",
+    "Unit tests: explicit short value (e.g. 10) and default path",
+    "cargo test -p pwmd gen_conservation_delay passes"
+  ],
+  "artifacts": {
+    "reference_commit": "de9ccb3",
+    "reference_file": "crates/pwmd/src/snapshot/genesis.rs",
+    "blocked_report": "tmp/cy-e2e-v6-s3-20260608_220523.md",
+    "bridge_done": ".cqds/team-tasks/done/20260603-v6-genesis-conservation-delay-loader.json"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "codex_coding_companion",
+      "prompt_summary": "Point fix genesis.rs loader for conservation_delay_blocks field",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/snapshot/genesis.rs"
+      ],
+      "notes": "gen_conservation_delay_load + gen_conservation_delay_default PASS",
+      "done_at": "2026-06-08"
+    }
+  ],
+  "notes": "Bridge done PASS. Uncommitted on main. Next: pwm-review → s3 post-loader retest."
+}

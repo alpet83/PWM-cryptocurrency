@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "20260616-v6-mvp-rust-code-audit-review",
+  "planned_for": "v6-prepub-rust-audit",
+  "title": "V6 pre-publication: MVP rust code audit",
+  "status": "done",
+  "parent_umbrella": "20260603-v6-prepublication-umbrella.json",
+  "brief": "Комплексный rust-code-audit окна MVP V6 (консенсус incremental PoS, address flags runtime, conservation, Mode B, emergency evac, slashing stubs). Шаблон V5 audit. Артефакт для umbrella phase v6-prepub-rust-audit. Owner soak 50k / conservation visual check — parallel, не блокер старта audit.",
+  "audit_window": {
+    "from": "522bcf1",
+    "to": "3019528",
+    "note": "522bcf1 docs(v6-1) spec freeze; 3019528 fail-fast startup validator set (last V6-tagged product fix before prepub scripts-only commits). Include 3019528 in triage; exclude scripts-only ce8c22a/6766d1e unless referenced."
+  },
+  "acceptance_criteria": [
+    "docs/reviews/20260616-v6-mvp-rust-code-audit-review.md published",
+    "Format parity with docs/reviews/20260528-v5-mvp-rust-code-audit-review.md: executive summary, scope/triage, findings by severity, category matrix, verdict",
+    "V6 high-risk surfaces covered: stake admission, leader rotation/failover, conservation pending queue, Mode B escrow, COSIGN_NON_DISABLEABLE, emergency activation_target/evac, slashing evidence stubs, peer sync scoring, pwmd lifecycle/seal",
+    "rust-code-audit categories (unsafe, mutex+await, lifetimes, stack, blanket impls, integer overflow paths)",
+    "Verdict + follow-up tickets list if needs attention",
+    "Update tasks/20260603-v6-prepublication-umbrella.json child v6-prepub-rust-audit status"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Full V6 rust code audit per V5 template",
+      "result": "PARTIAL",
+      "artifacts": [
+        "docs/reviews/20260616-v6-mvp-rust-code-audit-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 42000,
+        "output": 7500,
+        "total": 49500,
+        "confidence": "medium"
+      },
+      "done_at": "2026-06-16T00:00:00Z",
+      "notes": "Verdict needs attention: 0 Critical, 3 High, 5 Warning, 4 Note. Top risks: conservation soft-queue+silent drain drop; mid-chain empty active validator set; failover without evidence/epoch hooks."
+    }
+  ],
+  "commits": [],
+  "artifacts": {
+    "review_md": "docs/reviews/20260616-v6-mvp-rust-code-audit-review.md",
+    "template": "docs/reviews/20260528-v5-mvp-rust-code-audit-review.md",
+    "umbrella": "tasks/20260603-v6-prepublication-umbrella.json"
+  },
+  "notes": "Audit complete. Follow-up slugs: 20260617-v6-conservation-balance-reserve, 20260617-v6-empty-active-set-midchain, 20260617-v6-failover-evidence-wire."
+}

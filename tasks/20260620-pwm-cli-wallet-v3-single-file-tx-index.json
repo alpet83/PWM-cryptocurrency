@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "20260620-pwm-cli-wallet-v3-single-file-tx-index",
+  "title": "pwm-cli: один wallet v3 — --index на policy/send/stake и UX prepared activation",
+  "status": "done",
+  "planned_for": "2026-06-20",
+  "deadline": {
+    "at": "2026-06-23T12:00:00Z",
+    "timezone": "UTC",
+    "hard": false,
+    "note": "Operator emergency soak + beta single-wallet path"
+  },
+  "brief": "Операторский кейс: premine + victim (flags=2) + rescue в одном demo-genesis-wallet.yaml (wallet v3 accounts[]). tx-init уже умеет --index (20260617). Остальные tx-команды и runbook soak всё ещё толкают к «один yaml = один аккаунт» или к --activation-tx со stale nonce после stake. Нужен единый контракт: --wallet + --index выбирает m/0/N для подписи; rescue cosign — --rescue-account-index в том же файле. Runbook: primary path = один wallet, split yaml — optional.",
+  "operator_pain": {
+    "symptom": "tx-policy-activate --activation-tx → bad nonce после stake; live path без --index подписывает root wallet, не victim",
+    "root_cause": "load_tx_signer_source → load_sender_from_wallet (root only); только tx-init использует load_wallet_account_signer(index)",
+    "workaround_today": "отдельные v6-soak-wallet-*.yaml или activate до исходящих tx — искусственно"
+  },
+  "acceptance_criteria": [
+    "pwm-cli: --index <u32> на tx-policy-activate, tx-policy-set, tx-policy-deactivate — подписант = m/0/index из wallet v3 accounts[] (как tx-init); v2 single-account wallet без регрессии",
+    "pwm-cli: --index на tx-send, tx-stake, tx-unstake, tx-burn-mark — тот же load_wallet_account_signer path при --wallet без --master",
+    "tx-policy-activate --activation-tx: при reject bad nonce — stderr hint: on-chain nonce vs file, предложить live activate с --index (не голый E_SCHEMA_INVALID)",
+    "tx-policy-activate live: --wallet W --index VICTIM --policy routing.emergency_redirect --fee 0 --activation-target RESCUE --rescue-account-index RESCUE_IDX (same W) — e2e unit/smoke без split wallet files",
+    "docs/pwm-cli.md: таблица команд с --index; emergency same-wallet пример",
+    "docs/runbooks/v6-owner-stability-soak-50k.md: §Emergency primary = один wallet v3; шаги 2–8b переписать без обязательных tmp/v6-soak-wallet-*.yaml; split files — optional footnote",
+    "Unit-тесты pwm-cli: parse + signer selection per command; prepared activation stale nonce message (mock RPC 409)",
+    "cargo test -p pwm-cli green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)"
+  ],
+  "depends_on": ["20260617-pwm-cli-tx-init-v3-wallet-account-index"],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Расширить --index на tx-команды, унифицировать signer helper, добавить 409 nonce UX для activation-tx, тесты и docs.",
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Spec/safety gate: --index на tx-командах, v2 default-index, activation-tx 409 hint, docs/runbook.",
+      "result": "PASS_WITH_NITS",
+      "done_at": "2026-06-17",
+      "artifacts": {
+        "review_md": "docs/reviews/20260620-pwm-cli-wallet-v3-single-file-tx-index-review.md"
+      },
+      "notes": "v3 path met; v2 regression when derivation_index!=0 and --index omitted; missing emergency example in pwm-cli.md Примеры."
+    },
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Fix PASS_WITH_NITS: v2 default-index fallback + docs emergency same-wallet example + regression test.",
+      "done_at": "2026-06-17",
+      "notes": "load_tx_wallet_signer now maps default index=0 to wallet.derivation_index for v2 single-account wallets; v3 default remains m/0/0 unless --index given. Added cmd_tx regression test and docs/pwm-cli.md Примеры emergency same-wallet command."
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "cargo test -p pwm-cli; focus tx_cmd_idx_parse, tx_v2_idx_fallback, tx_pol_nonce_409, tx_pol_act_sw_idx, tx_init_wallet_idx.",
+      "result": "PASS",
+      "done_at": "2026-06-17",
+      "artifacts": {
+        "testing_md": "tasks/20260620-pwm-cli-wallet-v3-single-file-tx-index-testing.md"
+      },
+      "notes": "195 passed (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency). v2 fallback nit verified. Operator live soak still open per operator_gate."
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260620-pwm-cli-wallet-v3-single-file-tx-index-review.md"
+  },
+  "related_tickets": [
+    "20260616-pwm-cli-rpc-offline-bruteforce",
+    "20260603-v6-prepublication-umbrella"
+  ],
+  "design_notes": {
+    "signer_helper": "Вынести load_tx_wallet_signer(wallet, index, master, domain, ...) — tx-init и остальные tx через один helper; default index = wallet.derivation_index или min accounts[] для v2",
+    "prepared_activation": "--activation-tx остаётся cold-storage; live path с --index — нормальный путь после stake/conservation enqueue",
+    "non_goals": "Не требовать отдельный wallet file per role в lab/runbook"
+  },
+  "operator_gate": {
+    "live_cy": "после merge: emergency soak на demo-genesis-wallet.yaml с 3 accounts, stake между init и activate через tx-policy-activate --index"
+  },
+  "notes": "PASS_WITH_NITS закрыт; pwm-testing PASS 2026-06-17: cargo test -p pwm-cli 195/195 green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency). v2 fallback (tx_v2_idx_fallback), parse/signer/409 focus tests green. Operator live CY soak — operator_gate."
+}

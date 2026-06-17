@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "20260603-v6-prepublication-umbrella",
+  "title": "V6 pre-publication: owner stability soak + rust audit + docs refresh",
+  "status": "in_progress",
+  "delegation_mode": "operator_first",
+  "depends_on": [
+    "20260615-v6-sprint11-closeout"
+  ],
+  "brief": "После спринтового closeout V6-11 — владелец проводит длительный stability soak (≥50k блоков, проверка address flags в процессе), затем комплексное ревью перед публикацией: rust code audit (шаблон V5), финальная актуализация docs/manuals, owner sign-off, только потом mirror dry_run→apply.",
+  "acceptance_criteria": [
+    "Owner stability soak: chain height ≥50_000; кворум/sync стабильны; spot-check COSIGN_NON_DISABLEABLE + CONSERVATION + emergency activation в окне soak",
+    "Rust code audit artifact: docs/reviews/*v6*mvp-rust-code-audit* (pwm-review, rust-code-audit skill)",
+    "Docs/manual refresh: pwm-cli.md, operator guides, CONCEPT_PROGRESS alignment — sprint-final doc pass",
+    "Owner sign-off recorded; publication mirror dry_run→apply only after this umbrella done"
+  ],
+  "child_phases": [
+    {
+      "id": "v6-prepub-stability-50k",
+      "owner": "operator",
+      "runbook": "docs/runbooks/v6-owner-stability-soak-50k.md",
+      "status": "done",
+      "verdict": "PASS",
+      "completed_at": "2026-06-17",
+      "notes": "Owner soak complete within MVP V6: chain ≥50k, quorum stable, spot-check COSIGN_NON_DISABLEABLE + CONSERVATION delay + emergency activation (live cosign path 7b). Staked funds remain on finalized victim per ADR 0011; V7 stake evac tracked in ADR 0012."
+    },
+    {
+      "id": "v6-prepub-rust-audit",
+      "agent": "pwm-review",
+      "reference": "docs/reviews/20260528-v5-mvp-rust-code-audit-review.md",
+      "ticket": "tasks/20260616-v6-mvp-rust-code-audit-review.json",
+      "artifact": "docs/reviews/20260616-v6-mvp-rust-code-audit-review.md",
+      "status": "done"
+    },
+    {
+      "id": "v6-prepub-docs-manuals",
+      "agent": "pwm-review",
+      "scope": "docs/manuals final pass; README*; CONCEPT_PROGRESS; GLOSSARY cross-check",
+      "status": "done",
+      "completed_at": "2026-06-17",
+      "notes": "README MVP v6 sign-off, releases/v6.0.0.md, commit_prepare fix for Windows build.rs sync."
+    },
+    {
+      "id": "v6-prepub-owner-signoff",
+      "owner": "operator",
+      "status": "done",
+      "verdict": "APPROVED",
+      "completed_at": "2026-06-17",
+      "notes": "Owner approved MVP V6 RC for publication."
+    },
+    {
+      "id": "v6-prepub-publication",
+      "owner": "operator",
+      "gate": "git_safe_commit dry_run→apply public mirror",
+      "ticket": "tasks/20260617-v6-publication-mirror.json",
+      "status": "in_progress"
+    }
+  ],
+  "artifacts": {
+    "sprint_closeout": "tasks/20260615-v6-sprint11-closeout.json",
+    "v5_audit_template": "docs/reviews/20260528-v5-mvp-rust-code-audit-review.md",
+    "cy_soak_runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "release_notes": "docs/releases/v6.0.0.md",
+    "runtime_rc_tag": "MVP-V6-RC"
+  },
+  "notes": "Owner sign-off 2026-06-17. Pending: git_safe_commit mirror batch (tasks/20260617-v6-publication-mirror.json)."
+}

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "20260603-grep-ps-history-unique",
+  "planned_for": null,
+  "title": "PS1: grep PSReadLine history — unique matches + first seen",
+  "status": "done",
+  "mvp_checklist": [],
+  "brief": "Утилита в scripts/: поиск по истории команд PowerShell (PSReadLine), вывод только уникальных совпадений; по возможности — время/порядок первого использования.",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Создать scripts/grep_ps_history.ps1",
+      "result": "PASS",
+      "artifacts": [
+        "scripts/grep_ps_history.ps1"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": 9000,
+        "output": 1800,
+        "total": 10800,
+        "confidence": "low"
+      },
+      "done_at": "2026-06-16T05:51:59Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Лёгкий review одного ps1-скрипта",
+      "result": null,
+      "artifacts": [],
+      "tokens": {
+        "source": null,
+        "input": null,
+        "output": null,
+        "total": null,
+        "confidence": null
+      },
+      "done_at": null
+    }
+  ],
+  "commits": ["ce8c22a"],
+  "artifacts": {
+    "review_md": null
+  },
+  "notes": "Owner request: grep истории ввода PS, unique matches, first-use time if possible. Default history: %APPDATA%\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt (plain lines, no per-line timestamps). pwm-coding: script added and smoke-tested with -Pattern history."
+}

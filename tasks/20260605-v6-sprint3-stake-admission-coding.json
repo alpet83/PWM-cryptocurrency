@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "20260605-v6-sprint3-stake-admission-coding",
+  "title": "V6-3: Stake-gated validator admission at epoch boundary",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint3-stake-admission",
+  "branch": "v6/20260605-v6-sprint3-stake-admission",
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "source": "bridge",
+      "worker_id": "pwm-coding_32320",
+      "done_at": "2026-06-05"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260605-v6-sprint3-stake-admission-review.md"],
+      "done_at": "2026-06-05"
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "done_at": "2026-06-05"
+    }
+  ],
+  "commits": ["2a59346 feat(v6-3): stake-gated active validator set at epoch boundary"],
+  "artifacts": { "review_md": "docs/reviews/20260605-v6-sprint3-stake-admission-review.md" },
+  "notes": "Bridge conveyor closed. Merge on main after review+testing. Nits deferred: empty active set test, h>0 guard."
+}

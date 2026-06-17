@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "20260616-pwmd-cluster-seal-sync-gate-protocol",
+  "title": "pwmd: cluster seal sync-gate — тест протокола + фикс пробуксовки после рестарта",
+  "status": "blocked",
+  "planned_for": "2026-06-16",
+  "deadline": {
+    "at": "2026-06-18T12:00:00Z",
+    "timezone": "UTC",
+    "hard": false,
+    "note": "Re-share after CY cluster sealing"
+  },
+  "brief": "После рестарта CY proposer долго не печатает блоки (cluster_attest_waiting_sync / preflight_skip), затем нормальный seal. Нужен регрессионный unit-тест sync-gate в pwmd lifecycle + опционально observability (WARN при долгом waiting_sync). Основная работа — cargo test, live CY не обязателен для AC; companion может проверять RPC только если явно нужен soak.",
+  "acceptance_criteria": [
+    "Root cause: cluster_attest_waiting_sync (live_synced_attesters=0) до cluster_attest_ready — зафиксирован в notes/тесте",
+    "Unit/integration тест pwmd: proposer не seal пока attester не synced; после inject attest ACK — seal в пределах N poll ticks",
+    "cargo test -p pwmd lifecycle cluster_gate — green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)",
+    "Краткий operator note: порядок рестарта CY (attester sync до seal) если by-design"
+  ],
+  "related_tickets": ["20260616-pwmd-cluster-prep-observability"],
+  "depends_on": ["20260616-pwmd-lease-self-takeover-after-restart"],
+  "log_evidence": {
+    "operator_logs_dir": "logs/2026-06-16",
+    "proposer": "pwmd-cy-proposer-131154.log",
+    "key_lines": [
+      "cluster_attest_waiting_sync live_synced_attesters=0",
+      "cluster_attest_ready → seal_lease_acquired → sealed height="
+    ]
+  },
+  "operator_gate": {
+    "re_share_when": "CY печатает блоки: в логе proposer стабильные строки `sealed height=` (~10/10с) ИЛИ владелец явно даёт go",
+    "restart_order": [
+      "1. ./cy-cluster-attester.ps1 (дождаться sync к tip proposer)",
+      "2. ./cy-cluster-proposer.ps1",
+      "3. Ждать cluster_attest_ready, затем sealed height="
+    ],
+    "silent_period": "До attester sync — только seal_suppression_summary раз в ~100с (sealed_in_window=0); это ожидаемо, не баг lease",
+    "rpc_check": "http://127.0.0.1:3030 — не блокер для unit-тестов слайса"
+  },
+  "bridge": {
+    "target_agent_name": "pwm-coding",
+    "task_class": "coding",
+    "action": "share_ticket when operator_gate satisfied",
+    "last_failure": "2026-06-16: companion/owner — CY не поднят после Cursor restart (только proposer, attester off → preflight_skip, sealed_in_window=0)"
+  },
+  "notes": "Регрессионный sync-gate тест (lifecycle). Observability → 20260616-pwmd-cluster-prep-observability. Re-share companion когда CY штампует или go владельца."
+}

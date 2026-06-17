@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "20260605-v6-sprint2-core-model",
+  "planned_for": "V6-2",
+  "title": "MVP v6 Sprint 2 — Core state model + snapshot v4 (umbrella)",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model",
+  "branch": "v6/20260605-v6-sprint2-core-model",
+  "slices": [
+    "tasks/20260605-v6-s2-slice1-gencfg.json",
+    "tasks/20260605-v6-s2-slice2-activate-policy-wire.json",
+    "tasks/20260605-v6-s2-slice3-chain-state-types.json",
+    "tasks/20260605-v6-s2-slice4-reject-stubs.json",
+    "tasks/20260605-v6-s2-slice5-snapshot-v4.json"
+  ],
+  "delegations": [
+    { "agent": "pwm-coding", "prompt_summary": "slices 1-5 in worktree", "result": "PASS" },
+    { "agent": "pwm-review", "prompt_summary": "per-slice reviews", "result": "PASS_WITH_NITS" },
+    { "agent": "pwm-testing", "prompt_summary": "per-slice verification", "result": "PASS" }
+  ],
+  "commits": ["d96f18c feat(v6-2): core state model and snapshot v4"],
+  "notes": "5 slices, 5 conveyor cycles (1 per slice). Merged to main. Worktree retained for reference. Next: V6-3 stake admission."
+}

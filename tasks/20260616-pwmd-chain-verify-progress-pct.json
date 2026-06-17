@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "20260616-pwmd-chain-verify-progress-pct",
+  "title": "pwmd: chain_verify progress log — percent, drop redundant idx",
+  "status": "done",
+  "brief": "Упростить structured log chain_verify progress: убрать избыточные block_idx/blocks_done (height = block_idx+1), добавить percent_complete.",
+  "acceptance_criteria": [
+    "crates/pwmd/src/snapshot/io.rs: progress log содержит height, total_blocks, percent_complete, elapsed_ms; без block_idx и blocks_done",
+    "percent_complete: 0–100 (целое), (i * 100) / total_blocks при i блоках до текущей итерации; total_blocks=0 без паники",
+    "cargo test -p pwmd snapshot — green на Windows target dir F:/pwm-test/PWM-cryptocurrency при необходимости"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "via": "cursor-task",
+      "done_at": "2026-06-16"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "done_at": "2026-06-16"
+    }
+  ],
+  "notes": "Renamed from 20260617-*. Done: percent_complete in chain_verify progress; verification logic unchanged."
+}

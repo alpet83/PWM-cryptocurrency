@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "20260603-v6-cy-e2e-s2c-mode-b-refund",
+  "title": "V6 CY E2E s2c: Mode B timeout refund (single-shard retest)",
+  "status": "done",
+  "delegation_mode": "operator_soak",
+  "parent_ticket": "20260608-v6-cy-e2e-umbrella",
+  "supersedes": "20260608-v6-cy-e2e-s2-mode-b-cross-shard",
+  "depends_on": [
+    "20260608-v6-cy-e2e-s1-cluster-bootstrap"
+  ],
+  "depends_on_bridge": "s1 must exist under .cqds/team-tasks/done/",
+  "owner_gate": "Cluster restarted with short cross_shard_lock_timeout_blocks genesis; head growing ≥2 min",
+  "brief": "Retest s2 (variant C): on-chain Mode B EXPORT on single-shard CY without target peer; wait until unlock_height; assert refund_exp_locks restores spendable (fees only). Roaming intent TTL expire is NOT the refund oracle.",
+  "acceptance_criteria": [
+    "Owner restarted CY with genesis cross_shard_lock_timeout_blocks in 5..20 (not default 604800); clean state or documented fresh account",
+    "On-chain EXPORT via pwm-cli tx-export (or documented equivalent that applies TxBody::Export on seal, not roaming-only intent)",
+    "After EXPORT: spendable decreases by amount+fee; CrossShardLock exists in Locked state",
+    "Target shard peer NOT required; follower 127.0.0.3 may stay down",
+    "After head >= unlock_height (natural seal or proposer lab-seal RPC): lock state Refunded",
+    "Spendable returns to baseline minus export fees only (locked amount refunded)",
+    "Report tmp/cy-e2e-v6-s2c-<timestamp>.md with PASS_EVIDENCE and recorded lock_height/unlock_height/head_at_refund",
+    "If genesis still has default 604800 timeout → status BLOCKED (harness config), not product FAIL"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "superseded_ticket": "tasks/20260608-v6-cy-e2e-s2-mode-b-cross-shard.json",
+    "prior_fail_report": "tmp/cy-e2e-v6-s2-20260608_193200.md",
+    "normative": "docs/rfc/addenda/v6-rfc9-mode-b-escrow.md",
+    "unit_reference": "crates/pwm-core/src/state.rs escrow_refund_timeout",
+    "rpc_base": "http://127.0.0.1:3030"
+  },
+  "owner_actions": [
+    "Stop proposer+attester",
+    "Point PWM_DEMO_GENESIS_PATH to genesis with cross_shard_lock_timeout_blocks=10 (testing may write tmp/genesis-custom-s2c.json from tmp/genesis-custom.json)",
+    "Clean state tmp/state-cy-* OR accept new funded account for export",
+    "Start cy-cluster-attester.ps1 then cy-cluster-proposer.ps1 (single-shard; no follower required)",
+    "Confirm GET /v1/status head_height grows; notify testing companion"
+  ],
+  "testing_procedure": [
+    "Use skill colloquium-cqds-mcp; no wide workspace grep if CQDS available",
+    "Read /v1/status genesis or cfg for cross_shard_lock_timeout_blocks; abort BLOCKED if still 604800",
+    "Baseline: GET account spendable_on_this_shard for demo-genesis wallet sender",
+    "pwm-cli tx-export to foreign-domain address (CZ); record export_id and inclusion height",
+    "Optional negative control: roaming intent may expire — document but do not use as refund signal",
+    "Poll head until >= unlock_height (inclusion + timeout); cluster proposer allows /v1/lab-seal on loopback to advance if natural seal slow",
+    "Re-read spendable; expect baseline - fee",
+    "Evidence lock Refunded: snapshot/cross-shard facts/account-info as available; cite heights in report"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "codex_coding_companion",
+      "prompt_summary": "Mis-routed s2c soak; blocked then PASS after genesis restart",
+      "result": "PASS",
+      "artifacts": [
+        "tmp/cy-e2e-v6-s2c-20260608_195726.md",
+        "tmp/cy-e2e-v6-s2c-20260608_204139.md",
+        "crates/pwm-cli/src/cmd_roaming.rs"
+      ],
+      "done_at": "2026-06-08"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Formal sign-off deferred to 20260608-v6-cy-e2e-s2c-post-commit-retest",
+      "result": null,
+      "done_at": null
+    }
+  ],
+  "notes": "Coding companion PASS (204139). Formal testing retest: tasks/20260608-v6-cy-e2e-s2c-post-commit-retest.json."
+}

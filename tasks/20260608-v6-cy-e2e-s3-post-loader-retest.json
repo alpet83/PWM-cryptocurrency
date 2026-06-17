@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-cy-e2e-s3-post-loader-retest",
+  "title": "V6 CY E2E s3: post-loader conservation execute retest (pwm-testing)",
+  "status": "in_progress",
+  "delegation_mode": "operator_soak",
+  "parent_ticket": "20260608-v6-cy-e2e-umbrella",
+  "depends_on": [
+    "20260603-v6-genesis-conservation-delay-loader"
+  ],
+  "depends_on_bridge": "20260603-v6-genesis-conservation-delay-loader under .cqds/team-tasks/done/",
+  "owner_gate": "Rebuild pwmd/pwm from main (loader fix uncommitted); restart CY with tmp/genesis-custom-s3.json (conservation_delay_blocks: 10, min_validator_stake: 0); clean state tmp/state-cy-*",
+  "brief": "Formal pwm-testing retest after conservation_delay_blocks genesis loader. Repeat s3: CONSERVATION addr → incoming immediate → outgoing enqueue → wait execute_at (short delay) → recipient credited. Prior partial PASS: tmp/cy-e2e-v6-s3-20260608_220523.md (execute leg BLOCKED at 86400).",
+  "acceptance_criteria": [
+    "Live CY with short conservation_delay_blocks effective (not default 86400)",
+    "Outgoing enqueue without immediate debit confirmed",
+    "After execute_at_height: recipient credited, conservation debited",
+    "Incoming to conservation NOT delayed (reuse prior evidence or re-check)",
+    "Report tmp/cy-e2e-v6-s3-<timestamp>.md with PASS_EVIDENCE on all legs"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "prior_blocked_report": "tmp/cy-e2e-v6-s3-20260608_220523.md",
+    "rpc_base": "http://127.0.0.1:3030",
+    "genesis_lab": "tmp/genesis-custom-s3.json"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Post-loader s3 conservation execute confirmation on live CY",
+      "result": null,
+      "done_at": null
+    }
+  ],
+  "notes": "Share via bridge --testing after pwm-review PASS. Lab-seal ok for head advance if delay=10. Companion may restart cluster — acceptable after owner gate genesis."
+}

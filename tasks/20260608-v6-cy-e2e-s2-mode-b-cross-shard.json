@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "20260608-v6-cy-e2e-s2-mode-b-cross-shard",
+  "title": "V6 CY E2E s2: Mode B EXPORT/IMPORT smoke",
+  "status": "blocked",
+  "delegation_mode": "operator_soak",
+  "parent_ticket": "20260608-v6-cy-e2e-umbrella",
+  "depends_on": [
+    "20260608-v6-cy-e2e-s1-cluster-bootstrap"
+  ],
+  "brief": "Live Mode B s2 FAIL: EXPORT recorded via roaming, timeout refund not observed; spendable stayed reduced.",
+  "acceptance_criteria": [
+    "EXPORT tx accepted; CrossShardLock visible via account-info or RPC",
+    "Spendable balance reduced by locked amount on source",
+    "IMPORT with proof OR timeout refund releases lock per V6-5 semantics",
+    "Report tmp/cy-e2e-v6-s2-<timestamp>.md with PASS_EVIDENCE"
+  ],
+  "artifacts": {
+    "runbook": "docs/runbooks/v6-cy-cluster-precloseout-soak.md",
+    "report_md": "tmp/cy-e2e-v6-s2-20260608_193200.md",
+    "bridge_ticket": ".cqds/team-tasks/failed/20260608-v6-cy-e2e-s2-mode-b-cross-shard.json"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "Mode B live smoke on CY RPC",
+      "result": "BLOCKED",
+      "artifacts": [
+        "tmp/cy-e2e-v6-s2-20260608_193200.md"
+      ],
+      "notes": "EXPORT ok; timeout-refund not confirmed. Peer 127.0.0.3:12930 unavailable.",
+      "done_at": "2026-06-08"
+    }
+  ],
+  "notes": "Harness FAIL (methodology): roaming intent expire ≠ Mode B refund. Superseded by 20260603-v6-cy-e2e-s2c-mode-b-refund. Keep blocked as historical record."
+}

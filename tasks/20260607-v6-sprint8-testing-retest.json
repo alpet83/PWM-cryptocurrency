@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint8-testing-retest",
+  "title": "V6-8 retest: pwm-testing conservation_* + test_project",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260607-v6-sprint8-conservation-coding",
+  "branch": "v6/20260607-v6-sprint8-conservation-coding",
+  "worker_lane": "testing",
+  "target_agent": "pwm-testing",
+  "parent_ticket": "20260607-v6-sprint8-conservation-coding",
+  "brief": "Bridge pwm-testing PASS: conservation_*, pwm-core --lib, test_project.cmd, cargo check.",
+  "acceptance_criteria": [
+    "cmd /c build_project.cmd test -p pwm-core conservation_ exit 0",
+    "cmd /c build_project.cmd test -p pwm-core --lib exit 0",
+    "cmd /c test_project.cmd exit 0",
+    "cmd /c build_project.cmd check --workspace exit 0 (pwmd dead_code warnings OK)"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "conservation_* + workspace check in V6-8 worktree",
+      "result": "PASS",
+      "notes": "5 conservation tests; 187 lib tests; test_project matrix green",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": [
+    "b9e0e1c",
+    "1c0e8d0"
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/v6-sprint8-conservation-coding-review-20260607.md",
+    "bridge_ticket": ".cqds/team-tasks/done/20260607-v6-sprint8-testing-retest.json"
+  },
+  "notes": "Bridge submit PASS."
+}

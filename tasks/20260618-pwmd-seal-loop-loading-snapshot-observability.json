@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "id": "20260618-pwmd-seal-loop-loading-snapshot-observability",
+  "title": "pwmd+pwm-cli: seal-loop — явная причина простоя во время loading_snapshot (тишина >2 мин)",
+  "status": "done",
+  "planned_for": "2026-06-18",
+  "deadline": {
+    "at": "2026-06-21T12:00:00Z",
+    "timezone": "UTC",
+    "hard": false,
+    "note": "Operator silence during snapshot load after CY restart"
+  },
+  "brief": "После 20260616-pwmd-cluster-prep-observability оператор всё ещё видит «тишину» 2+ минуты при рестарте CY: proposer печатает только seal_suppression_summary раз в ~100с (sealed_in_window=0) без объяснения. Причина: seal-loop на guard `!init.allows_chain_progress()` (phase=loading_snapshot|starting) делает sleep/continue ДО ветки cluster_prep_summary / cluster_attest_waiting_sync. Trust-load с tail verify на ~124k tip может занимать несколько минут — это нормально, но не видно в логах. Нужен периодический summary по init-phase + blocked_reason в логах, /v1/status и pwm status.",
+  "acceptance_criteria": [
+    "Seal-loop (proposer): пока `!allows_chain_progress()` — INFO не реже чем раз в 30с wall: `cluster_prep_summary` или отдельная строка `seal_init_blocked` с phase, loading_sec, blocked_reason (loading_snapshot|starting), snapshot_file/diag если есть",
+    "seal_suppression_summary при sealed_in_window=0 и phase!=ready: доп. поле или суффикс blocked_reason=… (не только slots/pct)",
+    "GET /v1/status cluster_prep: при loading_snapshot — blocked_reason=loading_snapshot, waiting_sec>0, local_tip из chain если уже в памяти (не обязательно 0 без контекста)",
+    "pwm-cli status --rpc: human-readable та же фаза/blocked_reason",
+    "Unit-тест: throttle init-phase summary (mock InitState LoadingSnapshot), без live CY",
+    "cargo test -p pwmd + cargo test -p pwm-cli green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)",
+    "Operator note в docs/runbooks (CY restart): ожидаемая длительность loading_snapshot, что смотреть до cluster_prep_summary / sealed height="
+  ],
+  "depends_on": [
+    "20260616-pwmd-cluster-prep-observability",
+    "20260617-pwmd-snapshot-summary-checkpoint-lag"
+  ],
+  "related_tickets": [
+    "20260616-pwmd-cluster-seal-sync-gate-protocol",
+    "20260616-pwmd-chain-verify-progress-pct"
+  ],
+  "log_evidence": {
+    "gap_code": "crates/pwmd/src/lifecycle.rs ~1464 allows_chain_progress guard before cluster_prep_summary ~1530",
+    "operator_symptoms": [
+      "seal_suppression_summary sealed_in_window=0 каждые ~100с без причины",
+      "нет cluster_prep_summary / cluster_attest_waiting_sync первые 2+ мин после рестарта",
+      "GET /v1/status phase=loading_snapshot ready=false cluster_prep с нулями"
+    ],
+    "trust_load_ok": "snapshot_load_mode=trust summary_checkpoint=manifest_tip (после 20260617 fix)"
+  },
+  "operator_gate": {
+    "live_cy": "не обязателен для AC; unit-тесты достаточны",
+    "rebuild": "после merge — пересобрать pwmd+pwm-cli для live проверки"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "prompt_summary": "Добавить наблюдаемость init-phase в seal-loop, /v1/status и pwm status; покрыть unit-тестом и обновить runbook.",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/api/handlers_status.rs",
+        "crates/pwmd/src/api/types.rs",
+        "crates/pwmd/Cargo.toml",
+        "crates/pwm-cli/src/cmd_status.rs",
+        "docs/runbooks/v5-cy-cluster-precloseout-soak.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 9800,
+        "confidence": "low"
+      },
+      "done_at": "2026-06-17T11:58:00Z"
+    },
+    {
+      "agent": "pwm-review",
+      "prompt_summary": "Independent review init-phase seal-loop/status observability vs AC; evaluate NIT-1 snapshot_diag, NIT-2 waiting_sec fallback.",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/20260618-pwmd-seal-loop-loading-snapshot-observability-review.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 22000,
+        "confidence": "low"
+      },
+      "done_at": "2026-06-17T12:15:00Z"
+    },
+    {
+      "agent": "pwm-testing",
+      "prompt_summary": "Preflight + targeted init_prep_throttle_loading / status_cluster_prep_loading; full pwm-cli and pwmd suites with CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency.",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260618-pwmd-seal-loop-loading-snapshot-observability-testing.md"
+      ],
+      "tokens": {
+        "source": "estimate",
+        "input": null,
+        "output": null,
+        "total": 12000,
+        "confidence": "low"
+      },
+      "done_at": "2026-06-17T12:45:00Z"
+    }
+  ],
+  "artifacts": {
+    "review_md": "docs/reviews/20260618-pwmd-seal-loop-loading-snapshot-observability-review.md"
+  },
+  "notes": "Не путать с sync-gate (20260616-pwmd-cluster-seal-sync-gate-protocol): после ready при live_synced_attesters=0 уже есть cluster_prep_summary. Этот слайс — только init-phase до ready. Можно объединить с chain_verify progress pct в одной строке summary если pct уже доступен в loader."
+}

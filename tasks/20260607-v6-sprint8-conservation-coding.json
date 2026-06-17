@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint8-conservation-coding",
+  "title": "V6-8: CONSERVATION delayed Transfer (height-based queue)",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "branch": "v6/20260607-v6-sprint8-conservation-coding",
+  "mvp_checklist": [
+    "docs/plans/mvp_v6.md Sprint V6-8",
+    "docs/adr/0009-address-flags-runtime-enforcement.md",
+    "docs/adr/0011-policy-activation-target.md"
+  ],
+  "brief": "ADR 0009 bit 1 runtime: CONSERVATION delayed outgoing Transfer + seal drain + emergency cancel. Conveyor closed; merged to main.",
+  "acceptance_criteria": [
+    "types: conservation flag decode (bit 1) helper alongside cosign_non_dis",
+    "Outgoing Transfer from conservation sender: not applied immediately; enqueued with enqueue_height, execute_at_height, tx_hash idempotency",
+    "Before execute_at_height: balances unchanged as if transfer pending; after height: same semantics as ordinary Transfer if still valid",
+    "Mempool/precheck_apply_with_ctx: stable E_CONSERVATION_* rejects match seal apply (delay required / one pending per account if enforced)",
+    "Seal hook: drain_pending_conservation_at_height(current_height, gen_cfg) invoked from pwmd seal path (or pwm-core API called there)",
+    "Emergency ActivatePolicy + evac (V6-7): removes or supersedes pending conservation entries on sender account deterministically",
+    "Unit tests: conservation_delay_blocks defer + execute; pending exists reject; emergency-in-window cancels pending; incoming transfers NOT delayed",
+    "cargo fmt; cargo check --workspace; cargo test -p pwm-core conservation_* PASS"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "source": "bridge",
+      "worker_id": "codex_coding_companion",
+      "prompt_summary": "pwm-core apply/precheck + seal drain + emergency interaction; pwmd seal hook if needed",
+      "result": "PASS",
+      "notes": "Recovery commit b9e0e1c (worker submit without git commit)",
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-review",
+      "source": "cursor",
+      "prompt_summary": "Review vs ADR 0009 conservation + ADR 0011 emergency interaction matrix",
+      "result": "PASS_WITH_NITS",
+      "artifacts": [
+        "docs/reviews/v6-sprint8-conservation-coding-review-20260607.md"
+      ],
+      "notes": "Silent failed drain nit; ConservationDelayRequired unused under pending-only profile",
+      "done_at": "2026-06-07"
+    },
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "conservation_* unit tests + workspace check",
+      "result": "PASS",
+      "artifacts": [
+        "tasks/20260607-v6-sprint8-testing-retest.json"
+      ],
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": [
+    "b9e0e1c",
+    "1c0e8d0"
+  ],
+  "artifacts": {
+    "normative": "docs/adr/0009-address-flags-runtime-enforcement.md",
+    "review_md": "docs/reviews/v6-sprint8-conservation-coding-review-20260607.md",
+    "retest_ticket": "tasks/20260607-v6-sprint8-testing-retest.json",
+    "bridge_coding": ".cqds/team-tasks/done/20260607-v6-sprint8-conservation-coding.json",
+    "worktree": ".cqds/worktrees/20260607-v6-sprint8-conservation-coding"
+  },
+  "notes": "Merged to main. Follow-ups: document silent failed-drain discard (review nit)."
+}

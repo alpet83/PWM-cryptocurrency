@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "20260616-pwmd-cy-seal-stall-post-lease-fix",
+  "title": "pwmd CY: seal не идёт после lease self-takeover fix",
+  "status": "cancelled",
+  "brief": "Superseded by 20260616-pwmd-cluster-seal-sync-gate-protocol. Review showed lease OK; stall was attester sync gate.",
+  "notes": "Cancelled; follow 20260616-pwmd-cluster-seal-sync-gate-protocol."
+}

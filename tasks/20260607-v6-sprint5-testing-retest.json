@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "20260607-v6-sprint5-testing-retest",
+  "title": "V6-5 retest: pwm-testing escrow smoke + test_project",
+  "status": "done",
+  "delegation_mode": "worktree_bridge",
+  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260607-v6-sprint5-mode-b-escrow-coding",
+  "branch": "v6/20260607-v6-sprint5-mode-b-escrow-coding",
+  "worker_lane": "testing",
+  "target_agent": "pwm-testing",
+  "parent_ticket": "20260607-v6-sprint5-mode-b-escrow-coding",
+  "brief": "Bridge pwm-testing PASS in worktree: mode_b_escrow_smoke.cmd + test_project.cmd + cargo check.",
+  "acceptance_criteria": [
+    "cmd /c scripts/mode_b_escrow_smoke.cmd exit 0",
+    "cmd /c test_project.cmd exit 0",
+    "cargo check --workspace exit 0 (pwmd dead_code warnings OK)"
+  ],
+  "delegations": [
+    {
+      "agent": "pwm-testing",
+      "source": "bridge",
+      "worker_id": "copilot_testing_companion",
+      "prompt_summary": "mode_b_escrow_smoke.cmd + test_project.cmd in worktree",
+      "result": "PASS",
+      "artifacts": ["scripts/mode_b_escrow_smoke.cmd"],
+      "notes": "Harness fix .\\build_project.cmd; CARGO_TARGET_DIR isolated",
+      "done_at": "2026-06-07"
+    }
+  ],
+  "commits": ["937bb83", "835abdd", "7601287"],
+  "artifacts": {
+    "smoke_launcher": "scripts/mode_b_escrow_smoke.cmd",
+    "test_launcher": "test_project.cmd",
+    "review_md": "docs/reviews/20260607-v6-sprint5-mode-b-escrow-review.md",
+    "bridge_ticket": ".cqds/team-tasks/done/20260607-v6-sprint5-testing-retest.json"
+  },
+  "notes": "Bridge submit PASS. All acceptance gates green."
+}

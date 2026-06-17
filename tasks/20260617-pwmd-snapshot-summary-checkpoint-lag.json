@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "id": "20260617-pwmd-snapshot-summary-checkpoint-lag",
+  "title": "pwmd: trust-load checkpoint — не затирать summary при раннем shutdown и логировать причину full verify",
+  "status": "done",
+  "planned_for": "2026-06-17",
+  "mvp_checklist": ["docs/guide-node-storage-and-snapshot.md", "docs/pwmd.md §snapshot"],
+  "brief": "Ранний SIGINT во время loading_snapshot перезаписывал pwm-data.json checkpoint=0 при manifest tip 124k+ → бесконечный full chain_verify. Исправлено: shutdown guards, post-verify summary align, INFO snapshot_load_mode.",
+  "evidence": {
+    "proposer_pwm_data": "tmp/state-cy-proposer/pwm-data.json checkpoint_height=0",
+    "proposer_manifest": "canonical_h=124061",
+    "log_line": "summary lags epoch manifest; forcing full chain verification"
+  },
+  "acceptance_criteria": [
+    "graceful shutdown skip during loading_snapshot / checkpoint regress",
+    "auto-align summary after full verify load",
+    "Startup INFO snapshot_load_mode + reason",
+    "autosnapshot checkpoint_height INFO",
+    "unit tests shutdown_skip",
+    "cargo test -p pwmd snapshot green"
+  ],
+  "related_tickets": ["20260616-pwmd-chain-verify-progress-pct"],
+  "artifacts": {
+    "review_md": "docs/reviews/20260617-pwmd-snapshot-summary-checkpoint-lag-review.md",
+    "testing_md": "tasks/20260617-pwmd-snapshot-summary-checkpoint-lag-testing.md"
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "artifacts": [
+        "crates/pwmd/src/api/handlers_shutdown.rs",
+        "crates/pwmd/src/lifecycle.rs",
+        "crates/pwmd/src/snapshot/io.rs",
+        "crates/pwmd/src/snapshot/telemetry.rs"
+      ],
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-review",
+      "result": "PASS_WITH_NITS",
+      "artifacts": ["docs/reviews/20260617-pwmd-snapshot-summary-checkpoint-lag-review.md"],
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-testing",
+      "result": "PASS",
+      "notes": "shutdown_skip 2/2, snapshot 66/66; strengthened loading test",
+      "artifacts": ["tasks/20260617-pwmd-snapshot-summary-checkpoint-lag-testing.md"],
+      "done_at": "2026-06-17"
+    },
+    {
+      "agent": "pwm-coding",
+      "result": "PASS",
+      "notes": "nit: rename align_summary_post_verify",
+      "done_at": "2026-06-17"
+    }
+  ],
+  "commits": [],
+  "notes": "Код uncommitted. После deploy: один полный chain_verify на proposer выровняет summary; дальше trust-load. Не останавливать ноду во время loading_snapshot."
+}

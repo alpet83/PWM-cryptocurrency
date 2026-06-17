@@ -5,8 +5,9 @@ use crate::wallet::load_wallet_yaml_upgrade;
 use crate::{exit_user_error, http_client_for_rpc};
 use pwm_core::compute_lazy_marks;
 use pwm_core::genesis::{
-    GenCfg, DEF_BASE_EMIT, DEF_BLOCKS_PER_HOUR, DEF_MARKS_HOUR, DEF_MARKS_STAKE_MIN,
-    DEF_PWM_STAKE_MIN, DEF_SEASON_COEFF_PPM,
+    GenCfg, DEF_BASE_EMIT, DEF_BLOCKS_PER_HOUR, DEF_CONSERV_DELAY_BLOCKS, DEF_EPOCH_LEN_BLOCKS,
+    DEF_MARKS_HOUR, DEF_MARKS_STAKE_MIN, DEF_PWM_STAKE_MIN, DEF_SEASON_COEFF_PPM,
+    DEF_XSHARD_LOCK_TO,
 };
 use pwm_core::types::Account;
 use pwm_core::MARKS_CAP;
@@ -184,6 +185,10 @@ fn mk_gen_cfg() -> GenCfg {
         marks_coeff: 0,
         policy_ver: pwm_core::genesis::LEGACY_POLICY_VER,
         base_emission_per_block: DEF_BASE_EMIT,
+        min_validator_stake: DEF_PWM_STAKE_MIN,
+        epoch_length_blocks: DEF_EPOCH_LEN_BLOCKS,
+        conservation_delay_blocks: DEF_CONSERV_DELAY_BLOCKS,
+        xshard_lock_to_blocks: DEF_XSHARD_LOCK_TO,
         pwm_stake_min: DEF_PWM_STAKE_MIN,
         marks_stake_min: DEF_MARKS_STAKE_MIN,
         season_enabled: false,

@@ -7,17 +7,18 @@ use super::{
     WalletCmd,
 };
 use crate::bruteforce::DomainMatchMode;
-use crate::cli_config::DEFAULT_WALLET_OUT_REL;
+use crate::cli_config::{is_rpc_offline, DEFAULT_WALLET_OUT_REL};
 use crate::cli_parse::{parse_address_arg, parse_address_input, resolve_tx_send_amount};
 use crate::cmd_account::{calc_eff_marks, calc_sat_pct, parse_acct_body, parse_head_h};
 use crate::cmd_addr::{
-    bruteforce_resume_index, fmt_addr_bruteforce_results, is_rpc_unavailable_error,
-    persist_wallet_account_output, resolve_master_seed,
+    bf_attempt_budget, bf_end_index, bf_no_match_msg, bruteforce_resume_index,
+    fmt_addr_bruteforce_results, is_rpc_unavailable_error, persist_wallet_account_output,
+    resolve_master_seed,
 };
 use crate::cmd_genesis::{build_genesis_v4_wallet, GENESIS_SCHEMA_VERSION};
 use crate::rpc_helpers::{
-    nonce_404_account_hint, parse_account_lookup_meta, parse_nonce_acct_json, post_signed_tx,
-    preflight_recipient_init,
+    nonce_404_account_hint, parse_account_lookup_meta, parse_nonce_acct_json,
+    parse_nonce_init_response, post_signed_tx, preflight_recipient_init,
 };
 use crate::signer::{load_tx_signer_source, TxSignerSource};
 use crate::wallet::{
@@ -96,6 +97,18 @@ fn nonce_hint_only_acct_nf() {
     assert!(miss_status.is_none());
     let miss_body = nonce_404_account_hint(404, "other error");
     assert!(miss_body.is_none());
+}
+
+#[test]
+/// `parse_nonce_init_response` maps account-not-found 404 to absent account (init nonce 0).
+fn init_nonce_404_none() {
+    let out = parse_nonce_init_response(
+        reqwest::StatusCode::NOT_FOUND,
+        "account not found",
+        "http://127.0.0.1:3030/v1/account/dead",
+    )
+    .expect("parse");
+    assert!(out.is_none());
 }
 
 #[test]
@@ -306,6 +319,45 @@ fn bf_cli_flags_mask_default() {
             assert_eq!(flags_mask, 1023);
             assert_eq!(expected_flags, 0);
         }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+/// `is_rpc_offline` accepts trimmed case-insensitive `offline`.
+fn rpc_offline_true() {
+    assert!(is_rpc_offline("offline"));
+    assert!(is_rpc_offline(" OffLine "));
+}
+
+#[test]
+/// `is_rpc_offline` rejects regular RPC URLs.
+fn rpc_offline_false() {
+    assert!(!is_rpc_offline("http://127.0.0.1:3030"));
+    assert!(!is_rpc_offline("https://node.example"));
+}
+
+#[test]
+/// Global `--rpc offline` parses together with `addr-bruteforce`.
+fn bf_cli_rpc_offline_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "--rpc",
+        "offline",
+        "addr-bruteforce",
+        "--master",
+        &"11".repeat(32),
+        "--domain",
+        "CY",
+        "--expected-flags",
+        "0",
+        "--wallet-out",
+        "wallet.yaml",
+    ])
+    .expect("must parse addr-bruteforce with --rpc offline");
+    assert_eq!(cli.rpc, "offline");
+    match cli.cmd {
+        Cmd::AddrBruteforce { .. } => {}
         _ => panic!("unexpected cmd"),
     }
 }
@@ -1128,6 +1180,48 @@ fn bf_resume_pref_cluster() {
 }
 
 #[test]
+/// Bruteforce attempt budget equals requested attempt count.
+fn bf_budget_exhausted_ok() {
+    assert_eq!(bf_attempt_budget(10, 0), 0);
+    assert_eq!(bf_attempt_budget(10, 1), 1);
+    assert_eq!(bf_attempt_budget(10, 6), 6);
+}
+
+#[test]
+/// No-match message explains attempt-count `--max-try` semantics and recovery hints.
+fn bf_no_match_msg_hints() {
+    let msg = bf_no_match_msg(120, Some(125), 6, 6, 1023, 2);
+    assert!(msg.contains("120..=125"));
+    assert!(msg.contains("attempt_budget=6"));
+    assert!(msg.contains("checked 6 derivations"));
+    assert!(msg.contains("--max-try is attempt count"));
+    assert!(msg.contains("--flags-mask 2 --expected-flags 2"));
+    assert!(msg.contains("V7-2 backlog"));
+}
+
+#[test]
+/// Non-zero resume index with small attempt count still runs bounded search.
+fn bf_resume_small_try_ok() {
+    let seed = [0x5Au8; 32];
+    let resume_start_index = 17u32;
+    let hit = derive_user_profile_hit(&seed, resume_start_index);
+    let end_index = bf_end_index(resume_start_index, 1).expect("must derive end index");
+    let found = crate::bruteforce::brute_force_from_index(
+        &seed,
+        hit.domain,
+        DomainMatchMode::HighByteOnly,
+        0x03FF,
+        hit.derived_flags & 0x03FF,
+        resume_start_index,
+        end_index,
+        0,
+        |_| {},
+    )
+    .expect("must evaluate at least the resumed derivation index");
+    assert_eq!(found.derivation_index, resume_start_index);
+}
+
+#[test]
 /// Resume index is zero when no wallet row matches target domain/cluster.
 fn bf_resume_zero_absent_dom() {
     let path = std::env::temp_dir().join(format!(
@@ -1678,6 +1772,7 @@ fn tx_send_cli_to_pretty() {
             wallet,
             master,
             domain,
+            index,
             to,
             amount,
             fee,
@@ -1685,6 +1780,7 @@ fn tx_send_cli_to_pretty() {
             assert_eq!(wallet.unwrap(), PathBuf::from("wallet.yaml"));
             assert!(master.is_none());
             assert!(domain.is_none());
+            assert_eq!(index, 0);
             assert_eq!(parse_account_id(&to).unwrap(), recipient_id);
             assert_eq!(amount, Some(7));
             assert_eq!(fee, 1);
@@ -1716,10 +1812,12 @@ fn tx_burn_cli_ben_pretty() {
             beneficiary: got,
             mark_amount,
             purpose,
+            index,
             ..
         } => {
             assert_eq!(mark_amount, 12);
             assert!(purpose.is_none());
+            assert_eq!(index, 0);
             assert_eq!(
                 parse_account_id(got.as_deref().unwrap()).unwrap(),
                 beneficiary_id
@@ -1771,9 +1869,11 @@ fn tx_burn_cli_ben_canon() {
         Cmd::TxBurnMark {
             beneficiary: got,
             purpose,
+            index,
             ..
         } => {
             assert!(purpose.is_none());
+            assert_eq!(index, 0);
             assert_eq!(
                 parse_account_id(got.as_deref().unwrap()).unwrap(),
                 [6u8; 32]
@@ -1800,10 +1900,12 @@ fn tx_burn_cli_purpose_flag() {
         Cmd::TxBurnMark {
             purpose,
             mark_amount,
+            index,
             ..
         } => {
             assert_eq!(mark_amount, 3);
             assert_eq!(purpose.as_deref(), Some("salted-email-proof-v1"));
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -1927,11 +2029,13 @@ fn tx_send_cli_master_ovr() {
             wallet,
             master,
             domain,
+            index,
             ..
         } => {
             assert_eq!(wallet.unwrap(), PathBuf::from("wallet.yaml"));
             assert_eq!(master.unwrap(), "11".repeat(32));
             assert_eq!(domain.as_deref(), Some("CY"));
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2058,6 +2162,8 @@ fn tx_init_v4_cli_parse() {
         &account_id_to_human(&[4u8; 32]),
         "--initial-policy",
         "sender_filter:dormant",
+        "--save-activation-tx",
+        "activation.json",
     ])
     .expect("must parse tx-init v4 args");
     match cli.cmd {
@@ -2070,6 +2176,7 @@ fn tx_init_v4_cli_parse() {
             requested_domain_lo,
             rescue_address,
             initial_policy,
+            save_activation_tx,
             ..
         } => {
             let expected_commitment = "aa".repeat(32);
@@ -2084,6 +2191,7 @@ fn tx_init_v4_cli_parse() {
             assert_eq!(requested_domain_lo, Some(5));
             assert!(rescue_address.is_some());
             assert_eq!(initial_policy, vec!["sender_filter:dormant".to_string()]);
+            assert_eq!(save_activation_tx, Some(PathBuf::from("activation.json")));
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2109,11 +2217,13 @@ fn tx_policy_set_cli_parse() {
             policy,
             activation,
             fee,
+            index,
             ..
         } => {
             assert_eq!(policy, "sender_filter");
             assert_eq!(activation, "dormant");
             assert_eq!(fee, 10);
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2140,10 +2250,12 @@ fn tx_policy_set_deferred_parse() {
         Cmd::TxPolicySet {
             activation,
             activate_at_height,
+            index,
             ..
         } => {
             assert_eq!(activation, "deferred");
             assert_eq!(activate_at_height, Some(77));
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2158,6 +2270,7 @@ fn tx_policy_set_no_height() {
 
 #[test]
 fn tx_pol_act_parse() {
+    let target = account_id_to_human(&[7u8; 32]);
     let cli = Cli::try_parse_from([
         "pwm",
         "tx-policy-activate",
@@ -2165,6 +2278,8 @@ fn tx_pol_act_parse() {
         "wallet.yaml",
         "--policy-id",
         "1",
+        "--activation-target",
+        &target,
         "--rescue-account-index",
         "7",
         "--fee",
@@ -2176,11 +2291,74 @@ fn tx_pol_act_parse() {
             policy_id,
             rescue_account_index,
             fee,
+            activation_target,
+            index,
             ..
         } => {
             assert_eq!(policy_id, Some(1));
             assert_eq!(rescue_account_index, Some(7));
             assert_eq!(fee, 99);
+            assert_eq!(activation_target.as_deref(), Some(target.as_str()));
+            assert_eq!(index, 0);
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_pol_act_sw_idx() {
+    let target = account_id_to_human(&[8u8; 32]);
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-activate",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "3",
+        "--policy",
+        "routing.emergency_redirect",
+        "--activation-target",
+        &target,
+        "--rescue-account-index",
+        "9",
+    ])
+    .expect("must parse same-wallet emergency activate");
+    match cli.cmd {
+        Cmd::TxPolicyActivate {
+            index,
+            rescue_account_index,
+            policy,
+            ..
+        } => {
+            assert_eq!(index, 3);
+            assert_eq!(rescue_account_index, Some(9));
+            assert_eq!(policy.as_deref(), Some("routing.emergency_redirect"));
+        }
+        _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_pol_act_prepared_parse() {
+    let cli = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-activate",
+        "--activation-tx",
+        "activation.json",
+    ])
+    .expect("must parse tx-policy-activate prepared tx path without wallet");
+    match cli.cmd {
+        Cmd::TxPolicyActivate {
+            wallet,
+            activation_tx,
+            fee,
+            index,
+            ..
+        } => {
+            assert!(wallet.is_none());
+            assert_eq!(activation_tx, Some(PathBuf::from("activation.json")));
+            assert_eq!(fee, 0);
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2205,12 +2383,14 @@ fn tx_pol_act_rescue_wallet() {
             rescue_wallet,
             rescue_master,
             rescue_domain,
+            index,
             ..
         } => {
             assert_eq!(policy.as_deref(), Some("sender_filter"));
             assert_eq!(rescue_wallet, Some(PathBuf::from("rescue.yaml")));
             assert!(rescue_master.is_none());
             assert!(rescue_domain.is_none());
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2237,12 +2417,14 @@ fn tx_pol_act_rescue_seed() {
             rescue_master,
             rescue_domain,
             rescue_wallet,
+            index,
             ..
         } => {
             assert_eq!(policy_id, Some(2));
             assert_eq!(rescue_master, Some("11".repeat(32)));
             assert_eq!(rescue_domain.as_deref(), Some("CY"));
             assert!(rescue_wallet.is_none());
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2266,11 +2448,13 @@ fn tx_pol_deact_parse() {
             policy_id,
             policy,
             fee,
+            index,
             ..
         } => {
             assert_eq!(policy_id, Some(1));
             assert!(policy.is_none());
             assert_eq!(fee, 33);
+            assert_eq!(index, 0);
         }
         _ => panic!("unexpected cmd"),
     }
@@ -2293,14 +2477,116 @@ fn tx_stake_cli_wallet_only() {
             wallet,
             master,
             domain,
+            index,
             amount,
         } => {
             assert_eq!(wallet.unwrap(), PathBuf::from("wallet.yaml"));
             assert!(master.is_none());
             assert!(domain.is_none());
+            assert_eq!(index, 0);
             assert_eq!(amount, 15);
         }
         _ => panic!("unexpected cmd"),
+    }
+}
+
+#[test]
+fn tx_cmd_idx_parse() {
+    let to = account_id_to_human(&[7u8; 32]);
+    let send = Cli::try_parse_from([
+        "pwm",
+        "tx-send",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "2",
+        "--to",
+        &to,
+        "--amount",
+        "1",
+    ])
+    .expect("tx-send parse");
+    let burn = Cli::try_parse_from([
+        "pwm",
+        "tx-burn-mark",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "4",
+        "--mark-amount",
+        "1",
+    ])
+    .expect("tx-burn-mark parse");
+    let stake = Cli::try_parse_from([
+        "pwm",
+        "tx-stake",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "5",
+        "--amount",
+        "2",
+    ])
+    .expect("tx-stake parse");
+    let unstake = Cli::try_parse_from([
+        "pwm",
+        "tx-unstake",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "6",
+        "--amount",
+        "3",
+    ])
+    .expect("tx-unstake parse");
+    let pset = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-set",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "7",
+        "--policy",
+        "sender_filter",
+        "--activation",
+        "dormant",
+    ])
+    .expect("tx-policy-set parse");
+    let pdeact = Cli::try_parse_from([
+        "pwm",
+        "tx-policy-deactivate",
+        "--wallet",
+        "wallet.yaml",
+        "--index",
+        "8",
+        "--policy-id",
+        "1",
+    ])
+    .expect("tx-policy-deactivate parse");
+
+    match send.cmd {
+        Cmd::TxSend { index, .. } => assert_eq!(index, 2),
+        _ => panic!("unexpected send"),
+    }
+    match burn.cmd {
+        Cmd::TxBurnMark { index, .. } => assert_eq!(index, 4),
+        _ => panic!("unexpected burn"),
+    }
+    match stake.cmd {
+        Cmd::TxStake { index, .. } => assert_eq!(index, 5),
+        _ => panic!("unexpected stake"),
+    }
+    match unstake.cmd {
+        Cmd::TxUnstake { index, .. } => assert_eq!(index, 6),
+        _ => panic!("unexpected unstake"),
+    }
+    match pset.cmd {
+        Cmd::TxPolicySet { index, .. } => assert_eq!(index, 7),
+        _ => panic!("unexpected policy-set"),
+    }
+    match pdeact.cmd {
+        Cmd::TxPolicyDeactivate { index, .. } => assert_eq!(index, 8),
+        _ => panic!("unexpected policy-deactivate"),
     }
 }
 

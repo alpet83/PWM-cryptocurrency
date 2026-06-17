@@ -199,6 +199,41 @@ pub fn step_lease(
                         })
                     }
                     Ok(RenewRes::Lost(obs)) => {
+                        if let Some(obs_rec) = obs.as_ref() {
+                            if obs_rec.owner_id == node_id && now_ms > obs_rec.expiry {
+                                match backend.takeover(LeaseTake {
+                                    vh,
+                                    owner: node_id,
+                                    exp_term: obs_rec.term,
+                                    exp_fence: obs_rec.fence,
+                                    exp_expiry: obs_rec.expiry,
+                                    now_ms,
+                                    tip_h,
+                                    ttl_ms: cfg.ttl_ms,
+                                }) {
+                                    Err(e) => {
+                                        rt.allow_seal = false;
+                                        rt.state = LeaseState::FencedStandby;
+                                        rt.last_reason = format!("lease_backend_error {e}");
+                                        return LeaseStep {
+                                            allow_seal: rt.allow_seal,
+                                            event: Some(LeaseEvent::Reject),
+                                        };
+                                    }
+                                    Ok(TakeRes::Taken(next)) => {
+                                        apply_rt(rt, &next, true);
+                                        rt.state = LeaseState::ActiveSealing;
+                                        rt.last_reason =
+                                            "lease_self_takeover_after_expiry".to_string();
+                                        return LeaseStep {
+                                            allow_seal: rt.allow_seal,
+                                            event: Some(LeaseEvent::Takeover),
+                                        };
+                                    }
+                                    Ok(TakeRes::CasMiss(_)) | Ok(TakeRes::Missing) => {}
+                                }
+                            }
+                        }
                         let why = obs
                             .map(loss_label)
                             .unwrap_or_else(|| "lease_renew_missing".to_string());
@@ -374,6 +409,69 @@ mod tests {
         let two = step_lease("vh-1", "n1", 1_500, 6, cfg, &mut rt, &be);
         assert!(two.allow_seal);
         assert_eq!(two.event, Some(LeaseEvent::Renew));
+    }
+
+    #[test]
+    fn same_owner_expired_self_takeover() {
+        let cfg = LeaseCfg {
+            ttl_ms: 1_000,
+            takeover_ms: 500,
+            max_tip_lag: 0,
+        };
+        let be = ProcessLocalLeaseBackend;
+        let mut boot_rt = LeaseRuntime::new("n1".to_string());
+        let boot = step_lease("vh-self-recover", "n1", 1_000, 5, cfg, &mut boot_rt, &be);
+        assert!(boot.allow_seal);
+        assert_eq!(boot.event, Some(LeaseEvent::Acquire));
+
+        // Simulate restart: runtime is reset, lease record stays in backend.
+        let mut after_restart = LeaseRuntime::new("n1".to_string());
+        let recovered = step_lease(
+            "vh-self-recover",
+            "n1",
+            2_200,
+            6,
+            cfg,
+            &mut after_restart,
+            &be,
+        );
+        assert!(recovered.allow_seal);
+        assert_eq!(recovered.event, Some(LeaseEvent::Takeover));
+        assert_eq!(after_restart.state, LeaseState::ActiveSealing);
+        assert_eq!(
+            after_restart.last_reason,
+            "lease_self_takeover_after_expiry"
+        );
+    }
+
+    #[test]
+    fn same_owner_not_expired_renews() {
+        let cfg = LeaseCfg {
+            ttl_ms: 1_000,
+            takeover_ms: 500,
+            max_tip_lag: 0,
+        };
+        let be = ProcessLocalLeaseBackend;
+        let mut boot_rt = LeaseRuntime::new("n1".to_string());
+        let _ = step_lease("vh-self-renew", "n1", 1_000, 5, cfg, &mut boot_rt, &be);
+
+        // Runtime resets on restart, but unexpired lease should still renew.
+        let mut after_restart = LeaseRuntime::new("n1".to_string());
+        let renewed = step_lease(
+            "vh-self-renew",
+            "n1",
+            1_500,
+            6,
+            cfg,
+            &mut after_restart,
+            &be,
+        );
+        assert!(renewed.allow_seal);
+        assert_eq!(renewed.event, Some(LeaseEvent::Acquire));
+        assert_eq!(after_restart.state, LeaseState::ActiveSealing);
+        assert_eq!(after_restart.last_reason, "lease_renewed");
+        assert_eq!(after_restart.term, 1);
+        assert_eq!(after_restart.fence, 1);
     }
 
     #[test]

@@ -17,7 +17,8 @@ use crate::snapshot::incremental::{
 use crate::snapshot::SealPersistMode;
 use crate::transport::handshake_state::{HandshakeState, SyncPeerState};
 use pwm_core::block::{hdr_hash, txs_root, Block};
-use pwm_core::{digest, TAIL_BLOCK_CAP};
+use pwm_core::chain::{pick_prod_idx, roll_epoch_if_needed};
+use pwm_core::{compute_block_reward, digest, TAIL_BLOCK_CAP};
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 
@@ -35,7 +36,7 @@ const SYNC_PROG_MIN_MS: u64 = 7_000;
 /// Quiet console during healthy live short-tail: peer tip advances by 1, no epoch CUP in flight.
 const SYNC_PROG_TAIL_MS: u64 = 60_000;
 /// Periodic unchanged-remaining catch-up observability (deep lag).
-const SYNC_STALL_LOG_MS: u64 = 30_000;
+const SYNC_STALL_LOG_MS: u64 = 10_000;
 /// Fail-closed threshold: repeated live continuity breaks on same boundary.
 const SYNC_FORK_BRK_CAP: u8 = 3;
 
@@ -724,13 +725,17 @@ pub(super) async fn on_tip(
         (st.cup_active, st.cup_try, hit)
     };
     if stall_hit {
+        let percent_complete = sync_prog_snap(local_h, head_h, persisted_h)
+            .map(|snap| snap.pct)
+            .unwrap_or(0);
         info!(
             target: "pwmd::sync",
-            "sync_catchup_stall node_id={} rem={} local_h={} head_h={} cup_active={} cup_try={}",
+            "sync_catchup_progress node_id={} local_h={} head_h={} blocks_behind={} percent_complete={} cup_active={} cup_try={}",
             node_id,
-            lag,
             local_h,
             head_h,
+            lag,
+            percent_complete,
             cup_now,
             cup_try_now
         );
@@ -1216,11 +1221,9 @@ fn apply_blk(inn: &mut Inner, blk: &Block) -> Result<(), String> {
     if blk.hdr.prev_hash != prev {
         return Err("prev_hash_mismatch".to_string());
     }
-    let vals_len = inn.chain.cfg.vals.set.len();
-    if vals_len == 0 {
-        return Err("empty_validators".to_string());
-    }
-    let want_idx = ((next_h.saturating_sub(1)) as usize % vals_len) as u32;
+    let mut st = inn.chain.st.clone();
+    roll_epoch_if_needed(&inn.chain.cfg, &mut st, next_h);
+    let want_idx = pick_prod_idx(next_h, &st.active_validator_indices)?;
     if blk.hdr.prod_idx != want_idx {
         return Err(format!(
             "prod_idx_mismatch want={} got={}",
@@ -1236,11 +1239,13 @@ fn apply_blk(inn: &mut Inner, blk: &Block) -> Result<(), String> {
     if txs_root(&blk.txs) != blk.hdr.tx_root {
         return Err("tx_root_mismatch".to_string());
     }
-    let mut st = inn.chain.st.clone();
+    st.refund_exp_locks(next_h);
     for tx in blk.txs.iter() {
         st.apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, &inn.chain.cfg)
             .map_err(|e| format!("tx_invalid:{e}"))?;
     }
+    st.refund_exp_locks(next_h);
+    st.drain_conservation_at_height(next_h, &inn.chain.cfg);
     let prod_acct = inn.chain.cfg.prod_acct(blk.hdr.prod_idx);
     if !st.accounts.contains_key(&prod_acct) {
         return Err("prod_acct_missing".to_string());
@@ -1248,13 +1253,8 @@ fn apply_blk(inn: &mut Inner, blk: &Block) -> Result<(), String> {
     if inn.chain.cfg.is_legacy_policy() {
         st.reward_producer(&prod_acct, inn.chain.cfg.block_reward);
     } else {
-        let season_ppm = inn.chain.cfg.season_ppm(blk.hdr.ts);
-        st.reward_producer_v2(
-            &prod_acct,
-            inn.chain.cfg.block_reward,
-            inn.chain.cfg.pwm_stake_min,
-            season_ppm,
-        );
+        let rew = compute_block_reward(&inn.chain.cfg, next_h);
+        st.reward_producer_v2(&prod_acct, rew, inn.chain.cfg.pwm_stake_min, 1_000_000);
     }
     if digest(&st) != blk.hdr.state_root {
         return Err("state_root_mismatch".to_string());
@@ -2032,12 +2032,12 @@ mod tests {
     }
 
     #[test]
-    fn sync_stall_tick_30s() {
+    fn sync_stall_tick_10s() {
         let mut st = SyncPeerState::default();
         assert!(!sync_stall_tick(&mut st, 1_000, 32_000));
-        assert!(!sync_stall_tick(&mut st, 20_000, 32_000));
-        assert!(sync_stall_tick(&mut st, 31_001, 32_000));
-        assert!(!sync_stall_tick(&mut st, 40_000, 31_999));
+        assert!(!sync_stall_tick(&mut st, 10_000, 32_000));
+        assert!(sync_stall_tick(&mut st, 11_001, 32_000));
+        assert!(!sync_stall_tick(&mut st, 20_000, 31_999));
     }
 
     #[tokio::test]

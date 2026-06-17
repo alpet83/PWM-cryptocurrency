@@ -3,8 +3,8 @@
 use crate::block::{hdr_hash, txs_root, Block, BlockHdr};
 use crate::genesis::GenCfg;
 use crate::marks::compute_block_reward;
-use crate::state::{digest, State};
-use crate::tx::SignedTx;
+use crate::state::{digest, EvidenceType, State};
+use crate::tx::{SignedTx, TxError};
 use ed25519_dalek::SigningKey;
 use std::collections::VecDeque;
 
@@ -30,6 +30,41 @@ pub enum SealTimeMode {
 
 const DET_SEAL_TS_BASE: u64 = 1_700_000_000;
 
+pub fn recompute_active_idxs(cfg: &GenCfg, st: &State) -> Vec<u16> {
+    cfg.vals
+        .set
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, row)| {
+            let acc = st.accounts.get(&row.acct)?;
+            if acc.staked_pwm_raw >= cfg.min_validator_stake {
+                Some(idx as u16)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+pub fn pick_prod_idx(height: u64, active_idxs: &[u16]) -> Result<u32, String> {
+    if active_idxs.is_empty() {
+        return Err("no active validators for current epoch".into());
+    }
+    let pos = (height as usize) % active_idxs.len();
+    Ok(u32::from(active_idxs[pos]))
+}
+
+fn is_epoch_boundary(height: u64, cfg: &GenCfg) -> bool {
+    cfg.epoch_length_blocks > 0 && height % cfg.epoch_length_blocks == 0
+}
+
+pub fn roll_epoch_if_needed(cfg: &GenCfg, st: &mut State, height: u64) {
+    if is_epoch_boundary(height, cfg) {
+        st.epoch_counter = st.epoch_counter.saturating_add(1);
+        st.active_validator_indices = recompute_active_idxs(cfg, st);
+    }
+}
+
 /// In-memory devnet chain.
 pub struct Chain {
     pub cfg: GenCfg,
@@ -50,7 +85,8 @@ impl Chain {
             cfg.accounts, cfg.funding.accounts,
             "genesis invariant: accounts must mirror funding.accounts"
         );
-        let st = cfg.state0();
+        let mut st = cfg.state0();
+        st.active_validator_indices = recompute_active_idxs(&cfg, &st);
         for (i, v) in cfg.vals.set.iter().enumerate() {
             assert!(
                 st.accounts.contains_key(&v.acct),
@@ -90,6 +126,21 @@ impl Chain {
         self.seal_time_mode = mode;
     }
 
+    pub fn append_unavailable_proposer_evidence(
+        &mut self,
+        height: u64,
+        offender_validator_idx: u16,
+        payload_hash: [u8; 32],
+    ) -> Result<[u8; 32], TxError> {
+        self.st.append_evidence(
+            height,
+            offender_validator_idx,
+            EvidenceType::UnavailableProposer,
+            payload_hash,
+            None,
+        )
+    }
+
     /// Returns `(next_height, now_unix_secs)` for tx application outside/inside sealing.
     pub fn next_apply_ctx(&self) -> Result<(u64, u64), String> {
         let height = self.tip_h() + 1;
@@ -107,15 +158,19 @@ impl Chain {
     pub fn seal(&mut self, txs: Vec<SignedTx>) -> Result<(), SealAbort> {
         let (height, ts) = self.next_apply_ctx().map_err(|e| (e, txs.clone()))?;
         let prev = self.tip_hash();
-        let n = self.cfg.vals.set.len();
-        let prod_idx = ((height - 1) as usize % n) as u32;
-
         let mut st = self.st.clone();
+        roll_epoch_if_needed(&self.cfg, &mut st, height);
+        let prod_idx =
+            pick_prod_idx(height, &st.active_validator_indices).map_err(|e| (e, txs.clone()))?;
+        st.refund_exp_locks(height);
+
         for tx in &txs {
             if let Err(e) = st.apply_tx_with_ctx(tx, height, ts, &self.cfg) {
                 return Err((format!("tx: {e}"), txs));
             }
         }
+        st.refund_exp_locks(height);
+        st.drain_conservation_at_height(height, &self.cfg);
         let prod_acct = self.cfg.prod_acct(prod_idx);
         if !st.accounts.contains_key(&prod_acct) {
             return Err((
@@ -175,7 +230,9 @@ mod tests {
     use super::*;
     use crate::block::hdr_hash;
     use crate::genesis::{FundingCfg, RewPol, VRow, ValCfg};
-    use crate::hd::account_id_from_parts;
+    use crate::hd::{account_id_from_parts, domain_of_account_id};
+    use crate::tx::{SignedTx, TxBody};
+    use crate::types::{conservation_flag, cosign_non_dis, Account, AccountId};
     use slip10_ed25519::derive_ed25519_private_key;
 
     fn mk_val(seed: [u8; 32]) -> (SigningKey, VRow) {
@@ -191,12 +248,95 @@ mod tests {
         )
     }
 
+    fn user_sk0(seed: &[u8; 32]) -> (SigningKey, u32, AccountId) {
+        let sk_bytes = derive_ed25519_private_key(seed, &[0, 0]);
+        let sk = SigningKey::from_bytes(&sk_bytes);
+        let pk = sk.verifying_key().to_bytes();
+        (sk, 0, account_id_from_parts(&pk, 0))
+    }
+
+    fn user_sk_conserv(seed_start: u8) -> (SigningKey, u32, AccountId) {
+        for attempt in 0..4096 {
+            let n = attempt as u16;
+            let mut s = [seed_start; 32];
+            s[0] = seed_start.wrapping_add(n as u8);
+            s[1] = (n >> 8) as u8;
+            let (sk, idx, aid) = user_sk0(&s);
+            if conservation_flag(&aid) && !cosign_non_dis(&aid) {
+                return (sk, idx, aid);
+            }
+        }
+        panic!("failed to find conservation-only account");
+    }
+
+    fn user_sk_same_hi(seed_start: u8, domain_hi: u8) -> (SigningKey, u32, AccountId) {
+        for attempt in 0..4096 {
+            let n = attempt as u16;
+            let mut s = [seed_start; 32];
+            s[0] = seed_start.wrapping_add(n as u8);
+            s[1] = (n >> 8) as u8;
+            let (sk, idx, aid) = user_sk0(&s);
+            if domain_of_account_id(&aid).to_be_bytes()[0] == domain_hi {
+                return (sk, idx, aid);
+            }
+        }
+        panic!("failed to find same-hi account");
+    }
+
     #[test]
     fn seal_empty_block() {
         let (g, sks) = crate::genesis::dev_net();
         let mut c = Chain::boot(g, sks);
         c.seal(vec![]).expect("empty seal");
         assert_eq!(c.tip_h(), 1);
+    }
+
+    #[test]
+    fn conservation_seal_drains() {
+        let (mut g, sks) = crate::genesis::dev_net();
+        g.conservation_delay_blocks = 1;
+        let mut c = Chain::boot(g, sks);
+        let (sender_sk, sender_idx, sender_id) = user_sk_conserv(0xA0);
+        let sender_dom = domain_of_account_id(&sender_id);
+        let sender_hi = sender_dom.to_be_bytes()[0];
+        let (rcpt_sk, rcpt_idx, rcpt_id) = user_sk_same_hi(0xA1, sender_hi);
+        c.st.accounts.insert(
+            sender_id,
+            Account::genesis_funded(sender_sk.verifying_key().to_bytes(), sender_idx, 1_000),
+        );
+        c.st.accounts.insert(
+            rcpt_id,
+            Account::genesis_funded(rcpt_sk.verifying_key().to_bytes(), rcpt_idx, 0),
+        );
+        let tx = SignedTx::sign_body(
+            &sender_sk,
+            sender_dom,
+            sender_idx,
+            0,
+            TxBody::Transfer {
+                to: rcpt_id,
+                amount: 100,
+                fee: 7,
+            },
+        );
+        c.seal(vec![tx]).expect("seal enqueue");
+        assert_eq!(c.tip_h(), 1);
+        assert_eq!(c.st.pending_conservation.len(), 1);
+        assert_eq!(
+            c.st.accounts.get(&sender_id).expect("sender").balance_pwm,
+            1_000
+        );
+        c.seal(vec![]).expect("seal drain");
+        assert_eq!(c.tip_h(), 2);
+        assert!(c.st.pending_conservation.is_empty());
+        assert_eq!(
+            c.st.accounts.get(&sender_id).expect("sender").balance_pwm,
+            893
+        );
+        assert_eq!(
+            c.st.accounts.get(&rcpt_id).expect("recipient").balance_pwm,
+            100
+        );
     }
 
     /// Failed seal returns txs and chain height stays 0 (formerly `seal_returns_txs_on_apply_error`).
@@ -257,7 +397,64 @@ mod tests {
     }
 
     #[test]
-    fn prod_rotation_uses_vals_len() {
+    fn escrow_seal_refunds() {
+        use crate::hd::domain_of_account_id;
+        use crate::state::CrossShardLockState;
+        use crate::tx::{SignedTx, TxBody};
+
+        let (mut g, sks) = crate::genesis::dev_net();
+        g.block_reward = 0;
+        g.xshard_lock_to_blocks = 1;
+        let sk_v = sks[0].clone();
+        let aid_v = g.accounts[0].acct;
+        let dom_v = domain_of_account_id(&aid_v);
+        let target_hi = dom_v.to_be_bytes()[0].wrapping_add(1);
+        let target_domain = ((target_hi as u16) << 8) | 0x01;
+        let mut to = [0u8; 32];
+        to[0] = target_hi;
+
+        let mut c = Chain::boot(g, sks);
+        let before = c.st.get(&aid_v).expect("sender").balance_pwm;
+        let export = SignedTx::sign_body(
+            &sk_v,
+            dom_v,
+            0,
+            0,
+            TxBody::Export {
+                to,
+                target_domain,
+                amount: 41,
+                fee: 0,
+            },
+        );
+        let export_id = export.export_id().expect("export id");
+
+        c.seal(vec![export]).expect("export h1");
+        assert_eq!(c.st.get(&aid_v).expect("locked").balance_pwm, before - 41);
+        assert_eq!(
+            c.st.cross_shard_locks
+                .iter()
+                .find(|row| row.export_id == export_id)
+                .expect("lock")
+                .state,
+            CrossShardLockState::Locked
+        );
+
+        c.seal(vec![]).expect("refund h2");
+        assert_eq!(c.st.get(&aid_v).expect("refunded").balance_pwm, before);
+        assert!(c.st.imported_set.contains(&export_id));
+        assert_eq!(
+            c.st.cross_shard_locks
+                .iter()
+                .find(|row| row.export_id == export_id)
+                .expect("refunded lock")
+                .state,
+            CrossShardLockState::Refunded
+        );
+    }
+
+    #[test]
+    fn prod_rotation_uses_height_slot() {
         let (sk0, v0) = mk_val([51u8; 32]);
         let (sk1, v1) = mk_val([52u8; 32]);
         let mut cfg = crate::genesis::dev_net().0;
@@ -286,12 +483,161 @@ mod tests {
         cfg.accounts = cfg.funding.accounts.clone();
         cfg.vals = ValCfg { set: vec![v0, v1] };
         let mut c = Chain::boot(cfg, vec![sk0, sk1]);
+        c.cfg.min_validator_stake = 0;
         c.seal(vec![]).expect("h1");
         c.seal(vec![]).expect("h2");
         c.seal(vec![]).expect("h3");
+        assert_eq!(c.blocks[0].hdr.prod_idx, 1);
+        assert_eq!(c.blocks[1].hdr.prod_idx, 0);
+        assert_eq!(c.blocks[2].hdr.prod_idx, 1);
+    }
+
+    #[test]
+    fn failover_slot_is_next_height() {
+        let active = vec![10u16, 20u16, 30u16];
+        let height = 5u64;
+        let primary = pick_prod_idx(height, &active).expect("primary idx");
+        let failover = pick_prod_idx(height.saturating_add(1), &active).expect("failover idx");
+        assert_eq!(primary, 30);
+        assert_eq!(failover, 10);
+    }
+
+    #[test]
+    fn stake_below_min_excluded() {
+        let (sk0, v0) = mk_val([151u8; 32]);
+        let (sk1, v1) = mk_val([152u8; 32]);
+        let mut cfg = crate::genesis::dev_net().0;
+        cfg.funding = FundingCfg {
+            accounts: vec![
+                crate::genesis::GRow {
+                    acct: v0.acct,
+                    pubkey: v0.pubkey,
+                    der_idx: v0.der_idx,
+                    bal: 0,
+                },
+                crate::genesis::GRow {
+                    acct: v1.acct,
+                    pubkey: v1.pubkey,
+                    der_idx: v1.der_idx,
+                    bal: 0,
+                },
+            ],
+        };
+        cfg.accounts = cfg.funding.accounts.clone();
+        cfg.vals = ValCfg { set: vec![v0, v1] };
+        cfg.min_validator_stake = 0;
+        cfg.epoch_length_blocks = 1;
+
+        let mut c = Chain::boot(cfg, vec![sk0, sk1]);
+        c.cfg.min_validator_stake = 100;
+        c.st.accounts
+            .get_mut(&c.cfg.vals.set[0].acct)
+            .expect("val0")
+            .staked_pwm_raw = 100;
+        c.st.accounts
+            .get_mut(&c.cfg.vals.set[1].acct)
+            .expect("val1")
+            .staked_pwm_raw = 99;
+
+        c.seal(vec![]).expect("h1");
+        c.seal(vec![]).expect("h2");
         assert_eq!(c.blocks[0].hdr.prod_idx, 0);
-        assert_eq!(c.blocks[1].hdr.prod_idx, 1);
+        assert_eq!(c.blocks[1].hdr.prod_idx, 0);
+    }
+
+    #[test]
+    fn stake_at_min_included() {
+        let (sk0, v0) = mk_val([161u8; 32]);
+        let (sk1, v1) = mk_val([162u8; 32]);
+        let mut cfg = crate::genesis::dev_net().0;
+        cfg.funding = FundingCfg {
+            accounts: vec![
+                crate::genesis::GRow {
+                    acct: v0.acct,
+                    pubkey: v0.pubkey,
+                    der_idx: v0.der_idx,
+                    bal: 0,
+                },
+                crate::genesis::GRow {
+                    acct: v1.acct,
+                    pubkey: v1.pubkey,
+                    der_idx: v1.der_idx,
+                    bal: 0,
+                },
+            ],
+        };
+        cfg.accounts = cfg.funding.accounts.clone();
+        cfg.vals = ValCfg { set: vec![v0, v1] };
+        cfg.min_validator_stake = 0;
+        cfg.epoch_length_blocks = 1;
+
+        let mut c = Chain::boot(cfg, vec![sk0, sk1]);
+        c.cfg.min_validator_stake = 100;
+        c.st.accounts
+            .get_mut(&c.cfg.vals.set[0].acct)
+            .expect("val0")
+            .staked_pwm_raw = 100;
+        c.st.accounts
+            .get_mut(&c.cfg.vals.set[1].acct)
+            .expect("val1")
+            .staked_pwm_raw = 100;
+
+        c.seal(vec![]).expect("h1");
+        c.seal(vec![]).expect("h2");
+        assert_eq!(c.blocks[0].hdr.prod_idx, 1);
+        assert_eq!(c.blocks[1].hdr.prod_idx, 0);
+    }
+
+    #[test]
+    fn stake_change_rollover_only() {
+        let (sk0, v0) = mk_val([171u8; 32]);
+        let (sk1, v1) = mk_val([172u8; 32]);
+        let mut cfg = crate::genesis::dev_net().0;
+        cfg.funding = FundingCfg {
+            accounts: vec![
+                crate::genesis::GRow {
+                    acct: v0.acct,
+                    pubkey: v0.pubkey,
+                    der_idx: v0.der_idx,
+                    bal: 0,
+                },
+                crate::genesis::GRow {
+                    acct: v1.acct,
+                    pubkey: v1.pubkey,
+                    der_idx: v1.der_idx,
+                    bal: 0,
+                },
+            ],
+        };
+        cfg.accounts = cfg.funding.accounts.clone();
+        cfg.vals = ValCfg { set: vec![v0, v1] };
+        cfg.min_validator_stake = 0;
+        cfg.epoch_length_blocks = 3;
+
+        let mut c = Chain::boot(cfg, vec![sk0, sk1]);
+        c.cfg.min_validator_stake = 100;
+        c.st.accounts
+            .get_mut(&c.cfg.vals.set[0].acct)
+            .expect("val0")
+            .staked_pwm_raw = 100;
+        c.st.accounts
+            .get_mut(&c.cfg.vals.set[1].acct)
+            .expect("val1")
+            .staked_pwm_raw = 100;
+
+        c.seal(vec![]).expect("h1");
+        c.st.accounts
+            .get_mut(&c.cfg.vals.set[1].acct)
+            .expect("val1")
+            .staked_pwm_raw = 0;
+        c.seal(vec![]).expect("h2");
+        c.seal(vec![]).expect("h3");
+
+        assert_eq!(c.blocks[0].hdr.prod_idx, 1);
+        assert_eq!(c.blocks[1].hdr.prod_idx, 0);
         assert_eq!(c.blocks[2].hdr.prod_idx, 0);
+        assert_eq!(c.st.epoch_counter, 1);
+        assert_eq!(c.st.active_validator_indices, vec![0]);
     }
 
     #[test]

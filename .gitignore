@@ -12,6 +12,7 @@ pwm-data.json
 /tmp/
 /target_verify/
 /target-live/
+/target-codex/
 /logs/
 /pwm-data-verify.json
 /typescript

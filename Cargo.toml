@@ -7,6 +7,14 @@ edition = "2021"
 license = "MIT"
 repository = "https://example.invalid/pwm"
 
+[workspace.lints.clippy]
+# Style gates aligned with clippy.toml + docs/AGENT_PROMPT_coding.md
+too_many_arguments = "warn"
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+module_inception = "warn"
+items_after_test_module = "warn"
+
 [workspace.dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }

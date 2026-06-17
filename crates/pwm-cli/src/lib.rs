@@ -17,6 +17,7 @@ mod cmd_key;
 mod cmd_node;
 mod cmd_offchain;
 mod cmd_roaming;
+mod cmd_status;
 mod cmd_tx;
 mod cmd_wallet;
 mod purpose_expand;

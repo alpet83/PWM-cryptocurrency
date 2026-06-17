@@ -1,0 +1,18 @@
+# PWM workspace Clippy thresholds — normative with docs/AGENT_PROMPT_coding.md
+# (Interface design § Parameter count / Function size; Micro-modular layout).
+
+# Hard cap: ≤5 parameters per fn/method (including self).
+too-many-arguments-threshold = 5
+
+# Hard cap: ≤100 lines per function/method body.
+too-many-lines-threshold = 100
+
+# Split complex coordinators before they become unreadable.
+cognitive-complexity-threshold = 25
+
+# Type complexity budget for signatures and aliases.
+type-complexity-threshold = 250
+
+# Compact modules: prefer flat trees and focused files (~800 LOC façade cap —
+# see AGENT_PROMPT_coding § Micro-modular layout). Enforced via
+# workspace.lints (module_inception, items_after_test_module) + review.

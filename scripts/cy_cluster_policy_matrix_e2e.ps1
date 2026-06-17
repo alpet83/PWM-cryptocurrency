@@ -21,7 +21,7 @@ param(
     [int]$MaxStateArchives = 30,
     [switch]$SkipGenesis,
     [switch]$SkipCluster,
-    [string]$RpcBruteDead = 'http://127.0.0.1:59999',
+    [string]$RpcBruteDead = 'offline',
     [string]$ReportPath = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -163,7 +163,7 @@ if ($CleanState) {
 }
 
 $childWallets = @()
-Add-R "## offline CY bruteforce (dead RPC skips auto-init)"
+Add-R "## offline CY bruteforce (`--rpc offline` skips auto-init)"
 for ($k = 1; $k -le $CyWalletCount; $k++) {
     # Keep generated matrix wallets away from the deterministic demo genesis master (...0001).
     $masterK = $k + 10

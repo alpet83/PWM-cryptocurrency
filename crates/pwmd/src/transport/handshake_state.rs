@@ -9,7 +9,7 @@ use crate::handshake::{DeploymentProfile, HandshakeValidationCtx, ReplayNonceCac
 
 use super::{
     ChurnSnapshot, HandshakeMetrics, PeerPolicyConfig, PeerPolicyCounters, PeerPolicySnapshot,
-    PeerRecord, TransportState, TrustedPeer,
+    PeerRecord, PeerSyncScoreCache, TransportState, TrustedPeer,
 };
 
 #[derive(Clone, Debug)]
@@ -37,6 +37,7 @@ pub(crate) struct HandshakeState {
     pub(crate) mempool_gsp: MempoolGspState,
     pub(crate) sync_live: SyncLiveState,
     pub(crate) cluster_attest: ClusterAttestState,
+    pub(crate) peer_scores: PeerSyncScoreCache,
 }
 
 impl HandshakeState {
@@ -69,6 +70,7 @@ impl HandshakeState {
             mempool_gsp: MempoolGspState::default(),
             sync_live: SyncLiveState::default(),
             cluster_attest: ClusterAttestState::default(),
+            peer_scores: PeerSyncScoreCache::default(),
         }
     }
 }

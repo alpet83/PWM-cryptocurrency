@@ -300,6 +300,9 @@ pub(super) async fn run_seed_steady_session(
                 Err(_) => {
                     probe.rx_timeout_total = probe.rx_timeout_total.saturating_add(1);
                     probe.timeout_window = probe.timeout_window.saturating_add(1);
+                    let mut hs = handshake_write_traced(app, "seed_steady_session").await;
+                    hs.peer_scores
+                        .apply(&remote.node.node_id, PeerScoreEvent::Timeout);
                     break;
                 }
                 Ok(Err(err)) => {
@@ -567,6 +570,9 @@ pub(super) async fn run_seed_steady_session(
                     if is_wire_timeout(&err) {
                         probe.rx_timeout_total = probe.rx_timeout_total.saturating_add(1);
                         probe.timeout_window = probe.timeout_window.saturating_add(1);
+                        let mut hs = handshake_write_traced(app, "seed_steady_session").await;
+                        hs.peer_scores
+                            .apply(&remote.node.node_id, PeerScoreEvent::Timeout);
                         break;
                     }
                     probe.rx_read_err_total = probe.rx_read_err_total.saturating_add(1);

@@ -1,18 +1,36 @@
 //! CLI command dispatch (`run` orchestration after Parse).
 
 use crate::{
-    cmd_account, cmd_addr, cmd_book, cmd_genesis, cmd_key, cmd_node, cmd_offchain, cmd_roaming,
-    cmd_tx, cmd_wallet, Cli, Cmd, WalletCmd,
+    cli_config::is_rpc_offline, cmd_account, cmd_addr, cmd_book, cmd_genesis, cmd_key, cmd_node,
+    cmd_offchain, cmd_roaming, cmd_status, cmd_tx, cmd_wallet, Cli, Cmd, WalletCmd,
 };
+
+fn command_allowed_offline(cmd: &Cmd) -> bool {
+    matches!(
+        cmd,
+        Cmd::KeyGen
+            | Cmd::GenesisBuild { .. }
+            | Cmd::AddrDer { .. }
+            | Cmd::AddrBruteforce { .. }
+            | Cmd::Wallet { .. }
+            | Cmd::OffDemo
+    )
+}
 
 pub fn run(cli: Cli) {
     let rpc_base = cli.rpc.trim_end_matches('/').to_string();
+    if is_rpc_offline(&rpc_base) && !command_allowed_offline(&cli.cmd) {
+        crate::exit_user_error(
+            "command requires live pwmd; use a real --rpc URL (offline is only for local commands such as addr-bruteforce)",
+        );
+    }
     let wallet_passphrase = cli.wallet_passphrase.clone();
     let genesis_passphrase = cli.genesis_passphrase.clone();
     let upgrade_wallet = cli.upgrade_wallet;
     match cli.cmd {
         Cmd::OffDemo => cmd_offchain::run_off_demo(),
         Cmd::KeyGen => cmd_key::run_keygen(),
+        Cmd::Status => cmd_status::run_status(&rpc_base),
         Cmd::GenesisBuild {
             wallet,
             out,
@@ -98,9 +116,10 @@ pub fn run(cli: Cli) {
             requested_domain_lo,
             rescue_address,
             initial_policy,
+            save_activation_tx,
         } => cmd_tx::run_tx_init(
             &rpc_base,
-            wallet,
+            wallet.clone(),
             master,
             domain,
             wallet_passphrase.as_deref(),
@@ -117,6 +136,7 @@ pub fn run(cli: Cli) {
                 rescue_address,
                 initial_policies: initial_policy,
             },
+            save_activation_tx,
         ),
         Cmd::AccountInfo { account, wallet } => {
             cmd_account::run_account_info(&rpc_base, account, wallet, upgrade_wallet)
@@ -125,6 +145,7 @@ pub fn run(cli: Cli) {
             wallet,
             master,
             domain,
+            index,
             policy,
             activation,
             activate_at_height,
@@ -136,6 +157,7 @@ pub fn run(cli: Cli) {
             domain,
             wallet_passphrase.as_deref(),
             upgrade_wallet,
+            index,
             policy,
             activation,
             activate_at_height,
@@ -145,9 +167,12 @@ pub fn run(cli: Cli) {
             wallet,
             master,
             domain,
+            index,
             policy,
             policy_id,
             fee,
+            activation_target,
+            activation_tx,
             rescue_account_index,
             rescue_wallet,
             rescue_master,
@@ -160,9 +185,12 @@ pub fn run(cli: Cli) {
             domain,
             wallet_passphrase.as_deref(),
             upgrade_wallet,
+            index,
             policy,
             policy_id,
             fee,
+            activation_target,
+            activation_tx,
             cmd_tx::RescueCosignArgs {
                 rescue_account_index,
                 rescue_wallet,
@@ -175,6 +203,7 @@ pub fn run(cli: Cli) {
             wallet,
             master,
             domain,
+            index,
             policy,
             policy_id,
             fee,
@@ -185,6 +214,7 @@ pub fn run(cli: Cli) {
             domain,
             wallet_passphrase.as_deref(),
             upgrade_wallet,
+            index,
             policy,
             policy_id,
             fee,
@@ -193,6 +223,7 @@ pub fn run(cli: Cli) {
             wallet,
             master,
             domain,
+            index,
             to,
             amount,
             fee,
@@ -203,6 +234,7 @@ pub fn run(cli: Cli) {
             domain,
             wallet_passphrase.as_deref(),
             upgrade_wallet,
+            index,
             to,
             amount,
             fee,
@@ -211,6 +243,7 @@ pub fn run(cli: Cli) {
             wallet,
             master,
             domain,
+            index,
             amount,
         } => cmd_tx::run_tx_stake(
             &rpc_base,
@@ -219,12 +252,14 @@ pub fn run(cli: Cli) {
             domain,
             wallet_passphrase.as_deref(),
             upgrade_wallet,
+            index,
             amount,
         ),
         Cmd::TxUnstake {
             wallet,
             master,
             domain,
+            index,
             amount,
         } => cmd_tx::run_tx_unstake(
             &rpc_base,
@@ -233,12 +268,14 @@ pub fn run(cli: Cli) {
             domain,
             wallet_passphrase.as_deref(),
             upgrade_wallet,
+            index,
             amount,
         ),
         Cmd::TxBurnMark {
             wallet,
             master,
             domain,
+            index,
             mark_amount,
             beneficiary,
             purpose,
@@ -249,6 +286,7 @@ pub fn run(cli: Cli) {
             domain,
             wallet_passphrase.as_deref(),
             upgrade_wallet,
+            index,
             mark_amount,
             beneficiary,
             purpose,

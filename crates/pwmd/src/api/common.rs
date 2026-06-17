@@ -8,6 +8,7 @@ use crate::App;
 use axum::http::StatusCode;
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
 use pwm_core::hd::domain_of_account_id;
+use pwm_core::reject_wire::tx_err_wire;
 use pwm_core::tx::{TxBody, TxError};
 use pwm_core::SignedTx;
 use serde::Serialize;
@@ -256,36 +257,6 @@ pub(crate) fn reject_tx_kind(tx: &SignedTx) -> &'static str {
         TxBody::Stake { .. } => "stake",
         TxBody::Unstake { .. } => "unstake",
         TxBody::Policy { .. } => "policy",
-    }
-}
-
-pub(crate) fn tx_err_wire(e: &TxError, tx_kind: &str) -> (&'static str, &'static str) {
-    use TxError::*;
-    match e {
-        // Burn stable errors (RFC 0014 baseline)
-        InvalidPurposeLength | InvalidPurposeChars if tx_kind == "burn" => {
-            ("E_BURN_SCHEMA_INVALID", "VALIDATION_ERROR")
-        }
-        InsufficientMarks if tx_kind == "burn" => ("E_BURN_OVER_BALANCE", "STATE_CONFLICT"),
-        DomainMismatch if tx_kind == "burn" => ("E_BURN_POLICY_REJECT", "POLICY_REJECT"),
-
-        // Import fee baseline.
-        ImportFeeTooLow => ("E_IMPORT_FEE_TOO_LOW", "POLICY_REJECT"),
-
-        PolicySchemaInvalid => ("E_POLICY_SCHEMA_INVALID", "VALIDATION_ERROR"),
-        PolicyNotInstalled => ("E_POLICY_NOT_INSTALLED", "POLICY_REJECT"),
-        PolicyNotActive => ("E_POLICY_NOT_ACTIVE", "POLICY_REJECT"),
-        PolicyDenied => ("E_POLICY_DENIED", "POLICY_REJECT"),
-        PolicySenderFiltered => ("E_POLICY_SENDER_FILTERED", "POLICY_REJECT"),
-        PolicyRoutingDenied => ("E_POLICY_ROUTING_DENIED", "POLICY_REJECT"),
-        PolicyMissingCosign => ("E_POLICY_MISSING_COSIGN", "POLICY_REJECT"),
-        PolicyRescueRequired => ("E_POLICY_RESCUE_REQUIRED", "POLICY_REJECT"),
-        PolicyEmergencyCosignRequired => ("E_POLICY_EMERGENCY_COSIGN_REQUIRED", "POLICY_REJECT"),
-        PolicyAccountFinalized => ("E_POLICY_ACCOUNT_FINALIZED", "POLICY_REJECT"),
-        PolicyIrreversible => ("E_POLICY_IRREVERSIBLE", "POLICY_REJECT"),
-
-        // Keep fixed fallback for non-freeze, generic schema failures.
-        _ => ("E_SCHEMA_INVALID", "VALIDATION_ERROR"),
     }
 }
 

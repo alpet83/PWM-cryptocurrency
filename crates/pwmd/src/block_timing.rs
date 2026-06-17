@@ -393,6 +393,7 @@ struct RowOut {
 }
 
 impl BlockTiming {
+    #[cfg(test)]
     pub(crate) fn mk_new(cfg: BlockTimingCfg) -> Self {
         Self {
             cfg,
@@ -647,6 +648,7 @@ impl BlockTiming {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn queue_depth(&self) -> u64 {
         self.q.lock().map(|q| q.ops.len() as u64).unwrap_or(0)
     }

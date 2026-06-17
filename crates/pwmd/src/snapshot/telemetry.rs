@@ -9,6 +9,8 @@ pub(crate) struct JsonSnapTiming {
     pub(crate) summary_read_ms: u64,
     pub(crate) epochs_ms: u64,
     pub(crate) validate_ms: u64,
+    pub(crate) used_full_verify: bool,
+    pub(crate) lag_forced_verify: bool,
 }
 
 /// Timings for ClickHouse snapshot load (`ch_http::SnapChCfg::ch_load`).

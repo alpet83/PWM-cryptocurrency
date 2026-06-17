@@ -232,9 +232,7 @@ fn footer_rpc_online_one() {
         false,
     );
     assert!(
-        line.spans
-            .iter()
-            .all(|s| s.style.fg != Some(Color::Red)),
+        line.spans.iter().all(|s| s.style.fg != Some(Color::Red)),
         "online RPC should not emit red health spans"
     );
     let flat: String = line.spans.iter().map(|s| s.content.as_ref()).collect();

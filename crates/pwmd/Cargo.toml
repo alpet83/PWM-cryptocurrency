@@ -1,8 +1,11 @@
 [package]
 name = "pwmd"
-version = "0.1.66"
+version = "0.1.68"
 edition.workspace = true
 license.workspace = true
+
+[lints]
+workspace = true
 
 [lib]
 path = "src/lib.rs"
@@ -52,6 +55,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 serde_json.workspace = true
 tower = { version = "0.5", features = ["util"] }
 reqwest = { workspace = true }
+
+[build-dependencies]
+winresource = "0.1"
 
 [[bench]]
 name = "snapshot_load"

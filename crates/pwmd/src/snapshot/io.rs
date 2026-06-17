@@ -7,16 +7,17 @@ use super::genesis::snapshot_genesis_accounts;
 use super::incremental;
 use super::telemetry::{JsonSnapTiming, SNAP_STARTUP_TARGET};
 use super::types::{
-    data_from_v2, data_from_v3, data_to_v3, roaming_to_wire, BlocksStored, SnapshotData,
-    SnapshotDataLegacyV0, SnapshotDataV2, SnapshotDataV3, SnapshotRoamingWire, SNAPSHOT_V1,
-    SNAPSHOT_V2, SNAPSHOT_VERSION,
+    data_from_v2, data_from_v3, data_from_v4, data_to_v4, roaming_to_wire, BlocksStored,
+    SnapshotData, SnapshotDataLegacyV0, SnapshotDataV2, SnapshotDataV3, SnapshotDataV4,
+    SnapshotRoamingWire, SNAPSHOT_V1, SNAPSHOT_V2, SNAPSHOT_V3, SNAPSHOT_VERSION,
 };
 use crate::ledger::CrossShardLedger;
 use crate::Inner;
 use ed25519_dalek::SigningKey;
 use pwm_core::block::Block;
 use pwm_core::block::{hdr_hash, txs_root};
-use pwm_core::chain::prev_gen;
+use pwm_core::chain::{pick_prod_idx, prev_gen, recompute_active_idxs, roll_epoch_if_needed};
+use pwm_core::compute_block_reward;
 use pwm_core::digest;
 use pwm_core::genesis::GenCfg;
 use pwm_core::hd::account_id_from_parts;
@@ -139,19 +140,22 @@ fn preflight_blk1(
         return Err("snapshot trust validation: block1 has invalid producer signature".into());
     }
     let mut st = cfg.state0();
+    st.active_validator_indices = recompute_active_idxs(cfg, &st);
+    roll_epoch_if_needed(cfg, &mut st, 1);
+    st.refund_exp_locks(1);
     for (tx_i, tx) in blk.txs.iter().enumerate() {
         st.apply_tx_with_ctx(tx, 1, blk.hdr.ts, cfg).map_err(|e| {
             format!("snapshot trust validation: block1 tx[{tx_i}] replay failed: {e}")
         })?;
     }
+    st.refund_exp_locks(1);
+    st.drain_conservation_at_height(1, cfg);
     let prod_acct = cfg.prod_acct(blk.hdr.prod_idx);
     if cfg.is_legacy_policy() {
-        st.accrue_marks(cfg.marks_coeff);
         st.reward_producer(&prod_acct, cfg.block_reward);
     } else {
-        let season_ppm = cfg.season_ppm(blk.hdr.ts);
-        st.accrue_marks_v2(cfg.marks_coeff, cfg.marks_stake_min, season_ppm);
-        st.reward_producer_v2(&prod_acct, cfg.block_reward, cfg.pwm_stake_min, season_ppm);
+        let rew = compute_block_reward(cfg, 1);
+        st.reward_producer_v2(&prod_acct, rew, cfg.pwm_stake_min, 1_000_000);
     }
     let st_root = digest(&st);
     if blk.hdr.state_root != st_root {
@@ -253,6 +257,7 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
     }
     let mut prev = prev_gen();
     let mut replay_state = cfg.state0();
+    replay_state.active_validator_indices = recompute_active_idxs(cfg, &replay_state);
     let total_blocks = snapshot.blocks.len() as u64;
     let replay_start = Instant::now();
     let mut last_log = replay_start;
@@ -265,13 +270,17 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
     for (i, blk) in snapshot.blocks.iter().enumerate() {
         let now = Instant::now();
         if now.duration_since(last_log).as_secs() >= 10 {
+            let percent_complete = if total_blocks == 0 {
+                100
+            } else {
+                ((i as u64) * 100) / total_blocks
+            };
             info!(
                 target: SNAP_STARTUP_TARGET,
                 stage = "chain_verify",
-                block_idx = i as u64,
                 height = blk.hdr.height,
                 total_blocks,
-                blocks_done = i as u64,
+                percent_complete,
                 elapsed_ms = replay_start.elapsed().as_millis() as u64,
                 "chain_verify progress"
             );
@@ -295,7 +304,11 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
                 "snapshot chain mismatch: block[{i}] tx_root is invalid"
             ));
         }
-        let want_prod_idx = ((h - 1) as usize % cfg.vals.set.len()) as u32;
+        roll_epoch_if_needed(cfg, &mut replay_state, h);
+        let want_prod_idx =
+            pick_prod_idx(h, &replay_state.active_validator_indices).map_err(|e| {
+                format!("snapshot chain mismatch: block[{i}] cannot pick proposer: {e}")
+            })?;
         if blk.hdr.prod_idx != want_prod_idx {
             return Err(format!(
                 "snapshot chain mismatch: block[{i}] prod_idx {}, expected {}",
@@ -311,6 +324,7 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
                 "snapshot chain mismatch: block[{i}] has invalid producer signature"
             ));
         }
+        replay_state.refund_exp_locks(h);
         for (tx_i, tx) in blk.txs.iter().enumerate() {
             replay_state
                 .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, cfg)
@@ -320,19 +334,14 @@ fn validate_snapshot(snapshot: &mut SnapshotData, cfg: &GenCfg) -> Result<(), St
                 )
                 })?;
         }
+        replay_state.refund_exp_locks(h);
+        replay_state.drain_conservation_at_height(h, cfg);
         let prod_acct = cfg.prod_acct(blk.hdr.prod_idx);
         if cfg.is_legacy_policy() {
-            replay_state.accrue_marks(cfg.marks_coeff);
             replay_state.reward_producer(&prod_acct, cfg.block_reward);
         } else {
-            let season_ppm = cfg.season_ppm(blk.hdr.ts);
-            replay_state.accrue_marks_v2(cfg.marks_coeff, cfg.marks_stake_min, season_ppm);
-            replay_state.reward_producer_v2(
-                &prod_acct,
-                cfg.block_reward,
-                cfg.pwm_stake_min,
-                season_ppm,
-            );
+            let rew = compute_block_reward(cfg, h);
+            replay_state.reward_producer_v2(&prod_acct, rew, cfg.pwm_stake_min, 1_000_000);
         }
         let replay_root = digest(&replay_state);
         if blk.hdr.state_root != replay_root {
@@ -503,7 +512,37 @@ fn validate_snapshot_trusted(
     if last.hdr.state_root != st_root {
         return Err("snapshot trust validation: state root mismatch with tip block".into());
     }
+    let want_tail_prod_idx = trust_tail_prod_idx(cfg, summary_path, &snapshot.state, tip, first_h)?;
+    let total_blocks = snapshot.blocks.len() as u64;
+    let trust_start = Instant::now();
+    let mut last_log = trust_start;
+    info!(
+        target: SNAP_STARTUP_TARGET,
+        stage = "trust_validate",
+        total_blocks,
+        tail_first_h = first_h,
+        tip_h = tip,
+        "trust_validate started"
+    );
     for (i, blk) in snapshot.blocks.iter().enumerate() {
+        let now = Instant::now();
+        if now.duration_since(last_log).as_secs() >= 10 {
+            let percent_complete = if total_blocks == 0 {
+                100
+            } else {
+                ((i as u64) * 100) / total_blocks
+            };
+            info!(
+                target: SNAP_STARTUP_TARGET,
+                stage = "trust_validate",
+                height = blk.hdr.height,
+                total_blocks,
+                percent_complete,
+                elapsed_ms = trust_start.elapsed().as_millis() as u64,
+                "trust_validate progress"
+            );
+            last_log = now;
+        }
         let h = first_h + i as u64;
         if blk.hdr.height != h {
             return Err(format!(
@@ -548,12 +587,16 @@ fn validate_snapshot_trusted(
                 "snapshot trust validation: block[{i}] tx_root is invalid"
             ));
         }
-        let want_prod_idx = ((h - 1) as usize % cfg.vals.set.len()) as u32;
-        if blk.hdr.prod_idx != want_prod_idx {
-            return Err(format!(
-                "snapshot trust validation: block[{i}] prod_idx {}, expected {}",
-                blk.hdr.prod_idx, want_prod_idx
-            ));
+        let want_prod_idx = *want_tail_prod_idx.get(i).ok_or_else(|| {
+            format!("snapshot trust validation: block[{i}] missing expected proposer")
+        })?;
+        if let Some(want_prod_idx) = want_prod_idx {
+            if blk.hdr.prod_idx != want_prod_idx {
+                return Err(format!(
+                    "snapshot trust validation: block[{i}] prod_idx {}, expected {}",
+                    blk.hdr.prod_idx, want_prod_idx
+                ));
+            }
         }
         let prod = cfg.vals.set.get(blk.hdr.prod_idx as usize).ok_or_else(|| {
             format!("snapshot trust validation: block[{i}] prod_idx out of range")
@@ -575,7 +618,64 @@ fn validate_snapshot_trusted(
                 .to_string(),
         );
     }
+    info!(
+        target: SNAP_STARTUP_TARGET,
+        stage = "trust_validate",
+        total_blocks,
+        elapsed_ms = trust_start.elapsed().as_millis() as u64,
+        "trust_validate done"
+    );
     validate_snapshot_state_accounts(snapshot)
+}
+
+fn tail_epoch_bnd_h(cfg: &GenCfg, first_h: u64, tip_h: u64) -> Option<u64> {
+    let epoch_len = cfg.epoch_length_blocks;
+    if epoch_len == 0 {
+        return None;
+    }
+    let rem = first_h % epoch_len;
+    let bnd_h = if rem == 0 {
+        first_h
+    } else {
+        first_h.saturating_add(epoch_len.saturating_sub(rem))
+    };
+    (bnd_h <= tip_h).then_some(bnd_h)
+}
+
+fn trust_tail_prod_idx(
+    cfg: &GenCfg,
+    _summary_path: &FsPath,
+    snap_state: &pwm_core::State,
+    tip_h: u64,
+    tail_first_h: u64,
+) -> Result<Vec<Option<u32>>, String> {
+    let mut want = vec![None; (tip_h - tail_first_h + 1) as usize];
+    if let Some(bnd_h) = tail_epoch_bnd_h(cfg, tail_first_h, tip_h) {
+        for h in bnd_h..=tip_h {
+            let prod_idx = pick_prod_idx(h, &snap_state.active_validator_indices).map_err(|e| {
+                format!("snapshot trust validation: height {h} proposer pick failed: {e}")
+            })?;
+            let tail_pos = usize::try_from(h.saturating_sub(tail_first_h))
+                .map_err(|_| "snapshot trust validation: tail index overflow".to_string())?;
+            if tail_pos >= want.len() {
+                return Err(format!(
+                    "snapshot trust validation: height {h} outside tail {tail_first_h}..={tip_h}"
+                ));
+            }
+            want[tail_pos] = Some(prod_idx);
+        }
+        return Ok(want);
+    }
+
+    for h in tail_first_h..=tip_h {
+        let prod_idx = pick_prod_idx(h, &snap_state.active_validator_indices).map_err(|e| {
+            format!("snapshot trust validation: height {h} proposer pick failed: {e}")
+        })?;
+        let tail_pos = usize::try_from(h.saturating_sub(tail_first_h))
+            .map_err(|_| "snapshot trust validation: tail index overflow".to_string())?;
+        want[tail_pos] = Some(prod_idx);
+    }
+    Ok(want)
 }
 
 /// Decodes canonical snapshot JSON with replay (ClickHouse `ch_load`; JsonFile uses [`load_snapshot`]).
@@ -685,16 +785,16 @@ pub(crate) fn encode_inner_snap_json(
     encode_snap_data_txt(&snap)
 }
 
-/// Canonical JSON for ClickHouse `snapshot_json` (pretty v3 wire, matches [`encode_inner_snap_json`]).
+/// Canonical JSON for ClickHouse `snapshot_json` (pretty v4 wire, matches [`snap_wire_json_bytes`]).
 pub(crate) fn encode_snap_data_txt(snap: &SnapshotData) -> Result<String, String> {
-    let wire = data_to_v3(snap);
+    let wire = data_to_v4(snap);
     serde_json::to_string_pretty(&wire).map_err(|e| format!("encode snapshot: {e}"))
 }
 
-/// Stable bytes for equality of two-loaded snapshots: `serde_json::to_vec` of v3 wire (`data_to_v3`).
+/// Stable bytes for equality of two-loaded snapshots: `serde_json::to_vec` of v4 wire (`data_to_v4`).
 pub(crate) fn snap_wire_json_bytes(snap: &SnapshotData) -> Result<Vec<u8>, String> {
-    let v3 = data_to_v3(snap);
-    serde_json::to_vec(&v3).map_err(|e| format!("snap wire json: {e}"))
+    let v4 = data_to_v4(snap);
+    serde_json::to_vec(&v4).map_err(|e| format!("snap wire json: {e}"))
 }
 
 pub(crate) fn load_snapshot(path: &FsPath, cfg: &GenCfg) -> Result<Option<SnapshotData>, String> {
@@ -754,18 +854,37 @@ pub(crate) fn load_snapshot_timed(
         return Ok((None, br));
     };
     let mut effective_opts = opts;
+    let mut load_mode = "trust";
+    let mut lag_forced_verify = false;
+    let mut man_tip = None;
     if snap.blocks_stored == BlocksStored::Epochs && !effective_opts.verify_chain && mp.exists() {
         if let Ok(Some(man)) = incremental::read_epoch_manifest(path) {
+            man_tip = Some(man.canonical_h);
             if man.canonical_h > 0 && man.canonical_h != snap.checkpoint_height {
-                warn!(
-                    target: SNAP_STARTUP_TARGET,
-                    summary_checkpoint = snap.checkpoint_height,
-                    manifest_tip = man.canonical_h,
-                    "snapshot summary lags epoch manifest; forcing full chain verification"
-                );
+                lag_forced_verify = true;
                 effective_opts.verify_chain = true;
             }
         }
+    }
+    if snap.blocks_stored == BlocksStored::Epochs {
+        let load_reason = if effective_opts.verify_chain {
+            load_mode = "full_verify";
+            if lag_forced_verify {
+                "summary_manifest_lag"
+            } else {
+                "verify_chain_flag"
+            }
+        } else {
+            "trust_checkpoint"
+        };
+        info!(
+            target: SNAP_STARTUP_TARGET,
+            snapshot_load_mode = load_mode,
+            reason = load_reason,
+            summary_checkpoint = snap.checkpoint_height,
+            manifest_tip = man_tip.unwrap_or(0),
+            "snapshot load mode selected"
+        );
     }
     if snap.blocks_stored == BlocksStored::Epochs {
         let te = Instant::now();
@@ -804,6 +923,8 @@ pub(crate) fn load_snapshot_timed(
         e
     })?;
     br.validate_ms = tv.elapsed().as_millis() as u64;
+    br.used_full_verify = snap.blocks_stored == BlocksStored::Epochs && effective_opts.verify_chain;
+    br.lag_forced_verify = lag_forced_verify;
     Ok((Some(snap), br))
 }
 
@@ -906,9 +1027,14 @@ fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData
         }
         match version {
             v if v == u64::from(SNAPSHOT_VERSION) => {
-                let wire: SnapshotDataV3 = serde_json::from_value(Value::Object(canonical))
+                let wire: SnapshotDataV4 = serde_json::from_value(Value::Object(canonical))
                     .map_err(|e| format!("parse canonical snapshot JSON: {e}"))?;
-                data_from_v3(wire).map_err(|e| format!("parse canonical snapshot JSON: {e}"))?
+                data_from_v4(wire).map_err(|e| format!("parse canonical snapshot JSON: {e}"))?
+            }
+            v if v == u64::from(SNAPSHOT_V3) => {
+                let wire: SnapshotDataV3 = serde_json::from_value(Value::Object(canonical))
+                    .map_err(|e| format!("parse v3 snapshot JSON: {e}"))?;
+                data_from_v3(wire).map_err(|e| format!("parse v3 snapshot JSON: {e}"))?
             }
             v if v == u64::from(SNAPSHOT_V2) => {
                 let wire: SnapshotDataV2 = serde_json::from_value(Value::Object(canonical))
@@ -923,7 +1049,7 @@ fn decode_snap_value_raw(raw: Value, cfg: &GenCfg) -> Result<Option<SnapshotData
             }
             other => {
                 return Err(format!(
-                    "snapshot version mismatch: got {other}, expected {SNAPSHOT_VERSION}, {SNAPSHOT_V2} or {SNAPSHOT_V1}"
+                    "snapshot version mismatch: got {other}, expected {SNAPSHOT_VERSION}, {SNAPSHOT_V3}, {SNAPSHOT_V2} or {SNAPSHOT_V1}"
                 ));
             }
         }
@@ -1047,9 +1173,11 @@ pub(crate) fn json_file_seal_persist(path: &FsPath, inner: &Inner) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::snapshot::incremental::append_block_for_epoch;
     use pwm_core::hd::domain_of_account_id;
     use pwm_core::tx::{SignedTx, TxBody};
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn snap_replay_uses_blk_ctx() {
@@ -1080,7 +1208,7 @@ mod tests {
     }
 
     #[test]
-    fn v3_replay_det_gate_ok() {
+    fn v4_replay_det_gate_ok() {
         let (cfg, sks) = pwm_core::dev_net();
         let mut chain = pwm_core::Chain::boot(cfg.clone(), sks.clone());
         let signer = cfg.accounts[0].acct;
@@ -1213,5 +1341,74 @@ mod tests {
         attach_anch(&mut snap, &cfg, Path::new("pwm-data.json"), &opts).expect("migrate");
         let anch = snap.genesis_anchor.as_ref().expect("anchor attached");
         anchor::chk_anch(anch, &cfg, hdr_hash(&blk1.hdr)).expect("anchor verifies");
+    }
+
+    #[test]
+    fn trust_prod_no_bnd_set() {
+        let (cfg, _sks) = pwm_core::dev_net();
+        let mut snap_state = cfg.state0();
+        snap_state.active_validator_indices = vec![2, 0, 1];
+        let tip_h = 2_500;
+        let first_h = 2_001;
+        let got = trust_tail_prod_idx(
+            &cfg,
+            Path::new("pwm-data.json"),
+            &snap_state,
+            tip_h,
+            first_h,
+        )
+        .expect("tail proposer idx");
+        assert_eq!(got.len() as u64, tip_h - first_h + 1);
+        for (i, row) in got.iter().enumerate() {
+            let h = first_h + i as u64;
+            let want = pick_prod_idx(h, &snap_state.active_validator_indices).expect("pick");
+            assert_eq!(*row, Some(want), "height={h}");
+        }
+    }
+
+    #[test]
+    fn trust_prod_tail_bnd_tx_ok() {
+        let sfx = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pwm-trust-bnd-tail-{sfx}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let pb = dir.join("pwm-data.json");
+
+        let (mut cfg, sks) = pwm_core::dev_net();
+        cfg.epoch_length_blocks = 5;
+        let mut chain = Chain::boot(cfg.clone(), sks.clone());
+        let signer = cfg.accounts[0].acct;
+        for i in 0..16 {
+            let txs = if i >= 14 {
+                let nonce = (i - 14) as u64;
+                vec![SignedTx::sign_body(
+                    &sks[0],
+                    domain_of_account_id(&signer),
+                    cfg.accounts[0].der_idx,
+                    nonce,
+                    TxBody::Stake { amount: 1 },
+                )]
+            } else {
+                vec![]
+            };
+            chain.seal(txs).expect("seal");
+            let blk = chain.blocks.back().expect("tip block");
+            append_block_for_epoch(&pb, blk).expect("append");
+        }
+        let tip_h = chain.tip_h();
+        let first_h = 12;
+        let got = trust_tail_prod_idx(&cfg, &pb, &chain.st, tip_h, first_h).expect("tail prod");
+        assert_eq!(got.len(), 5);
+        assert_eq!(got[0], None);
+        assert_eq!(got[1], None);
+        assert_eq!(got[2], None);
+        let want_h15 = pick_prod_idx(15, &chain.st.active_validator_indices).expect("pick h15");
+        let want_h16 = pick_prod_idx(16, &chain.st.active_validator_indices).expect("pick h16");
+        assert_eq!(got[3], Some(want_h15));
+        assert_eq!(got[4], Some(want_h16));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -374,6 +374,10 @@ async fn v1_exp_ib_hi_pv() {
     let hello_json: serde_json::Value = serde_json::from_slice(&hello_body).unwrap();
     assert_eq!(hello_json["accepted"], true);
     {
+        let mut hs = target_app.handshake.write().await;
+        hs.trusted_peers.remove(&source_app.identity.node_id);
+    }
+    {
         let hs = target_app.handshake.read().await;
         assert!(hs.peers.contains_key(&source_app.identity.node_id));
         assert!(!hs.trusted_peers.contains_key(&source_app.identity.node_id));

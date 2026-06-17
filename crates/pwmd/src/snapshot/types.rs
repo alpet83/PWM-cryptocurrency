@@ -3,6 +3,7 @@
 use crate::ledger::{CrossShardFact, CrossShardLedger, CrossShardOrigin, CrossShardStatus};
 use crate::roaming::{IntentStatus, RoamingIntent, RoamingPool};
 use pwm_core::block::{Block, BlockHdr};
+use pwm_core::state::{CrossShardLock, EvidenceRecord, PendingConservationTransfer};
 use pwm_core::tx::{
     ActivationMode, CosignPolicy, CosignRole, Cosignature, InitPolicyEntry, InitV4Extension,
     PolicyAction, PolicyKind, SignedTx, TxBody,
@@ -51,7 +52,8 @@ pub(crate) struct SnapshotData {
     pub(crate) checkpoint_height: u64,
 }
 
-pub(crate) const SNAPSHOT_VERSION: u32 = 3;
+pub(crate) const SNAPSHOT_VERSION: u32 = 4;
+pub(super) const SNAPSHOT_V3: u32 = 3;
 pub(super) const SNAPSHOT_V2: u32 = 2;
 pub(super) const SNAPSHOT_V1: u32 = 1;
 
@@ -87,6 +89,24 @@ pub(super) struct SnapshotDataV3 {
     genesis_anchor: Option<SnapshotGenAnchorV3>,
     blocks: Vec<BlockV2>,
     state: SnapshotStateV3,
+    #[serde(default)]
+    roaming: SnapshotRoamingV2,
+    #[serde(default)]
+    cross_shard: SnapshotCrossShardV2,
+    #[serde(default)]
+    blocks_stored: BlocksStored,
+    #[serde(default)]
+    checkpoint_height: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(super) struct SnapshotDataV4 {
+    version: u32,
+    genesis_accounts: Vec<SnapshotGenesisRowV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    genesis_anchor: Option<SnapshotGenAnchorV3>,
+    blocks: Vec<BlockV2>,
+    state: SnapshotStateV4,
     #[serde(default)]
     roaming: SnapshotRoamingV2,
     #[serde(default)]
@@ -260,9 +280,18 @@ enum TxBodyV2 {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum PolicyActionV2 {
-    SetPolicy { policy: String, activation: String },
-    ActivatePolicy { policy_id: u8 },
-    DeactivatePolicy { policy_id: u8 },
+    SetPolicy {
+        policy: String,
+        activation: String,
+    },
+    ActivatePolicy {
+        policy_id: u8,
+        #[serde(default)]
+        activation_target: Option<String>,
+    },
+    DeactivatePolicy {
+        policy_id: u8,
+    },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -340,6 +369,26 @@ struct SnapshotStateV3 {
     imported_set: Vec<String>,
     #[serde(default)]
     exported_registry: Vec<SnapshotExportRowV2>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SnapshotStateV4 {
+    accounts: Vec<SnapshotStateRowV3>,
+    fee_pool: String,
+    #[serde(default)]
+    imported_set: Vec<String>,
+    #[serde(default)]
+    exported_registry: Vec<SnapshotExportRowV2>,
+    #[serde(default)]
+    epoch_counter: u64,
+    #[serde(default)]
+    active_validator_indices: Vec<u16>,
+    #[serde(default)]
+    cross_shard_locks: Vec<CrossShardLock>,
+    #[serde(default)]
+    evidence_log: Vec<EvidenceRecord>,
+    #[serde(default)]
+    pending_conservation: Vec<PendingConservationTransfer>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -585,6 +634,16 @@ struct SnapshotStateWire {
     imported_set: Vec<[u8; 32]>,
     #[serde(default)]
     exported_registry: Vec<SnapshotExportRow>,
+    #[serde(default)]
+    epoch_counter: u64,
+    #[serde(default)]
+    active_validator_indices: Vec<u16>,
+    #[serde(default)]
+    cross_shard_locks: Vec<CrossShardLock>,
+    #[serde(default)]
+    evidence_log: Vec<EvidenceRecord>,
+    #[serde(default)]
+    pending_conservation: Vec<PendingConservationTransfer>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -723,6 +782,11 @@ where
                 amount: row.amount,
             })
             .collect(),
+        epoch_counter: state.epoch_counter,
+        active_validator_indices: state.active_validator_indices.clone(),
+        cross_shard_locks: state.cross_shard_locks.clone(),
+        evidence_log: state.evidence_log.clone(),
+        pending_conservation: state.pending_conservation.clone(),
     }
     .serialize(serializer)
 }
@@ -774,6 +838,12 @@ where
         fee_pool: wire.fee_pool,
         imported_set,
         exported_registry,
+        epoch_counter: wire.epoch_counter,
+        active_validator_indices: wire.active_validator_indices,
+        cross_shard_locks: wire.cross_shard_locks,
+        evidence_log: wire.evidence_log,
+        pending_conservation: wire.pending_conservation,
+        ..ChainState::default()
     })
 }
 
@@ -921,8 +991,12 @@ fn policy_action_to_v2(value: &PolicyAction) -> PolicyActionV2 {
             policy: policy_kind_to_str(*policy).to_string(),
             activation: activation_to_str(*activation),
         },
-        PolicyAction::ActivatePolicy { policy_id } => PolicyActionV2::ActivatePolicy {
+        PolicyAction::ActivatePolicy {
+            policy_id,
+            activation_target,
+        } => PolicyActionV2::ActivatePolicy {
             policy_id: *policy_id,
+            activation_target: activation_target.as_ref().map(hex_of),
         },
         PolicyAction::DeactivatePolicy { policy_id } => PolicyActionV2::DeactivatePolicy {
             policy_id: *policy_id,
@@ -936,9 +1010,16 @@ fn policy_action_from_v2(value: PolicyActionV2, path: &str) -> Result<PolicyActi
             policy: policy_kind_from_str(&policy, &format!("{path}.policy"))?,
             activation: activation_from_str(&activation, &format!("{path}.activation"))?,
         }),
-        PolicyActionV2::ActivatePolicy { policy_id } => {
-            Ok(PolicyAction::ActivatePolicy { policy_id })
-        }
+        PolicyActionV2::ActivatePolicy {
+            policy_id,
+            activation_target,
+        } => Ok(PolicyAction::ActivatePolicy {
+            policy_id,
+            activation_target: activation_target
+                .as_deref()
+                .map(|v| hex_v2(v, &format!("{path}.activation_target")))
+                .transpose()?,
+        }),
         PolicyActionV2::DeactivatePolicy { policy_id } => {
             Ok(PolicyAction::DeactivatePolicy { policy_id })
         }
@@ -1007,8 +1088,8 @@ fn init_v4_from_v2(value: InitV4ExtV2, path: &str) -> Result<InitV4Extension, St
     })
 }
 
-pub(super) fn data_to_v3(value: &SnapshotData) -> SnapshotDataV3 {
-    SnapshotDataV3 {
+pub(super) fn data_to_v4(value: &SnapshotData) -> SnapshotDataV4 {
+    SnapshotDataV4 {
         version: SNAPSHOT_VERSION,
         genesis_accounts: value
             .genesis_accounts
@@ -1021,7 +1102,7 @@ pub(super) fn data_to_v3(value: &SnapshotData) -> SnapshotDataV3 {
             .collect(),
         genesis_anchor: value.genesis_anchor.as_ref().map(anchor_to_v3),
         blocks: value.blocks.iter().map(block_to_v2).collect(),
-        state: state_to_v3(&value.state),
+        state: state_to_v4(&value.state),
         roaming: roaming_to_v2(&value.roaming),
         cross_shard: cross_shard_to_v2(&value.cross_shard),
         blocks_stored: value.blocks_stored,
@@ -1051,11 +1132,47 @@ pub(super) fn data_to_v2(value: &SnapshotData) -> SnapshotDataV2 {
     }
 }
 
-pub(super) fn data_from_v3(value: SnapshotDataV3) -> Result<SnapshotData, String> {
+pub(super) fn data_from_v4(value: SnapshotDataV4) -> Result<SnapshotData, String> {
     if value.version != SNAPSHOT_VERSION {
         return Err(format!(
             "version: unsupported snapshot version {}, expected {}",
             value.version, SNAPSHOT_VERSION
+        ));
+    }
+    Ok(SnapshotData {
+        version: SNAPSHOT_VERSION,
+        genesis_accounts: value
+            .genesis_accounts
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| {
+                Ok(SnapshotGenesisRow {
+                    acct: hex_v2(&row.acct, &format!("genesis_accounts[{i}].acct"))?,
+                    pubkey: hex_v2(&row.pubkey, &format!("genesis_accounts[{i}].pubkey"))?,
+                    der_idx: row.der_idx,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+        genesis_anchor: value.genesis_anchor.map(anchor_from_v3).transpose()?,
+        blocks: value
+            .blocks
+            .into_iter()
+            .enumerate()
+            .map(|(i, block)| block_from_v2(block, &format!("blocks[{i}]")))
+            .collect::<Result<Vec<_>, String>>()?,
+        state: state_from_v4(value.state, "state")?,
+        roaming: roaming_from_v2(value.roaming)?,
+        cross_shard: cross_shard_from_v2(value.cross_shard)?,
+        blocks_stored: value.blocks_stored,
+        checkpoint_height: value.checkpoint_height,
+    })
+}
+
+pub(super) fn data_from_v3(value: SnapshotDataV3) -> Result<SnapshotData, String> {
+    if value.version != SNAPSHOT_V3 {
+        return Err(format!(
+            "version: unsupported snapshot version {}, expected {}",
+            value.version, SNAPSHOT_V3
         ));
     }
     Ok(SnapshotData {
@@ -1420,6 +1537,7 @@ fn state_to_v2(value: &ChainState) -> SnapshotStateV2 {
     }
 }
 
+#[allow(dead_code)]
 fn state_to_v3(value: &ChainState) -> SnapshotStateV3 {
     SnapshotStateV3 {
         accounts: value
@@ -1442,6 +1560,36 @@ fn state_to_v3(value: &ChainState) -> SnapshotStateV3 {
                 amount: dec_of(row.amount),
             })
             .collect(),
+    }
+}
+
+fn state_to_v4(value: &ChainState) -> SnapshotStateV4 {
+    SnapshotStateV4 {
+        accounts: value
+            .accounts
+            .iter()
+            .map(|(id, account)| SnapshotStateRowV3 {
+                id: hex_of(id),
+                account: account_to_v3(account),
+            })
+            .collect(),
+        fee_pool: dec_of(value.fee_pool),
+        imported_set: value.imported_set.iter().map(hex_of).collect(),
+        exported_registry: value
+            .exported_registry
+            .iter()
+            .map(|(export_id, row)| SnapshotExportRowV2 {
+                export_id: hex_of(export_id),
+                to: hex_of(&row.to),
+                target_domain: row.target_domain,
+                amount: dec_of(row.amount),
+            })
+            .collect(),
+        epoch_counter: value.epoch_counter,
+        active_validator_indices: value.active_validator_indices.clone(),
+        cross_shard_locks: value.cross_shard_locks.clone(),
+        evidence_log: value.evidence_log.clone(),
+        pending_conservation: value.pending_conservation.clone(),
     }
 }
 
@@ -1492,6 +1640,11 @@ fn state_from_v2(
                 })
             })
             .collect::<Result<Vec<_>, String>>()?,
+        epoch_counter: 0,
+        active_validator_indices: Vec::new(),
+        cross_shard_locks: Vec::new(),
+        evidence_log: Vec::new(),
+        pending_conservation: Vec::new(),
     };
     state_from_wire(wire).map_err(|e| format!("{path}: {e}"))
 }
@@ -1538,8 +1691,31 @@ fn state_from_v3(value: SnapshotStateV3, path: &str) -> Result<ChainState, Strin
                 })
             })
             .collect::<Result<Vec<_>, String>>()?,
+        epoch_counter: 0,
+        active_validator_indices: Vec::new(),
+        cross_shard_locks: Vec::new(),
+        evidence_log: Vec::new(),
+        pending_conservation: Vec::new(),
     };
     state_from_wire(wire).map_err(|e| format!("{path}: {e}"))
+}
+
+fn state_from_v4(value: SnapshotStateV4, path: &str) -> Result<ChainState, String> {
+    let mut state = state_from_v3(
+        SnapshotStateV3 {
+            accounts: value.accounts,
+            fee_pool: value.fee_pool,
+            imported_set: value.imported_set,
+            exported_registry: value.exported_registry,
+        },
+        path,
+    )?;
+    state.epoch_counter = value.epoch_counter;
+    state.active_validator_indices = value.active_validator_indices;
+    state.cross_shard_locks = value.cross_shard_locks;
+    state.evidence_log = value.evidence_log;
+    state.pending_conservation = value.pending_conservation;
+    Ok(state)
 }
 
 #[allow(dead_code)]
@@ -1783,6 +1959,12 @@ fn state_from_wire(wire: SnapshotStateWire) -> Result<ChainState, String> {
         fee_pool: wire.fee_pool,
         imported_set,
         exported_registry,
+        epoch_counter: wire.epoch_counter,
+        active_validator_indices: wire.active_validator_indices,
+        cross_shard_locks: wire.cross_shard_locks,
+        evidence_log: wire.evidence_log,
+        pending_conservation: wire.pending_conservation,
+        ..ChainState::default()
     })
 }
 impl SnapshotData {

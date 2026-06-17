@@ -340,7 +340,7 @@ fn update_seed_health(hs: &mut HandshakeState, cfg: &TransportConfig, now_ms: u6
 }
 
 fn select_transport_candidates(hs: &HandshakeState) -> Vec<PeerRecord> {
-    prioritize_peer_candidates(hs.local_domain_hi, &hs.peers)
+    prioritize_peer_candidates_scored(hs.local_domain_hi, &hs.peers, &hs.peer_scores)
 }
 
 pub(crate) fn run_transport_tick_with<F>(hs: &mut HandshakeState, now_ms: u64, mut attempt: F)

@@ -10,7 +10,10 @@ foreach ($dir in @($CyStateProposer)) {
     }
 }
 
-if (-not (Test-Path -LiteralPath $CyGenesis)) {
+if ((Test-Path -LiteralPath $CyGenesis)) {
+    echo "Using genesis template from $CyGenesis"
+}
+else {
     Write-Error "Missing genesis file: $CyGenesis - adjust cy-cluster-common or add tmp\genesis-custom.json"
 }
 

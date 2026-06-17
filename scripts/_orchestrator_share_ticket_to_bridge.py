@@ -56,7 +56,11 @@ def _validate_ticket_date_guard(ticket_id: str, data: dict) -> None:
                 )
 
 
-def share(ticket_id: str, lane: str = "coding", agent: str = "pwm-coding") -> Path:
+def share(
+    ticket_id: str,
+    lane: str = "coding",
+    agent: str = "pwm-coding",
+) -> Path:
     src = REPO / "tasks" / f"{ticket_id}.json"
     if not src.is_file():
         raise FileNotFoundError(src)
@@ -109,10 +113,25 @@ def share(ticket_id: str, lane: str = "coding", agent: str = "pwm-coding") -> Pa
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: share_ticket_to_bridge.py <ticket_id> [ticket_id...]", file=sys.stderr)
+        print(
+            "usage: share_ticket_to_bridge.py <ticket_id> [ticket_id...] [--testing]",
+            file=sys.stderr,
+        )
         return 2
-    for tid in argv[1:]:
-        dest = share(tid)
+    lane = "coding"
+    agent = "pwm-coding"
+    ids: list[str] = []
+    for arg in argv[1:]:
+        if arg == "--testing":
+            lane = "testing"
+            agent = "pwm-testing"
+        else:
+            ids.append(arg)
+    if not ids:
+        print("error: no ticket_id after flags", file=sys.stderr)
+        return 2
+    for tid in ids:
+        dest = share(tid, lane=lane, agent=agent)
         print(dest)
     print(f"queue_count={len(list(TEAM_QUEUE.glob('*.json')))}", file=sys.stderr)
     return 0

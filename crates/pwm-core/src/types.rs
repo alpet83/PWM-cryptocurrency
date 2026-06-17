@@ -12,11 +12,25 @@ use crate::MARKS_CAP;
 pub type AccountId = [u8; 32];
 pub const LEGACY_HUMAN_ACCOUNT_PREFIX: &str = "PWMv0-";
 pub const BECH32DX_HRP: &str = "pwm";
+pub const COSIGN_NON_DISABLEABLE: u32 = 1;
+pub const CONSERVATION: u32 = 1 << 1;
 const BECH32DX_VERSION: u8 = 1;
 const BECH32DX_PAYLOAD_LEN: usize = 38;
 
 pub fn account_id_to_human(id: &AccountId) -> String {
     render_acct_id_ui(id)
+}
+
+pub fn address_flags(id: &AccountId) -> u32 {
+    u32::from_be_bytes([id[2], id[3], id[4], id[5]])
+}
+
+pub fn cosign_non_dis(id: &AccountId) -> bool {
+    address_flags(id) & COSIGN_NON_DISABLEABLE != 0
+}
+
+pub fn conservation_flag(id: &AccountId) -> bool {
+    address_flags(id) & CONSERVATION != 0
 }
 
 pub fn parse_account_id(input: &str) -> Result<AccountId, String> {
@@ -250,7 +264,7 @@ pub fn render_acct_id_ui(id: &AccountId) -> String {
     } else {
         domain_display
     };
-    let flags = u32::from_be_bytes([id[2], id[3], id[4], id[5]]);
+    let flags = address_flags(id);
     let tail = hex::encode(&id[6..]);
     let domain_hint = if known_for_display {
         known_domain_with_lo

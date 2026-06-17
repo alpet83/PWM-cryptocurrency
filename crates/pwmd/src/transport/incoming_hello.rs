@@ -12,7 +12,7 @@ use super::health::{count_native_live_peers, refresh_native_health};
 use super::lifecycle::set_peer_error;
 use super::metrics::{increment_class_accept_total, increment_reject_reason_total};
 use super::policy::{class_label, classify_peer, select_backoff_for_class};
-use super::{PeerClass, PeerRecord, PeerStatus, TrustedPeer};
+use super::{PeerClass, PeerRecord, PeerScoreEvent, PeerStatus, TrustedPeer};
 
 pub(crate) fn process_incoming_peer_hello(
     hs: &mut HandshakeState,
@@ -170,6 +170,8 @@ pub(crate) fn process_incoming_peer_hello(
                             hs.bridge_trust.refusal_total =
                                 hs.bridge_trust.refusal_total.saturating_add(1);
                             hs.bridge_trust.refusal_reason = Some(detail.clone());
+                            hs.peer_scores
+                                .apply(&hello.node.node_id, PeerScoreEvent::BridgeTrustRefusal);
                             set_peer_error(hs, now_ms, detail.clone());
                             warn!(
                                 target: "pwmd::peer",

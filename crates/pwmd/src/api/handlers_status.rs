@@ -1,13 +1,15 @@
 //! `/v1/status`, `/v1/head`, `/v1/flow/recent`.
 
 use super::common::ensure_ready;
-use super::types::{cross_shard_summary_out, FlowTraceOut, HeadOut, StatusOut};
+use super::types::{cross_shard_summary_out, ClusterPrepOut, FlowTraceOut, HeadOut, StatusOut};
+use crate::lifecycle::{cluster_seal_preflight, count_sync_ready_attesters, SealPreflight};
 use crate::relay::{GENESIS_FETCH_HINT, GENESIS_FETCH_STATUS, RELAY_MODE};
 use crate::roaming::IntentStatus;
 use crate::runtime_shard_label;
 use crate::transport::{is_peer_liveish, trusted_relay_count};
 use crate::App;
 use axum::{extract::State, http::StatusCode, Json};
+use std::sync::atomic::Ordering;
 
 use super::common::{hex32, latest_readiness_reject};
 
@@ -237,6 +239,7 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
     };
     let lease_stats = a.lease_stats.snapshot();
     let lease_last_backend_error = a.lease_last_err.lock().ok().and_then(|v| (*v).clone());
+    let cluster_prep = cluster_prep_out(&a).await;
     Json(StatusOut {
         phase,
         ready,
@@ -310,6 +313,7 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
         lease_last_backend_error,
         validator_identity_hash: a.validator_identity_hash.clone(),
         node_instance_id: a.node_instance_id.clone(),
+        cluster_prep,
         lease_state,
         seal_gate_allowed,
         lease_owner_id,
@@ -324,6 +328,71 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
         lease_reject_total: lease_stats.reject_total,
         lease_takeover_ok: lease_stats.takeover_ok,
     })
+}
+
+async fn cluster_prep_out(a: &App) -> ClusterPrepOut {
+    let now_ms = crate::current_time_ms().unwrap_or(0);
+    let local_tip = {
+        let g = a.inner.read().await;
+        g.chain.tip_h()
+    };
+    let init_phase = {
+        let s = a.init.read().await;
+        s.phase
+    };
+    let init_blocked = match init_phase {
+        crate::state::InitPhase::LoadingSnapshot => Some("loading_snapshot"),
+        crate::state::InitPhase::Starting => Some("starting"),
+        _ => None,
+    };
+    if let Some(blocked_reason) = init_blocked {
+        let waiting_since_raw = a.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+        let waiting_since_ms = if waiting_since_raw > 0 {
+            waiting_since_raw
+        } else {
+            now_ms.saturating_sub(1_000)
+        };
+        let waiting_sec = now_ms
+            .saturating_sub(waiting_since_ms)
+            .saturating_div(1000)
+            .max(1);
+        return ClusterPrepOut {
+            phase: init_phase.as_str(),
+            ready_for_seal: false,
+            sync_n: 0,
+            live_n: 0,
+            peer_tip_max: local_tip,
+            local_tip,
+            blocks_behind_max: 0,
+            waiting_since_ms: Some(waiting_since_ms),
+            waiting_sec: Some(waiting_sec),
+            blocked_reason: Some(blocked_reason),
+        };
+    }
+    let att = count_sync_ready_attesters(a).await;
+    let preflight =
+        cluster_seal_preflight(a.cluster_cfg.enabled, att.sync_n, a.cluster_cfg.quorum_k);
+    let ready_for_seal = matches!(preflight, SealPreflight::Ready);
+    let phase = if ready_for_seal {
+        "ready"
+    } else {
+        "waiting_attester"
+    };
+    let waiting_since_raw = a.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+    let waiting_since_ms = (waiting_since_raw > 0).then_some(waiting_since_raw);
+    let waiting_sec = waiting_since_ms.map(|since| now_ms.saturating_sub(since) / 1000);
+    ClusterPrepOut {
+        phase,
+        ready_for_seal,
+        sync_n: att.sync_n as u64,
+        live_n: att.live_n as u64,
+        peer_tip_max: att.peer_tip_max,
+        local_tip: att.local_h,
+        blocks_behind_max: att.peer_tip_max.saturating_sub(att.local_h),
+        waiting_since_ms,
+        waiting_sec,
+        blocked_reason: (!ready_for_seal).then_some("waiting_attester_quorum"),
+    }
 }
 
 #[cfg(test)]
@@ -344,5 +413,48 @@ mod tests {
         assert_eq!(out.lease_backend_mode, "process_local");
         assert_eq!(out.validator_identity_hash, "vh-status");
         assert_eq!(out.node_instance_id, "inst-status");
+        assert_eq!(out.cluster_prep.phase, "ready");
+        assert!(out.cluster_prep.ready_for_seal);
+    }
+
+    #[tokio::test]
+    async fn status_cluster_prep_waiting_shape() {
+        let mut app = crate::bootstrap::app_from_dev_net();
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
+        app.cluster_cfg.quorum_k = 1;
+        app.cluster_prep_waiting_since_ms
+            .store(12_345, std::sync::atomic::Ordering::Release);
+        let out = v1_status(State(app)).await.0;
+        assert_eq!(out.cluster_prep.phase, "waiting_attester");
+        assert!(!out.cluster_prep.ready_for_seal);
+        assert_eq!(out.cluster_prep.sync_n, 0);
+        assert_eq!(out.cluster_prep.live_n, 0);
+        assert_eq!(out.cluster_prep.waiting_since_ms, Some(12_345));
+        assert!(out.cluster_prep.waiting_sec.is_some());
+        assert_eq!(
+            out.cluster_prep.blocked_reason,
+            Some("waiting_attester_quorum")
+        );
+    }
+
+    #[tokio::test]
+    async fn status_cluster_prep_loading_shape() {
+        let app = crate::bootstrap::app_from_dev_net();
+        {
+            let mut st = app.init.write().await;
+            *st = crate::state::InitState::loading(None);
+        }
+        let now_ms = crate::current_time_ms().unwrap_or(0);
+        app.cluster_prep_waiting_since_ms.store(
+            now_ms.saturating_sub(5_000),
+            std::sync::atomic::Ordering::Release,
+        );
+        let out = v1_status(State(app)).await.0;
+        assert_eq!(out.cluster_prep.phase, "loading_snapshot");
+        assert!(!out.cluster_prep.ready_for_seal);
+        assert_eq!(out.cluster_prep.blocked_reason, Some("loading_snapshot"));
+        assert_eq!(out.cluster_prep.local_tip, 0);
+        assert!(out.cluster_prep.waiting_sec.unwrap_or(0) >= 1);
     }
 }

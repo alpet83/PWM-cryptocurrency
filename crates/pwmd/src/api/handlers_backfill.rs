@@ -119,6 +119,10 @@ pub(super) async fn v1_cross_shard_backfill(
     }
     peers.sort();
     peers.dedup();
+    {
+        let hs = crate::transport::handshake_read_traced(&a, "api_backfill").await;
+        crate::transport::score_sort(&mut peers, &hs.peer_scores);
+    }
     let expected_network_id = a.identity.network_id.clone();
     let expected_genesis_hash = {
         let hs = crate::transport::handshake_read_traced(&a, "api_backfill").await;

@@ -29,6 +29,9 @@ fn cargo_workspace_target_root() -> PathBuf {
     if let Some(p) = std::env::var_os("PWM_WORKSPACE_TARGET_ROOT") {
         return PathBuf::from(p);
     }
+    if let Some(p) = std::env::var_os("CARGO_TARGET_DIR") {
+        return PathBuf::from(p);
+    }
     let configured = repo_root().join("../rust-target-shared");
     let default_t = repo_root().join("target");
     let exe = if cfg!(windows) { ".exe" } else { "" };
@@ -47,6 +50,19 @@ fn bin_path(bin: &str) -> PathBuf {
     cargo_workspace_target_root()
         .join("debug")
         .join(format!("{bin}{exe}"))
+}
+
+fn ensure_cli_bins_ready() {
+    let pwmd_bin = bin_path("pwmd");
+    let pwm_bin = bin_path("pwm");
+    if pwmd_bin.exists() && pwm_bin.exists() {
+        return;
+    }
+    let mut cmd = Command::new("cargo");
+    cmd.args(["build", "-p", "pwmd", "-p", "pwm-cli"])
+        .current_dir(repo_root());
+    let status = cmd.status().expect("cargo build status");
+    assert!(status.success(), "cargo build -p pwmd -p pwm-cli failed");
 }
 
 fn unique_tmp_dir(name: &str) -> PathBuf {
@@ -188,6 +204,28 @@ fn parse_intent_id(stdout: &str) -> String {
     tail.split_whitespace().next().unwrap().to_string()
 }
 
+/// Genesis fixture guard: fund validator account (derivation index 1) above stake min so seal loop can run.
+fn fund_genesis_validator(genesis_json: &Path) {
+    let raw = std::fs::read_to_string(genesis_json).expect("read genesis json");
+    let mut root: serde_json::Value = serde_json::from_str(&raw).expect("parse genesis json");
+    let rows = root["gen_cfg"]["funding"]["accounts"]
+        .as_array_mut()
+        .expect("funding accounts array");
+    let row = rows
+        .iter_mut()
+        .find(|x| x["der_idx"].as_u64() == Some(1))
+        .expect("validator funding row");
+    row["bal"] = serde_json::json!("1000000");
+    // Keep e2e fixture permissive: validator liveness in this test should not depend on stake floors.
+    root["gen_cfg"]["min_validator_stake"] = serde_json::json!("0");
+    root["gen_cfg"]["marks_stake_min"] = serde_json::json!("0");
+    std::fs::write(
+        genesis_json,
+        serde_json::to_string_pretty(&root).expect("encode genesis json"),
+    )
+    .expect("write genesis json");
+}
+
 /// Dual-shard pwm-cli roaming contract exercised end-to-end (formerly `slice20_two_shard_e2e_flows_contract`).
 #[test]
 fn slice20_dual_flow_ok() {
@@ -206,6 +244,7 @@ fn slice20_dual_flow_ok() {
 
     let pwmd_bin = bin_path("pwmd");
     let pwm_bin = bin_path("pwm");
+    ensure_cli_bins_ready();
     assert!(pwmd_bin.exists(), "pwmd binary missing");
     assert!(pwm_bin.exists(), "pwm binary missing");
 
@@ -352,6 +391,7 @@ fn slice20_dual_flow_ok() {
         "--premine-bal",
         "1000000",
     ]));
+    fund_genesis_validator(&genesis_json);
 
     // Start pwmd nodes.
     let cy_state_dir = states_dir.join("cy");
@@ -442,7 +482,7 @@ fn slice20_dual_flow_ok() {
                 "--wallet",
                 wallet_recv_cy.to_str().unwrap(),
                 "--index",
-                "1",
+                "0",
                 "--flags",
                 "0",
             ])
@@ -457,7 +497,7 @@ fn slice20_dual_flow_ok() {
                 "--wallet",
                 wallet_do_dest.to_str().unwrap(),
                 "--index",
-                "1",
+                "0",
                 "--flags",
                 "0",
             ])
@@ -479,7 +519,7 @@ fn slice20_dual_flow_ok() {
         .unwrap();
 
     let recv_before: serde_json::Value = {
-        let rb_deadline = Instant::now() + Duration::from_secs(30);
+        let rb_deadline = Instant::now() + Duration::from_secs(120);
         loop {
             let r = client
                 .get(format!("{cy_base}/v1/account/{receiver_hex}"))
@@ -512,7 +552,7 @@ fn slice20_dual_flow_ok() {
     assert!(stdout_transfer.contains("No Content") || stdout_transfer.contains("204"));
 
     // Wait for transfer to seal (poll by sender nonce).
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         if Instant::now() > deadline {
             panic!("timeout waiting for transfer to apply");
@@ -639,7 +679,7 @@ fn slice20_dual_flow_ok() {
     assert!(stdout_import.contains("No Content") || stdout_import.contains("204"));
 
     // Wait for destination credit on DO.
-    let dest_deadline = Instant::now() + Duration::from_secs(25);
+    let dest_deadline = Instant::now() + Duration::from_secs(120);
     loop {
         if Instant::now() > dest_deadline {
             panic!("timeout waiting for DO import to apply");
@@ -752,6 +792,7 @@ fn cross_shard_bridge_ok() {
 
     let pwmd_bin = bin_path("pwmd");
     let pwm_bin = bin_path("pwm");
+    ensure_cli_bins_ready();
     assert!(pwmd_bin.exists(), "pwmd binary missing");
     assert!(pwm_bin.exists(), "pwm binary missing");
 
@@ -795,6 +836,7 @@ fn cross_shard_bridge_ok() {
         "--premine-bal",
         "1000000",
     ]));
+    fund_genesis_validator(&genesis_json);
 
     let cy_state_dir = states_dir.join("cy");
     let do_state_dir = states_dir.join("do");

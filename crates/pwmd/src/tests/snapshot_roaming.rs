@@ -3,6 +3,12 @@
 use super::helpers::*;
 use super::prelude::*;
 
+fn settle_conserv_delay(chain: &mut Chain, cfg: &GenCfg) {
+    for _ in 0..cfg.conservation_delay_blocks {
+        chain.seal(vec![]).expect("seal delay settle");
+    }
+}
+
 #[test]
 fn snapshot_roundtrip_blocks_and_state() {
     fn assert_hex_string(value: &serde_json::Value, len: usize, field: &str) {
@@ -60,7 +66,8 @@ fn snapshot_roundtrip_blocks_and_state() {
 #[test]
 fn snap_rt_xshard_ok() {
     let (cfg, sks) = dev_net();
-    let chain = Chain::boot(cfg.clone(), sks);
+    let mut chain = Chain::boot(cfg.clone(), sks);
+    chain.seal(vec![]).expect("seal baseline");
     let mut cross_shard = crate::ledger::CrossShardLedger::default();
     cross_shard.record_handoff(
         [0xCD; 32],
@@ -94,7 +101,8 @@ fn snap_rt_xshard_ok() {
 /// Snapshot reload preserves balances after sealing a transfer to an initialized recipient account.
 #[test]
 fn snap_rt_xfer_init_rcv() {
-    let (cfg, sks) = dev_net();
+    let (mut cfg, sks) = dev_net();
+    cfg.conservation_delay_blocks = 1;
     let mut chain = Chain::boot(cfg.clone(), sks);
 
     let sk_v = chain.val_sks[0].clone();
@@ -124,6 +132,7 @@ fn snap_rt_xfer_init_rcv() {
         },
     );
     chain.seal(vec![tx]).expect("seal transfer");
+    settle_conserv_delay(&mut chain, &cfg);
 
     let inner = Inner {
         chain,
@@ -200,7 +209,8 @@ fn snap_rt_exp_only_ok() {
 /// Snapshot restores imported_set replay guards and exported_registry provenance for duplicate imports.
 #[test]
 fn snap_rt_imp_guard_pv() {
-    let (cfg, sks) = dev_net();
+    let (mut cfg, sks) = dev_net();
+    cfg.conservation_delay_blocks = 1;
     let mut chain = Chain::boot(cfg.clone(), sks);
     let sk_v = &chain.val_sks[0];
     let aid_v = cfg.accounts[0].acct;
@@ -244,9 +254,10 @@ fn snap_rt_imp_guard_pv() {
             export_id,
         },
     );
-    chain
-        .seal(vec![init, xfer, export, import])
-        .expect("seal import flow");
+    chain.seal(vec![init]).expect("seal init");
+    chain.seal(vec![xfer]).expect("seal transfer");
+    settle_conserv_delay(&mut chain, &cfg);
+    chain.seal(vec![export, import]).expect("seal import flow");
 
     let inner = Inner {
         chain,
@@ -287,7 +298,8 @@ fn snap_rt_imp_guard_pv() {
 fn snap_rt_handoff_import_ok() {
     use pwm_core::state::ExportProvenance;
 
-    let (cfg, sks) = dev_net();
+    let (mut cfg, sks) = dev_net();
+    cfg.conservation_delay_blocks = 1;
     let mut chain = Chain::boot(cfg.clone(), sks);
     let sk_v = &chain.val_sks[0];
     let aid_v = cfg.accounts[0].acct;
@@ -329,9 +341,10 @@ fn snap_rt_handoff_import_ok() {
             amount,
         }),
     );
-    chain
-        .seal(vec![init, xfer, import])
-        .expect("seal init xfer import");
+    chain.seal(vec![init]).expect("seal init");
+    chain.seal(vec![xfer]).expect("seal transfer");
+    settle_conserv_delay(&mut chain, &cfg);
+    chain.seal(vec![import]).expect("seal import");
 
     let inner = Inner {
         chain,

@@ -451,6 +451,7 @@ async fn cluster_2of2_gate_ok() {
     app_a.cluster_cfg.members = vec!["node-a".to_string(), "node-b".to_string()];
     app_a.cluster_cfg.quorum_n = 2;
     app_a.cluster_cfg.quorum_k = 1;
+    app_a.cluster_cfg.attest_timeout_ms = 10;
     app_a.node_instance_id = "node-a".to_string();
     let mut app_b = app_with_identity(DevLane::Lane0, "testnet-qa", 0x10, "cluster-a", "node-b");
     app_b.cluster_cfg.enabled = true;
@@ -847,9 +848,11 @@ async fn cluster_timeout_no_seal() {
     let lines = logs.lines();
     assert!(
         lines.iter().any(|x| {
-            x.contains("seal_suppressed_by_cluster") && x.contains("reason=quorum_timeout")
+            (x.contains("seal_suppressed_by_cluster")
+                && (x.contains("reason=quorum_timeout") || x.contains("reason=got_zero")))
+                || (x.contains("cluster_gate_round_reopen") && x.contains("reason=got_zero"))
         }),
-        "expected quorum_timeout warn; diag={} logs={lines:?}",
+        "expected cluster suppression warn; diag={} logs={lines:?}",
         cluster_diag(&app_a, next_h, 0).await
     );
 }

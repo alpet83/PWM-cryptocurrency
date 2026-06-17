@@ -18,6 +18,9 @@ pub const DEF_PWM_STAKE_MIN: u128 = 100_000;
 pub const DEF_MARKS_STAKE_MIN: u128 = PWM_RAW_SCALE;
 pub const DEF_SEASON_COEFF_PPM: u64 = 1_000_000;
 pub const DEF_BASE_EMIT: u128 = 100;
+pub const DEF_EPOCH_LEN_BLOCKS: u64 = 10_080;
+pub const DEF_CONSERV_DELAY_BLOCKS: u64 = 86_400;
+pub const DEF_XSHARD_LOCK_TO: u64 = 604_800;
 
 fn default_blocks_per_hour() -> u64 {
     DEF_BLOCKS_PER_HOUR
@@ -45,6 +48,22 @@ fn default_season_coeff_ppm() -> u64 {
 
 fn default_base_emit() -> u128 {
     DEF_BASE_EMIT
+}
+
+fn default_min_val_stake() -> u128 {
+    DEF_PWM_STAKE_MIN
+}
+
+fn default_epoch_len_blocks() -> u64 {
+    DEF_EPOCH_LEN_BLOCKS
+}
+
+fn default_conserv_delay_blocks() -> u64 {
+    DEF_CONSERV_DELAY_BLOCKS
+}
+
+fn default_xshard_lock_to() -> u64 {
+    DEF_XSHARD_LOCK_TO
 }
 
 /// IPv4 claim phase allocation config carried in genesis.
@@ -88,6 +107,17 @@ pub struct GenCfg {
     pub policy_ver: u32,
     #[serde(default = "default_base_emit", with = "ser_json_u128")]
     pub base_emission_per_block: u128,
+    #[serde(default = "default_min_val_stake", with = "ser_json_u128")]
+    pub min_validator_stake: u128,
+    #[serde(default = "default_epoch_len_blocks")]
+    pub epoch_length_blocks: u64,
+    #[serde(default = "default_conserv_delay_blocks")]
+    pub conservation_delay_blocks: u64,
+    #[serde(
+        default = "default_xshard_lock_to",
+        rename = "cross_shard_lock_timeout_blocks"
+    )]
+    pub xshard_lock_to_blocks: u64,
     #[serde(default = "default_pwm_stake_min", with = "ser_json_u128")]
     pub pwm_stake_min: u128,
     #[serde(default = "default_marks_stake_min", with = "ser_json_u128")]
@@ -197,6 +227,10 @@ pub fn dev_net() -> (GenCfg, Vec<SigningKey>) {
         marks_coeff: 10_000u128,
         policy_ver: LEGACY_POLICY_VER,
         base_emission_per_block: DEF_BASE_EMIT,
+        min_validator_stake: 0,
+        epoch_length_blocks: DEF_EPOCH_LEN_BLOCKS,
+        conservation_delay_blocks: DEF_CONSERV_DELAY_BLOCKS,
+        xshard_lock_to_blocks: DEF_XSHARD_LOCK_TO,
         pwm_stake_min: DEF_PWM_STAKE_MIN,
         marks_stake_min: DEF_MARKS_STAKE_MIN,
         season_enabled: false,
@@ -267,6 +301,10 @@ mod tests {
         cfg.marks_per_hour = 3;
         cfg.base_emission_per_block = 42;
         cfg.season_coeff_ppm = 750_000;
+        cfg.min_validator_stake = 999_999_999_999;
+        cfg.epoch_length_blocks = 20_160;
+        cfg.conservation_delay_blocks = 123;
+        cfg.xshard_lock_to_blocks = 456;
         cfg.ipv4_claim_phases = vec![ClaimPhaseConfig {
             phase: 1,
             registry_address: cfg.accounts[0].acct,
@@ -275,6 +313,10 @@ mod tests {
 
         let raw = serde_json::to_value(&cfg).expect("ser");
         assert_eq!(raw["base_emission_per_block"], json!("42"));
+        assert_eq!(raw["min_validator_stake"], json!("999999999999"));
+        assert_eq!(raw["epoch_length_blocks"], json!(20160));
+        assert_eq!(raw["conservation_delay_blocks"], json!(123));
+        assert_eq!(raw["cross_shard_lock_timeout_blocks"], json!(456));
         assert_eq!(raw["season_coeff_ppm"], json!(750000));
         assert_eq!(raw["pwm_stake_min"], json!(DEF_PWM_STAKE_MIN.to_string()));
         assert_eq!(
@@ -300,9 +342,28 @@ mod tests {
         assert_eq!(cfg.blocks_per_hour, DEF_BLOCKS_PER_HOUR);
         assert_eq!(cfg.marks_per_hour, DEF_MARKS_HOUR);
         assert_eq!(cfg.base_emission_per_block, DEF_BASE_EMIT);
+        assert_eq!(cfg.min_validator_stake, DEF_PWM_STAKE_MIN);
+        assert_eq!(cfg.epoch_length_blocks, DEF_EPOCH_LEN_BLOCKS);
+        assert_eq!(cfg.conservation_delay_blocks, DEF_CONSERV_DELAY_BLOCKS);
+        assert_eq!(cfg.xshard_lock_to_blocks, DEF_XSHARD_LOCK_TO);
         assert_eq!(cfg.pwm_stake_min, DEF_PWM_STAKE_MIN);
         assert_eq!(cfg.marks_stake_min, DEF_MARKS_STAKE_MIN);
         assert_eq!(cfg.season_coeff_ppm, DEF_SEASON_COEFF_PPM);
         assert!(cfg.ipv4_claim_phases.is_empty());
+        assert!(cfg.epoch_length_blocks > 0);
+    }
+
+    #[test]
+    fn cfg_min_val_decimal() {
+        let cfg: GenCfg = serde_json::from_value(json!({
+            "funding": { "accounts": [] },
+            "vals": { "set": [] },
+            "accounts": [],
+            "block_reward": "100",
+            "marks_coeff": "10000",
+            "min_validator_stake": "340282366920938463463374607431768211455"
+        }))
+        .expect("de min val stake");
+        assert_eq!(cfg.min_validator_stake, u128::MAX);
     }
 }

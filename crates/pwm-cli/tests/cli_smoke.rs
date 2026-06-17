@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn pwm_exe() -> PathBuf {
-    let p = option_env!("CARGO_BIN_EXE_pwm").expect(
-        "`CARGO_BIN_EXE_pwm` missing; run pwm-cli integration tests with `cargo test -p pwm-cli`",
+    let p = std::env::var("CARGO_BIN_EXE_pwm").expect(
+        "CARGO_BIN_EXE_pwm missing; run pwm-cli integration tests with `cargo test -p pwm-cli`",
     );
     PathBuf::from(p)
 }

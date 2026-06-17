@@ -16,6 +16,9 @@
 # Lease backend in this lab is process-local to avoid stale shared file-lease CAS conflicts across
 # repeated local runs. This is lab-only and assumes single active sealer + non-sealing attester.
 
+. (Join-Path $PSScriptRoot 'scripts\Import-PwmBuildEnv.ps1')
+Initialize-PwmBuildEnv -RepoRoot $PSScriptRoot
+
 $env:PWM_TUI_WALLET=".\tmp\demo-genesis-wallet.yaml"
 
 $script:CyGenesis = if ($env:PWM_DEMO_GENESIS_PATH) { $env:PWM_DEMO_GENESIS_PATH } else { Join-Path $PSScriptRoot 'tmp\genesis-custom.json' }

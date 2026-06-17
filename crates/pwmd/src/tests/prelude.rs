@@ -11,9 +11,9 @@ pub(crate) use crate::snapshot::{
 pub(crate) use crate::state::InitState;
 pub(crate) use crate::transport::{
     build_local_node_hello, classify_peer, prioritize_peer_candidates,
-    refresh_native_degraded_state, run_real_transport_tick, run_transport_tick,
-    run_transport_tick_with, select_backoff_for_class, trust_peer_for_test, DialAttemptResult,
-    HandshakeState,
+    prioritize_peer_candidates_scored, refresh_native_degraded_state, run_real_transport_tick,
+    run_transport_tick, run_transport_tick_with, select_backoff_for_class, trust_peer_for_test,
+    DialAttemptResult, HandshakeState,
 };
 pub(crate) use crate::tx_policy::shard_for_phase1_account;
 pub(crate) use crate::*;
@@ -28,7 +28,7 @@ pub(crate) use pwm_core::domain_index::lookup_by_label;
 pub(crate) use pwm_core::hd::{account_id_from_parts, domain_of_account_id};
 pub(crate) use pwm_core::tx::{validate_tx_shape, SignedTx, TxBody, TxError};
 pub(crate) use pwm_core::types::Account;
-pub(crate) use pwm_core::{Chain, Mpool};
+pub(crate) use pwm_core::{Chain, GenCfg, Mpool};
 pub(crate) use slip10_ed25519::derive_ed25519_private_key;
 pub(crate) use std::collections::HashMap;
 pub(crate) use std::net::SocketAddr;

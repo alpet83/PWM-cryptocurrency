@@ -8,7 +8,7 @@ use super::io::{decode_snap_raw, encode_snap_data_txt, load_snapshot};
 use super::types::{BlocksStored, SnapshotData, SnapshotRoamingWire, SNAPSHOT_VERSION};
 use crate::ledger::CrossShardLedger;
 use pwm_core::block::{hdr_hash, txs_root, Block};
-use pwm_core::chain::prev_gen;
+use pwm_core::chain::{pick_prod_idx, prev_gen, recompute_active_idxs, roll_epoch_if_needed};
 use pwm_core::digest;
 use pwm_core::genesis::GenCfg;
 use std::collections::BTreeMap;
@@ -138,6 +138,7 @@ fn replay_to(cfg: &GenCfg, blocks: &[Block], target_h: Option<u64>) -> Result<Re
     let limit = target_h.unwrap_or(u64::MAX);
     let mut prev = prev_gen();
     let mut replay_state = cfg.state0();
+    replay_state.active_validator_indices = recompute_active_idxs(cfg, &replay_state);
     let mut last_good_h = 0u64;
     let mut last_good_hash = String::new();
     for (i, blk) in blocks.iter().enumerate() {
@@ -151,7 +152,8 @@ fn replay_to(cfg: &GenCfg, blocks: &[Block], target_h: Option<u64>) -> Result<Re
         if blk.hdr.tx_root != txs_root(&blk.txs) {
             break;
         }
-        let want_prod_idx = ((h - 1) as usize % cfg.vals.set.len()) as u32;
+        roll_epoch_if_needed(cfg, &mut replay_state, h);
+        let want_prod_idx = pick_prod_idx(h, &replay_state.active_validator_indices)?;
         if blk.hdr.prod_idx != want_prod_idx {
             break;
         }
@@ -162,6 +164,7 @@ fn replay_to(cfg: &GenCfg, blocks: &[Block], target_h: Option<u64>) -> Result<Re
             break;
         }
         let mut block_ok = true;
+        replay_state.refund_exp_locks(h);
         for tx in &blk.txs {
             if replay_state
                 .apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, cfg)
@@ -174,13 +177,13 @@ fn replay_to(cfg: &GenCfg, blocks: &[Block], target_h: Option<u64>) -> Result<Re
         if !block_ok {
             break;
         }
+        replay_state.refund_exp_locks(h);
+        replay_state.drain_conservation_at_height(h, cfg);
         let prod_acct = cfg.prod_acct(blk.hdr.prod_idx);
         if cfg.is_legacy_policy() {
-            replay_state.accrue_marks(cfg.marks_coeff);
             replay_state.reward_producer(&prod_acct, cfg.block_reward);
         } else {
             let season_ppm = cfg.season_ppm(blk.hdr.ts);
-            replay_state.accrue_marks_v2(cfg.marks_coeff, cfg.marks_stake_min, season_ppm);
             replay_state.reward_producer_v2(
                 &prod_acct,
                 cfg.block_reward,

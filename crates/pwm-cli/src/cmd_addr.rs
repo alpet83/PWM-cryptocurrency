@@ -4,7 +4,7 @@ use crate::bruteforce::{
     brute_force_from_index, flags_from_account_id, format_eta_human, BruteforceProgress,
     DomainMatchMode,
 };
-use crate::cli_config::{http_client_for_rpc, resolve_wallet_out_path};
+use crate::cli_config::{http_client_for_rpc, is_rpc_offline, resolve_wallet_out_path};
 use crate::cli_parse::{master_seed, parse_domain};
 use crate::exit_user_error;
 use crate::rpc_helpers::{map_reqwest_err, truncate_rpc_body_hint};
@@ -27,7 +27,7 @@ pub(crate) fn bruteforce_resume_index(
     wallet_out: &PathBuf,
     upgrade_wallet: bool,
     overwrite_wallet: bool,
-    max_try: u32,
+    _max_try: u32,
     target_domain: u16,
     domain_mode: DomainMatchMode,
 ) -> Result<u32, String> {
@@ -39,12 +39,45 @@ pub(crate) fn bruteforce_resume_index(
     }
     let start = detect_resume_der_index(wallet_out, upgrade_wallet, target_domain, domain_mode)
         .map_err(|e| format!("failed to read wallet resume metadata: {e}"))?;
-    if start > max_try {
-        return Err(format!(
-            "addr-bruteforce resume start index {start} is greater than --max-try {max_try}"
-        ));
-    }
     Ok(start)
+}
+
+pub(crate) fn bf_attempt_budget(_resume_start_index: u32, max_try: u32) -> u64 {
+    u64::from(max_try)
+}
+
+pub(crate) fn bf_end_index(resume_start_index: u32, max_try: u32) -> Option<u32> {
+    if max_try == 0 {
+        return None;
+    }
+    Some(resume_start_index.saturating_add(max_try - 1))
+}
+
+pub(crate) fn bf_no_match_msg(
+    resume_start_index: u32,
+    end_index: Option<u32>,
+    max_try: u32,
+    checked: u64,
+    flags_mask: u32,
+    expected_flags: u32,
+) -> String {
+    let range_msg = match end_index {
+        Some(end) => format!("{resume_start_index}..={end}"),
+        None => format!("{resume_start_index}..=<empty>"),
+    };
+    format!(
+        "addr-bruteforce: no matching address in derivation range {range_msg}; checked {checked} derivations (attempt_budget={max_try})\n\
+hint: --max-try is attempt count from resume_start_index; effective end_index is resume_start_index + --max-try - 1\n\
+hint: if preserving only bit #1 is enough, use --flags-mask 2 --expected-flags 2 (current: --flags-mask {flags_mask} --expected-flags {expected_flags})\n\
+hint: use a separate --wallet-out for lab accounts to avoid consuming production derivation indices\n\
+hint: use --overwrite-wallet only for a fresh wallet; occupied-index skip for dense wallets is tracked in V7-2 backlog"
+    )
+}
+
+fn derive_no_match_msg(dom: u16, max_try: u32) -> String {
+    format!(
+        "addr-derive: no matching address for domain 0x{dom:04X} in derivation range 0..={max_try}; increase --max-try or verify --domain"
+    )
 }
 
 fn fmt_addr_bruteforce_progress(p: BruteforceProgress) -> String {
@@ -184,6 +217,15 @@ pub(crate) fn is_rpc_unavailable_error(err: &str) -> bool {
     err.contains("cannot connect") || err.contains("RPC timeout")
 }
 
+fn print_tx_init_hint(wallet_out: &Path, derivation_index: u32, derived_flags: u32) {
+    eprintln!(
+        "  pwm --rpc <url> tx-init --wallet {} --index {} --flags {}",
+        wallet_out.display(),
+        derivation_index,
+        derived_flags
+    );
+}
+
 pub(crate) fn resolve_master_seed(
     cli_master: Option<String>,
     wal_out_explicit: bool,
@@ -278,7 +320,8 @@ pub(crate) fn run_addr_derive(
     )
     .unwrap_or_else(|e| exit_user_error(&e));
     let dom = parse_domain(&domain).expect("domain");
-    let r = brute_cluster_address(&seed, dom, max_try).expect("no match");
+    let r = brute_cluster_address(&seed, dom, max_try)
+        .unwrap_or_else(|| exit_user_error(&derive_no_match_msg(dom, max_try)));
     let (domain_display, domain_ok) = format_domain_for_display(dom as u32);
     let account_id_pretty = account_id_to_human(&r.3);
     let account_id_bech32dx = account_id_to_bech32dx(&r.3);
@@ -370,7 +413,22 @@ pub(crate) fn run_addr_bruteforce(
         domain_mode,
     )
     .unwrap_or_else(|e| exit_user_error(&e));
+    let attempts_budget = bf_attempt_budget(resume_start_index, max_try);
+    let end_index = bf_end_index(resume_start_index, max_try);
+    eprintln!(
+        "addr-bruteforce search plan: resume_start_index={resume_start_index} max_try={max_try} end_index={end_index:?} attempts_budget={attempts_budget}"
+    );
     let started = Instant::now();
+    let Some(end_index) = end_index else {
+        exit_user_error(&bf_no_match_msg(
+            resume_start_index,
+            None,
+            max_try,
+            attempts_budget,
+            flags_mask,
+            expected_flags,
+        ));
+    };
     let hit = brute_force_from_index(
         &seed,
         dom,
@@ -378,13 +436,22 @@ pub(crate) fn run_addr_bruteforce(
         flags_mask,
         expected_flags,
         resume_start_index,
-        max_try,
+        end_index,
         5,
         |p: BruteforceProgress| {
             println!("{}", fmt_addr_bruteforce_progress(p));
         },
     )
-    .expect("no match");
+    .unwrap_or_else(|| {
+        exit_user_error(&bf_no_match_msg(
+            resume_start_index,
+            Some(end_index),
+            max_try,
+            attempts_budget,
+            flags_mask,
+            expected_flags,
+        ))
+    });
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
     let attempts = (hit.derivation_index - resume_start_index) as u64 + 1;
     let attempts_per_sec = if elapsed_ms > 0.0 {
@@ -439,6 +506,17 @@ pub(crate) fn run_addr_bruteforce(
         println!("{line}");
     }
 
+    if is_rpc_offline(rpc_base) {
+        eprintln!("addr-bruteforce: offline mode (--rpc offline); skipped auto tx-init");
+        eprintln!("hint: brute-force result and wallet are saved; initialize this address manually before tx-send/tx-burn-mark:");
+        print_tx_init_hint(
+            wallet_out.as_path(),
+            hit.derivation_index,
+            hit.derived_flags,
+        );
+        return;
+    }
+
     let c = http_client_for_rpc();
     let init_sk = SigningKey::from_bytes(&hit.signing_key);
     match try_auto_init(
@@ -463,11 +541,10 @@ pub(crate) fn run_addr_bruteforce(
                     "hint: brute-force result and wallet are saved; initialize this address manually before tx-send/tx-burn-mark:"
                 );
             }
-            eprintln!(
-                "  pwm --rpc <url> tx-init --wallet {} --index {} --flags {}",
-                wallet_out.display(),
+            print_tx_init_hint(
+                wallet_out.as_path(),
                 hit.derivation_index,
-                hit.derived_flags
+                hit.derived_flags,
             );
         }
     }

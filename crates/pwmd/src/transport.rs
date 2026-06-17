@@ -18,6 +18,7 @@ mod bridges;
 mod incoming_hello;
 mod policy;
 pub(crate) use bridges::{classify_peer_for_hs, transport_outbound_slot};
+mod score;
 mod transport_tick;
 pub(crate) use incoming_hello::process_incoming_peer_hello;
 mod peer_session;
@@ -53,6 +54,7 @@ pub use peer_types::{
     PeerRecord, PeerStatus,
 };
 use peer_types::{ClassLabel, PeerCloseReason, PeerReconnectReason};
+pub(crate) use score::{score_sort, PeerScoreEvent, PeerSyncScoreCache};
 #[allow(unused_imports)]
 pub(crate) use transport_tick::run_transport_tick_with;
 use transport_tick::{mark_seed_peer_node, set_seed_due};
@@ -63,7 +65,7 @@ use metrics::{bounded_add_u64, increment_string_u64_bucket, record_transport_att
 #[allow(unused_imports)]
 pub(crate) use policy::{
     class_label, classify_peer, dial_attempt_class_key, increment_class_bucket, is_peer_liveish,
-    prioritize_peer_candidates, select_backoff_for_class,
+    prioritize_peer_candidates, prioritize_peer_candidates_scored, select_backoff_for_class,
 };
 
 #[cfg(test)]

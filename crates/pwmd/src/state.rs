@@ -80,6 +80,8 @@ pub struct App {
     pub(crate) lease_stats: Arc<LeaseStats>,
     pub(crate) lease_renew_log_tip: Arc<AtomicU64>,
     pub(crate) cluster_cfg: ClusterCfg,
+    /// Wall-clock ms when proposer entered cluster prep wait; 0 means not waiting.
+    pub(crate) cluster_prep_waiting_since_ms: Arc<AtomicU64>,
     /// Set by seal loop ahead-trigger; steady_session sends wire propose before next heartbeat sleep.
     pub(crate) cluster_prop_nudge: Arc<AtomicBool>,
     /// Wakes proposer seal loop when a fresh cluster attest arrives.

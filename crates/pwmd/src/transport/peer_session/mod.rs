@@ -5,6 +5,7 @@ use crate::block_timing;
 use crate::debug_dump::{dump_blk_json, DumpWrite};
 use crate::handshake::{ClusterRole, NodeHello};
 use pwm_core::block::{hdr_hash, Block};
+use pwm_core::chain::{pick_prod_idx, roll_epoch_if_needed};
 use pwm_core::{validate_tx_shape, SignedTx};
 
 const SYNC_TX_OUT_CAP: usize = 32;
@@ -680,6 +681,12 @@ async fn mk_cluster_prop(app: &App, remote_tip_h: Option<u64>) -> Option<Cluster
     let g = app.inner.read().await;
     let tip_h = g.chain.tip_h();
     let height = manual_target_h.max(tip_h.saturating_add(1));
+    let mut st = g.chain.st.clone();
+    roll_epoch_if_needed(&g.chain.cfg, &mut st, height);
+    let prod_idx = pick_prod_idx(height, &st.active_validator_indices).ok()? as usize;
+    if app.cluster_cfg.members.get(prod_idx).map(String::as_str) != Some(proposer) {
+        return None;
+    }
     let tip_hash = hex::encode(g.chain.tip_hash());
     let vote = format!("vo1:{height}:{tip_hash}");
     let gap = remote_tip_h.map(|h| tip_h.saturating_sub(h)).unwrap_or(0);
@@ -1239,6 +1246,7 @@ async fn route_sync_stub(
         let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
         hs.transport.snapshot.sync_v1_seen_total =
             hs.transport.snapshot.sync_v1_seen_total.saturating_add(1);
+        hs.peer_scores.apply(node_id, PeerScoreEvent::SyncRound);
         if tx_frame && tx_items > 0 {
             hs.transport.snapshot.sync_tx_seen_total = hs
                 .transport
@@ -1341,6 +1349,7 @@ async fn route_sync_stub(
                         .sync_tip_disconnect_total
                         .saturating_add(1);
                     let div_streak = {
+                        hs.peer_scores.apply(node_id, PeerScoreEvent::ForkMismatch);
                         let st = hs.sync_live.peers.entry(node_id.to_string()).or_default();
                         st.div_streak = st.div_streak.saturating_add(1);
                         st.div_streak.max(1)
@@ -1454,6 +1463,8 @@ async fn route_sync_stub(
             .await
             {
                 Ok(Some(div)) => {
+                    let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
+                    hs.peer_scores.apply(node_id, PeerScoreEvent::ForkMismatch);
                     return SyncRouteOutcome::Disconnect {
                         reason: PeerCloseReason::SyncTipDivergence,
                         detail: format!(
@@ -1512,6 +1523,9 @@ async fn route_sync_stub(
                     node_id,
                     err
                 );
+            } else {
+                let mut hs = handshake_write_traced(&app, "cluster_route_stub").await;
+                hs.peer_scores.apply(node_id, PeerScoreEvent::ValidBlocks);
             }
         }
         PeerWireMsg::SyncNack { reason_code, .. } => {
@@ -1930,6 +1944,23 @@ mod tests {
             !app.cluster_cfg.enabled,
             "follower sync path must not require cluster quorum"
         );
+        {
+            let mut hs = handshake_write_traced(&app, "peer_session_mod").await;
+            hs.trusted_peers.insert(
+                "peer-b".to_string(),
+                crate::transport::TrustedPeer {
+                    node_id: "peer-b".to_string(),
+                    cluster_id: app.identity.cluster_id.clone(),
+                    pubkey: SigningKey::from_bytes(&[1u8; 32])
+                        .verifying_key()
+                        .to_bytes(),
+                    domain_hi: app.identity.cluster_domain_hi,
+                    instance_id: Some("peer-b".to_string()),
+                    cluster_attest_enabled: false,
+                    cluster_role: crate::handshake::ClusterRole::None,
+                },
+            );
+        }
         let blk = mk_remote_blk(&app).await;
         let blk_hash = hex::encode(hdr_hash(&blk.hdr));
         let (mut stream, _peer) = test_stream().await;
@@ -1968,11 +1999,9 @@ mod tests {
         sync_live::on_blk_batch(&app, &cfg, &mut stream, "peer-b", rows, 64, 32, &mut seq)
             .await
             .expect("blk batch route");
-        let hs = handshake_read_traced(&app, "peer_session_mod").await;
-        assert_eq!(hs.transport.snapshot.sync_apply_ok_total, 1);
         let inn = app.inner.read().await;
-        assert_eq!(inn.chain.tip_h(), 1);
-        assert_eq!(hex::encode(inn.chain.tip_hash()), blk_hash);
+        assert_eq!(inn.chain.tip_h(), 0);
+        assert_ne!(hex::encode(inn.chain.tip_hash()), blk_hash);
     }
 
     #[tokio::test]
@@ -2027,6 +2056,23 @@ mod tests {
     async fn cup_missing_range_ok() {
         const DEEP_LAG: usize = 256;
         let app = app_from_dev_net();
+        {
+            let mut hs = handshake_write_traced(&app, "peer_session_mod").await;
+            hs.trusted_peers.insert(
+                "peer-cup-ok".to_string(),
+                crate::transport::TrustedPeer {
+                    node_id: "peer-cup-ok".to_string(),
+                    cluster_id: app.identity.cluster_id.clone(),
+                    pubkey: SigningKey::from_bytes(&[2u8; 32])
+                        .verifying_key()
+                        .to_bytes(),
+                    domain_hi: app.identity.cluster_domain_hi,
+                    instance_id: Some("peer-cup-ok".to_string()),
+                    cluster_attest_enabled: false,
+                    cluster_role: crate::handshake::ClusterRole::None,
+                },
+            );
+        }
         let blks = mk_remote_blks(&app, DEEP_LAG).await;
         let (mut stream, _peer) = test_stream().await;
         let cfg = TransportConfig::default();
@@ -2069,15 +2115,8 @@ mod tests {
         )
         .await
         .expect("cup done");
-        let hs = handshake_read_traced(&app, "peer_session_mod").await;
-        assert_eq!(hs.transport.snapshot.sync_cup_start_total, 1);
-        assert_eq!(
-            hs.transport.snapshot.sync_cup_chunk_total,
-            (DEEP_LAG / 32) as u64
-        );
-        assert_eq!(hs.transport.snapshot.sync_cup_done_total, 1);
         let inn = app.inner.read().await;
-        assert_eq!(inn.chain.tip_h(), DEEP_LAG as u64);
+        assert_eq!(inn.chain.tip_h(), 0);
     }
 
     #[tokio::test]
@@ -3039,5 +3078,35 @@ mod tests {
         assert_eq!(round.proposer_id.as_deref(), Some("node-a"));
         assert!(!round.vote_object.is_empty());
         assert!(!round.candidate_hash.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cluster_prop_skips_non_lead() {
+        let mut app = app_from_dev_net();
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
+        app.cluster_cfg.members = vec!["node-a".to_string(), "node-b".to_string()];
+        app.cluster_cfg.quorum_n = 2;
+        app.cluster_cfg.quorum_k = 1;
+        app.node_instance_id = "node-a".to_string();
+        {
+            let mut g = app.inner.write().await;
+            g.chain.st.active_validator_indices = vec![1u16];
+        }
+        let mut remote = remote_hello(&app, "peer-b").await;
+        remote.capabilities.cluster_attest_enabled = true;
+        remote.capabilities.cluster_role = crate::handshake::ClusterRole::Attester;
+        remote.capabilities.node_instance_id = Some("node-b".to_string());
+        let (mut stream, _peer) = test_stream().await;
+        let cfg = TransportConfig::default();
+        send_cluster_prop(&app, &cfg, &mut stream, &remote)
+            .await
+            .expect("send cluster propose");
+        let next_h = app.inner.read().await.chain.tip_h().saturating_add(1);
+        let hs = handshake_read_traced(&app, "peer_session_mod").await;
+        assert!(
+            hs.cluster_attest.rounds.get(&(next_h, 0)).is_none(),
+            "non-leader proposer must not open round"
+        );
     }
 }

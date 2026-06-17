@@ -5,7 +5,7 @@ use super::types::{PeerHelloOut, PeerStatsOut};
 use crate::handshake::NodeHello;
 use crate::transport::{
     count_native_live_peers, handshake_read_traced, handshake_write_traced, increment_class_bucket,
-    is_peer_liveish, prioritize_peer_candidates, process_incoming_peer_hello,
+    is_peer_liveish, prioritize_peer_candidates_scored, process_incoming_peer_hello,
     SoakConfidenceSnapshot,
 };
 use crate::App;
@@ -97,7 +97,7 @@ pub(super) async fn v1_dev_peers(
     }
     let native_live = count_native_live_peers(&hs);
     crate::transport::refresh_native_health(&mut hs, native_live, false);
-    let peers = prioritize_peer_candidates(hs.local_domain_hi, &hs.peers);
+    let peers = prioritize_peer_candidates_scored(hs.local_domain_hi, &hs.peers, &hs.peer_scores);
     Ok(Json(PeerStatsOut {
         accepted_total: hs.metrics.accepted_total,
         rejected_total: hs.metrics.rejected_total,

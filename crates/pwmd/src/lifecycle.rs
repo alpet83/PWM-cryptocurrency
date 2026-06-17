@@ -14,7 +14,7 @@ use crate::snapshot::{
     BlocksStored, SealPersistMode, SnapIoTiming, SnapshotBackend, SnapshotLoadOpts,
     SNAP_STARTUP_TARGET,
 };
-use crate::state::{App, InitState};
+use crate::state::{App, InitPhase, InitState};
 use crate::storage_namespace;
 use crate::transport::record_cluster_prop_tick;
 use crate::RuntimeIdentityMode;
@@ -23,11 +23,12 @@ use crate::{
     spawn_peer_listener_loop, spawn_stateful_transport_loop, spawn_transport_loop,
 };
 use pwm_core::absorb_blocks_tail;
+use pwm_core::chain::{pick_prod_idx, roll_epoch_if_needed};
 use pwm_core::state::State;
 use pwm_core::tx::{SignedTx, TxBody};
 use pwm_core::SealTimeMode;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, warn};
 
@@ -47,11 +48,14 @@ const SEAL_ENVELOPE_DENOM: u64 = 1000;
 const SEAL_DRIFT_DEADBAND_PPM: u64 = 1_000;
 /// Wall-clock window for proposer seal-loop suppression aggregate (owner observability).
 const SEAL_SUPPRESS_WINDOW_SEC: u64 = 100;
+const PREP_SUMMARY_IV_SEC: u64 = 30;
 /// Suppression percent threshold above which the 100s summary emits at ERROR level.
 const SEAL_SUPPRESS_ALERT_PCT: f64 = 1.0;
 /// Wall-clock poll cadence for the proposer deadline scheduler (variant C).
 /// Under load gates re-check every 10 ms; under no load it bounds idle sleep.
 const SEAL_POLL_INTERVAL_MS: u64 = 50;
+/// Minimum interval between identical CAS-miss warnings in lease gate path.
+const LEASE_REJECT_WARN_MS: u64 = 5_000;
 /// Idle pause when no attester peer is connected and quorum is impossible.
 /// Slow enough to keep CPU/log quiet, fast enough to react when attester joins.
 const SEAL_WAIT_PEER_MS: u64 = 500;
@@ -59,6 +63,7 @@ const SEAL_WAIT_PEER_MS: u64 = 500;
 const ATTESTER_LIVE_WINDOW_MS: u64 = 5_000;
 /// Bounded proposer resend attempts after `got=0` quorum timeout.
 const CLUSTER_PROP_RETRY_CAP: u8 = 2;
+const PROD_PICK_EMPTY_ERR: &str = "no active validators for current epoch";
 
 pub(crate) fn autosnap_hit(h: u64) -> bool {
     h > 0 && h % AUTOSNAPSHOT_BLOCK_INTERVAL == 0
@@ -84,6 +89,38 @@ pub(crate) fn lease_renew_log_hit(last_tip: &std::sync::atomic::AtomicU64, h: u6
             return true;
         }
     }
+}
+
+#[derive(Default)]
+struct LeaseRejectWarnDedup {
+    last_reason: Option<String>,
+    last_warn_ms: u64,
+    suppressed: u64,
+}
+
+fn lease_reject_warn_dedup() -> &'static Mutex<LeaseRejectWarnDedup> {
+    static DEDUP: OnceLock<Mutex<LeaseRejectWarnDedup>> = OnceLock::new();
+    DEDUP.get_or_init(|| Mutex::new(LeaseRejectWarnDedup::default()))
+}
+
+fn lease_reject_warn_suppressed(now_ms: u64, reason: &str) -> Option<u64> {
+    let Ok(mut st) = lease_reject_warn_dedup().lock() else {
+        return Some(0);
+    };
+    if st.last_reason.as_deref() != Some(reason) {
+        st.last_reason = Some(reason.to_string());
+        st.last_warn_ms = now_ms;
+        st.suppressed = 0;
+        return Some(0);
+    }
+    if now_ms.saturating_sub(st.last_warn_ms) >= LEASE_REJECT_WARN_MS {
+        let suppressed = st.suppressed;
+        st.last_warn_ms = now_ms;
+        st.suppressed = 0;
+        return Some(suppressed);
+    }
+    st.suppressed = st.suppressed.saturating_add(1);
+    None
 }
 
 pub(crate) fn seal_interval_ms(blocks_per_hour: u64) -> Result<u64, String> {
@@ -497,6 +534,7 @@ impl ClusterGateDedup {
         Self::claim(&mut self.waiting_sync_h, h)
     }
 
+    #[cfg(test)]
     pub(crate) fn reset(&mut self) {
         *self = Self::default();
     }
@@ -548,6 +586,7 @@ impl SealSuppressWindow {
 
     /// Records one suppression strike for the active slot once nominal window elapsed.
     /// Returns `true` when a strike was recorded on this call.
+    #[cfg(test)]
     pub(crate) fn eval_supp(
         &mut self,
         now_ms: u64,
@@ -664,36 +703,78 @@ fn emit_ahead_summary(ahead_ms: u64, win: &SealAheadWindow) {
 /// Level escalates to ERROR (red via logging.rs color_level_tag) when suppression
 /// exceeds 1.0%; otherwise INFO. On ERROR the last suppression reason tag is
 /// appended for operator attribution.
-fn emit_suppress_summary(win: &SealSuppressWindow) {
+fn init_blocked_reason(phase: InitPhase) -> Option<&'static str> {
+    match phase {
+        InitPhase::LoadingSnapshot => Some("loading_snapshot"),
+        InitPhase::Starting => Some("starting"),
+        _ => None,
+    }
+}
+
+fn prep_log_due(last_at: Instant, now: Instant) -> bool {
+    now.duration_since(last_at) >= Duration::from_secs(PREP_SUMMARY_IV_SEC)
+}
+
+fn emit_suppress_summary(win: &SealSuppressWindow, blocked_reason: Option<&'static str>) {
     let struck = win.slot_supp;
     let pct = compute_suppress_pct(win.slots, struck);
     let reason_tag = win
         .last_reason
         .map(SuppressReason::as_tag)
         .unwrap_or("none");
+    let show_blocked = win.sealed_in == 0 && blocked_reason.is_some();
     if is_suppress_alert(pct) {
-        error!(
-            "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={} last_reason={}",
-            SEAL_SUPPRESS_WINDOW_SEC,
-            win.slots,
-            win.wait_att,
-            win.gate_to,
-            struck,
-            pct,
-            win.sealed_in,
-            reason_tag,
-        );
+        if show_blocked {
+            error!(
+                "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={} last_reason={} blocked_reason={}",
+                SEAL_SUPPRESS_WINDOW_SEC,
+                win.slots,
+                win.wait_att,
+                win.gate_to,
+                struck,
+                pct,
+                win.sealed_in,
+                reason_tag,
+                blocked_reason.unwrap_or("none"),
+            );
+        } else {
+            error!(
+                "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={} last_reason={}",
+                SEAL_SUPPRESS_WINDOW_SEC,
+                win.slots,
+                win.wait_att,
+                win.gate_to,
+                struck,
+                pct,
+                win.sealed_in,
+                reason_tag,
+            );
+        }
     } else {
-        info!(
-            "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={}",
-            SEAL_SUPPRESS_WINDOW_SEC,
-            win.slots,
-            win.wait_att,
-            win.gate_to,
-            struck,
-            pct,
-            win.sealed_in,
-        );
+        if show_blocked {
+            info!(
+                "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={} blocked_reason={}",
+                SEAL_SUPPRESS_WINDOW_SEC,
+                win.slots,
+                win.wait_att,
+                win.gate_to,
+                struck,
+                pct,
+                win.sealed_in,
+                blocked_reason.unwrap_or("none"),
+            );
+        } else {
+            info!(
+                "seal_suppression_summary window_sec={} slots={} slots_waited_att={} slots_timeout={} slots_struck={} suppression_pct={:.2} sealed_in_window={}",
+                SEAL_SUPPRESS_WINDOW_SEC,
+                win.slots,
+                win.wait_att,
+                win.gate_to,
+                struck,
+                pct,
+                win.sealed_in,
+            );
+        }
     }
 }
 
@@ -898,6 +979,10 @@ pub(crate) async fn periodic_snap_finish(
     };
     match result {
         Ok(()) => {
+            info!(
+                "autosnapshot checkpoint summary saved checkpoint_height={}",
+                height
+            );
             apply_snapshot_init_state(app, path, Ok(()), height).await;
         }
         Err(e) => {
@@ -992,7 +1077,14 @@ pub(crate) async fn run_lease_gate(app: &App) -> bool {
             }
             LeaseEvent::Reject => {
                 if rt.last_reason.contains("cas_miss") {
-                    warn!("seal_lease_cas_failed reason={}", rt.last_reason);
+                    if let Some(suppressed) =
+                        lease_reject_warn_suppressed(now_ms, rt.last_reason.as_str())
+                    {
+                        warn!(
+                            "seal_lease_cas_failed reason={} suppressed={}",
+                            rt.last_reason, suppressed
+                        );
+                    }
                 }
                 info!("seal_suppressed_by_fence reason={}", rt.last_reason);
             }
@@ -1188,6 +1280,84 @@ pub(crate) async fn run_gate_obs(app: &App) -> Option<GateBlock> {
     Some(GateBlock::Wait)
 }
 
+pub(crate) async fn local_prod_for_h(app: &App, h: u64) -> Result<bool, String> {
+    let local_id = app.node_instance_id.trim();
+    if local_id.is_empty() {
+        return Ok(false);
+    }
+    let g = app.inner.read().await;
+    let mut st = g.chain.st.clone();
+    roll_epoch_if_needed(&g.chain.cfg, &mut st, h);
+    let prod_idx = pick_prod_idx(h, &st.active_validator_indices)? as usize;
+    Ok(app.cluster_cfg.members.get(prod_idx).map(String::as_str) == Some(local_id))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProdPickFatalDiag {
+    tip_h: u64,
+    lead_h: u64,
+    min_stake: u128,
+    max_val_stake: u128,
+    val_n: usize,
+}
+
+async fn mk_pick_fatal_diag(app: &App, lead_h: u64, err: &str) -> Option<ProdPickFatalDiag> {
+    if !err.contains(PROD_PICK_EMPTY_ERR) {
+        return None;
+    }
+    let g = app.inner.read().await;
+    if !g.chain.st.active_validator_indices.is_empty() {
+        return None;
+    }
+    let max_val_stake = g
+        .chain
+        .cfg
+        .vals
+        .set
+        .iter()
+        .filter_map(|row| {
+            g.chain
+                .st
+                .accounts
+                .get(&row.acct)
+                .map(|acc| acc.staked_pwm_raw)
+        })
+        .max()
+        .unwrap_or(0);
+    Some(ProdPickFatalDiag {
+        tip_h: g.chain.tip_h(),
+        lead_h,
+        min_stake: g.chain.cfg.min_validator_stake,
+        max_val_stake,
+        val_n: g.chain.cfg.vals.set.len(),
+    })
+}
+
+fn exit_fatal_pick(_app: &App, err: &str, diag: ProdPickFatalDiag) -> ! {
+    error!(
+        "fatal_protocol_blocker role=proposer reason=empty_active_validator_set detail={} tip_h={} lead_h={} min_validator_stake={} max_genesis_validator_stake={} validators={} hint='ensure at least one validator has stake >= min_validator_stake before sealing'",
+        err,
+        diag.tip_h,
+        diag.lead_h,
+        diag.min_stake,
+        diag.max_val_stake,
+        diag.val_n
+    );
+    error!(
+        "pwmd exiting: proposer cannot seal with empty active validator set; requires validator stake/config fix"
+    );
+    std::process::exit(1);
+}
+
+pub(crate) async fn skip_missed_h(app: &App, h: u64) -> bool {
+    let mut g = app.inner.write().await;
+    if g.chain.tip_h().saturating_add(1) != h {
+        return false;
+    }
+    g.chain.set_canon_h(h);
+    true
+}
+
 pub(crate) async fn seal_manual_paused(app: &App) -> bool {
     if !app.cluster_cfg.enabled || !matches!(app.cluster_cfg.role, ClusterRole::Proposer) {
         return false;
@@ -1241,9 +1411,12 @@ pub fn spawn_seal_loop(app: App) {
         let mut ahead_win = SealAheadWindow::mk_new();
         let mut gate_log_dedup = ClusterGateDedup::default();
         let mut supp_at = Instant::now();
+        let mut prep_summary_at = Instant::now() - Duration::from_secs(PREP_SUMMARY_IV_SEC);
         let seal_ahead_ms_cfg = app.cluster_cfg.seal_ahead_ms;
         let mut attester_was_ready = false;
         let mut ahead_fired_for: Option<u64> = None;
+        let mut miss_watch_h: Option<u64> = None;
+        let mut miss_watch_at_ms = 0u64;
         // Variant C deadline scheduler: poll wall-clock until `next_seal_time_ms`,
         // grid-aligned to multiples of `nominal_ms`. On `bph=3600` this means seals
         // are attempted on second boundaries. Gates re-check every poll without
@@ -1324,7 +1497,9 @@ pub fn spawn_seal_loop(app: App) {
                 turn_watch_alerted = true;
             }
             if is_proposer && supp_at.elapsed() >= Duration::from_secs(SEAL_SUPPRESS_WINDOW_SEC) {
-                emit_suppress_summary(&supp_win);
+                let init_phase = app.init.read().await.phase;
+                let blocked_reason = init_blocked_reason(init_phase);
+                emit_suppress_summary(&supp_win, blocked_reason);
                 supp_win.reset();
                 emit_ahead_summary(seal_ahead_ms_cfg, &ahead_win);
                 ahead_win.reset();
@@ -1333,9 +1508,50 @@ pub fn spawn_seal_loop(app: App) {
             // Deadline reached: every suppress-continue below pauses one poll tick before
             // re-checking the gate so the loop does not spin on a stale deadline.
             let poll_pause = Duration::from_millis(SEAL_POLL_INTERVAL_MS);
-            if !app.init.read().await.allows_chain_progress() {
+            let init_state = app.init.read().await.clone();
+            if !init_state.allows_chain_progress() {
+                if is_proposer {
+                    let waiting_since = app.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+                    let waiting_since = if waiting_since == 0 {
+                        app.cluster_prep_waiting_since_ms
+                            .store(now_ms, Ordering::Release);
+                        now_ms
+                    } else {
+                        waiting_since
+                    };
+                    let loading_sec = now_ms.saturating_sub(waiting_since) / 1000;
+                    if prep_log_due(prep_summary_at, Instant::now()) {
+                        let local_tip = {
+                            let g = app.inner.read().await;
+                            g.chain.tip_h()
+                        };
+                        if let Some(blocked_reason) = init_blocked_reason(init_state.phase) {
+                            info!(
+                                "cluster_prep_summary phase={} local_tip={} loading_sec={} ready_for_seal=false blocked_reason={} snapshot_file={} snapshot_diag={}",
+                                init_state.phase.as_str(),
+                                local_tip,
+                                loading_sec,
+                                blocked_reason,
+                                init_state
+                                    .snapshot_file
+                                    .as_ref()
+                                    .map(|v| v.display().to_string())
+                                    .unwrap_or_else(|| "none".to_string()),
+                                init_state
+                                    .snapshot_error
+                                    .clone()
+                                    .unwrap_or_else(|| "none".to_string()),
+                            );
+                        }
+                        prep_summary_at = Instant::now();
+                    }
+                }
                 tokio::time::sleep(poll_pause).await;
                 continue;
+            }
+            if is_proposer {
+                app.cluster_prep_waiting_since_ms
+                    .store(0, Ordering::Release);
             }
             if app.debug_disable_seal_loop {
                 // Follower / replay-only mode: chain height may advance via sync apply, not local seal.
@@ -1375,10 +1591,19 @@ pub fn spawn_seal_loop(app: App) {
                 let preflight = cluster_seal_preflight(true, att.sync_n, app.cluster_cfg.quorum_k);
                 if matches!(preflight, SealPreflight::WaitingAttester) {
                     let gate_h = att.local_h.saturating_add(1).max(1);
+                    let waiting_since = app.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+                    let waiting_since = if waiting_since == 0 {
+                        app.cluster_prep_waiting_since_ms
+                            .store(now_ms, Ordering::Release);
+                        now_ms
+                    } else {
+                        waiting_since
+                    };
+                    let waiting_sec = now_ms.saturating_sub(waiting_since) / 1000;
                     let should_warn = gate_log_dedup.should_log_wait_sync(gate_h);
                     if should_warn {
                         warn!(
-                            "cluster_attest_waiting_sync height={} live_synced_attesters={} live_connected_attesters={} quorum_k={} cluster_n={} max_tip_lag={} proposer_tip={} attester_tip_max={}",
+                            "cluster_attest_waiting_sync height={} live_synced_attesters={} live_connected_attesters={} quorum_k={} cluster_n={} max_tip_lag={} proposer_tip={} attester_tip_max={} waiting_sec={}",
                             gate_h,
                             att.sync_n,
                             att.live_n,
@@ -1386,13 +1611,28 @@ pub fn spawn_seal_loop(app: App) {
                             app.cluster_cfg.quorum_n,
                             app.cluster_cfg.att_max_tip_lag,
                             att.local_h,
-                            att.peer_tip_max
+                            att.peer_tip_max,
+                            waiting_sec
                         );
+                    }
+                    if prep_log_due(prep_summary_at, Instant::now()) {
+                        info!(
+                            "cluster_prep_summary phase=waiting_attester live_synced_attesters={} live_connected={} proposer_tip={} attester_tip_max={} max_tip_lag={} waiting_sec={} ready_for_seal=false blocked_reason=waiting_attester_quorum",
+                            att.sync_n,
+                            att.live_n,
+                            att.local_h,
+                            att.peer_tip_max,
+                            app.cluster_cfg.att_max_tip_lag,
+                            waiting_sec
+                        );
+                        prep_summary_at = Instant::now();
                     }
                     attester_was_ready = false;
                     tokio::time::sleep(Duration::from_millis(SEAL_WAIT_PEER_MS)).await;
                     continue;
                 }
+                app.cluster_prep_waiting_since_ms
+                    .store(0, Ordering::Release);
                 if !attester_was_ready {
                     info!(
                         "cluster_attest_ready live_synced_attesters={} live_connected_attesters={} quorum_k={} max_tip_lag={}",
@@ -1402,6 +1642,55 @@ pub fn spawn_seal_loop(app: App) {
                         app.cluster_cfg.att_max_tip_lag
                     );
                     attester_was_ready = true;
+                }
+                let lead_h = {
+                    let g = app.inner.read().await;
+                    g.chain.tip_h().saturating_add(1)
+                };
+                match local_prod_for_h(&app, lead_h).await {
+                    Ok(true) => {
+                        miss_watch_h = None;
+                    }
+                    Ok(false) => {
+                        if miss_watch_h != Some(lead_h) {
+                            miss_watch_h = Some(lead_h);
+                            miss_watch_at_ms = now_ms;
+                            info!(
+                                "cluster_primary_wait height={} local_proposer={} window_ms={}",
+                                lead_h, app.node_instance_id, nominal_ms
+                            );
+                        }
+                        if now_ms.saturating_sub(miss_watch_at_ms) >= nominal_ms {
+                            if skip_missed_h(&app, lead_h).await {
+                                warn!(
+                                    "cluster_primary_miss height={} local_proposer={} action=skip_to_failover",
+                                    lead_h,
+                                    app.node_instance_id
+                                );
+                                miss_watch_h = None;
+                                next_seal_time_ms = align_next_seal_ms(now_ms, nominal_ms);
+                            }
+                        }
+                        tokio::time::sleep(poll_pause).await;
+                        continue;
+                    }
+                    Err(err) => {
+                        if let Some(diag) = mk_pick_fatal_diag(&app, lead_h, &err).await {
+                            exit_fatal_pick(&app, &err, diag);
+                        }
+                        if miss_watch_h != Some(lead_h) {
+                            miss_watch_h = Some(lead_h);
+                            miss_watch_at_ms = now_ms;
+                            warn!(
+                                "cluster_primary_wait height={} local_proposer={} reason=proposer_pick_failed detail={}",
+                                lead_h,
+                                app.node_instance_id,
+                                err
+                            );
+                        }
+                        tokio::time::sleep(poll_pause).await;
+                        continue;
+                    }
                 }
                 // Open / re-confirm the current grid slot exactly once per deadline.
                 let slot_new = supp_win.begin_slot(next_seal_time_ms, now_ms);
@@ -1810,6 +2099,7 @@ pub(crate) fn spawn_snapshot_loader(app: App) {
                 let mut st = app.init.write().await;
                 *st = InitState::ready(snap_path.clone());
                 app.last_snapshot_height.store(tip_h, Ordering::Release);
+                align_summary_post_verify(&app, &backend, &io_ph, tip_h).await;
                 let total_ms = loader_start.elapsed().as_millis() as u64;
                 let (summary_read_ms, epochs_ms, validate_ms, ch_http_ms, ch_parse_ms, ch_branch) =
                     match &io_ph {
@@ -1900,6 +2190,67 @@ pub(crate) fn spawn_snapshot_loader(app: App) {
             }
         }
     });
+}
+
+async fn align_summary_post_verify(
+    app: &App,
+    backend: &SnapshotBackend,
+    io_ph: &SnapIoTiming,
+    tip_h: u64,
+) {
+    #[cfg(feature = "clickhouse-snapshot")]
+    let (path, io_json) = match (backend, io_ph) {
+        (SnapshotBackend::JsonFile { path }, SnapIoTiming::Json(j)) => (path, j),
+        _ => return,
+    };
+    #[cfg(not(feature = "clickhouse-snapshot"))]
+    let (path, io_json) = match (backend, io_ph) {
+        (SnapshotBackend::JsonFile { path }, SnapIoTiming::Json(j)) => (path, j),
+    };
+    if !io_json.used_full_verify {
+        return;
+    }
+    let man = match crate::snapshot::incremental::read_epoch_manifest(path.as_path()) {
+        Ok(Some(man)) => man,
+        Ok(None) => {
+            info!("snapshot summary align skipped reason=manifest_missing");
+            return;
+        }
+        Err(err) => {
+            warn!("snapshot summary align skipped reason=manifest_read_err err={err}");
+            return;
+        }
+    };
+    if man.canonical_h != tip_h {
+        info!(
+            "snapshot summary align skipped reason=tip_manifest_mismatch tip_h={} manifest_tip={}",
+            tip_h, man.canonical_h
+        );
+        return;
+    }
+    let persist = {
+        let g = app.inner.read().await;
+        crate::snapshot::save_checkpoint_summary(path.as_path(), &g)
+    };
+    match persist {
+        Ok(()) => {
+            info!(
+                "snapshot summary aligned after full_verify checkpoint_height={} reason={}",
+                tip_h,
+                if io_json.lag_forced_verify {
+                    "summary_manifest_lag"
+                } else {
+                    "verify_chain_flag"
+                }
+            );
+        }
+        Err(err) => {
+            warn!(
+                "snapshot summary align failed checkpoint_height={} err={}",
+                tip_h, err
+            );
+        }
+    }
 }
 
 pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
@@ -2095,19 +2446,22 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
                     "deployment_profile=single_sealer process-local lease backend is explicitly enabled; same-key multi-process split-brain protection is disabled"
                 );
             }
+            let lease_path = app
+                .lease_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "-".to_string());
             info!(
-                "deployment_profile=single_sealer seal_role={:?} validator_identity_hash={} node_instance_id={} lease_ttl_ms={} takeover_timeout_ms={} takeover_max_tip_lag={} lease_backend={:?} lease_path={}",
-                app.seal_role,
-                app.validator_identity_hash,
-                app.node_instance_id,
-                app.lease_cfg.ttl_ms,
-                app.lease_cfg.takeover_ms,
-                app.lease_cfg.max_tip_lag,
-                app.lease_mode,
-                app.lease_path
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "-".to_string())
+                deployment_profile = "single_sealer",
+                seal_role = ?app.seal_role,
+                validator_identity_hash = %app.validator_identity_hash,
+                node_instance_id = %app.node_instance_id,
+                lease_ttl_ms = app.lease_cfg.ttl_ms,
+                takeover_timeout_ms = app.lease_cfg.takeover_ms,
+                takeover_max_tip_lag = app.lease_cfg.max_tip_lag,
+                lease_backend = ?app.lease_mode,
+                lease_path = %lease_path,
+                "seal deployment profile"
             );
         }
         DeploymentProfile::MultiSealerExperimental => {
@@ -2115,8 +2469,11 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
                 "deployment_profile=multi_sealer_experimental enabled: non-default experimental mode; same-validator active/active protection is relaxed only when explicitly allowed by policy"
             );
             info!(
-                "deployment_profile=multi_sealer_experimental seal_role={:?} validator_identity_hash={} node_instance_id={}",
-                app.seal_role, app.validator_identity_hash, app.node_instance_id
+                deployment_profile = "multi_sealer_experimental",
+                seal_role = ?app.seal_role,
+                validator_identity_hash = %app.validator_identity_hash,
+                node_instance_id = %app.node_instance_id,
+                "seal deployment profile"
             );
         }
     }
@@ -2229,12 +2586,13 @@ mod tests {
         align_next_seal_ms, apply_cluster_timing, attester_alive, autosnap_hit,
         cluster_pending_summary_hit, cluster_prop_ms, cluster_seal_preflight, cluster_timing_ms,
         compute_suppress_pct, count_sync_ready_hs, gate_recheck_needed, is_suppress_alert,
-        lease_renew_log_hit, poll_sleep_ms, record_cluster_prop_tick, run_cluster_gate,
-        run_gate_obs, run_lease_gate, seal_drift_adjust_ms, seal_drift_clamp_envelope,
-        seal_drift_in_deadband, seal_envelope_pct, seal_interval_ms, should_attempt_seal,
-        should_fire_seal_ahead, spawn_seal_loop, tx_bal_diffs, AttSyncCtx, ClusterGateDedup,
-        GateBlock, SealAheadWindow, SealPreflight, SealSuppressWindow, SuppressReason,
-        AUTOSNAPSHOT_BLOCK_INTERVAL, SEAL_POLL_INTERVAL_MS,
+        lease_renew_log_hit, local_prod_for_h, mk_pick_fatal_diag, poll_sleep_ms,
+        record_cluster_prop_tick, run_cluster_gate, run_gate_obs, run_lease_gate,
+        seal_drift_adjust_ms, seal_drift_clamp_envelope, seal_drift_in_deadband, seal_envelope_pct,
+        seal_interval_ms, should_attempt_seal, should_fire_seal_ahead, skip_missed_h,
+        spawn_seal_loop, tx_bal_diffs, AttSyncCtx, ClusterGateDedup, GateBlock, SealAheadWindow,
+        SealPreflight, SealSuppressWindow, SuppressReason, AUTOSNAPSHOT_BLOCK_INTERVAL,
+        PROD_PICK_EMPTY_ERR, SEAL_POLL_INTERVAL_MS,
     };
     use crate::bootstrap::app_from_genesis_id;
     use crate::config::GenesisSource;
@@ -2242,19 +2600,20 @@ mod tests {
     use crate::handshake::ClusterRole;
     use crate::handshake::HandshakeValidationCtx;
     use crate::identity::default_runtime_identity_neutral;
-    use crate::state::InitState;
+    use crate::state::{InitPhase, InitState};
     use crate::transport::{HandshakeState, PeerClass, PeerRecord, PeerStatus, TrustedPeer};
     use crate::ClusterCfg;
     use crate::DevLane;
     use ed25519_dalek::SigningKey;
     use pwm_core::block::hdr_hash;
+    use pwm_core::genesis::{FundingCfg, GRow, VRow, ValCfg};
     use pwm_core::hd::{account_id_from_parts, domain_of_account_id};
     use pwm_core::tx::{SignedTx, TxBody};
     use pwm_core::types::Account;
-    use pwm_core::SealTimeMode;
+    use pwm_core::{Chain, SealTimeMode};
     use slip10_ed25519::derive_ed25519_private_key;
     use std::sync::Arc;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     /// Autosnapshot cadence matches 100-block boundary constant (formerly `autosnapshot_interval_hits_every_100_blocks`).
     #[test]
@@ -2270,6 +2629,149 @@ mod tests {
             .filter(|h| cluster_pending_summary_hit(*h))
             .collect();
         assert_eq!(hits, vec![10, 20, 30]);
+    }
+
+    fn mk_val(seed: [u8; 32], der_idx: u32) -> (SigningKey, GRow, VRow) {
+        let sk = SigningKey::from_bytes(&derive_ed25519_private_key(&seed, &[1_000_000, der_idx]));
+        let pk = sk.verifying_key().to_bytes();
+        let acct = account_id_from_parts(&pk, der_idx);
+        let grow = GRow {
+            acct,
+            pubkey: pk,
+            der_idx,
+            bal: 1_000_000,
+        };
+        let vrow = VRow {
+            acct,
+            pubkey: pk,
+            der_idx,
+        };
+        (sk, grow, vrow)
+    }
+
+    #[tokio::test]
+    async fn miss_skip_failover_seals() {
+        let mut app = app_from_genesis_id(
+            &GenesisSource::DevNet,
+            DevLane::Lane0,
+            None,
+            Some(default_runtime_identity_neutral()),
+        )
+        .expect("app");
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = ClusterRole::Proposer;
+        app.cluster_cfg.members = vec!["node-b".to_string(), "node-a".to_string()];
+        app.cluster_cfg.quorum_n = 2;
+        app.cluster_cfg.quorum_k = 1;
+        app.node_instance_id = "node-b".to_string();
+
+        let (sk0, grow0, vrow0) = mk_val([41u8; 32], 1);
+        let (sk1, grow1, vrow1) = mk_val([42u8; 32], 2);
+        let mut cfg = pwm_core::dev_net().0;
+        cfg.funding = FundingCfg {
+            accounts: vec![grow0, grow1],
+        };
+        cfg.accounts = cfg.funding.accounts.clone();
+        cfg.vals = ValCfg {
+            set: vec![vrow0, vrow1],
+        };
+        cfg.min_validator_stake = 0;
+
+        {
+            let mut g = app.inner.write().await;
+            g.chain = Chain::boot(cfg, vec![sk0, sk1]);
+            g.chain
+                .set_seal_time_mode(SealTimeMode::DeterministicHeight);
+        }
+
+        assert!(!local_prod_for_h(&app, 1).await.expect("h1 leader"));
+        assert!(skip_missed_h(&app, 1).await);
+        assert!(local_prod_for_h(&app, 2).await.expect("h2 leader"));
+        {
+            let mut g = app.inner.write().await;
+            g.chain.seal(vec![]).expect("failover seal");
+            let blk = g.chain.blocks.back().expect("failover block");
+            assert_eq!(blk.hdr.height, 2);
+            assert_eq!(blk.hdr.prod_idx, 0);
+            assert!(blk.hdr.verify_sig(&g.chain.cfg.vals.set[0].pubkey));
+        }
+    }
+
+    #[tokio::test]
+    async fn prod_pick_fatal_start() {
+        let mut app = app_from_genesis_id(
+            &GenesisSource::DevNet,
+            DevLane::Lane0,
+            None,
+            Some(default_runtime_identity_neutral()),
+        )
+        .expect("app");
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = ClusterRole::Proposer;
+        app.node_instance_id = "node-a".to_string();
+
+        let (sk0, grow0, vrow0) = mk_val([51u8; 32], 1);
+        let mut cfg = pwm_core::dev_net().0;
+        cfg.funding = FundingCfg {
+            accounts: vec![grow0],
+        };
+        cfg.accounts = cfg.funding.accounts.clone();
+        cfg.vals = ValCfg { set: vec![vrow0] };
+        cfg.min_validator_stake = 2_000_000;
+        {
+            let mut g = app.inner.write().await;
+            g.chain = Chain::boot(cfg, vec![sk0]);
+            g.chain
+                .set_seal_time_mode(SealTimeMode::DeterministicHeight);
+        }
+
+        let diag = mk_pick_fatal_diag(&app, 1, PROD_PICK_EMPTY_ERR)
+            .await
+            .expect("fatal diag");
+        assert_eq!(diag.tip_h, 0);
+        assert_eq!(diag.lead_h, 1);
+        assert_eq!(diag.val_n, 1);
+        assert_eq!(diag.max_val_stake, 0);
+        assert_eq!(diag.min_stake, 2_000_000);
+    }
+
+    #[tokio::test]
+    async fn epoch_empty_active_midchain_diag() {
+        let mut app = app_from_genesis_id(
+            &GenesisSource::DevNet,
+            DevLane::Lane0,
+            None,
+            Some(default_runtime_identity_neutral()),
+        )
+        .expect("app");
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = ClusterRole::Proposer;
+        app.node_instance_id = "node-a".to_string();
+
+        let (sk0, grow0, vrow0) = mk_val([52u8; 32], 1);
+        let mut cfg = pwm_core::dev_net().0;
+        cfg.funding = FundingCfg {
+            accounts: vec![grow0],
+        };
+        cfg.accounts = cfg.funding.accounts.clone();
+        cfg.vals = ValCfg { set: vec![vrow0] };
+        cfg.min_validator_stake = 2_000_000;
+        {
+            let mut g = app.inner.write().await;
+            g.chain = Chain::boot(cfg, vec![sk0]);
+            g.chain.set_canon_h(3);
+            g.chain.st.active_validator_indices.clear();
+            g.chain
+                .set_seal_time_mode(SealTimeMode::DeterministicHeight);
+        }
+
+        let diag = mk_pick_fatal_diag(&app, 4, PROD_PICK_EMPTY_ERR).await;
+        let diag = diag.expect("fatal diag");
+        assert_eq!(diag.tip_h, 3);
+        assert_eq!(diag.lead_h, 4);
+        assert_eq!(diag.val_n, 1);
+        assert_eq!(diag.max_val_stake, 0);
+        assert_eq!(diag.min_stake, 2_000_000);
     }
 
     #[test]
@@ -2529,12 +3031,21 @@ mod tests {
     #[test]
     fn poll_sleep_bounded_gap() {
         // Far from deadline: sleep is capped at SEAL_POLL_INTERVAL_MS.
-        assert_eq!(poll_sleep_ms(0, 500, SEAL_POLL_INTERVAL_MS), 10);
+        assert_eq!(
+            poll_sleep_ms(0, 500, SEAL_POLL_INTERVAL_MS),
+            SEAL_POLL_INTERVAL_MS
+        );
         // Close to deadline: sleep shrinks to the remaining gap.
         assert_eq!(poll_sleep_ms(995, 1000, SEAL_POLL_INTERVAL_MS), 5);
         // Deadline passed: paced retry equal to poll interval.
-        assert_eq!(poll_sleep_ms(1000, 1000, SEAL_POLL_INTERVAL_MS), 10);
-        assert_eq!(poll_sleep_ms(1500, 1000, SEAL_POLL_INTERVAL_MS), 10);
+        assert_eq!(
+            poll_sleep_ms(1000, 1000, SEAL_POLL_INTERVAL_MS),
+            SEAL_POLL_INTERVAL_MS
+        );
+        assert_eq!(
+            poll_sleep_ms(1500, 1000, SEAL_POLL_INTERVAL_MS),
+            SEAL_POLL_INTERVAL_MS
+        );
         // poll_ms=0 is clamped to 1.
         assert_eq!(poll_sleep_ms(995, 1000, 0), 1);
     }
@@ -2622,11 +3133,12 @@ mod tests {
         win.begin_slot(1000, 1_000);
         assert!(!win.eval_supp(2_000, 1_000, SuppressReason::ClusterGate));
         assert!(win.eval_supp(2_001, 1_000, SuppressReason::ClusterGate));
-        assert!(!win.eval_supp(2_011, 1_000, SuppressReason::ClusterGate));
+        let retry_at = 2_001 + SEAL_POLL_INTERVAL_MS;
+        assert!(!win.eval_supp(retry_at, 1_000, SuppressReason::ClusterGate));
         assert_eq!(win.slot_supp, 1);
         assert_eq!(win.last_reason, Some(SuppressReason::ClusterGate));
         assert!(win.supp_marked);
-        assert_eq!(win.attempt_start_ms, Some(2_011));
+        assert_eq!(win.attempt_start_ms, Some(retry_at));
     }
 
     /// Seal within the same nominal interval records success without suppression.
@@ -2789,6 +3301,25 @@ mod tests {
     fn preflight_ready_on_quorum() {
         assert_eq!(cluster_seal_preflight(true, 1, 1), SealPreflight::Ready);
         assert_eq!(cluster_seal_preflight(true, 3, 2), SealPreflight::Ready);
+    }
+
+    #[test]
+    fn init_prep_throttle_loading() {
+        let init = InitState::loading(None);
+        assert_eq!(init.phase, InitPhase::LoadingSnapshot);
+        assert_eq!(
+            super::init_blocked_reason(init.phase),
+            Some("loading_snapshot")
+        );
+        let now = Instant::now();
+        assert!(super::prep_log_due(
+            now - Duration::from_secs(super::PREP_SUMMARY_IV_SEC),
+            now
+        ));
+        assert!(!super::prep_log_due(
+            now - Duration::from_secs(super::PREP_SUMMARY_IV_SEC - 1),
+            now
+        ));
     }
 
     /// Attester liveness: connected + fresh last_seen wins; stale / disconnected fail.
@@ -3312,9 +3843,13 @@ mod tests {
         .expect("app");
         app.cluster_cfg.enabled = true;
         app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
-        app.cluster_cfg.members = vec!["node-a".to_string(), "node-b".to_string()];
-        app.cluster_cfg.quorum_n = 2;
-        app.cluster_cfg.quorum_k = 1;
+        app.cluster_cfg.members = vec![
+            "node-a".to_string(),
+            "node-b".to_string(),
+            "node-c".to_string(),
+        ];
+        app.cluster_cfg.quorum_n = 3;
+        app.cluster_cfg.quorum_k = 2;
         app.cluster_cfg.attest_timeout_ms = 10;
         let h = app.inner.read().await.chain.tip_h().saturating_add(1);
         {
@@ -3416,9 +3951,13 @@ mod tests {
         .expect("app");
         app.cluster_cfg.enabled = true;
         app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
-        app.cluster_cfg.members = vec!["node-a".to_string(), "node-b".to_string()];
-        app.cluster_cfg.quorum_n = 2;
-        app.cluster_cfg.quorum_k = 1;
+        app.cluster_cfg.members = vec![
+            "node-a".to_string(),
+            "node-b".to_string(),
+            "node-c".to_string(),
+        ];
+        app.cluster_cfg.quorum_n = 3;
+        app.cluster_cfg.quorum_k = 3;
         app.cluster_cfg.attest_timeout_ms = 10;
         let h = app.inner.read().await.chain.tip_h().saturating_add(1);
         {
@@ -3427,7 +3966,17 @@ mod tests {
             round.vote_object = "vo1".to_string();
             round.candidate_hash = "aa".repeat(32);
             round.proposer_id = Some("node-a".to_string());
-            round.propose_opened_at_ms = Some(0);
+            round.propose_opened_at_ms = Some(
+                crate::current_time_ms()
+                    .unwrap_or(0)
+                    .saturating_sub(app.cluster_cfg.attest_timeout_ms.saturating_add(1)),
+            );
+            round
+                .attesters
+                .insert("node-b".to_string(), "sig-b".to_string());
+            round
+                .attesters
+                .insert("node-c".to_string(), "sig-c".to_string());
         }
         assert!(!run_cluster_gate(&app, None).await);
 

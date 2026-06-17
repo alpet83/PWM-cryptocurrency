@@ -10,6 +10,10 @@ use std::time::Duration;
 pub(crate) static RPC_CLIENT_FALLBACK_WARNED: AtomicBool = AtomicBool::new(false);
 pub(crate) const DEFAULT_WALLET_OUT_REL: &str = "~/.pwm-crypto/default-wallet.yaml";
 
+pub(crate) fn is_rpc_offline(rpc: &str) -> bool {
+    rpc.trim().eq_ignore_ascii_case("offline")
+}
+
 pub(crate) fn rpc_http_timeout() -> Duration {
     const DEFAULT_MS: u64 = 10_000;
     parse_rpc_timeout_ms(

@@ -38,9 +38,18 @@ pub(crate) fn is_peer_liveish(status: &PeerStatus) -> bool {
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn prioritize_peer_candidates(
     local_domain_hi: u8,
     peers: &HashMap<String, PeerRecord>,
+) -> Vec<PeerRecord> {
+    prioritize_peer_candidates_scored(local_domain_hi, peers, &PeerSyncScoreCache::default())
+}
+
+pub(crate) fn prioritize_peer_candidates_scored(
+    local_domain_hi: u8,
+    peers: &HashMap<String, PeerRecord>,
+    scores: &PeerSyncScoreCache,
 ) -> Vec<PeerRecord> {
     fn peer_priority_rank(local_domain_hi: u8, peer_domain_hi: u8) -> u8 {
         if is_native_for_local(local_domain_hi, peer_domain_hi) {
@@ -60,6 +69,7 @@ pub(crate) fn prioritize_peer_candidates(
         let b_rank = peer_priority_rank(local_domain_hi, b.domain_hi);
         a_rank
             .cmp(&b_rank)
+            .then_with(|| scores.get(&b.node_id).cmp(&scores.get(&a.node_id)))
             .then_with(|| b.last_seen_ms.cmp(&a.last_seen_ms))
             .then_with(|| a.node_id.cmp(&b.node_id))
     });

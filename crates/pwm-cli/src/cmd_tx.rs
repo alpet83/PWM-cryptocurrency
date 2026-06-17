@@ -3,10 +3,12 @@
 use crate::cli_parse::{hex32, parse_address_arg, parse_address_input, resolve_tx_send_amount};
 use crate::cmd_roaming;
 use crate::purpose_expand::expand_purpose;
-use crate::rpc_helpers::{fetch_marks, fetch_nonce, post_signed_tx, preflight_recipient_init};
+use crate::rpc_helpers::{
+    fetch_marks, fetch_nonce, fetch_nonce_init_opt, post_signed_tx, preflight_recipient_init,
+};
 use crate::signer::{load_tx_signer_source, load_wallet_account_signer};
 use crate::wallet::assert_tx_recipient_allowed;
-use crate::wallet::load_wallet_yaml_upgrade;
+use crate::wallet::{load_wallet_yaml_upgrade, wallet_account_list};
 use crate::{exit_user_error, http_client_for_rpc};
 use pwm_core::crypto::sign;
 use pwm_core::tx::{
@@ -14,6 +16,9 @@ use pwm_core::tx::{
     PolicyKind, SignedTx, TxBody,
 };
 use pwm_core::validate_recipient_domain_policy;
+use pwm_core::{account_id_to_human, AccountId};
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 
 pub(crate) struct InitV4Args {
@@ -45,22 +50,84 @@ pub(crate) fn run_tx_init(
     index: u32,
     flags: u32,
     init_v4: InitV4Args,
+    save_activation_tx: Option<PathBuf>,
 ) {
-    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
-        .unwrap_or_else(|e| exit_user_error(&e));
+    let source = load_tx_wallet_signer(
+        wallet.clone(),
+        master,
+        domain,
+        wallet_passphrase,
+        upgrade_wallet,
+        index,
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
+    let c = http_client_for_rpc();
+    let init_nonce = fetch_nonce_init_opt(&c, rpc_base, source.from)
+        .unwrap_or_else(|e| exit_user_error(&e))
+        .map(|(nonce, _)| nonce)
+        .unwrap_or(0);
     let mut tx = SignedTx::sign_body(
         &source.sk,
         source.dom,
         source.idx,
-        0,
+        init_nonce,
         TxBody::Init { index, flags },
     );
     let init_v4 = parse_init_v4_args(init_v4).unwrap_or_else(|e| exit_user_error(&e));
+    if let Some(path) = save_activation_tx.as_ref() {
+        let prepared = build_init_activation(
+            &source,
+            init_v4.as_ref(),
+            wallet.as_ref(),
+            wallet_passphrase,
+            upgrade_wallet,
+            init_nonce,
+        )
+        .unwrap_or_else(|e| exit_user_error(&e))
+        .unwrap_or_else(|| {
+            exit_user_error(
+                "--save-activation-tx requires --rescue-address and an emergency initial policy",
+            )
+        });
+        save_signed_tx(path, &prepared).unwrap_or_else(|e| exit_user_error(&e));
+    }
     if init_v4.is_some() {
         tx.set_init_v4_signed(&source.sk, init_v4);
     }
-    let c = http_client_for_rpc();
     post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
+}
+
+fn load_tx_wallet_signer(
+    wallet: Option<PathBuf>,
+    master: Option<String>,
+    domain: Option<String>,
+    wallet_passphrase: Option<&str>,
+    upgrade_wallet: bool,
+    index: u32,
+) -> Result<crate::signer::TxSignerSource, String> {
+    if master.is_some() {
+        return load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet);
+    }
+    let wallet_path =
+        wallet.ok_or_else(|| "either --wallet or --master must be provided".to_string())?;
+    let sel_idx = resolve_tx_wallet_index(&wallet_path, upgrade_wallet, index)?;
+    load_wallet_account_signer(&wallet_path, sel_idx, wallet_passphrase, upgrade_wallet)
+}
+
+fn resolve_tx_wallet_index(
+    path: &PathBuf,
+    upgrade_wallet: bool,
+    index: u32,
+) -> Result<u32, String> {
+    if index != 0 {
+        return Ok(index);
+    }
+    let wallet = load_wallet_yaml_upgrade(path, upgrade_wallet)
+        .map_err(|e| format!("failed to read wallet '{}': {e}", path.display()))?;
+    if wallet.schema_version == 3 || wallet.derivation_index == 0 {
+        return Ok(0);
+    }
+    Ok(wallet.derivation_index)
 }
 
 pub(crate) fn run_tx_policy_set(
@@ -70,13 +137,21 @@ pub(crate) fn run_tx_policy_set(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
+    index: u32,
     policy: String,
     activation: String,
     activate_at_height: Option<u64>,
     fee: u128,
 ) {
-    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
-        .unwrap_or_else(|e| exit_user_error(&e));
+    let source = load_tx_wallet_signer(
+        wallet,
+        master,
+        domain,
+        wallet_passphrase,
+        upgrade_wallet,
+        index,
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
     let policy_kind = parse_policy_kind(&policy).unwrap_or_else(|e| exit_user_error(&e));
     let activation_mode = parse_activation_mode(&activation, activate_at_height)
         .unwrap_or_else(|e| exit_user_error(&e));
@@ -106,23 +181,41 @@ pub(crate) fn run_tx_policy_activate(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
+    index: u32,
     policy: Option<String>,
     policy_id: Option<u8>,
     fee: u128,
+    activation_target: Option<String>,
+    activation_tx: Option<PathBuf>,
     rescue: RescueCosignArgs,
 ) {
-    let source = load_tx_signer_source(
+    if let Some(path) = activation_tx {
+        let tx = load_signed_tx(&path).unwrap_or_else(|e| exit_user_error(&e));
+        let c = http_client_for_rpc();
+        post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| {
+            let rich = enrich_act_nonce_err(&c, rpc_base, &tx, &e);
+            exit_user_error(&rich);
+        });
+        return;
+    }
+    let source = load_tx_wallet_signer(
         wallet.clone(),
-        master.clone(),
-        domain.clone(),
+        master,
+        domain,
         wallet_passphrase,
         upgrade_wallet,
+        index,
     )
     .unwrap_or_else(|e| exit_user_error(&e));
     let chosen_policy =
         parse_policy_selector(policy, policy_id).unwrap_or_else(|e| exit_user_error(&e));
     let c = http_client_for_rpc();
     let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
+    let activation_target = activation_target
+        .as_deref()
+        .map(|raw| parse_address_arg("--activation-target", raw))
+        .transpose()
+        .unwrap_or_else(|e| exit_user_error(&e));
     let mut tx = SignedTx::sign_body(
         &source.sk,
         source.dom,
@@ -132,6 +225,7 @@ pub(crate) fn run_tx_policy_activate(
             target_account: source.from,
             action: PolicyAction::ActivatePolicy {
                 policy_id: chosen_policy,
+                activation_target,
             },
             fee,
         },
@@ -156,12 +250,20 @@ pub(crate) fn run_tx_policy_deactivate(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
+    index: u32,
     policy: Option<String>,
     policy_id: Option<u8>,
     fee: u128,
 ) {
-    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
-        .unwrap_or_else(|e| exit_user_error(&e));
+    let source = load_tx_wallet_signer(
+        wallet,
+        master,
+        domain,
+        wallet_passphrase,
+        upgrade_wallet,
+        index,
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
     let chosen_policy =
         parse_policy_selector(policy, policy_id).unwrap_or_else(|e| exit_user_error(&e));
     let c = http_client_for_rpc();
@@ -189,16 +291,18 @@ pub(crate) fn run_tx_send(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
+    index: u32,
     to: String,
     amount: Option<u128>,
     fee: u128,
 ) {
-    let source = load_tx_signer_source(
+    let source = load_tx_wallet_signer(
         wallet.clone(),
         master.clone(),
         domain,
         wallet_passphrase,
         upgrade_wallet,
+        index,
     )
     .unwrap_or_else(|e| exit_user_error(&e));
     let (to_id, uri_amount) =
@@ -249,10 +353,18 @@ pub(crate) fn run_tx_stake(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
+    index: u32,
     amount: u128,
 ) {
-    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
-        .unwrap_or_else(|e| exit_user_error(&e));
+    let source = load_tx_wallet_signer(
+        wallet,
+        master,
+        domain,
+        wallet_passphrase,
+        upgrade_wallet,
+        index,
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
     let c = http_client_for_rpc();
     let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
     let tx = SignedTx::sign_body(
@@ -272,10 +384,18 @@ pub(crate) fn run_tx_unstake(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
+    index: u32,
     amount: u128,
 ) {
-    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
-        .unwrap_or_else(|e| exit_user_error(&e));
+    let source = load_tx_wallet_signer(
+        wallet,
+        master,
+        domain,
+        wallet_passphrase,
+        upgrade_wallet,
+        index,
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
     let c = http_client_for_rpc();
     let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
     let tx = SignedTx::sign_body(
@@ -480,6 +600,363 @@ fn append_rescue_cosign(tx: &mut SignedTx, rescue_sk: &ed25519_dalek::SigningKey
     });
 }
 
+fn save_signed_tx(path: &Path, tx: &SignedTx) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+    }
+    let body = serde_json::to_string_pretty(tx).map_err(|e| e.to_string())?;
+    fs::write(path, body).map_err(|e| e.to_string())
+}
+
+fn enrich_act_nonce_err(
+    c: &reqwest::blocking::Client,
+    rpc_base: &str,
+    tx: &SignedTx,
+    err: &str,
+) -> String {
+    if !is_act_nonce_err(err) {
+        return err.to_string();
+    }
+    let Some(acct) = tx_target_acct(tx) else {
+        return err.to_string();
+    };
+    let acct_human = account_id_to_human(&acct);
+    let file_nonce = tx.nonce;
+    match fetch_nonce(c, rpc_base, acct) {
+        Ok(chain_nonce) => format!(
+            "{err}\n\
+             tx-policy-activate --activation-tx nonce mismatch: file nonce={file_nonce}, on-chain nonce={chain_nonce} for target_account={acct_human}\n\
+             hint: rebuild and submit a live activation with --wallet <path> --index <victim_idx> (and --rescue-account-index for same-wallet rescue)"
+        ),
+        Err(fetch_err) => format!(
+            "{err}\n\
+             tx-policy-activate --activation-tx rejected with bad nonce (file nonce={file_nonce} for target_account={acct_human}); failed to fetch on-chain nonce: {fetch_err}\n\
+             hint: retry live activation with --wallet <path> --index <victim_idx>; if needed refresh account state and rebuild activation tx"
+        ),
+    }
+}
+
+fn tx_target_acct(tx: &SignedTx) -> Option<AccountId> {
+    match tx.body {
+        TxBody::Policy { target_account, .. } => Some(target_account),
+        _ => None,
+    }
+}
+
+fn is_act_nonce_err(err: &str) -> bool {
+    let msg = err.to_ascii_lowercase();
+    msg.contains("http 409") && msg.contains("nonce")
+}
+
+fn load_signed_tx(path: &Path) -> Result<SignedTx, String> {
+    let body = fs::read_to_string(path)
+        .map_err(|e| format!("failed to read activation tx '{}': {e}", path.display()))?;
+    serde_json::from_str(&body)
+        .map_err(|e| format!("failed to decode activation tx '{}': {e}", path.display()))
+}
+
+fn build_init_activation(
+    source: &crate::signer::TxSignerSource,
+    init_v4: Option<&InitV4Extension>,
+    wallet_path: Option<&PathBuf>,
+    wallet_passphrase: Option<&str>,
+    upgrade_wallet: bool,
+    init_nonce: u64,
+) -> Result<Option<SignedTx>, String> {
+    let Some(ext) = init_v4 else {
+        return Ok(None);
+    };
+    let Some(target) = ext.rescue_address else {
+        return Ok(None);
+    };
+    let has_emergency = ext.initial_policies.iter().any(|row| {
+        row.policy == PolicyKind::RoutingEmergencyRedirect
+            && !matches!(row.activation, ActivationMode::Immediately)
+    });
+    if !has_emergency {
+        return Ok(None);
+    }
+    let mut tx = SignedTx::sign_body(
+        &source.sk,
+        source.dom,
+        source.idx,
+        calc_activation_nonce(init_nonce),
+        TxBody::Policy {
+            target_account: source.from,
+            action: PolicyAction::ActivatePolicy {
+                policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                activation_target: Some(target),
+            },
+            fee: 0,
+        },
+    );
+    if let Some(wp) = wallet_path {
+        maybe_rescue_cosign(&mut tx, wp, &target, wallet_passphrase, upgrade_wallet)?;
+    }
+    eprintln!(
+        "tx-init prepared activation: policy=routing.emergency_redirect target={}",
+        account_id_to_human(&target)
+    );
+    Ok(Some(tx))
+}
+
+fn calc_activation_nonce(init_nonce: u64) -> u64 {
+    init_nonce.saturating_add(1)
+}
+
+fn maybe_rescue_cosign(
+    tx: &mut SignedTx,
+    wallet_path: &PathBuf,
+    target: &AccountId,
+    wallet_passphrase: Option<&str>,
+    upgrade_wallet: bool,
+) -> Result<(), String> {
+    let target_hex = hex::encode(target);
+    let Ok(accounts) = wallet_account_list(wallet_path) else {
+        return Ok(());
+    };
+    let Some(row) = accounts
+        .into_iter()
+        .find(|row| row.id_hex.eq_ignore_ascii_case(&target_hex))
+    else {
+        return Ok(());
+    };
+    let rescue = load_wallet_account_signer(
+        wallet_path,
+        row.derivation_index,
+        wallet_passphrase,
+        upgrade_wallet,
+    )?;
+    append_rescue_cosign(tx, &rescue.sk);
+    Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::SigningKey;
+    use pwm_core::hd::account_id_from_parts;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn spawn_mock_http_server(script: Vec<(&'static str, u16, &'static str)>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        thread::spawn(move || {
+            for (expected_line, status, body) in script {
+                let (mut stream, _) = listener.accept().expect("accept");
+                let mut buf = [0u8; 8192];
+                let n = stream.read(&mut buf).expect("read");
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                assert!(req.starts_with(expected_line), "unexpected request: {req}");
+                let reason = match status {
+                    200 => "OK",
+                    204 => "No Content",
+                    409 => "Conflict",
+                    _ => "OK",
+                };
+                let resp = format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(resp.as_bytes()).expect("write");
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[test]
+    fn prepared_activation_roundtrip() {
+        let owner_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let owner_pk = owner_sk.verifying_key().to_bytes();
+        let owner_id = account_id_from_parts(&owner_pk, 0);
+        let source = crate::signer::TxSignerSource {
+            sk: owner_sk,
+            dom: 0x4359,
+            idx: 0,
+            from: owner_id,
+        };
+        let rescue_sk = SigningKey::from_bytes(&[12u8; 32]);
+        let rescue_pk = rescue_sk.verifying_key().to_bytes();
+        let rescue_id = account_id_from_parts(&rescue_pk, 1);
+        let ext = InitV4Extension {
+            owner_kind: "person".to_string(),
+            owner_display_name: "Alice".to_string(),
+            owner_country_hint: "CY".to_string(),
+            company_metadata_commitment: [0u8; 32],
+            external_verification_ref: "kyc:alice".to_string(),
+            requested_domain_lo: 0,
+            rescue_address: Some(rescue_id),
+            initial_policies: vec![InitPolicyEntry {
+                policy: PolicyKind::RoutingEmergencyRedirect,
+                activation: ActivationMode::Dormant,
+            }],
+            cosign_policy: None,
+        };
+        let tx = build_init_activation(&source, Some(&ext), None, None, false, 0)
+            .expect("must build")
+            .expect("must prepare activation");
+        assert_eq!(tx.nonce, 1);
+        match &tx.body {
+            TxBody::Policy {
+                target_account,
+                action:
+                    PolicyAction::ActivatePolicy {
+                        policy_id,
+                        activation_target,
+                    },
+                fee,
+            } => {
+                assert_eq!(*target_account, owner_id);
+                assert_eq!(*policy_id, PolicyKind::RoutingEmergencyRedirect.policy_id());
+                assert_eq!(*activation_target, Some(rescue_id));
+                assert_eq!(*fee, 0);
+            }
+            other => panic!("unexpected prepared tx body: {other:?}"),
+        }
+        let path = std::env::temp_dir().join(format!(
+            "pwm-prepared-activation-{}-{}.json",
+            std::process::id(),
+            rescue_id[0]
+        ));
+        save_signed_tx(&path, &tx).expect("save prepared activation");
+        let loaded = load_signed_tx(&path).expect("load prepared activation");
+        let _ = fs::remove_file(&path);
+        assert_eq!(loaded, tx);
+    }
+
+    #[test]
+    fn tx_init_wallet_idx() {
+        let path = std::env::temp_dir().join(format!(
+            "pwm-cli-tx-init-wallet-idx-{}.yaml",
+            rand::random::<u128>()
+        ));
+        let seed = [0x39u8; 32];
+        let first_idx = 3u32;
+        let sel_idx = 21u32;
+        let first_key = slip10_ed25519::derive_ed25519_private_key(&seed, &[0, first_idx]);
+        let first_sk = SigningKey::from_bytes(&first_key);
+        let first_pk = first_sk.verifying_key().to_bytes();
+        let first_id = account_id_from_parts(&first_pk, first_idx);
+        let wallet = crate::wallet::build_wallet_yaml(
+            seed,
+            first_sk.to_bytes(),
+            first_pk,
+            first_idx,
+            u16::from_be_bytes([first_id[0], first_id[1]]),
+            0x03FF,
+            0,
+            u32::from_be_bytes([first_id[2], first_id[3], first_id[4], first_id[5]]),
+            hex::encode(first_id),
+            account_id_to_human(&first_id),
+            Some("CY".to_string()),
+            crate::wallet::WalletProtection::PlaintextDev,
+        )
+        .expect("wallet");
+        crate::wallet::save_wallet_v3_new(&path, &wallet).expect("save wallet");
+        crate::wallet::wallet_account_add_seed(&path, sel_idx, &seed).expect("add wallet account");
+
+        let source = load_tx_wallet_signer(Some(path.clone()), None, None, None, false, sel_idx)
+            .expect("load signer");
+        assert_eq!(source.idx, sel_idx);
+        assert_eq!(
+            account_id_from_parts(&source.sk.verifying_key().to_bytes(), source.idx),
+            source.from
+        );
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn tx_v2_idx_fallback() {
+        let path = std::env::temp_dir().join(format!(
+            "pwm-cli-tx-v2-def-idx-{}.yaml",
+            rand::random::<u128>()
+        ));
+        let seed = [0x61u8; 32];
+        let sel_idx = 19u32;
+        let sk_bytes = slip10_ed25519::derive_ed25519_private_key(&seed, &[0, sel_idx]);
+        let sk = SigningKey::from_bytes(&sk_bytes);
+        let pk = sk.verifying_key().to_bytes();
+        let id = account_id_from_parts(&pk, sel_idx);
+        let wallet = crate::wallet::build_wallet_yaml(
+            seed,
+            sk.to_bytes(),
+            pk,
+            sel_idx,
+            u16::from_be_bytes([id[0], id[1]]),
+            0x03FF,
+            0,
+            u32::from_be_bytes([id[2], id[3], id[4], id[5]]),
+            hex::encode(id),
+            account_id_to_human(&id),
+            Some("CY".to_string()),
+            crate::wallet::WalletProtection::PlaintextDev,
+        )
+        .expect("wallet");
+        crate::wallet::save_wallet_yaml(&path, &wallet).expect("save v2 wallet");
+
+        let source = load_tx_wallet_signer(Some(path.clone()), None, None, None, false, 0)
+            .expect("fallback signer");
+        assert_eq!(source.idx, sel_idx);
+        assert_eq!(source.from, id);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn tx_init_nonce_add1() {
+        assert_eq!(calc_activation_nonce(0), 1);
+        assert_eq!(calc_activation_nonce(7), 8);
+    }
+
+    #[test]
+    fn tx_pol_nonce_detect() {
+        assert!(is_act_nonce_err("tx submit: HTTP 409 (url): bad nonce"));
+        assert!(!is_act_nonce_err("tx submit: HTTP 400 (url): bad nonce"));
+    }
+
+    #[test]
+    fn tx_pol_nonce_409() {
+        let owner_sk = SigningKey::from_bytes(&[21u8; 32]);
+        let owner_id = account_id_from_parts(&owner_sk.verifying_key().to_bytes(), 0);
+        let tx = SignedTx::sign_body(
+            &owner_sk,
+            0x4359,
+            0,
+            1,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                    activation_target: Some(owner_id),
+                },
+                fee: 0,
+            },
+        );
+        let from_hex = hex::encode(owner_id);
+        let get_line = Box::leak(format!("GET /v1/account/{from_hex} HTTP/1.1").into_boxed_str());
+        let rpc = spawn_mock_http_server(vec![(get_line, 200, r#"{"nonce":9}"#)]);
+        let client = reqwest::blocking::Client::new();
+        let rich = enrich_act_nonce_err(
+            &client,
+            &rpc,
+            &tx,
+            "tx submit: HTTP 409 (http://127.0.0.1:3030/v1/tx): bad nonce",
+        );
+        assert!(rich.contains("nonce mismatch"), "{rich}");
+        assert!(rich.contains("file nonce=1"), "{rich}");
+        assert!(rich.contains("on-chain nonce=9"), "{rich}");
+        assert!(rich.contains("--index <victim_idx>"), "{rich}");
+        assert!(rich.contains("--rescue-account-index"), "{rich}");
+    }
+}
+
 pub(crate) fn run_tx_burn_mark(
     rpc_base: &str,
     wallet: Option<PathBuf>,
@@ -487,12 +964,20 @@ pub(crate) fn run_tx_burn_mark(
     domain: Option<String>,
     wallet_passphrase: Option<&str>,
     upgrade_wallet: bool,
+    index: u32,
     mark_amount: u32,
     beneficiary: Option<String>,
     purpose: Option<String>,
 ) {
-    let source = load_tx_signer_source(wallet, master, domain, wallet_passphrase, upgrade_wallet)
-        .unwrap_or_else(|e| exit_user_error(&e));
+    let source = load_tx_wallet_signer(
+        wallet,
+        master,
+        domain,
+        wallet_passphrase,
+        upgrade_wallet,
+        index,
+    )
+    .unwrap_or_else(|e| exit_user_error(&e));
     let c = http_client_for_rpc();
     let marks_before = fetch_marks(&c, rpc_base, source.from).unwrap_or_else(|e| {
         eprintln!("pwm: warn: could not fetch marks: {e}");

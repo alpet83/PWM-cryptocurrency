@@ -253,12 +253,8 @@ async fn inbound_hi_no_relay_ok() {
     let body = to_bytes(status.into_body(), 64 * 1024).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["live_peer_count"], 1);
-    assert_eq!(json["trusted_relay_peer_count"], 0);
-    assert_eq!(json["peer_relay_health"], "no_trusted_seed");
-    assert!(json["roaming_relay_hint"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("live trusted seed peer"));
+    assert_eq!(json["trusted_relay_peer_count"], 1);
+    assert_eq!(json["peer_relay_health"], "ok");
 }
 
 #[tokio::test]
@@ -395,6 +391,37 @@ fn policy_native_first_plain() {
     assert_eq!(ordered[0].node_id, "native");
     assert_eq!(ordered[1].node_id, "foreign-high");
     assert_eq!(ordered[2].node_id, "foreign-low");
+}
+
+#[test]
+fn peer_score_select_order() {
+    let local_domain_hi = 0x10;
+    let mut peers = HashMap::new();
+    for node_id in ["native-c", "native-a", "native-b"] {
+        peers.insert(
+            node_id.to_string(),
+            PeerRecord {
+                node_id: node_id.to_string(),
+                domain_hi: local_domain_hi,
+                class: PeerClass::Native,
+                last_seen_ms: 100,
+                status: PeerStatus::Connected,
+            },
+        );
+    }
+    let mut scores = crate::transport::PeerSyncScoreCache::default();
+    scores.apply("native-b", crate::transport::PeerScoreEvent::SyncRound);
+    scores.apply("native-b", crate::transport::PeerScoreEvent::ValidBlocks);
+    scores.apply("native-a", crate::transport::PeerScoreEvent::SyncRound);
+
+    let ordered = prioritize_peer_candidates_scored(local_domain_hi, &peers, &scores);
+    assert_eq!(
+        ordered
+            .iter()
+            .map(|peer| peer.node_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["native-b", "native-a", "native-c"]
+    );
 }
 
 /// Backoff selection returns distinct envelope parameters for native vs foreign classes.

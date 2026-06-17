@@ -525,10 +525,12 @@ fn write_manifest(summary_path: &Path, man: &EpochManifest) -> Result<(), String
 mod tests {
     use super::*;
     use crate::bootstrap::app_from_dev_net;
+    use crate::snapshot::epoch::epoch_file_path;
     use crate::snapshot::epoch::EPOCH_MAN_SCHEMA_CUR;
     use crate::snapshot::epoch::SNAP_CHK_BLK_IV;
     use crate::snapshot::io::{json_file_seal_persist, save_checkpoint_summary};
     use crate::snapshot::{encode_inner_snap_json, load_snapshot};
+    use pwm_core::block::Block;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -764,6 +766,62 @@ mod tests {
         std::fs::write(&mp, body).expect("overwrite manifest");
         let err = load_tail_blocks(&pb, 8).expect_err("must reject");
         assert!(err.contains("unsupported epoch manifest schema"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trust_load_skips_old_replay() {
+        use crate::snapshot::io::{load_snapshot_timed, SnapshotLoadOpts};
+
+        let sfx = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pwm-trust-skip-replay-{sfx}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let pb = dir.join("pwm-data.json");
+
+        let app = app_from_dev_net();
+        let (cfg, _) = pwm_core::dev_net();
+        const N: u64 = 1105;
+        for _ in 0..N {
+            let mut g = app.inner.try_write().expect("inner");
+            g.chain.seal(vec![]).expect("seal");
+            append_tip_block(&pb, &g).expect("append");
+        }
+        {
+            let g = app.inner.try_write().expect("inner");
+            save_checkpoint_summary(&pb, &g).expect("tip-aligned summary");
+        }
+
+        let ep0 = epoch_file_path(&pb, 0);
+        let mut lines = read_jsonl_lines(&ep0).expect("epoch lines");
+        assert!(lines.len() >= 2, "need block height 2");
+        let mut blk2: Block = serde_json::from_str(&lines[1]).expect("decode block2");
+        blk2.hdr.prod_idx = blk2.hdr.prod_idx.saturating_add(1);
+        lines[1] = serde_json::to_string(&blk2).expect("encode block2");
+        let mut body = lines.join("\n");
+        body.push('\n');
+        std::fs::write(&ep0, body).expect("tamper block2");
+
+        let (snap, timing) = load_snapshot_timed(
+            &pb,
+            &cfg,
+            SnapshotLoadOpts {
+                verify_chain: false,
+                anchor_sk: None,
+                anchor_idx: 0,
+            },
+        )
+        .expect("trust load");
+        let snap = snap.expect("snapshot");
+        eprintln!(
+            "trust_load_skips_old_replay validate_ms={}",
+            timing.validate_ms
+        );
+        assert_eq!(snap.blocks.len(), pwm_core::TAIL_BLOCK_CAP);
+        assert!(!timing.used_full_verify, "trust mode must stay trust");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

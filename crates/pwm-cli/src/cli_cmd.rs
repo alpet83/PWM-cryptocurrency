@@ -7,6 +7,7 @@ use std::path::PathBuf;
 #[command(name = "pwm")]
 pub struct Cli {
     /// pwmd base URL (trailing slash optional). Same as env `PWM_RPC`.
+    /// Sentinel value `offline` disables HTTP and keeps only local commands (addr-bruteforce skips auto tx-init).
     /// HTTP timeouts for tx/nonce calls: env `PWM_CLI_RPC_TIMEOUT_MS` (default 10000, max 120000).
     #[arg(
         long,
@@ -32,6 +33,8 @@ pub struct Cli {
 pub(crate) enum Cmd {
     /// Print random 32-byte master seed (hex).
     KeyGen,
+    /// Fetch `/v1/status` and print operator cluster prep readiness.
+    Status,
     /// Build genesis JSON from wallet accounts.
     #[command(name = "genesis-build")]
     GenesisBuild {
@@ -157,6 +160,11 @@ pub(crate) enum Cmd {
             help = "V4 initial policy entry, format <kind>[:dormant|immediately]. Repeatable."
         )]
         initial_policy: Vec<String>,
+        #[arg(
+            long = "save-activation-tx",
+            help = "Write a prepared V6 emergency ActivatePolicy signed tx JSON for the tx-init account."
+        )]
+        save_activation_tx: Option<PathBuf>,
     },
     /// Fetch and print account marks/stake view at current chain head.
     #[command(name = "account-info")]
@@ -197,6 +205,12 @@ pub(crate) enum Cmd {
         domain: Option<String>,
         #[arg(
             long,
+            default_value_t = 0,
+            help = "Wallet account derivation index (m/0/N)."
+        )]
+        index: u32,
+        #[arg(
+            long,
             help = "Policy kind: sender_filter, routing.emergency_redirect, routing.same_domain_only, default_behavior, cosign_required."
         )]
         policy: String,
@@ -220,7 +234,7 @@ pub(crate) enum Cmd {
         #[arg(
             long,
             help = "Wallet YAML path (primary signing source). Used unless --master override is provided.",
-            required_unless_present = "master"
+            required_unless_present_any = ["master", "activation_tx"]
         )]
         wallet: Option<PathBuf>,
         #[arg(
@@ -235,16 +249,32 @@ pub(crate) enum Cmd {
             requires = "master"
         )]
         domain: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "Wallet account derivation index (m/0/N)."
+        )]
+        index: u32,
         #[arg(long, help = "Policy kind alternative to --policy-id.")]
         policy: Option<String>,
         #[arg(long, help = "Policy id alternative to --policy.")]
         policy_id: Option<u8>,
         #[arg(
             long,
-            default_value_t = 1,
+            default_value_t = 0,
             help = "Fee in raw units (1 PWM = 1_000_000 raw)."
         )]
         fee: u128,
+        #[arg(
+            long,
+            help = "Emergency activation target account id; must match rescue_address."
+        )]
+        activation_target: Option<String>,
+        #[arg(
+            long = "activation-tx",
+            help = "Load and submit a prepared signed ActivatePolicy tx JSON."
+        )]
+        activation_tx: Option<PathBuf>,
         #[arg(long, help = "Rescue signer derivation index in wallet v3.")]
         rescue_account_index: Option<u32>,
         #[arg(long, help = "Optional dedicated rescue wallet path.")]
@@ -285,6 +315,12 @@ pub(crate) enum Cmd {
             requires = "master"
         )]
         domain: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "Wallet account derivation index (m/0/N)."
+        )]
+        index: u32,
         #[arg(long, help = "Policy kind alternative to --policy-id.")]
         policy: Option<String>,
         #[arg(long, help = "Policy id alternative to --policy.")]
@@ -320,6 +356,12 @@ pub(crate) enum Cmd {
         domain: Option<String>,
         #[arg(
             long,
+            default_value_t = 0,
+            help = "Wallet account derivation index (m/0/N)."
+        )]
+        index: u32,
+        #[arg(
+            long,
             help = "Recipient address. Accepted: pretty (pwm1-LABEL-f<flags8hex>-t<tail52hex>), canonical bech32DX (pwm1...), legacy hex, legacy PWMv0-hex"
         )]
         to: String,
@@ -352,6 +394,12 @@ pub(crate) enum Cmd {
             requires = "master"
         )]
         domain: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "Wallet account derivation index (m/0/N)."
+        )]
+        index: u32,
         #[arg(long, help = "Stake amount in raw units (1 PWM = 1_000_000 raw).")]
         amount: u128,
     },
@@ -375,6 +423,12 @@ pub(crate) enum Cmd {
             requires = "master"
         )]
         domain: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "Wallet account derivation index (m/0/N)."
+        )]
+        index: u32,
         #[arg(long, help = "Unstake amount in raw units (1 PWM = 1_000_000 raw).")]
         amount: u128,
     },
@@ -398,6 +452,12 @@ pub(crate) enum Cmd {
             requires = "master"
         )]
         domain: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "Wallet account derivation index (m/0/N)."
+        )]
+        index: u32,
         #[arg(
             long,
             help = "Burn amount in marks units. Tx is sent to current RPC target (`--rpc` / `PWM_RPC`)."

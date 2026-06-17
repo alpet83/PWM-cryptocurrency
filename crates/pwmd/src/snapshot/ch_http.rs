@@ -631,17 +631,18 @@ fn replay_state_at(gcfg: &GenCfg, blocks: &[Block], up_to_h: u64) -> Result<Stat
         if blk.hdr.height > up_to_h {
             break;
         }
+        st.refund_exp_locks(blk.hdr.height);
         for tx in &blk.txs {
             st.apply_tx_with_ctx(tx, blk.hdr.height, blk.hdr.ts, gcfg)
                 .map_err(|e| format!("replay checkpoint state at {up_to_h}: {e}"))?;
         }
+        st.refund_exp_locks(blk.hdr.height);
+        st.drain_conservation_at_height(blk.hdr.height, gcfg);
         let prod_acct = gcfg.prod_acct(blk.hdr.prod_idx);
         if gcfg.is_legacy_policy() {
-            st.accrue_marks(gcfg.marks_coeff);
             st.reward_producer(&prod_acct, gcfg.block_reward);
         } else {
             let season_ppm = gcfg.season_ppm(blk.hdr.ts);
-            st.accrue_marks_v2(gcfg.marks_coeff, gcfg.marks_stake_min, season_ppm);
             st.reward_producer_v2(
                 &prod_acct,
                 gcfg.block_reward,

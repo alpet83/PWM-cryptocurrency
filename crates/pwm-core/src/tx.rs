@@ -3,7 +3,7 @@
 use crate::crypto::{blake3_32, sign, verify};
 use crate::hd::{account_id_from_parts, domain_of_account_id};
 use crate::state::ExportProvenance;
-use crate::types::AccountId;
+use crate::types::{cosign_non_dis, AccountId};
 use ed25519_dalek::SigningKey;
 use serde::de::{self, IgnoredAny};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -75,10 +75,25 @@ pub enum PolicyAction {
     },
     ActivatePolicy {
         policy_id: u8,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        activation_target: Option<AccountId>,
     },
     DeactivatePolicy {
         policy_id: u8,
     },
+}
+
+pub fn policy_weakens_cosign(action: &PolicyAction) -> bool {
+    match action {
+        PolicyAction::SetPolicy { policy, activation } => {
+            *policy == PolicyKind::CosignRequired
+                && !matches!(activation, ActivationMode::Immediately)
+        }
+        PolicyAction::DeactivatePolicy { policy_id } => {
+            *policy_id == PolicyKind::CosignRequired.policy_id()
+        }
+        PolicyAction::ActivatePolicy { .. } => false,
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -621,13 +636,36 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
             if *target_account != aid {
                 return Err(TxError::PolicySchemaInvalid);
             }
-            if *fee == 0 {
-                return Err(TxError::PolicySchemaInvalid);
+            if cosign_non_dis(&aid) && policy_weakens_cosign(action) {
+                return Err(TxError::PolicyFlagNonDisableable);
             }
             match action {
-                PolicyAction::SetPolicy { .. } => {}
-                PolicyAction::ActivatePolicy { policy_id }
-                | PolicyAction::DeactivatePolicy { policy_id } => {
+                PolicyAction::SetPolicy { .. } => {
+                    if *fee == 0 {
+                        return Err(TxError::PolicySchemaInvalid);
+                    }
+                }
+                PolicyAction::ActivatePolicy {
+                    policy_id,
+                    activation_target,
+                } => {
+                    if *fee != 0 {
+                        return Err(TxError::PolicyActivationFeeMustBeZero);
+                    }
+                    let Some(pol) = PolicyKind::from_policy_id(*policy_id) else {
+                        return Err(TxError::PolicySchemaInvalid);
+                    };
+                    if pol == PolicyKind::RoutingEmergencyRedirect && activation_target.is_none() {
+                        return Err(TxError::PolicyActivationTargetRequired);
+                    }
+                    if pol != PolicyKind::RoutingEmergencyRedirect && activation_target.is_some() {
+                        return Err(TxError::PolicyActivationTargetNotAllowed);
+                    }
+                }
+                PolicyAction::DeactivatePolicy { policy_id } => {
+                    if *fee == 0 {
+                        return Err(TxError::PolicySchemaInvalid);
+                    }
                     if PolicyKind::from_policy_id(*policy_id).is_none() {
                         return Err(TxError::PolicySchemaInvalid);
                     }
@@ -697,9 +735,13 @@ fn push_policy_action_signing(out: &mut Vec<u8>, action: &PolicyAction) {
                 }
             }
         }
-        PolicyAction::ActivatePolicy { policy_id } => {
+        PolicyAction::ActivatePolicy {
+            policy_id,
+            activation_target,
+        } => {
             out.push(1);
             out.push(*policy_id);
+            push_opt_account_id(out, activation_target.as_ref());
         }
         PolicyAction::DeactivatePolicy { policy_id } => {
             out.push(2);
@@ -796,6 +838,8 @@ pub enum TxError {
     InvalidImport,
     #[error("duplicate import")]
     DuplicateImport,
+    #[error("export lock refunded")]
+    ExportLockRefunded,
     #[error("invalid purpose length")]
     InvalidPurposeLength,
     #[error("invalid purpose chars")]
@@ -826,6 +870,22 @@ pub enum TxError {
     PolicyAccountFinalized,
     #[error("policy irreversible")]
     PolicyIrreversible,
+    #[error("policy flag non-disableable")]
+    PolicyFlagNonDisableable,
+    #[error("conservation delay required")]
+    ConservationDelayRequired,
+    #[error("conservation pending exists")]
+    ConservationPendingExists,
+    #[error("policy activation fee must be zero")]
+    PolicyActivationFeeMustBeZero,
+    #[error("policy activation target mismatch")]
+    PolicyActivationTargetMismatch,
+    #[error("policy activation target required")]
+    PolicyActivationTargetRequired,
+    #[error("policy activation target not allowed")]
+    PolicyActivationTargetNotAllowed,
+    #[error("evidence duplicate")]
+    EvidenceDuplicate,
 }
 
 #[cfg(test)]
@@ -836,6 +896,7 @@ mod tests {
         TxBody, TxError, MIN_IMPORT_FEE_UNITS,
     };
     use crate::hd::domain_of_account_id;
+    use crate::types::cosign_non_dis;
     use ed25519_dalek::SigningKey;
     use serde_json::{from_slice, to_vec};
     use slip10_ed25519::derive_ed25519_private_key;
@@ -843,6 +904,19 @@ mod tests {
     fn signer(seed: &[u8; 32]) -> (SigningKey, u32) {
         let sk_bytes = derive_ed25519_private_key(seed, &[0, 0]);
         (SigningKey::from_bytes(&sk_bytes), 0)
+    }
+
+    fn signer_no_flag(seed_start: u8) -> (SigningKey, u32) {
+        for attempt in 0..=255 {
+            let mut seed = [seed_start; 32];
+            seed[0] = seed_start.wrapping_add(attempt);
+            let (sk, idx) = signer(&seed);
+            let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+            if !cosign_non_dis(&probe.computed_account_id()) {
+                return (sk, idx);
+            }
+        }
+        panic!("failed to find non-flagged signer");
     }
 
     /// Regulatory domain `0x2C00` rejects init at wrong lo byte (formerly `validate_tx_shape_accepts_regulatory_init_lo_zero`).
@@ -895,7 +969,7 @@ mod tests {
 
     #[test]
     fn import_fee_rejects_below_minimum() {
-        let (sk, idx) = signer(&[78u8; 32]);
+        let (sk, idx) = signer_no_flag(78);
         let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
         let aid = probe.computed_account_id();
         let dom = domain_of_account_id(&aid);
@@ -1167,8 +1241,9 @@ mod tests {
                 target_account: aid,
                 action: PolicyAction::ActivatePolicy {
                     policy_id: PolicyKind::CosignRequired.policy_id(),
+                    activation_target: None,
                 },
-                fee: 10,
+                fee: 0,
             },
         );
         let tx_b = SignedTx::sign_body(
@@ -1253,6 +1328,133 @@ mod tests {
         let encoded = to_vec(&tx).expect("json");
         let decoded: SignedTx = from_slice(&encoded).expect("decode");
         assert_eq!(decoded, tx);
+    }
+
+    #[test]
+    fn pol_activate_target_json_roundtrip() {
+        let (sk, idx) = signer(&[99u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let mut tgt = aid;
+        tgt[31] = tgt[31].wrapping_add(1);
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            7,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::SenderFilter.policy_id(),
+                    activation_target: Some(tgt),
+                },
+                fee: 11,
+            },
+        );
+        let encoded = to_vec(&tx).expect("json");
+        let decoded: SignedTx = from_slice(&encoded).expect("decode");
+        assert_eq!(decoded, tx);
+    }
+
+    #[test]
+    fn pol_act_tgt_json_legacy() {
+        let raw = r#"{
+            "domain_code":0,
+            "signer_pk":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "derivation_index":0,
+            "nonce":0,
+            "body":{
+                "policy":{
+                    "target_account":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                    "action":{"activate_policy":{"policy_id":2}},
+                    "fee":"1"
+                }
+            },
+            "cosigns":[],
+            "signature":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+        }"#;
+        let tx: SignedTx = from_slice(raw.as_bytes()).expect("legacy activation_target omitted");
+        let TxBody::Policy { action, .. } = tx.body else {
+            panic!("policy body expected");
+        };
+        let PolicyAction::ActivatePolicy {
+            policy_id,
+            activation_target,
+        } = action
+        else {
+            panic!("activate policy action expected");
+        };
+        assert_eq!(policy_id, 2);
+        assert_eq!(activation_target, None);
+    }
+
+    #[test]
+    fn pol_activate_target_signing_diff() {
+        let (sk, idx) = signer(&[100u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let mut tgt = aid;
+        tgt[0] = tgt[0].wrapping_add(1);
+        let tx_a = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            8,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::SenderFilter.policy_id(),
+                    activation_target: None,
+                },
+                fee: 10,
+            },
+        );
+        let tx_b = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            8,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::SenderFilter.policy_id(),
+                    activation_target: Some(tgt),
+                },
+                fee: 0,
+            },
+        );
+        assert_ne!(tx_a.signing_message(), tx_b.signing_message());
+    }
+
+    #[test]
+    fn pol_act_tgt_non_emerg() {
+        let (sk, idx) = signer_no_flag(101);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let aid = probe.computed_account_id();
+        let dom = domain_of_account_id(&aid);
+        let mut tgt = aid;
+        tgt[31] = tgt[31].wrapping_add(1);
+        let tx = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            8,
+            TxBody::Policy {
+                target_account: aid,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::SenderFilter.policy_id(),
+                    activation_target: Some(tgt),
+                },
+                fee: 0,
+            },
+        );
+        let err = validate_tx_shape(&tx).expect_err("non-emergency policy must reject target");
+        assert!(
+            matches!(err, TxError::PolicyActivationTargetNotAllowed),
+            "{err:?}"
+        );
     }
 
     #[test]

@@ -104,6 +104,7 @@ pub(crate) fn run_tx_export(
             fee,
         },
     );
+    post_export_readiness(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
     post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
 }
 

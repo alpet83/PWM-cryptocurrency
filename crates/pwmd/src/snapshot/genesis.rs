@@ -3,8 +3,9 @@
 use super::types::SnapshotGenesisRow;
 use ed25519_dalek::SigningKey;
 use pwm_core::genesis::{
-    ClaimPhaseConfig, FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg, DEF_MARKS_STAKE_MIN,
-    DEF_PWM_STAKE_MIN, DEF_SEASON_COEFF_PPM, LEGACY_POLICY_VER,
+    ClaimPhaseConfig, FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg, DEF_CONSERV_DELAY_BLOCKS,
+    DEF_MARKS_STAKE_MIN, DEF_PWM_STAKE_MIN, DEF_SEASON_COEFF_PPM, DEF_XSHARD_LOCK_TO,
+    LEGACY_POLICY_VER,
 };
 use pwm_core::hd::account_id_from_parts;
 use pwm_core::{open_wallet_secret_ciphertext, WALLET_KDF};
@@ -31,6 +32,8 @@ struct GenesisCfgV4 {
     policy_ver: u32,
     #[serde(default = "def_pwm_min_s")]
     pwm_stake_min: String,
+    #[serde(default = "def_min_val_stake_s")]
+    min_validator_stake: String,
     #[serde(default = "def_marks_min_s")]
     marks_stake_min: String,
     #[serde(default)]
@@ -39,6 +42,13 @@ struct GenesisCfgV4 {
     season_coeff_ppm: String,
     #[serde(default)]
     ipv4_claim_phases: Vec<GenesisClaimPhaseV4>,
+    #[serde(
+        default = "def_xshard_lock_to",
+        rename = "cross_shard_lock_timeout_blocks"
+    )]
+    xshard_lock_to_blocks: u64,
+    #[serde(default = "def_conserv_delay_blocks")]
+    conservation_delay_blocks: u64,
 }
 
 #[derive(Deserialize)]
@@ -151,12 +161,24 @@ fn def_pwm_min_s() -> String {
     DEF_PWM_STAKE_MIN.to_string()
 }
 
+fn def_min_val_stake_s() -> String {
+    DEF_PWM_STAKE_MIN.to_string()
+}
+
 fn def_marks_min_s() -> String {
     DEF_MARKS_STAKE_MIN.to_string()
 }
 
 fn def_season_ppm_s() -> String {
     DEF_SEASON_COEFF_PPM.to_string()
+}
+
+fn def_xshard_lock_to() -> u64 {
+    DEF_XSHARD_LOCK_TO
+}
+
+fn def_conserv_delay_blocks() -> u64 {
+    DEF_CONSERV_DELAY_BLOCKS
 }
 
 const GENESIS_SCHEMA_VERSION: u32 = 5;
@@ -204,6 +226,10 @@ fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), 
     let block_reward = parse_u128_json(&b.gen_cfg.block_reward, "gen_cfg.block_reward")?;
     let marks_coeff = parse_u128_json(&b.gen_cfg.marks_coeff, "gen_cfg.marks_coeff")?;
     let pwm_stake_min = parse_u128_json(&b.gen_cfg.pwm_stake_min, "gen_cfg.pwm_stake_min")?;
+    let min_validator_stake = parse_u128_json(
+        &b.gen_cfg.min_validator_stake,
+        "gen_cfg.min_validator_stake",
+    )?;
     let marks_stake_min = parse_u128_json(&b.gen_cfg.marks_stake_min, "gen_cfg.marks_stake_min")?;
     let season_coeff_ppm = parse_u64_json(&b.gen_cfg.season_coeff_ppm, "gen_cfg.season_coeff_ppm")?;
     let ipv4_claim_phases = parse_claim_phases(b.gen_cfg.ipv4_claim_phases)?;
@@ -225,6 +251,10 @@ fn parse_genesis_v4(raw: Value) -> Result<(GenCfg, Vec<GenesisValidatorKeyV3>), 
             marks_coeff,
             policy_ver: b.gen_cfg.policy_ver,
             base_emission_per_block: pwm_core::genesis::DEF_BASE_EMIT,
+            min_validator_stake,
+            epoch_length_blocks: pwm_core::genesis::DEF_EPOCH_LEN_BLOCKS,
+            conservation_delay_blocks: b.gen_cfg.conservation_delay_blocks,
+            xshard_lock_to_blocks: b.gen_cfg.xshard_lock_to_blocks,
             pwm_stake_min,
             marks_stake_min,
             season_enabled: b.gen_cfg.season_enabled,
@@ -357,6 +387,94 @@ mod tests {
 
         assert!(err.contains("gen_cfg.ipv4_claim_phases[1].phase"));
         assert!(err.contains("duplicate phase 7"));
+    }
+
+    #[test]
+    fn gen_xshard_lock_to_load() {
+        let raw = json!({
+            "schema_version": 5,
+            "validator_keys": [],
+            "gen_cfg": {
+                "block_reward": "0",
+                "reward_policy": { "mode": "to_producer_account" },
+                "marks_coeff": "0",
+                "funding": { "accounts": [] },
+                "validators": { "set": [] },
+                "cross_shard_lock_timeout_blocks": 10
+            }
+        });
+        let (parsed, _) = parse_genesis_v4(raw).expect("xshard timeout parses");
+        assert_eq!(parsed.xshard_lock_to_blocks, 10);
+    }
+
+    #[test]
+    fn gen_conservation_delay_load() {
+        let raw = json!({
+            "schema_version": 5,
+            "validator_keys": [],
+            "gen_cfg": {
+                "block_reward": "0",
+                "reward_policy": { "mode": "to_producer_account" },
+                "marks_coeff": "0",
+                "funding": { "accounts": [] },
+                "validators": { "set": [] },
+                "conservation_delay_blocks": 10
+            }
+        });
+        let (parsed, _) = parse_genesis_v4(raw).expect("conservation delay parses");
+        assert_eq!(parsed.conservation_delay_blocks, 10);
+    }
+
+    #[test]
+    fn gen_min_val_stake_load() {
+        let raw = json!({
+            "schema_version": 5,
+            "validator_keys": [],
+            "gen_cfg": {
+                "block_reward": "0",
+                "reward_policy": { "mode": "to_producer_account" },
+                "marks_coeff": "0",
+                "funding": { "accounts": [] },
+                "validators": { "set": [] },
+                "min_validator_stake": "0"
+            }
+        });
+        let (parsed, _) = parse_genesis_v4(raw).expect("min_validator_stake parses");
+        assert_eq!(parsed.min_validator_stake, 0);
+    }
+
+    #[test]
+    fn gen_xshard_lock_to_default() {
+        let raw = json!({
+            "schema_version": 5,
+            "validator_keys": [],
+            "gen_cfg": {
+                "block_reward": "0",
+                "reward_policy": { "mode": "to_producer_account" },
+                "marks_coeff": "0",
+                "funding": { "accounts": [] },
+                "validators": { "set": [] }
+            }
+        });
+        let (parsed, _) = parse_genesis_v4(raw).expect("default xshard timeout");
+        assert_eq!(parsed.xshard_lock_to_blocks, DEF_XSHARD_LOCK_TO);
+    }
+
+    #[test]
+    fn gen_conservation_delay_default() {
+        let raw = json!({
+            "schema_version": 5,
+            "validator_keys": [],
+            "gen_cfg": {
+                "block_reward": "0",
+                "reward_policy": { "mode": "to_producer_account" },
+                "marks_coeff": "0",
+                "funding": { "accounts": [] },
+                "validators": { "set": [] }
+            }
+        });
+        let (parsed, _) = parse_genesis_v4(raw).expect("default conservation delay");
+        assert_eq!(parsed.conservation_delay_blocks, DEF_CONSERV_DELAY_BLOCKS);
     }
 }
 

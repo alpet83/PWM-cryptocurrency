@@ -348,6 +348,7 @@ fn highlight_numbers(input: &str) -> String {
     if looks_like_id(input) {
         return input.to_string();
     }
+    let hex_ranges = hex_token_ranges(input);
     let mut out = String::with_capacity(input.len() + 8);
     let chars: Vec<char> = input.chars().collect();
     let mut i = 0usize;
@@ -357,6 +358,12 @@ fn highlight_numbers(input: &str) -> String {
             i += 1;
             while i < chars.len() && is_number_continue(chars[i]) {
                 i += 1;
+            }
+            if overlaps_hex(start, i, &hex_ranges) {
+                for ch in &chars[start..i] {
+                    out.push(*ch);
+                }
+                continue;
             }
             let num: String = chars[start..i].iter().collect();
             out.push_str("\x1b[95m");
@@ -368,6 +375,32 @@ fn highlight_numbers(input: &str) -> String {
         i += 1;
     }
     out
+}
+
+/// Contiguous hex runs (ids/hashes embedded in free-form log messages).
+fn hex_token_ranges(input: &str) -> Vec<(usize, usize)> {
+    let chars: Vec<char> = input.chars().collect();
+    let mut ranges = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if chars[i].is_ascii_hexdigit() {
+            let start = i;
+            i += 1;
+            while i < chars.len() && chars[i].is_ascii_hexdigit() {
+                i += 1;
+            }
+            if i - start >= 12 {
+                ranges.push((start, i));
+            }
+        } else {
+            i += 1;
+        }
+    }
+    ranges
+}
+
+fn overlaps_hex(start: usize, end: usize, ranges: &[(usize, usize)]) -> bool {
+    ranges.iter().any(|&(s, e)| start < e && end > s)
 }
 
 fn is_number_start(chars: &[char], i: usize) -> bool {
@@ -1057,6 +1090,34 @@ mod tests {
         );
         assert!(!line.contains("\x1b[95m0xabc123deadbeef\x1b[0m"));
         assert!(line.contains("id=\x1b[92m7j5f3Q2x9kLmN8pR\x1b[0m"));
+    }
+
+    /// Hex hash embedded in INFO message must not get per-digit magenta zebra.
+    #[test]
+    fn num_hi_skip_hex_inside_message() {
+        let hash = "6f85f71fdf684c9c70f82d37e8c196a9bf2b47db65585236679ba95d536b7629";
+        let msg = format!(
+            "deployment_profile=single_sealer validator_identity_hash={hash} lease_ttl_ms=10000"
+        );
+        let line = format_event_line(&Level::INFO, &msg, &[], true);
+        assert!(
+            !line.contains("\x1b[95m6f"),
+            "hex hash must not be zebra-highlighted: {line}"
+        );
+        assert!(line.contains("\x1b[95m10000\x1b[0m"));
+    }
+
+    /// Structured field: validator hash is one green focal value.
+    #[test]
+    fn clr_validator_hash_field_green() {
+        let hash = "6f85f71fdf684c9c70f82d37e8c196a9bf2b47db65585236679ba95d536b7629";
+        let line = format_event_line(
+            &Level::INFO,
+            "seal deployment profile",
+            &[("validator_identity_hash".to_string(), hash.to_string())],
+            true,
+        );
+        assert!(line.contains(&format!("validator_identity_hash=\x1b[92m{hash}\x1b[0m")));
     }
 
     /// Field values pick green/gray/magenta palettes (formerly `formatter_field_value_palette_matches_style`).

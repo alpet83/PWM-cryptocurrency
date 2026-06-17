@@ -95,6 +95,7 @@ pub struct StatusOut {
     pub lease_last_backend_error: Option<String>,
     pub validator_identity_hash: String,
     pub node_instance_id: String,
+    pub cluster_prep: ClusterPrepOut,
     pub lease_state: String,
     pub seal_gate_allowed: bool,
     pub lease_owner_id: String,
@@ -108,6 +109,23 @@ pub struct StatusOut {
     pub lease_loss_total: u64,
     pub lease_reject_total: u64,
     pub lease_takeover_ok: u64,
+}
+
+#[derive(Serialize)]
+pub struct ClusterPrepOut {
+    pub phase: &'static str,
+    pub ready_for_seal: bool,
+    pub sync_n: u64,
+    pub live_n: u64,
+    pub peer_tip_max: u64,
+    pub local_tip: u64,
+    pub blocks_behind_max: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waiting_since_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waiting_sec: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<&'static str>,
 }
 
 #[derive(Serialize)]

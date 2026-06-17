@@ -2,7 +2,13 @@
 
 Каноника описана в **`docs/COMMIT_PROTOCOL.md`**: рантайм `P:\opt\docker\PWM-cryptocurrency` → зеркало `P:\GitHub\PWM-cryptocurrency` только через MCP **`git_safe_commit`**.
 
-## Порядок
+## Когда публиковать
+
+**Публикация** (`dry_run` → `apply` → `commit` на зеркале) — **только на полном closeout версии MVP** (напр. V6-11, V5-8): sprint-final review PASS, owner sign-off, checklist/CHANGELOG/GLOSSARY закрыты.
+
+**Между слайсами** оркестратор делает **локальные коммиты** в рантайме (`git_safe_commit` `mode=commit`, `public_repo=false`) **без** `dry_run`/`apply`. См. **`docs/AGENT_PROMPT_orchestrator.md`** § Git.
+
+## Порядок closeout-публикации
 
 1. **`git_repo_status`** на обоих деревьях (рантайм и зеркало).
 2. **`git_safe_commit`** `mode=dry_run`, `repo_path` = рантайм → отчёт и токен `dry_run_token`.

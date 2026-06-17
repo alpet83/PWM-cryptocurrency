@@ -343,6 +343,72 @@
 
 ---
 
+## MVP V6: консенсус и безопасность адресов {#thema-v6-consensus}
+
+Короткие определения для закрытого **MVP V6 Consensus Evolution + Address Security Runtime**. Подробнее: [план V6](plans/mvp_v6.md), [RFC 4 addendum V6](rfc/addenda/v6-rfc4-validators-stake-admission.md), [RFC 9 addendum V6](rfc/addenda/v6-rfc9-mode-b-escrow.md), [ADR 0009](adr/0009-address-flags-runtime-enforcement.md), [ADR 0011](adr/0011-policy-activation-target.md).
+
+### Stake admission (допуск валидатора по ставке) {#term-stake-admission}
+
+- **Простыми словами:** на границе **epoch** узел пересчитывает **активный** набор валидаторов: в него попадают только те, у кого на связанном аккаунте `staked_pwm` **не ниже** `min_validator_stake` из genesis. Ниже порога — **inactive**, но запись в genesis wire не удаляется (обратная совместимость devnet).
+- **Зачем в проекте:** первый шаг от чистого PoA к PoS в существующем `Chain::seal`; seal и выбор proposer смотрят только на **active** set.
+- **Где встречается:** `GenCfg.min_validator_stake`, `epoch_length_blocks`, `active_validator_indices`; спринт V6-3.
+
+### Mode B escrow (кросс-шардовый замок Mode B) {#term-mode-b-escrow}
+
+- **Простыми словами:** при `EXPORT` средства **блокируются** в `CrossShardLock` на source-шарде: spendable баланс уменьшается на сумму lock. По timeout (`cross_shard_lock_timeout_blocks`) или успешному `IMPORT` с proof lock снимается — **refund** или **release**.
+- **Важно:** это **не** то же самое, что «roaming intent expired» в `pwmd` (TTL intent не возвращает баланс on-chain). CY soak s2c проверяет именно on-chain refund.
+- **Где встречается:** RFC 9 addendum V6, `TxBody::Export`/`Import`, `refund_exp_locks` на seal; отчёт `tmp/cy-e2e-v6-s2c-*.md`.
+
+### Conservation delay (отложенный исходящий Transfer) {#term-conservation-delay}
+
+- **Простыми словами:** если у адреса включён бит **`CONSERVATION`** (ADR 0006), исходящий `Transfer` **не списывает** баланс сразу — попадает в очередь `PendingConservationTransfer` с `execute_at_height = enqueue_height + conservation_delay_blocks`. **Входящие** переводы на такой адрес **не** задерживаются.
+- **Зачем в проекте:** «24h conservation» реализована через **высоту цепи**, не wall-clock; в окне delay доступны emergency routing и fee-free activation (V6-7).
+- **Где встречается:** `GenCfg.conservation_delay_blocks`, snapshot v4; CY soak s3 (`tmp/cy-e2e-v6-s3-*.md`).
+
+### `activation_target` / emergency sweep {#term-activation-target}
+
+- **Простыми словами:** поле в `ActivatePolicy`: куда при активации emergency policy **перенести весь spendable** баланс. Для `routing.emergency_redirect` **обязано** совпадать с `rescue_address` on-chain; иначе stable reject (`E_POLICY_ACTIVATION_TARGET_MISMATCH`). Активация — **`fee = 0`**.
+- **Зачем в проекте:** явная эвакуация средств при компрометации (LKC / Post-MVP); не скрытый sweep — тот же debit/credit path, что у `Transfer`.
+- **Где встречается:** ADR 0011, RFC 6 addendum V6; `pwm tx-init --save-activation-tx`; CY soak s4 (`tmp/cy-e2e-v6-s4-*.md`).
+
+### Slashing stubs (заглушки слэшинга) {#term-slashing-stubs}
+
+- **Простыми словами:** в shard state append-only записывается `EvidenceRecord` (высота, offender, тип, hash payload). **Балансы не меняются** — только фиксация evidence для будущего enforcement.
+- **Где встречается:** ADR 0010, `append_evidence`, duplicate `record_id` → reject; спринт V6-9.
+
+### Peer sync score (оценка пира для sync) {#term-peer-sync-score}
+
+- **Простыми словами:** **локальный** (non-consensus) integer score на peer id в `pwmd`: растёт/падает от наблюдаемых фактов catch-up (успех блоков, disconnect). Влияет на **порядок** выбора пира при sync/backfill, **не** на emission и консенсус.
+- **Где встречается:** RFC 15 addendum V6, `PeerSyncScoreCache`; тесты `peer_score_*`; спринт V6-9.
+
+### CY soak V6 (волны s1…s4) {#term-cy-soak-v6}
+
+- **Простыми словами:** живой pre-closeout прогон на CY launchers **после** V6 coding gates: **s1** bootstrap (рост head, нет ERROR в логах); **s2c** Mode B timeout refund (не legacy s2); **s3** conservation execute-at; **s4** emergency activation + evac. Отчёты в `tmp/cy-e2e-v6-*.md` со строкой `PASS_EVIDENCE`.
+- **Runbook:** [v6-cy-cluster-precloseout-soak.md](runbooks/v6-cy-cluster-precloseout-soak.md); umbrella `tasks/20260608-v6-cy-e2e-umbrella.json`.
+
+### `COSIGN_NON_DISABLEABLE` {#term-cosign-non-disableable}
+
+- **Простыми словами:** бит адреса (ADR 0006): для защищённых действий `cosign_required` **нельзя** ослабить через `DeactivatePolicy` или weaken-path — stable `E_POLICY_FLAG_NON_DISABLEABLE`.
+- **Где встречается:** decode из bech32 flags; спринт V6-6.
+
+### Snapshot schema v4 {#term-snapshot-v4}
+
+- **Простыми словами:** additive миграция с v3: epoch counter, active validator indices, cross-shard locks, evidence records, pending conservation queue, V6 `GenCfg` поля. Unknown snapshot version → reject.
+- **Где встречается:** спринт V6-2; replay gate `v3→v4`.
+
+---
+
+### Sprint-final closeout additions (2026-06-15) {#term-v6-closeout-new}
+
+- **Простыми словами:** термины, добавленные или уточнённые в ходе V6 sprint-final review:
+  - **Active vs registered validator set:** полный genesis list vs подмножество с достаточным stake на epoch boundary; только active участвует в proposer rotation.
+  - **Prepared policy activation:** подписанная `ActivatePolicy` (часто `fee=0`), сохранённая `tx-init` в wallet или `--save-activation-tx` для cold-storage до broadcast.
+  - **s2c vs s2 (legacy):** s2 superseded — roaming intent TTL ≠ Mode B refund; gate закрыт variant C (single-shard refund).
+  - **Genesis loader fix:** `conservation_delay_blocks` и `cross_shard_lock_timeout_blocks` из JSON genesis больше не игнорируются при load (V6-10 chore).
+  - **Deferrals (не блокеры V6):** Mode B IMPORT happy-path на target peer; полный multi-hour soak — опционально до public testnet (V7).
+
+---
+
 ## Алфавитный указатель
 
 ### Латиница (A–Z)
@@ -351,18 +417,30 @@
 |----------------|--------|
 | A ADR (V3 foundation package) | [ADR V3](#term-adr-v3-package) |
 | A `ActivationMode` | [ActivationMode](#term-activation-mode) |
+| A `activation_target` | [activation_target](#term-activation-target) |
+| A Active validator set (stake admission) | [Stake admission](#term-stake-admission) |
 | A `AccountInfoOnly` (smoke mode) | [AccountInfoOnly](#term-account-info-only) |
 | A API freeze `/v1/*` | [API freeze V3](#term-api-freeze-v1) |
 | A attester | [Attester](#term-attester) |
 | A auto-attest (incoming propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
+| C conservation delay | [Conservation delay](#term-conservation-delay) |
+| C `COSIGN_NON_DISABLEABLE` | [COSIGN_NON_DISABLEABLE](#term-cosign-non-disableable) |
+| C CY soak V6 (s1…s4) | [CY soak V6](#term-cy-soak-v6) |
 | C `ClaimIPv4Batch` | [ClaimIPv4Batch](#term-claim-ipv4-batch) |
 | C `compute_block_reward` / float inflation | [Float inflation](#term-float-inflation) |
 | D Deferred policy activation | [Deferred policy](#term-deferred-policy) |
 | I `ipv4_claimed_phase` | [ipv4_claimed_phase](#term-ipv4-claimed-phase) |
 | L Lazy marks | [Lazy marks](#term-lazy-marks) |
+| M Mode B escrow | [Mode B escrow](#term-mode-b-escrow) |
 | M `marks_last_block` | [marks_last_block](#term-marks-last-block) |
 | P `PASS_EVIDENCE` | [PASS_EVIDENCE](#term-pass-evidence) |
+| P peer sync score | [Peer sync score](#term-peer-sync-score) |
+| P prepared policy activation | [Sprint-final V6](#term-v6-closeout-new) |
+| S slashing stubs | [Slashing stubs](#term-slashing-stubs) |
+| S Snapshot schema v4 | [Snapshot v4](#term-snapshot-v4) |
 | S Sprint-final closeout (V5) | [Sprint-final closeout](#term-v5-closeout-new) |
+| S Sprint-final closeout (V6) | [Sprint-final closeout V6](#term-v6-closeout-new) |
+| S stake admission | [Stake admission](#term-stake-admission) |
 | B Bootstrap Snapshot (future) | [Bootstrap Snapshot](#term-bootstrap-snapshot-v3) |
 | B `binding_mismatch` | [binding_mismatch](#term-binding-mismatch) |
 | C capability / `PWM_PROTOCOL_VERSION` | [Capability / версия](#term-capability-version) |
@@ -397,14 +475,20 @@
 | Термин | Ссылка |
 |--------|--------|
 | Активный набор кворума | [Relay pool vs quorum](#term-relay-pool) |
-| AccountInfoOnly (режим smoke) | [AccountInfoOnly](#term-account-info-only) |
+| Активный набор валидаторов (stake admission) | [Stake admission](#term-stake-admission) |
+| activation_target / emergency sweep | [activation_target](#term-activation-target) |
+| Conservation delay (отложенный Transfer) | [Conservation delay](#term-conservation-delay) |
+| COSIGN_NON_DISABLEABLE | [COSIGN_NON_DISABLEABLE](#term-cosign-non-disableable) |
+| CY soak V6 | [CY soak V6](#term-cy-soak-v6) |
 | ClaimIPv4Batch | [ClaimIPv4Batch](#term-claim-ipv4-batch) |
 | Float инфляция / `compute_block_reward` | [Float inflation](#term-float-inflation) |
 | ipv4_claimed_phase | [ipv4_claimed_phase](#term-ipv4-claimed-phase) |
 | Курсор марок (`marks_last_block`) | [marks_last_block](#term-marks-last-block) |
+| Mode B escrow | [Mode B escrow](#term-mode-b-escrow) |
 | Ленивые марки (lazy marks) | [Lazy marks](#term-lazy-marks) |
 | Отложенная активация политики | [Deferred policy](#term-deferred-policy) |
 | PASS_EVIDENCE | [PASS_EVIDENCE](#term-pass-evidence) |
+| Peer sync score | [Peer sync score](#term-peer-sync-score) |
 | API freeze `/v1/*` (V3) | [API freeze V3](#term-api-freeze-v1) |
 | Архитектурные записи ADR (V3) | [ADR V3](#term-adr-v3-package) |
 | Авто-аттестация (входящий propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
@@ -433,10 +517,12 @@
 | Реле-пул | [Relay pool](#term-relay-pool) |
 | Сейл | [Seal](#term-seal) |
 | Снимок эпох (Epoch Snapshot, V3) | [Epoch Snapshot V3](#term-epoch-snapshot-v3) |
+| Slashing stubs | [Slashing stubs](#term-slashing-stubs) |
+| Snapshot v4 | [Snapshot v4](#term-snapshot-v4) |
 | Состав кластера (membership) | [membership](#term-membership) |
 | Транспорт по проводу (wire) | [Wire](#term-wire) |
 | Финализированный аккаунт | [Finalized account](#term-finalized-account) |
 
 ---
 
-*Информация согласована с обзорами V2-9, RFC 16, блоком MVP V3 foundation, блоком MVP V4 policy runtime и блоком MVP V5 tokenomics hardening по состоянию на 2026-05-28; при изменении протокола сверяйте первоисточники в `docs/rfc/` и актуальных планах `docs/plans/`.*
+*Информация согласована с обзорами V2-9, RFC 16, блоком MVP V3 foundation, блоком MVP V4 policy runtime, блоком MVP V5 tokenomics hardening и блоком MVP V6 consensus + address security по состоянию на 2026-06-15; при изменении протокола сверяйте первоисточники в `docs/rfc/` и актуальных планах `docs/plans/`.*

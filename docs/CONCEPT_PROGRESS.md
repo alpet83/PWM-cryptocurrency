@@ -1,7 +1,8 @@
 # CONCEPT_PROGRESS.md — Прогресс MVP v2 + V5 к реализации DRAFT_WHITEPAPER
 
-**Дата:** 2026-06-02  
-**Цель:** Оценить насколько текущая реализация (база MVP v2 + прогресс MVP v5 токеномики) покрывает концепт из `DRAFT_WHITEPAPER.md`.  
+**Дата:** 2026-06-17  
+**Цель:** Оценить насколько текущая реализация (база MVP v2 + V5 + **V6 consensus/address security**) покрывает концепт из `DRAFT_WHITEPAPER.md`.  
+**MVP v6:** owner sign-off 2026-06-17; публикация в публичное зеркало — [releases/v6.0.0.md](releases/v6.0.0.md).  
 **Публикация:** этот файл — **внешняя** карта покрытия; внутренний роадмап версий/ADR — [`CONCEPT_ROADMAP.md`](CONCEPT_ROADMAP.md) (не публикуется, не индексируется в README).  
 **Уровни готовности:** ✅ Полностью | 🔶 Частично / MVP-форма | 🔄 В работе | ⏳ Запланировано (план/roadmap) | ❌ Не начато / Defer
 
@@ -22,7 +23,7 @@
 | §8 Offchain burning + L3 | 🔶 | Offchain stub (`docs/OFFCHAIN_STUB.md`, `offchain-batch`); batch Merkle demo — без продакшн интеграции |
 | §9 AI integration | ❌ | Концепт описан, код не начат |
 | §10 Business model | ✅ | Описано в WP; не требует кода |
-| §11 Roadmap (Phases 1–4) | 🔄 | V2–V5 спринтовые gates закрыты (см. §3b); Phase 3–4 (V6+ PoS, offchain prod) — будущее |
+| §11 Roadmap (Phases 1–4) | 🔄 | V2–V6 спринтовые gates закрыты (V6 pre-publication pending); Phase 3–4 (V7 offchain prod, BFT ADR) — будущее |
 | §12 Long-term (media trust, deepfake) | ❌ | Видение, не требует текущей реализации |
 
 ---

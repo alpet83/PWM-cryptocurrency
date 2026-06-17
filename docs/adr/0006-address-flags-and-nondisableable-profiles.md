@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted as V5 spec-only contract.** Runtime enforcement is explicitly deferred to V6. V5 must not add an `address_flags` field to `Account` and must not enforce these flags in `validate_tx_shape` or `state::apply_tx`.
+**Accepted.** V5 was spec-only; **runtime enforcement is V6** per [ADR 0009](0009-address-flags-runtime-enforcement.md). V5 must not add an `address_flags` field to `Account` and must not enforce these flags in `validate_tx_shape` or `state::apply_tx`.
 
 ## Context
 
@@ -45,7 +45,7 @@ When V6 enforcement is active:
 
 - outgoing `Transfer` from a conservation address is not executed immediately;
 - it enters a delayed execution window, with the V5 design target of 24 hours expressed by chain-height parameters in V6;
-- during the window, owner/rescue/cosign-authorized recovery actions may redirect or cancel before final execution, subject to a future ADR;
+- during the window, owner/rescue/cosign-authorized recovery actions may redirect or cancel before final execution ([ADR 0009](0009-address-flags-runtime-enforcement.md) + [ADR 0011](0011-policy-activation-target.md));
 - incoming transfers are not delayed by this flag unless a later ADR explicitly extends the rule.
 
 V5 does not implement this queue, mempool behavior, seal behavior, or cancellation model.
@@ -58,7 +58,7 @@ V5 validator behavior:
 - validators must not enforce `COSIGN_NON_DISABLEABLE` or `CONSERVATION`;
 - transaction validation and apply paths must not branch on these bits in V5.
 
-V6 validator behavior, after a separate implementation ADR/RFC:
+V6 validator behavior ([ADR 0009](0009-address-flags-runtime-enforcement.md)):
 
 - decode flags from the address;
 - enforce mandatory cosign profiles and conservation delay in consensus-critical paths;
@@ -84,3 +84,5 @@ Wallet and CLI tooling may expose flag generation/inspection before enforcement,
 - [RFC 0006: Policy Engine](../rfc/6-policy-engine.md)
 - [ADR 0005: Deferred policy activation](0005-policy-deferred-activation.md)
 - [MVP v5 plan](../plans/mvp_v5.md)
+- [ADR 0009: Address flags runtime enforcement (V6)](0009-address-flags-runtime-enforcement.md)
+- [MVP v6 plan](../plans/mvp_v6.md)

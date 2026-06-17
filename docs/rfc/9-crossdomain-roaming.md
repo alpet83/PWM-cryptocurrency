@@ -125,7 +125,9 @@ It freezes the **current MVP status contract** for Sprint 13 closeout and immedi
 - Dedicated settlement/import-export chain remains a next-stage architecture option for stronger global ordering/finality.
 - It is explicitly non-blocking for current MVP stabilization acceptance and not required for Slice A-D closeout.
 
-### A.5 Proposed protocol upgrade: source-side lock / conditional finalization (not implemented)
+### A.5 Proposed protocol upgrade: source-side lock / conditional finalization
+
+> **V6 normative:** Mode B escrow is specified in [addenda/v6-rfc9-mode-b-escrow.md](addenda/v6-rfc9-mode-b-escrow.md). The «not implemented» posture below applies to pre-V6 MVP only.
 
 **Intent (future):** treat `EXPORT` on the source shard as **locking** the corresponding economic capacity (UTXO value committed into a conditional / escrow-like output) until either:
 

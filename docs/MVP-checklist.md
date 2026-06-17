@@ -14,6 +14,33 @@ Policy runtime-трек **MVP v4** ведётся отдельно в [plans/mvp
 
 Tokenomics-трек **MVP v5** ведётся отдельно в [plans/mvp_v5.md](plans/mvp_v5.md); ниже добавлен traceability-блок по спринтам V5 (обновляется по мере закрытия gate).
 
+Consensus + address-security трек **MVP v6** ведётся отдельно в [plans/mvp_v6.md](plans/mvp_v6.md); ниже добавлен traceability-блок по спринтам V6 (обновляется по мере закрытия gate).
+
+---
+
+## 0v6. MVP v6 consensus + address flags — owner sign-off complete; mirror publication pending
+
+| Статус | Пункт |
+|--------|--------|
+| [x] | **V6-1 spec/RFC/ADR freeze:** RFC 4/16/9/6 addenda V6 + ADR 0009/0010/0011; ticket [20260605-v6-sprint1-spec-adr-freeze.json](../tasks/20260605-v6-sprint1-spec-adr-freeze.json). |
+| [x] | **V6-2 core model:** snapshot v4, GenCfg/escrow/conservation/epoch types; umbrella [20260605-v6-sprint2-core-model.json](../tasks/20260605-v6-sprint2-core-model.json). |
+| [x] | **V6-3 stake admission:** epoch-bound ValidatorSet, `min_validator_stake`; [20260605-v6-sprint3-stake-admission-coding.json](../tasks/20260605-v6-sprint3-stake-admission-coding.json). |
+| [x] | **V6-4 leader rotation:** RFC16 multi-proposer + failover; [20260603-v6-sprint4-leader-rotation-coding.json](../tasks/20260603-v6-sprint4-leader-rotation-coding.json), [20260606-v6-sprint4b-leader-failover-coding.json](../tasks/20260606-v6-sprint4b-leader-failover-coding.json). |
+| [x] | **V6-5 Mode B escrow:** EXPORT lock, timeout refund, IMPORT release; [20260607-v6-sprint5-mode-b-escrow-coding.json](../tasks/20260607-v6-sprint5-mode-b-escrow-coding.json). |
+| [x] | **V6-6 cosign flags:** `COSIGN_NON_DISABLEABLE` runtime; [20260607-v6-sprint6-cosign-flags-coding.json](../tasks/20260607-v6-sprint6-cosign-flags-coding.json). |
+| [x] | **V6-7 emergency sweep:** `activation_target`, fee=0 evac, `tx-init` prepared activation; [20260607-v6-sprint7-emergency-sweep-coding.json](../tasks/20260607-v6-sprint7-emergency-sweep-coding.json). |
+| [x] | **V6-8 conservation delay:** height-based pending queue; [20260607-v6-sprint8-conservation-coding.json](../tasks/20260607-v6-sprint8-conservation-coding.json). |
+| [x] | **V6-9 slashing + peer score:** evidence stubs, sync scoring; [20260608-v6-sprint9-slashing-peers-coding.json](../tasks/20260608-v6-sprint9-slashing-peers-coding.json). |
+| [x] | **V6-10 CY pre-closeout soak:** s1 bootstrap, s2c Mode B refund, s3 conservation execute, s4 emergency sweep PASS; umbrella [20260608-v6-cy-e2e-umbrella.json](../tasks/20260608-v6-cy-e2e-umbrella.json); runbook [runbooks/v6-cy-cluster-precloseout-soak.md](runbooks/v6-cy-cluster-precloseout-soak.md). |
+| [x] | **V6-11 sprint closeout:** sprint-final review PASS_WITH_NITS + workspace gate PASS (`d251fb5`); ticket [20260615-v6-sprint11-closeout.json](../tasks/20260615-v6-sprint11-closeout.json). |
+| [x] | **Pre-publication (owner):** stability soak ≥50k blocks + flags spot-check PASS (2026-06-17, MVP V6 scope); runbook [runbooks/v6-owner-stability-soak-50k.md](runbooks/v6-owner-stability-soak-50k.md); umbrella [20260603-v6-prepublication-umbrella.json](../tasks/20260603-v6-prepublication-umbrella.json). |
+| [x] | **Pre-publication (review):** rust code audit artifact [reviews/20260616-v6-mvp-rust-code-audit-review.md](reviews/20260616-v6-mvp-rust-code-audit-review.md) (`needs attention`, 0 Critical); follow-up tickets optional pre-V7. |
+| [x] | **Pre-publication (docs):** release notes [releases/v6.0.0.md](releases/v6.0.0.md), README*, CONCEPT_PROGRESS; umbrella phase `v6-prepub-docs-manuals`. |
+| [x] | **Owner sign-off:** MVP v6 approved (2026-06-17); tag `MVP-V6-RC` / release `v6.0.0`. |
+| [ ] | **Publication:** mirror `git_safe_commit` dry_run→apply→commit на `P:\GitHub\PWM-cryptocurrency` — [MVP_PUBLICATION.md](MVP_PUBLICATION.md). |
+| [~] | Mode B **IMPORT happy-path** on live target peer — deferred (s2 legacy superseded; single-shard refund sufficient for V6 gate). |
+| [~] | Full multi-hour CY soak — wave-by-wave with lab genesis; optional hardening before public testnet (V7). |
+
 ---
 
 ## 0v3. MVP v3 foundation closeout
@@ -44,7 +71,7 @@ Tokenomics-трек **MVP v5** ведётся отдельно в [plans/mvp_v5.
 
 ---
 
-## 0v5. MVP v5 tokenomics hardening (CY E2E PASS; sprint-final closeout PASS — owner sign-off pending)
+## 0v5. MVP v5 tokenomics hardening (published — owner sign-off 2026-06-02)
 
 | Статус | Пункт |
 |--------|--------|

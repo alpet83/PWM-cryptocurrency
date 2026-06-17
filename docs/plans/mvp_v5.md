@@ -406,8 +406,7 @@ Umbrella: `tasks/done/20260524-v5-sprint2-core-model.json`. Порядок ст�
 
 **Reports:** `tmp/cy-e2e-s1-20260528_220256.md`, `tmp/cy-e2e-s2-20260530_082418.md`, `tmp/cy-e2e-s3-20260530_141317.md`
 
-**Gate:** s1–s3 PASS ✅; doc review PASS_WITH_NITS ([review](../reviews/20260530-v5-precloseout-cy-e2e-docs-version-review.md)); sprint-final closeout PASS ([review](../reviews/20260530-v5-sprint-final-closeout-review.md)) — owner sign-off pending.
-
+**Gate:** s1–s3 PASS ✅; doc review PASS_WITH_NITS ([review](../reviews/20260530-v5-precloseout-cy-e2e-docs-version-review.md)); sprint-final closeout PASS ([review](../reviews/20260530-v5-sprint-final-closeout-review.md)); owner sign-off complete (2026-06-02).
 ---
 
 ## Sprint V5-8: Integrated devnet gate и closeout

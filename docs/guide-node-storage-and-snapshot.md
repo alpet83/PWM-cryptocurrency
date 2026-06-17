@@ -51,6 +51,8 @@ This means old blocks remain on disk for audit/rebuild, but routine startup does
 
 Default JsonFile startup trusts the local summary plus manifest as the disk checkpoint. It validates genesis identity, summary/manifest agreement, tail linkage, PoA header signatures, `tx_root`, and final state root. It does not replay all historical transactions.
 
+Producer schedule checks in trust mode are `O(tail)` and use persisted snapshot state (`active_validator_indices`, `epoch_counter`) as the checkpoint source. If no epoch boundary falls inside the loaded tail, proposer checks use the persisted active set for the whole tail. If an epoch boundary is inside the tail window, trust validation runs only a sequential epoch-file pass from that boundary to tip (no genesis→tip replay).
+
 **Genesis anchor (ADR 0008):** trust load checks that the snapshot is tied to the same genesis as `--genesis-file`:
 
 - `genesis_state_root` and `gencfg_digest` must match the loaded `GenCfg` when `genesis_anchor` is present;
@@ -66,6 +68,18 @@ If block 1 was pruned from disk, startup fails with `missing genesis anchor bloc
 See [adr/0008-snapshot-genesis-anchor-light.md](adr/0008-snapshot-genesis-anchor-light.md).
 
 Use this for ordinary restarts on a trusted disk.
+
+Operational SLO target: trust-start validation on a ~125k tip should stay well below previous 15–20 minute behavior; target on typical dev/beta hardware is under 60 seconds.
+
+#### Design alignment (trust-load, closed 2026-06)
+
+**Intent (since epoch snapshots + tail cap):** routine cold start reads summary state at tip and only the last `TAIL_BLOCK_CAP` blocks from `epochs/` — not a genesis→tip replay.
+
+**Gap (V6-3 through 2026-06-17):** `validate_snapshot_trusted` still ran `trust_tail_prod_idx` over heights `1..tip` to derive proposer schedule, re-reading epoch JSONL per height. Symptom: `snapshot_load_mode=trust` with `epochs_ms` ~50 ms but `validate_ms` ~1.1M ms (~17–20 min @125k tip); seal loop blocked until load finished.
+
+**Fix (`20260619-pwmd-trust-load-fastpath-proposer-validation`):** trust validation is **O(tail)** — uses persisted snapshot v4 `active_validator_indices` / `epoch_counter` (RFC V6-3). Full genesis replay remains only for `--snapshot-verify-chain` or `summary_manifest_lag` forced verify. Progress: log target `pwmd::startup::snapshot`, `stage=trust_validate`.
+
+**Operator check:** after restart, `snapshot startup load ok` should show small `validate_ms` (seconds, not minutes) and the node reaches `ready` quickly enough for seal; see `cluster_prep_summary` / `sealed height=` in proposer logs.
 
 ### Audit: full replay
 

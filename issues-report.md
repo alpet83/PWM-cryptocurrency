@@ -735,3 +735,66 @@
 - Причина: extractor `ConnectInfo<SocketAddr>` в axum заполняется только когда сервер стартует через `into_make_service_with_connect_info`, а в `oneshot` тестах extension нужно добавлять вручную.
 - Фикс/обход: HTTP serve переведён на `into_make_service_with_connect_info::<SocketAddr>()`; в тестах запросы к operator endpoint добавляют extension `ConnectInfo(addr)`.
 - Что проверить потом: при добавлении новых operator/admin endpoints сразу включать connect-info в тестовые запросы, иначе auth-ветки loopback/non-loopback могут тестироваться некорректно.
+
+- Дата: 2026-06-05
+- Контекст/файлы: `crates/pwm-core/src/tx.rs` (`validate_tx_shape`), emergency policy activation (`state` tests).
+- Симптом: попытка добавить shape-правило «`activation_target` обязателен для emergency redirect» ломает текущие emergency apply-сценарии (`policy_emerg_act_*`) и меняет семантику за пределами slice 4.
+- Причина: это уже enforcement-уровень (V6-6/V6-7), а не тривиальная shape-валидация; в текущем слое допустим только reject явно лишнего `activation_target` для non-emergency policy.
+- Фикс/обход: в slice 4 оставлена только минимальная проверка `PolicyActivationTargetNotAllowed` для non-emergency activate; требование `target required/mismatch` зафиксировано только как новые `TxError`/wire-коды без runtime enforcement.
+- Что проверить потом: в V6-6/V6-7 ввести полный контракт activation-target (`required/mismatch`) вместе с обновлением state/apply и согласованными reject tests.
+
+- Дата: 2026-06-05
+- Контекст/файлы: `crates/pwm-core/src/chain.rs`, `crates/pwm-core/src/genesis.rs` (V6-3 stake admission).
+- Симптом: после включения stake-gated proposer selection devnet с `staked_pwm_raw=0` у всех валидаторов не может seal-ить первый блок (`no active validators for current epoch`).
+- Причина: admission корректно фильтрует `active_validator_indices` по `min_validator_stake`, но в `dev_net()` стартовый stake у валидаторов нулевой.
+- Фикс/обход: для helper-конфига `dev_net()` выставлен `min_validator_stake=0`, а stake-gating покрывается отдельными unit-тестами с явной настройкой порога/stake.
+- Что проверить потом: при переходе на production-like genesis с ненулевым `min_validator_stake` обеспечить bootstrap stake или отдельный admission bootstrap-путь, чтобы не получить liveness-lock на height=1.
+
+- Дата: 2026-06-05
+- Контекст/файлы: toolchain Windows в worktree `v6/20260603-v6-sprint4-leader-rotation-coding`, команды `cargo test -p pwm-core`.
+- Симптом: `cargo test -p pwm-core` падает до запуска тестов с ошибкой `error calling dlltool 'dlltool.exe': program not found` при сборке `windows-sys`.
+- Причина: в окружении отсутствует `dlltool.exe` (часть MinGW/binutils), необходимый для части host-зависимостей на Windows.
+- Фикс/обход: для coding slice выполнены `cargo check --workspace` и все обязательные pre-submit линтеры; для запуска unit/integration тестов нужно установить `dlltool` в PATH (или запускать из Linux-окружения CQDS).
+- Что проверить потом: после установки `dlltool` повторить `cargo test -p pwm-core` и убедиться, что новые V6-4 тесты проходят на этом же worktree.
+
+- Дата: 2026-06-05
+- Контекст/файлы: crates/pwmd/src/snapshot/io.rs (trust-load), V6-4 leader rotation.
+- Симптом: trust-path snapshot validation принимала/отвергала tail `prod_idx` по формуле `height % vals.set.len()`, что расходится с runtime логикой active-set (`pick_prod_idx` + epoch rollover) при stake-gated admission.
+- Причина: в trust-ветке использовался упрощённый модуль по genesis validator count без replay-состояния epoch/active_set.
+- Фикс/обход: добавлен epoch-aware replay расчёта ожидаемого proposer для tail-блоков (`trust_tail_prod_idx`) с теми же helper-функциями, что в core (`roll_epoch_if_needed`, `pick_prod_idx`).
+- Что проверить потом: профилировать cold-start trust-load на длинных epoch chains и при необходимости добавить checkpoint seed для сокращения replay-диапазона.
+
+- Date: 2026-06-07
+- Context/files: `crates/pwmd/src/lifecycle.rs`, V6-4b RFC16 primary-miss failover.
+- Symptom: runtime primary-miss skip uses `Chain::canonical_h` to advance one missed height, so the next failover seal can produce `height+1`; existing live sync and snapshot trust paths still expect contiguous stored block heights.
+- Root cause: V6-4b closes runtime liveness on the current `Chain::seal` contract without adding an explicit skipped-block record type or updating block exchange validation for height gaps.
+- Workaround/fix: keep the skip bounded to cluster proposer failover and test it via a focused harness; do not treat skipped heights as fully sync/snapshot-compatible until the representation is formalized.
+- Follow-up recommendation: add an explicit skip/evidence record or contiguous empty-block policy before enabling this behavior for production snapshot trust and live catch-up.
+
+- Date: 2026-06-15
+- Context/files: `crates/pwmd/src/lifecycle.rs` (cluster proposer startup path), ticket `20260603-pwmd-fail-fast-protocol-blockers`.
+- Symptom: with `min_validator_stake` above all genesis validator stakes, proposer logs `proposer_pick_failed` and keeps sleeping forever (`sealed_in_window=0`) instead of exiting.
+- Root cause: `pick_prod_idx` correctly returns `no active validators for current epoch`, but the seal loop treated this startup condition as a generic retryable wait.
+- Workaround/fix: added cold-start fatal detector (`tip_h=0`, `lead_h=1`, empty active validator set, matching picker error) and process exit with actionable ERROR hint (`min_validator_stake`, observed max genesis stake, and lab override `min_validator_stake:0`).
+- Follow-up recommendation: if stake-admission/bootstrap rules evolve, keep this detector scoped to unrecoverable startup blockers and avoid widening it to normal failover wait paths.
+
+- Дата: 2026-06-16
+- Контекст/файлы: `crates/pwmd/src/lease.rs`, `crates/pwmd/src/lifecycle.rs` (single-sealer lease gate после restart с тем же owner).
+- Симптом: после рестарта proposer с прежним `owner_id` попадал в бесконечный цикл `lease_renew_cas_miss` / `seal_suppressed_by_fence` каждые ~50ms и не возвращался к sealing.
+- Причина: в ветке `AcquireRes::Held(owner=self)` обрабатывался только `renew`; при `now_ms > expiry` backend отдавал `RenewRes::Lost`, а fallback self-takeover отсутствовал.
+- Фикс/обход: добавлен guarded self-takeover при `RenewRes::Lost` только если observed lease принадлежит тому же owner и уже expired; takeover идёт через существующий CAS `(term,fence,expiry)`, success возвращает `allow_seal=true` и reason `lease_self_takeover_after_expiry`, при fail сохраняется fail-closed поведение.
+- Что проверить потом: в длительных restart-soak сценариях убедиться, что cas-miss warn не спамит (warn не чаще ~5s на одинаковую причину, suppressed счётчик накапливается), и что первый cas-miss после смены причины логируется сразу.
+
+- Дата: 2026-06-16
+- Контекст/файлы: `crates/pwm-cli/src/cmd_addr.rs`, `docs/pwm-cli.md` (`addr-bruteforce` resume + `--max-try`).
+- Симптом: при `--wallet-out` с большим `resume_start_index` и недостаточном `--max-try` команда завершалась panic `expect("no match")` после долгого перебора.
+- Причина: `--max-try` трактуется как абсолютный верх derivation index (`start..=max_try`), а не как «количество попыток», но это было неочевидно в UX.
+- Фикс/обход: panic заменён на `exit_user_error` с диапазоном/числом проверок и actionable hints; до старта brute-force печатается search plan (`resume_start_index`, `max_try`, `attempts_budget`), docs уточняют формулу бюджета.
+- Что проверить потом: в V7-2 добавить skip-политику для занятых derivation index в плотных кошельках, чтобы reduce пустой перебор при больших premine-wallet.
+
+- Дата: 2026-06-17
+- Контекст/файлы: `crates/pwm-cli/src/cmd_tx.rs` (`load_tx_wallet_signer`), `tasks/20260620-pwm-cli-wallet-v3-single-file-tx-index.json`.
+- Симптом: команды `tx-send`/`tx-policy-*` без `--index` (дефолт `0`) ломались на v2 wallet, где единственный аккаунт имел `derivation_index != 0`.
+- Причина: helper signer selection всегда пытался `m/0/0`, не учитывая single-account метаданные v2 кошелька.
+- Фикс/обход: добавлен fallback: при `index=0` и schema v2 использовать `wallet.derivation_index`; для schema v3 дефолт остаётся `m/0/0` (другие аккаунты — только с явным `--index`).
+- Что проверить потом: если потребуется отличать «`--index` не передан» от явного `--index 0`, добавить Optional-аргумент в CLI слой и прокидывать это различие до signer helper.

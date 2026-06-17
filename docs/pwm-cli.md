@@ -38,6 +38,9 @@ Security-режимы wallet и базовая operational hygiene: [WALLET_SECU
 2. `PWM_RPC`, если флаг не задан;
 3. fallback по умолчанию: `http://127.0.0.1:3030`.
 
+Специальное значение:
+- `--rpc offline` (или `PWM_RPC=offline`) включает явный offline-режим: HTTP-запросы не выполняются; разрешены только локальные команды (`key-gen`, `genesis-build`, `addr-*`, `wallet *`, `off-demo`).
+
 Поведение `--upgrade-wallet`:
 - без флага загрузка wallet в read-path не перезаписывает файл;
 - с флагом при чтении schema v2 выполняется миграция в schema v3 и запись на диск.
@@ -177,7 +180,7 @@ Wallet protection при `addr-derive --wallet-out`:
 - `--domain <label>` (только label из `domain_index`, для user-profile принимаются только country/regulatory labels)
 - `--flags-mask <u32>` (optional, default `1023`, policy: только low 10 bits)
 - `--expected-flags <u32>` (required, policy: не выходит за `flags-mask`)
-- `--max-try <u32>` (default `500000`)
+- `--max-try <u32>` (default `500000`): **количество попыток** (число проверяемых derivation index), начиная с `resume_start_index`
 - `--wallet-out <path>` (optional; default `~/.pwm-crypto/default-wallet.yaml`)
 - `--overwrite-wallet` (optional): явный destructive opt-in для обратной совместимости; без него используется безопасный add (append) в существующий wallet.
 
@@ -186,6 +189,7 @@ Resume-поведение:
 - если в wallet нет совместимых аккаунтов, используется fallback `global_max_derivation_index + 1`;
 - если файла нет, поиск стартует с `0`.
 - если задан `--overwrite-wallet`, resume принудительно отключается и поиск стартует с `0` (fresh start).
+- эффективный диапазон поиска в resume-режиме: `start_index = resume_start_index`, `end_index = resume_start_index + max_try - 1` (saturating); при `--max-try 0` brute не выполняет попыток.
 
 Wallet protection для `addr-bruteforce`:
 - приоритет passphrase: `--wallet-passphrase` > `PWM_WALLET_PASSPHRASE`;
@@ -195,6 +199,7 @@ Wallet protection для `addr-bruteforce`:
 
 Post-action UX для `addr-bruteforce`:
 - после успешного brute-force и `wallet_out` save CLI автоматически пробует отправить `tx-init` на текущий RPC (`--rpc` / `PWM_RPC`, те же HTTP timeout правила `PWM_CLI_RPC_TIMEOUT_MS`);
+- при `--rpc offline` auto-init **явно пропускается** без сетевых попыток; CLI печатает команду для ручного `tx-init`;
 - если auto-init успешен, печатается `stderr`-сообщение об успехе;
 - если auto-init не удался, результат brute-force не теряется (wallet уже сохранен), печатается диагностика и явная команда для ручного `tx-init` (обязательный шаг перед `tx-send` / `tx-burn-mark`);
 - при недоступном RPC (`cannot connect` / timeout) выводится отдельный hint про offline-сценарий и ручную инициализацию адреса.
@@ -214,7 +219,7 @@ Post-action UX для `addr-bruteforce`:
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` (dev-override; при использовании требует `--domain`)
 - `--domain <hex-u16|label>` (только вместе с `--master`)
-- `--index <u32>` (default `0`)
+- `--index <u32>` (default `0`; для `--wallet` это выбор derivation index `m/0/N` в schema v3)
 - `--flags <u32>` (default `0`)
 - V4 extension (опционально, включается при передаче хотя бы одного V4-флага):
   - `--owner-kind <text>`
@@ -226,7 +231,7 @@ Post-action UX для `addr-bruteforce`:
   - `--rescue-address <account>`
   - `--initial-policy <kind[:dormant|immediately]>` (repeatable)
 
-Особенность: nonce фиксированно `0` (инициализация аккаунта).
+Особенность: nonce берётся из `GET /v1/account/{from_hex}`; при `404 account not found` используется `0`.
 
 ## `tx-policy-set`
 Назначение: подписать и отправить `TxBody::Policy` с действием `SetPolicy`.
@@ -234,6 +239,7 @@ Post-action UX для `addr-bruteforce`:
 Ключевые аргументы:
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` + `--domain <hex-u16|label>` (dev-override)
+- `--index <u32>` (default `0`; при `--wallet` выбирает signer `m/0/N` в wallet schema v3)
 - `--policy <kind>` (`sender_filter`, `routing.emergency_redirect`, `routing.same_domain_only`, `default_behavior`, `cosign_required`)
 - `--activation <dormant|immediately>`
 - `--fee <u128>` (default `1`)
@@ -244,6 +250,7 @@ Post-action UX для `addr-bruteforce`:
 Ключевые аргументы:
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` + `--domain <hex-u16|label>` (dev-override)
+- `--index <u32>` (default `0`; при `--wallet` выбирает signer `m/0/N` в wallet schema v3)
 - селектор policy: `--policy <kind>` или `--policy-id <u8>` (можно вместе, значения должны совпадать)
 - `--fee <u128>` (default `1`)
 
@@ -253,7 +260,8 @@ Emergency rescue cosign (MVP путь):
 - minimal external signer override: `--rescue-master <hex32> --rescue-domain <hex-u16|label>`;
 - optional passphrase override: `--rescue-passphrase <text>` (иначе используется глобальный `--wallet-passphrase`/`PWM_WALLET_PASSPHRASE`).
 
-Rescue cosign flags are accepted only when activating `routing.emergency_redirect`; for ordinary policies the CLI rejects them to avoid implying generic governance multisig. When `--rescue-wallet` is used without `--rescue-account-index`, the command falls back to that wallet's default signer, so production operators should pass the index explicitly.
+Rescue cosign flags are accepted only when activating `routing.emergency_redirect`; for ordinary policies the CLI rejects them to avoid implying generic governance multisig. When `--rescue-wallet` is used without `--rescue-account-index`, the command falls back to that wallet's default signer, so production operators should pass the index explicitly.  
+Для `--activation-tx` (prepared JSON) при reject `HTTP 409 bad nonce` CLI дополнительно печатает hint с `file nonce`, on-chain nonce для `target_account` и рекомендацией перейти на live activation с `--wallet ... --index ...` (+ `--rescue-account-index` для same-wallet rescue).
 
 ## `tx-policy-deactivate`
 Назначение: подписать и отправить `TxBody::Policy` с действием `DeactivatePolicy`.
@@ -261,6 +269,7 @@ Rescue cosign flags are accepted only when activating `routing.emergency_redirec
 Ключевые аргументы:
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` + `--domain <hex-u16|label>` (dev-override)
+- `--index <u32>` (default `0`; при `--wallet` выбирает signer `m/0/N` в wallet schema v3)
 - селектор policy: `--policy <kind>` или `--policy-id <u8>`
 - `--fee <u128>` (default `1`)
 
@@ -275,6 +284,7 @@ Rescue cosign flags are accepted only when activating `routing.emergency_redirec
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` (dev-override; при использовании требует `--domain`)
 - `--domain <hex-u16|label>` (только вместе с `--master`)
+- `--index <u32>` (default `0`; при `--wallet` выбирает signer `m/0/N` в wallet schema v3)
 - `--to <address|uri>`: pretty / canonical bech32DX / legacy hex / legacy `PWMv0-hex` / `pwm:<address>?amount=<u128>`
 - `--amount <u128>`
 - `--fee <u128>` (default `1`)
@@ -286,6 +296,7 @@ Rescue cosign flags are accepted only when activating `routing.emergency_redirec
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` (dev-override; при использовании требует `--domain`)
 - `--domain <hex-u16|label>` (только вместе с `--master`)
+- `--index <u32>` (default `0`; при `--wallet` выбирает signer `m/0/N` в wallet schema v3)
 - `--amount <u128>`
 
 ## `tx-unstake`
@@ -295,6 +306,7 @@ Rescue cosign flags are accepted only when activating `routing.emergency_redirec
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` (dev-override; при использовании требует `--domain`)
 - `--domain <hex-u16|label>` (только вместе с `--master`)
+- `--index <u32>` (default `0`; при `--wallet` выбирает signer `m/0/N` в wallet schema v3)
 - `--amount <u128>`
 
 ## `tx-burn-mark`
@@ -304,6 +316,7 @@ Rescue cosign flags are accepted only when activating `routing.emergency_redirec
 - `--wallet <path>` (основной путь подписи)
 - `--master <hex32>` (dev-override; при использовании требует `--domain`)
 - `--domain <hex-u16|label>` (только вместе с `--master`)
+- `--index <u32>` (default `0`; при `--wallet` выбирает signer `m/0/N` в wallet schema v3)
 - `--mark-amount <u32>`
 - `--beneficiary <hex32>` (optional)
 
@@ -359,7 +372,7 @@ MVP operator note:
 ## Signing + send flow
 
 Для `tx-*` CLI выбирает источник подписи так:
-1. По умолчанию используется `--wallet`: чтение wallet YAML и загрузка `signing_key/domain_u16/derivation_index/account_id`.
+1. По умолчанию используется `--wallet` + `--index`: чтение wallet YAML и выбор signer `m/0/N` (`--index`) из wallet schema v3 accounts (для v2 сохраняется single-account fallback).
 2. Если передан `--master`, это dev-override: парсинг `master + domain`, затем `brute_cluster_address(seed, domain, 500000)`.
 3. Для `tx-send`, `tx-stake`, `tx-unstake`, `tx-burn-mark`, `tx-export`, `tx-import` запрашивается nonce через `GET /v1/account/{from_hex}`.
 4. При неуспешном чтении nonce команда завершается с явной ошибкой (без silent fallback `nonce=0`).
@@ -369,7 +382,7 @@ MVP operator note:
    - cross-domain `tx-send`: `POST /v1/roaming-intents` + polling `GET /v1/roaming-intents/:id`.
 7. В stdout печатается HTTP status (`204`, `400`, `507`, и т.д.).
 
-Для `tx-init` путь такой же по источнику подписи, но nonce всегда `0`.
+Для `tx-init` при `--wallet` signer выбирается по `--index` (`m/0/N` в schema v3); nonce читается из account-view и падает в `0` только для `account not found`.
 
 ## Genesis roles note (operator)
 
@@ -407,7 +420,7 @@ MVP operator note:
 - **`507 INSUFFICIENT_STORAGE`**: mempool переполнен, повторить позже.
 - **`409 CONFLICT` на `tx-import`**: duplicate import для уже использованного `export_id` (ожидаемый idempotent reject при повторе).
 - **`404 account not found` при nonce fetch**: CLI теперь добавляет UX-hint: sender не инициализирован на текущем RPC, сначала сделать `tx-init` для sender на source-node и проверить `--rpc`/`PWM_RPC` (source domain/shard).
-- **`addr-bruteforce` + offline RPC**: brute-force и wallet save завершаются, но auto-init не проходит; CLI печатает явную команду ручного `tx-init` (с `--index`/`--flags` найденного адреса).
+- **`addr-bruteforce` + `--rpc offline`**: brute-force и wallet save завершаются без HTTP; auto-init пропускается, CLI печатает явную команду ручного `tx-init` (с `--index`/`--flags` найденного адреса).
 - **`expect("no match")` в derive**: не найден account для домена в `max_try`; увеличить `--max-try` (для `addr-derive`) и проверить корректность `domain`.
 - **Пустая печать только кода статуса**: это норма текущего UX CLI; подробности смотреть в логах `pwmd`.
 
@@ -430,6 +443,15 @@ pwm tx-init --wallet ./tmp/wallet-cy.yaml --index 0 --flags 0
 
 # 4) перевод от wallet (основной путь)
 pwm tx-send --wallet ./tmp/wallet-cy.yaml --to <to_hex32> --amount 100 --fee 1
+
+# 4.1) emergency activate в одном wallet v3 (victim + rescue в одном файле)
+pwm tx-policy-activate \
+  --wallet ./tmp/demo-genesis-wallet.yaml \
+  --index <victim_idx> \
+  --policy routing.emergency_redirect \
+  --fee 0 \
+  --activation-target <rescue_hex32> \
+  --rescue-account-index <rescue_idx>
 
 # 5) показать секреты wallet (unsafe/debug только по явному флагу)
 pwm wallet show --wallet ./tmp/wallet-cy.yaml --unsafe-show-secrets

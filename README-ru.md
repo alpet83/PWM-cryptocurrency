@@ -6,17 +6,34 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ![Интерфейс оператора pwm-tui (демо)](tui-demo-screenshot.png)
 
-## Текущий статус (MVP v5 — sign-off релиза завершён)
+## Текущий статус (MVP v6 — owner sign-off завершён)
 
-- **MVP v4 policy runtime остаётся закрытым baseline** (спринты V4-1..V4-6, 2026-05-17): dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing с finalized-поведением аккаунта и cosign-envelope.
-- **Опубликованный milestone — MVP v5** (укрепление токеномики + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02); **owner sign-off завершён** (2026-06-02). Репозиторий отражает **implementation-complete devnet** — PoA lab-топология, а не запуск production mainnet.
+**Опубликованный milestone — MVP v6** (incremental PoS + runtime address flags): спринты **V6-1…V6-11 PASS**; pre-publication soak PASS; rust audit готов; **owner sign-off одобрен** (2026-06-17). Пакет к публикации в публичное зеркало подготовлен — [releases/v6.0.0.md](docs/releases/v6.0.0.md). PoA lab — не production mainnet.
+
+**Предыдущий опубликованный milestone — MVP v5** (2026-06-02).
+
+### MVP v6 (devnet lab)
+
+- **Stake-gated admission** валидаторов на границах epoch.
+- **RFC16 rotation** + failover ≤ 1 блок.
+- **Mode B escrow** (EXPORT lock, refund, IMPORT release).
+- **Address flags:** `COSIGN_NON_DISABLEABLE`, `CONSERVATION` (отложенные исходящие переводы).
+- **Emergency routing:** `activation_target`, fee=0, эвакуация `balance_pwm` ([ADR 0011](docs/adr/0011-policy-activation-target.md)); эвакуация stake — V7 ([ADR 0012](docs/adr/0012-emergency-stake-evacuation.md)).
+- Snapshot v4, trust-load fastpath; runbooks `docs/runbooks/v6-*.md`.
+
+### Базовый слой MVP v5 (по-прежнему актуален)
+
+- **MVP v4 policy runtime** (спринты V4-1..V4-6): `PolicyTx`, `evaluate_policy`, `init_v4`, emergency routing, cosign.
+- **V5-1…V5-9 PASS**; pre-publish polish PASS (2026-06-02). PoA lab — не production mainnet.
 - **Есть чистый public-devnet quickstart**: из clean clone документирован детерминированный demo genesis path с проверкой premine (`21_000_000_000 PWM` = `21_000_000_000_000_000 raw`).
 - **`/v1` API baseline** в `docs/api-v1.md` покрывает V4 policy runtime (`PolicyTx`, структурированные `E_POLICY_*` reject) и V5 additive поля аккаунта (`marks_last_block`, семантика lazy marks).
 - **Epoch Snapshot schema v3 + genesis anchor light (ADR 0008)** в стеке снапшотов pwmd — trust baseline для загрузки/реплея с лёгкой привязкой к genesis.
 - **ADR-пакет опубликован** в `docs/adr/` и задаёт архитектурные границы foundation-слоя.
 - **Runtime log-control RPC относится к operator/debug поверхности** и явно не входит в стабильный public API.
 
-**Что уже работает (V5 closeout + V4 policy baseline):**
+**Сборки Windows:** у `pwmd`, `pwm` и `pwm-tui` в PE-ресурсы встраиваются метаданные **PWM MVP v6** и общая иконка PWM (`assets/branding/pwm.ico`), если при сборке на Windows доступен resource compiler.
+
+**Что уже работает (V6 closeout на базе V5+V4):**
 
 - **Интегрированный public-devnet smoke покрывает read API:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
 - **`POST /v1/tx` покрывает V4 policy flow** (включая `PolicyTx`) и возвращает структурированные policy rejects из RFC 14 (`E_POLICY_*`).
@@ -99,7 +116,10 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 
 - README (English): [README.md](README.md)
 - Прогресс концепта / карта покрытия whitepaper (публикуется): `docs/CONCEPT_PROGRESS.md`
-- План MVP v5 tokenomics hardening (активный milestone): `docs/plans/mvp_v5.md`
+- Release notes MVP v6: `docs/releases/v6.0.0.md`
+- План MVP v6: `docs/plans/mvp_v6.md`
+- V6 owner stability soak: `docs/runbooks/v6-owner-stability-soak-50k.md`
+- План MVP v5 (опубликованный milestone): `docs/plans/mvp_v5.md`
 - Целевая post-MVP anti-abuse модель (RU, канонический): [docs/Post_MVP_target_model(anti-abuse).md](docs/Post_MVP_target_model(anti-abuse).md) — English translation: [docs/Post_MVP_target_model(anti-abuse)-en.md](docs/Post_MVP_target_model(anti-abuse)-en.md)
 - V5 TUI marks operator path: `docs/runbooks/v5-tui-marks-operator-path.md`
 - V5 devnet operator smoke: `docs/runbooks/devnet-v5-operator-smoke.md`

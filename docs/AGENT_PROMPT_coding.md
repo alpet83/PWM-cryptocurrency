@@ -97,12 +97,16 @@ Before marking work done, scan touched functions/traits for:
   1. `cargo fmt --check` (or `cargo fmt` then verify clean)
   2. `python scripts/check_entity_name_segments.py <every touched *.rs path>` — **required even when the slice adds only `#[test]` fns**; empty `violations` or fix renames
   3. `cargo check --workspace` (or ticket-scoped `-p` check)
-  4. Quick tests only if the ticket or orchestrator asks (see Testing boundary); naming linter is **not** delegated to `pwm-testing`
-- Record `check_entity_name_segments.py` in `commands_run` / Participation block. **FAIL the slice** if you cannot clear violations without scope creep — do not leave renames to review.
+  4. **`cargo clippy`** on every **touched crate** (see below) — fix warnings in **touched `*.rs`** paths; thresholds in repo-root **`clippy.toml`** (`too-many-arguments-threshold = 5`, `too-many-lines-threshold = 100`, `cognitive-complexity-threshold = 25`)
+  5. Quick tests only if the ticket or orchestrator asks (see Testing boundary); naming linter is **not** delegated to `pwm-testing`
+- **Clippy gate (step 4 detail):** for each crate you changed, run e.g.  
+  `cargo clippy -p <crate> --all-targets -- -W clippy::too_many_arguments -W clippy::too_many_lines -W clippy::cognitive_complexity -W clippy::module_inception`  
+  (or `cargo clippy --workspace --all-targets` when the slice spans the workspace). **Exit 0 required.** Clear **new** warnings in files you edited; do not burn down unrelated legacy clippy debt unless the ticket scopes a cleanup pass.
+- Record `check_entity_name_segments.py` and clippy commands in `commands_run` / Participation block. **FAIL the slice** if you cannot clear violations without scope creep — do not leave renames or clippy fixes to review.
 - **Comments in code**: **English only** (including `//` and `///`).
 - **User-facing docs** in this repo may stay Russian where already established (`docs/*.md`).
 - Match existing module layout (`pwm-core`, `pwmd`, `pwm-cli`, `pwm-tui`); avoid drive-by refactors outside the task.
-- Run **`cargo fmt`** / **`cargo check`** before considering work done.
+- Run **`cargo fmt`** / **`cargo check`** / **`cargo clippy`** (touched crates) before considering work done.
 
 ## Issues log (required)
 

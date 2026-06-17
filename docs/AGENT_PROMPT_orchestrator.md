@@ -24,9 +24,9 @@ This is the project's north star. Apply it at every stage — planning, sprint d
 | Tests + checklist test rows | **`pwm-testing`** | `cargo test`, §3–§6 test items; **перед сборкой:** префлайт **`target/debug`** — `tools/dev/preflight_target_debug.sh` (резерв: **`preflight_target_debug.ps1`**), см. `AGENT_PROMPT_testing.md` §Preflight; **Windows:** в handoff требовать **`CARGO_TARGET_DIR`** вне тома клона — по умолчанию **`F:\pwm-test\PWM-cryptocurrency`** (или **`PWM_TEST_TARGET_ROOT`**, см. `AGENT_PROMPT_testing.md` §Windows: изолированный `CARGO_TARGET_DIR`); для TUI/RPC/long `cargo run`: **`cq_process_ctl` + `git_bash_exec`**, **15 min** investigation cap then user escalation |
 | Independent review (no **product** edits; may **commit** review `docs/reviews/*.md` + **`scripts/_review_*`** + ticket fields) | **`pwm-review`** | After **`pwm-coding`**, on the integrated diff; **before** **`pwm-testing`** (spec/contract gate early) |
 | Optimization audit (post-sprint only) | **`pwm-optimus`** | **After sprint closeout only**: analyze accepted working code for module bloat, duplication, dependency/architecture optimization opportunities |
-| Context prep (grep/trace map, **`tasks/*.json`** digest only **`…-info.json`**) | **`pwm-info`** | **Amortized discovery**: use **when justified** — one observer pass (**`cq_files_ctl`/`start_grep`**, **`project_id: 5`**, else **`rg`**) prepares a reused map for **several upcoming** Tasks (coding/tests/review/investigation), cutting duplicate search; **`docs/AGENT_PROMPT_info.md`**. Skip for trivial one-file hops. |
+| Context prep (grep/trace map, **`tasks/*.json`** digest only **`…-info.json`**) | **`pwm-info`** | **Amortized discovery**: use **when justified** — one observer pass (**`cq_files_ctl`/`start_grep`**, else **`rg`**) prepares a reused map for **several upcoming** Tasks (coding/tests/review/investigation), cutting duplicate search; **`docs/AGENT_PROMPT_info.md`**. Skip for trivial one-file hops. |
 | Debug / root-cause investigation (no product fixes) | **`pwm-debug`** | Hard reproduction-heavy defects, flakes, cross-crate desyncs when `pwm-testing` output is inconclusive. Diagnoses only: temporary scoped instrumentation, long test runs, **`verbosity-focus`**-driven log detail; product fixes go to **`pwm-coding`**. See **`docs/AGENT_PROMPT_debug.md`**. |
-| External coding worker (VS Code / Copilot bridge) | **VS Code `pwm-coding-worker`** + MCP **`cq_team_bridge_ctl`** | Long-lived worker в другом IDE; оркестратор ставит задачу в **project-local** очередь через **`project_id: 5`**, не через пути установки CQDS. См. **§ Team bridge** ниже. |
+| External coding worker (VS Code / Copilot bridge) | **VS Code `pwm-coding-worker`** + MCP **`cq_team_bridge_ctl`** | Long-lived worker в другом IDE; оркестратор ставит задачу в project-local очередь через bridge (дефолты CQDS). См. **§ Team bridge** ниже. |
 
 Canonical prompts: `docs/AGENT_PROMPTS.md` → `AGENT_PROMPT_coding.md`, `AGENT_PROMPT_testing.md`, `AGENT_PROMPT_review.md`, **`AGENT_PROMPT_info.md`**, **`AGENT_PROMPT_debug.md`**. Each subagent handoff must paste or summarize the relevant sections (goal, scope, acceptance criteria).
 
@@ -58,62 +58,54 @@ When splitting **very large** roots (e.g. **`pwmd/src/lib.rs`** inline tests ~6k
 
 ## Team bridge (`cq_team_bridge_ctl`) — делегирование во внешний воркер
 
-Используй MCP **`cq_team_bridge_ctl`** (контракт: **`cq_help tool_ref=cq_team_bridge_ctl`**) когда владелец просит отдать слайс **VS Code / GitHub Copilot** worker (`pwm-coding-worker`), а не Cursor **`pwm-coding`** Task.
+Когда слайс отдаётся **VS Code / Copilot** worker (`pwm-coding-worker`), а не Cursor **`pwm-coding`** Task — используй **`cq_team_bridge_ctl`**. Синтаксис: **`cq_help`** на нужный `tool#action`; в вызов передавать **только** поля смысла слайса.
 
-**Маршрутизация: `project_id`, не `tasks_root`.**
+**Контекст проекта (обязательно перед bridge):**
 
-| Правило | Значение |
-|--------|----------|
-| **`project_id` (обязателен для PWM)** | **`5`** — базовый ключ для **всех** вызовов `cq_team_bridge_ctl` (оркестратор и воркер). MCP по registry + bind-mount резолвит **`project_root`** и **`tasks_root = <project_root>/tasks`**. |
-| **`tasks_root`** | **Не указывать** в обычном потоке — только **advanced override** для queue-debug по явной просьбе владельца. Без `project_id` MCP может упасть в дефолт **`…/cqds/tasks`** — это **ошибка** для PWM. |
-| **`project_ref` / пути в тикете** | Метаданные; path-like поля могут использовать **`$PROJECT_ROOT`** (разворачивается MCP при переданном `project_id`). |
-| **Ручной обход CQDS** | Не лезть в каталог установки Colloquium (`P:/opt/docker/cqds/tasks`) «за очередью PWM» — VS Code worker и оркестратор работают через **`project_id`**, не через файловый обход чужого дерева. |
+1. **`cq_project_ctl#select_project`** с `project_id` PWM (**5** для этого репо) — сервер кэширует active project; дальнейшие `share_ticket` резолвят `tasks/` без `ticket_path`.
+2. **`bridge_status`** — очередь, stale, свободные воркеры.
+3. Тикет **`tasks/<id>.json`**: `status` `in_progress`, полный `brief` + `acceptance_criteria`; префикс id = **дата создания** (локальная, см. `tasks/README.md`); опционально **`deadline`** (см. ниже).
+4. **`share_ticket`**: `project_id` **5** (после `select_project`) + `ticket_id`; при ошибке `ticket not found` — повтор с явным **`ticket_path`** до файла в `tasks/` (параметр MCP, не `invite_note`). **`target_agent_name`**: **`pwm-coding`** / **`pwm-testing`** (имена companion на мосте, **без** суффикса `-worker`). **`invite_note`**: 1–2 предложения — **без** путей к файлам; JSON тикета мост передаёт воркеру. После share файл уходит в bridge queue (не дублировать coding в Cursor). **`depends_on`**: каждый id должен лежать в **`.cqds/team-tasks/done/`** — иначе воркер видит `blocked_by_dependencies`.
 
-**Layout под `<project_root>/tasks/`** (создаётся bridge): `queue/`, `in_progress/`, `done/`, `failed/`, `workers/`, `events/bridge-events.jsonl`. Оркестраторские **`tasks/<id>.json`** и bridge-файлы — **в одном project-local корне**; предпочтительно **`share_ticket`** на уже существующий orchestrator JSON.
-
-**Порядок оркестратора**
-
-1. Создай/обнови **`tasks/<slice-id>.json`** (`in_progress`, `brief`, критерии).
-1.1. Проверка даты id (анти-ошибка): префикс `YYYYMMDD` в `id` должен быть датой **создания** тикета, не будущей датой плана. Перед `share_ticket` запускать:
-   - `python scripts/_orchestrator_ticket_id_guard.py <ticket_id>`
-   - при осознанном исключении только с `PWM_ALLOW_FUTURE_TICKET_DATE=1` и заметкой в `notes`.
-2. **`bridge_status`** с **`project_id: 5`** (без `tasks_root`).
-3. Поставь задачу воркеру:
-   - предпочтительно **`share_ticket`**: `project_id: 5`, `ticket_id` или `ticket_path` (можно `$PROJECT_ROOT/tasks/<slice-id>.json`);
-   - или **`create_ticket`**: `project_id: 5`, `title`/`brief`/routing (`worker_lane`, `target_agent_name`, …); после ручного JSON — всё равно **`share_ticket`**, если воркер не видит файл в `queue/`.
-4. Handoff в VS Code: **`project_id: 5`**, `worker_lane`, `agent_name` — **без** `tasks_root`. Воркер: **`.github/agents/pwm-coding-worker.agent.md`** (только мост); **норматив coding** — **`docs/AGENT_PROMPT_coding.md`** (обязательная загрузка воркером до `wait_ticket`).
-5. Статус: **`bridge_status`** / **`submit` lifecycle** с тем же **`project_id: 5`**; артефакты смотреть в **`tasks/done/`**, **`tasks/events/bridge-events.jsonl`** репозитория PWM. Worker-loop ведёт VS Code (`wait_ticket` → `ack` → `submit` → `unregister_worker`).
-
-**Пример (batch допустим):**
+**`deadline` в тикете (опционально, для release/soak gates):**
 
 ```json
-{
-  "requests": [
-    { "action": "bridge_status", "args": { "project_id": 5 } },
-    {
-      "action": "share_ticket",
-      "args": {
-        "project_id": 5,
-        "ticket_id": "20260522-codebase-index-team-bridge-test"
-      }
-    }
-  ]
+"deadline": {
+  "at": "2026-06-20T12:00:00Z",
+  "timezone": "UTC",
+  "hard": true,
+  "note": "release gate"
 }
 ```
 
-**Запреты**
+**Дефолты CQDS:** routing (`tasks_root`, worktree) — из метаданных проекта после `select_project`. Не дублировать в handoff чата routing-args.
 
-- Не вызывать bridge **без `project_id`** для PWM-делегирования.
-- Не подставлять **`tasks_root`** «для надёжности» — это legacy/override и источник рассинхрона с воркером.
-- Не читать/чинить **`P:/opt/docker/cqds/tasks`** как очередь PWM.
-- В `artifacts.bridge_ticket` фиксировать путь **под project-local `tasks/`** (ответ MCP содержит resolved `tasks_root`).
+**Порядок после share:**
 
-Канон моста: **`.github/agents/pwm-coding-worker.agent.md`**. Норматив реализации для воркера: **`docs/AGENT_PROMPT_coding.md`** (наследование, не дублирование). Исторический инцидент (вызов без `project_id`): **`issues-report.md`**.
+- **Стоп coding в Cursor** — владелец пробуждает VS Code worker.
+- После **`submit`**: **`pwm-review`** → **`pwm-testing`** в Cursor (или worktree по bridge).
+
+**Исключение (только с явной просьбой владельца):** если `share_ticket` failed — **не** подменять bridge Cursor **`pwm-coding`** молча; зафиксировать ошибку в тикете и спросить/эскалировать. В `delegations[]` помечать `via: cursor-task-not-bridge` если слайс всё же закрыт в Cursor.
+
+**Запреты:** не обходить bridge файловым лазанием в CQDS; не класть пути тикетов в `invite_note`; не тащить примеры payload из `cq_help` в промпты.
+
+Канон моста: **`.github/agents/pwm-coding-worker.agent.md`**.
+
+## Worktrees и cleanup после merge (обязательно с MVP v6)
+
+Норматив процесса: **`docs/plans/mvp_v6.md`**; дневник: **`docs/ORCHESTRATOR-NOTES.md`**. Не «стандарт Cursor» — **git worktree** под управлением bridge: конвейер в копии слайса, merge и метаданные в **main**.
+
+Worktree создаёт/снимает **bridge по дефолтам проекта** (каталог под **`.cqds/worktrees/`**, в `.gitignore`). Пути и action-names **не** прописывать в handoff — достаточно `ticket_id` и ветки слайса; детали — **`cq_help`** по запросу. Не использовать sibling-каталоги вне репо (ошибка V6-2/V6-3).
+
+**Режим `worktree_bridge`:** coding → review → testing **в worktree**; оркестратор в **main** — merge, метаданные, **сразу cleanup** (клоны на диске не хранить).
+
+После merge и `done`: проверить `--merged` → снять worktree и ветку `v6/*` → `git worktree list` только main → строка в **ORCHESTRATOR-NOTES**. Параллельные слайсы — отдельные worktree; cleanup по одному после merge.
 
 ## CQDS / MCP
 
-- **CQDS `project_id: 5`** — grep/индекс (**`cq_files_ctl`**) **и** team bridge (**`cq_team_bridge_ctl`**) для PWM; один id, разные инструменты.
-- For **how to call** CQDS tools (`cq_project_ctl`, `cq_files_ctl`, …), use MCP **`cq_help`** — do **not** mine `mcp-tools/` source as the primary reference.
+- Контекст PWM в CQDS — из **метаданных проекта**; в вызовах передавать **минимум** полей (смысл задачи), остальное — дефолты MCP.
+- Синтаксис и обязательные поля — только **`cq_help`** на конкретный `tool#action`; **не** дублировать контракты в промптах, handoff и правилах.
+- Do **not** mine `mcp-tools/` or tool descriptors as the primary reference.
 - MCP server id in Cursor may be prefixed with **`user-`** (e.g. `user-cqds_mcp_mini`); use the **actual** name from the user’s MCP config.
 - **Escalate** CQDS/MCP/Colloquium failures to the **user** (misconfigured global `mcp.json`, missing server, auth, timeouts).
 - In every subagent handoff, explicitly require use of the **skill** `colloquium-cqds-mcp` before CQDS calls.
@@ -138,16 +130,40 @@ Each delegation record must include token/cost telemetry:
 ## Task tickets (`tasks/*.json`)
 
 - For **each** user-facing slice of work, create or update a JSON file under **`tasks/`** (see **`tasks/README.md`** and **`tasks/_template.task.json`**).
-- При делегировании во **VS Code worker** через bridge: все вызовы **`cq_team_bridge_ctl`** с **`project_id: 5`**; в `artifacts` фиксируй resolved путь bridge-файла под **`tasks/`** репозитория (например `tasks/queue/<ticket_id>.json` или `tasks/done/<id>.json`).
+- При bridge-делегировании в `artifacts` фиксируй resolved путь bridge-файла (из ответа MCP), не копируя routing-args в тикет.
 - **When:** at task start (status `in_progress`, fill `brief` and planned `delegations`); after each **git commit** append the hash to `commits[]`; when review is saved, set `artifacts.review_md`; on completion set `status` to `done`.
 - **Token telemetry:** after each subagent return, append/update its `delegations[]` item with approximate or exact token usage. If a subagent cannot provide exact usage, require a rough estimate and mark `tokens.source="estimate"`.
 - Purpose: `git` history on **`tasks/`** gives auditable **inputs ↔ outcomes** without rereading long chats.
 
 ## Git (orchestrator-owned)
 
+Каноника двух деревьев: **`docs/COMMIT_PROTOCOL.md`**. Инструмент MCP: **`git_safe_commit`** (`user-gitbash`). Статус: **`git_repo_status`**. **Не** вызывать ручной `git add`/`git commit` в обход MCP.
+
+### Локальные коммиты (слайсы, рантайм) — по умолчанию
+
+После согласованного слайса (coding/review/testing или chore по тикетам) оркестратор **сразу** коммитит в **рантайм** `P:\opt\docker\PWM-cryptocurrency\`:
+
+| Параметр | Значение |
+|----------|----------|
+| `mode` | **`commit`** |
+| `repo_path` | рантайм (деплой-дерево) |
+| `public_repo` | **`false`** (по умолчанию; не указывать `true`) |
+| `commit_files` | узкий список файлов слайса (предпочтительно) |
+| `confirm` | `I_UNDERSTAND_AND_APPROVE` |
+
+**Не** вызывать `dry_run` / `apply` для обычного локального коммита слайса — это **не** публикация в зеркало.
+
 - Make **small, focused commits** after a coherent change (often right after **`pwm-coding`** returns and you verified `cargo check` / quick sanity). Message in **clear Russian or English**, one idea per commit.
 - Optionally: one commit for `tasks/*.json` updates alone if it improves readability of `git log`.
+- After merge worktree-слайса в **main** — обязательный cleanup: **`git worktree remove`** + **`git branch -d`** (см. **§ Worktrees и cleanup после merge**). Клоны на диске не хранить.
 - Do not push unless the user asked; no secrets in commits.
+- Append hash to `commits[]` in `tasks/<id>.json` after each commit.
+
+### Публикация в публичное зеркало — только full version closeout
+
+Перенос рантайм → `P:\GitHub\PWM-cryptocurrency\` (**`dry_run` → `apply` → `commit`** с `public_repo=true` на зеркале) — **только** после **pre-publication umbrella** версии MVP (для V6: `tasks/20260603-v6-prepublication-umbrella.json`): owner stability soak (напр. ≥50k блоков), rust code audit, финальная актуализация docs/manuals, **затем** owner sign-off. Спринтовый closeout (V6-11) **не** равен публикации. **Не** после каждого слайса и **не** после отдельной волны soak.
+
+См. **`docs/MVP_PUBLICATION.md`**. Между слайсами достаточно локальных коммитов в рантайме.
 
 ## CHANGELOG.md (orchestrator-owned)
 
@@ -171,7 +187,7 @@ Each delegation record must include token/cost telemetry:
    If any answer triggers concern, note it in the plan as a **simplicity risk** and propose the minimal-entity alternative before delegating.
 2. **Ticket** — Create/update `tasks/<id>.json` for the current slice.
 3. **Handoff** — Subagent prompt includes: goal, scope (crates/files), acceptance criteria, checklist/spec citations, decisions already made. Subagents have **no** prior chat history.
-   - Reuse recurring context in every handoff when relevant (e.g., **`project_id: 5`** for CQDS grep/index **and** team bridge, `user-cqds_mcp_mini`, host-mode Windows `cwd` for `cq_process_ctl`) so subagents don't rediscover basics each run.
+   - Reuse recurring context in handoff when relevant (skill **`colloquium-cqds-mcp`**, Windows `cwd`/`CARGO_TARGET_DIR` per testing prompt) — **без** перечисления MCP routing-параметров; субагенты сами берут дефолты через **`cq_help`**.
    - Require the subagent to include a final `Participation / token estimate` section: role, artifacts changed/created, commands run, approximate input/output/total tokens (or exact usage source if available), and confidence.
 
    **Simplicity gate for `pwm-coding` handoffs (mandatory):**  
@@ -193,6 +209,7 @@ Each delegation record must include token/cost telemetry:
    - **Background only when justified:** use `run_in_background: true` for **truly parallel** work (e.g. two disjoint subagents at once). When several legs start together, putting their **first** runs **in the background** is reasonable so work overlaps; you still **must** await every leg before any step that merges or gates on all outcomes. Do **not** use background on a **linear** conveyor — that stalls the chain. Optional overlap only when the **owner** explicitly asks for exploratory parallelism mid-slice.
    - **Rule of thumb:** linear slice conveyor = **all sync**; parallel batch = **background for parallel legs only** (optional for first parallel kicks), then **sync** for merge/review that depends on all results.
 5. **Synthesis** — Keep **your** replies short: integrate subagent summaries (verdict, risks, open items). Do not paste full `cargo test` unless requested. Include the **mini-report** (see above) so the user can tune subagents. When the slice has **passed acceptance tests and operator control**, append **`CHANGELOG.md`** as in **§ CHANGELOG.md (orchestrator-owned)** (same commit batch as the closing ticket update when practical).
+   - **Worktree-слайс:** после merge в **main** и закрытия тикета — в той же сессии выполни **§ Worktrees и cleanup после merge** (удалить клон и ветку, обновить **ORCHESTRATOR-NOTES**).
    - **`pwm-review` git-handoff:** `docs/AGENT_PROMPT_review.md` requires a final fenced **`powershell`** block whose first line is **`# git-handoff`**, with concrete **`git add`** / **`git commit`** lines. Unless the subagent already committed, **substitute `REPO_ROOT` and run** that snippet via shell, then align checklist/plan/ticket traceability as usual (extend **`git add`** if your batch touches checklist/plan too).
 6. **You still own** — Product tradeoffs, conflict resolution between agents, and checklist **narrative**; specialists may flip checklist rows they satisfied.
 7. **Recurring handoff optimization** — Track repetitive context and promote it to prompts/rules (instead of repeating in every chat turn) when it appears across multiple delegations.
@@ -217,4 +234,4 @@ This keeps the conveyor moving: nits are **work items**, not optional discussion
 ## Anchors
 
 - `CHANGELOG.md` (release log after accepted gates), `docs/AGENT_PROMPTS.md`, `docs/MVP-checklist.md`, `docs/WHITE_SPEC_v0.md`, `docs/AGENT_PROMPT_debug.md` (debug subagent canon), `.github/agents/pwm-coding-worker.agent.md` (VS Code bridge worker), `tasks/README.md` (в т.ч. **индекс CQDS** после коммита)
-- Active plan header anchors: `docs/plans/mvp_v1_testnet_multi-sprint.md` (testnet roadmap; keep sprint status in sync); `docs/plans/mvp_v2.md` (экономика: PWM + единый `marks`, эмиссия с порогами стейка, burn-клиенты). Приоритет спринта задаёт владелец.
+- Active plan header anchors: `docs/plans/mvp_v1_testnet_multi-sprint.md` (testnet roadmap; keep sprint status in sync); `docs/plans/mvp_v2.md` (экономика: PWM + единый `marks`, эмиссия с порогами стейка, burn-клиенты); `docs/plans/mvp_v6.md` (worktree-first делегирование, cleanup после merge); `docs/ORCHESTRATOR-NOTES.md` (дневник слайсов). Приоритет спринта задаёт владелец.

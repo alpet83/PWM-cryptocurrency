@@ -110,6 +110,17 @@ Invoke-RestMethod -Method Post http://127.0.0.1:3030/v1/lab/seal/step `
 
 Healthy soak guidance: `head_delta` should grow; `suppressions/head_delta` is more useful than raw `sealed height=` line count because `sealed height` is sparse. Startup-only `detail=missing_round_state` is acceptable; repeated `reason=quorum_timeout`, `binding_mismatch`, or `cluster attest dropped` needs inspection. Pre-timeout `detail=attestations_missing` is DEBUG-only in normal console output; watch the periodic `cluster_gate_pending_summary` while head advances and timeout stays near zero.
 
+## Cluster Prep Visibility
+
+After CY restart and before sealed height advances, use these operator signals:
+
+- `pwm status --rpc http://127.0.0.1:3030` prints `cluster_prep phase=... ready_for_seal=... sync_n=... live_n=... blocks_behind_max=...`.
+- `GET /v1/status` includes `cluster_prep.phase`, `ready_for_seal`, `sync_n`, `live_n`, `peer_tip_max`, `local_tip`, `blocks_behind_max`, `waiting_since_ms`, and `blocked_reason`.
+- Proposer logs `cluster_prep_summary ... waiting_sec=...` at least every 30s while waiting for attester quorum.
+- Attester catch-up logs `sync_catchup_progress ... blocks_behind=... percent_complete=...` about every 10s while lag remains positive.
+- During CY restart with snapshot trust-load, proposer may stay in `cluster_prep phase=loading_snapshot blocked_reason=loading_snapshot` for 1-3+ minutes before first seal; this is expected while `loading_sec` grows and `local_tip` stabilizes.
+- In this startup phase, periodic proposer INFO now includes `cluster_prep_summary phase=loading_snapshot ... loading_sec=... blocked_reason=loading_snapshot ...` and `seal_suppression_summary ... blocked_reason=loading_snapshot` when `sealed_in_window=0`.
+
 ## Что смотреть визуально (soak 2–6+ часов)
 
 | Область | Действие | Ожидание V5 |
@@ -151,4 +162,4 @@ TUI marks operator path: see `docs/runbooks/v5-tui-marks-operator-path.md`.
 2. `20260531-v5-cy-e2e-s2-marks-saturation-soak-rerun` — marks soak PASS (PARTIAL: 2 staked) — `tmp/cy-e2e-s2-20260530_082418.md`  
 3. `20260529-v5-cy-e2e-s3` — mass burn batches PASS — `tmp/cy-e2e-s3-20260530_141317.md`  
 4. Doc alignment: [20260530-v5-precloseout-cy-e2e-docs-version-review.md](../reviews/20260530-v5-precloseout-cy-e2e-docs-version-review.md) PASS_WITH_NITS (ниты закрыты).  
-5. Sprint-final closeout: [20260530-v5-sprint-final-closeout-review.md](../reviews/20260530-v5-sprint-final-closeout-review.md) PASS — owner sign-off pending.
+5. Sprint-final closeout: [20260530-v5-sprint-final-closeout-review.md](../reviews/20260530-v5-sprint-final-closeout-review.md) PASS — owner sign-off complete (2026-06-02).

@@ -6,17 +6,33 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ![pwm-tui operator UI (demo)](tui-demo-screenshot.png)
 
-## Current status (MVP v5 — release sign-off complete)
+## Current status (MVP v6 — owner sign-off complete)
 
-- **MVP v4 policy runtime remains the closed baseline** (Sprints V4-1..V4-6, 2026-05-17): dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`) metadata, rescue/emergency routing with finalized account behavior, and cosign envelope hooks.
-- **Published milestone: MVP v5** (tokenomics hardening + operator polish): sprint gates **V5-1…V5-9 PASS** (CY E2E closeout 2026-05-30); pre-publish polish **PASS** (2026-06-02); **owner sign-off complete** (2026-06-02). This repository reflects an **implementation-complete devnet** — PoA lab topology, not a production mainnet product launch.
+**Published milestone: MVP v6** (incremental PoS + address security runtime): sprint gates **V6-1…V6-11 PASS**; pre-publication soak PASS; rust audit artifact done; **owner sign-off approved** (2026-06-17). Public mirror publication batch prepared — see [releases/v6.0.0.md](docs/releases/v6.0.0.md). PoA lab topology — not a production mainnet product launch.
+
+**Prior published milestone: MVP v5** (tokenomics hardening, 2026-06-02).
+
+### MVP v6 highlights (devnet lab)
+
+- **Stake-gated validator admission** on epoch boundaries (`min_validator_stake`).
+- **RFC16 multi-proposer rotation** + failover ≤ 1 block.
+- **Mode B cross-shard escrow** (EXPORT lock, timeout refund, IMPORT release).
+- **Address flags runtime:** `COSIGN_NON_DISABLEABLE`, `CONSERVATION` delayed outgoing transfers.
+- **Emergency routing:** `ActivatePolicy` with `activation_target`, fee-free activation, balance evacuation to rescue ([ADR 0011](docs/adr/0011-policy-activation-target.md)); stake evacuation planned for V7 ([ADR 0012](docs/adr/0012-emergency-stake-evacuation.md)).
+- **Snapshot schema v4**, trust-load fastpath, CY cluster soak runbooks under `docs/runbooks/v6-*.md`.
+
+### MVP v5 baseline (still current for many operators)
+
+- **MVP v4 policy runtime** (Sprints V4-1..V4-6, 2026-05-17): dedicated `PolicyTx`, pure `evaluate_policy`, hybrid `INIT` (`init_v4`), rescue/emergency routing, cosign envelope hooks.
+- **V5-1…V5-9 PASS**; pre-publish polish PASS (2026-06-02). PoA lab topology — not a production mainnet product launch.
 - **Clean public devnet quickstart exists**: from a clean clone, a deterministic demo genesis path is documented and verified (premine target `21,000,000,000 PWM` = `21_000_000_000_000_000 raw`).
 - **Public `/v1` API baseline** in `docs/api-v1.md` covers V4 policy runtime (`PolicyTx`, structured `E_POLICY_*` rejects) and V5 additive account fields (`marks_last_block`, lazy marks semantics).
 - **Epoch Snapshot schema v3 + genesis anchor light (ADR 0008)** in the pwmd snapshot stack — trust baseline for state reload/replay with light genesis binding.
 - **ADR package is published** in `docs/adr/` for foundation architecture boundaries.
 - **Runtime log-control RPC is operator/debug-only** and explicitly outside the stable public API contract.
+- **Windows operator binaries (`pwmd`, `pwm`, `pwm-tui`) embed PWM MVP v6 version metadata and shared icon** for Explorer visibility.
 
-**What works today (V5 closeout + V4 policy baseline):**
+**What works today (V6 closeout on V5+V4 baseline):**
 
 - **Integrated public-devnet smoke is covered for read API endpoints:** `GET /v1/status`, `GET /v1/head`, `GET /v1/accounts`, `GET /v1/account/:id`.
 - **`POST /v1/tx` carries V4 policy flow** (`PolicyTx` included) with structured rejects per RFC 14 additive policy codes (`E_POLICY_*`).
@@ -99,7 +115,11 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 
 - README (Russian): [README-ru.md](README-ru.md)
 - Concept progress / whitepaper coverage map (published): `docs/CONCEPT_PROGRESS.md`
-- MVP v5 tokenomics hardening plan (active milestone): `docs/plans/mvp_v5.md`
+- MVP v6 release notes: `docs/releases/v6.0.0.md`
+- MVP v6 consensus + address security plan: `docs/plans/mvp_v6.md`
+- V6 owner stability soak runbook: `docs/runbooks/v6-owner-stability-soak-50k.md`
+- V6 CY pre-closeout soak: `docs/runbooks/v6-cy-cluster-precloseout-soak.md`
+- MVP v5 tokenomics hardening plan (published milestone): `docs/plans/mvp_v5.md`
 - Post-MVP anti-abuse target model (EN, for international readers): [docs/Post_MVP_target_model(anti-abuse)-en.md](docs/Post_MVP_target_model(anti-abuse)-en.md) — canonical Russian: [docs/Post_MVP_target_model(anti-abuse).md](docs/Post_MVP_target_model(anti-abuse).md)
 - V5 TUI marks operator path: `docs/runbooks/v5-tui-marks-operator-path.md`
 - V5 devnet operator smoke: `docs/runbooks/devnet-v5-operator-smoke.md`

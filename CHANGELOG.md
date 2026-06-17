@@ -4,6 +4,208 @@ Notable behavior and documentation changes. Section timestamps are **UTC**, deri
 
 ---
 
+## 20260617T17:00Z — MVP v6 owner sign-off + publication batch (`v6.0.0`)
+
+### Added
+
+- **Release notes:** [docs/releases/v6.0.0.md](docs/releases/v6.0.0.md).
+- **Owner sign-off:** MVP v6 approved for public mirror (2026-06-17).
+
+### Changed
+
+- **README / README-ru:** current milestone MVP v6 sign-off complete; publication batch prepared.
+- **MVP-checklist §0v6:** sign-off `[x]`; mirror publication `[ ]` pending `git_safe_commit`.
+- **commit_prepare.toml:** allow `crates/*/build.rs` and `build/windows_resource.rs` in mirror sync (removed global `build.rs` exclude).
+
+### Publication (next step)
+
+- `git_safe_commit` dry_run → apply (runtime) → commit (`P:\GitHub\PWM-cryptocurrency`, `public_repo=true`).
+
+---
+
+### Added
+
+- **ADR 0012:** emergency `ActivatePolicy` SHALL evacuate `staked_pwm_raw` to `activation_target` in V7 (extends ADR 0011 balance-only V6).
+- **Tickets:** `tasks/20260617-v7-emergency-stake-evacuation-spec.json` (done), `tasks/20260617-v7-emergency-stake-evacuation-impl.json` (backlog, V7-3).
+
+### Changed
+
+- **Runbooks:** `docs/plans/runbooks/v6-*.md` → `docs/runbooks/` (50k stability soak, CY pre-closeout); inbound links updated.
+- **CONCEPT_ROADMAP:** V7-3 sprint row + readiness criterion; **mvp_v6.md** defers stake evac to ADR 0012.
+- **Runbook §шаг 8:** V6 vs V7 oracle for staked funds on victim/rescue.
+
+### Pre-publication
+
+- **Owner 50k stability soak:** PASS (2026-06-17), umbrella phase `v6-prepub-stability-50k`; within MVP V6 (stake on victim documented; ADR 0012 for V7).
+
+---
+
+## 20260615T18:00Z — MVP v6 V6-11 sprint-final closeout (`tasks/20260615-v6-sprint11-closeout.json`)
+
+### Added
+
+- **MVP-checklist §0v6:** traceability V6-1…V6-11.
+- **CONCEPT_ROADMAP:** V6 readiness criteria [x]; implementation-complete (owner sign-off pending).
+- **GLOSSARY:** §MVP V6 + sprint-final closeout additions.
+- **Reviews:** `docs/reviews/20260615-v6-sprint-final-closeout-review.md`, `docs/reviews/20260615-v6-sprint11-pwmd-lib-gate-review.md`.
+
+### Fixed
+
+- **pwmd replay/verify:** align with `Chain::seal` (rewards, escrow refund, conservation drain); lib gate 455/0 (`d251fb5`).
+
+### Changed
+
+- **Umbrella V6-10:** `tasks/20260608-v6-cy-e2e-umbrella.json` → done.
+
+### Gate
+
+- `cargo fmt --check` PASS; `pwm-core --lib` 189/0/1 ignored; `pwmd --lib` 455/0.
+
+### Pending
+
+- Pre-publication umbrella (`tasks/20260603-v6-prepublication-umbrella.json`): owner 50k stability soak, rust audit, docs/manuals, then sign-off + mirror.
+
+---
+
+## 20260615T12:00Z — MVP v6 V6-10 CY soak + genesis loader fixes (`tasks/20260608-v6-cy-e2e-umbrella.json`)
+
+### Added
+
+- **CY soak waves PASS:** s1 bootstrap; s2c Mode B refund; s3 conservation execute (retest after loader); s4 emergency sweep. Reports: `tmp/cy-e2e-v6-s2c-20260608_205548.md`, `tmp/cy-e2e-v6-s3-20260608_222308.md`, `tmp/cy-e2e-v6-s4-20260615_170449.md`.
+- **Runbook:** `docs/plans/runbooks/v6-cy-cluster-precloseout-soak.md`.
+
+### Fixed
+
+- **Genesis loader:** `conservation_delay_blocks` and `cross_shard_lock_timeout_blocks` from JSON no longer ignored (`eaa288e`).
+
+### Changed
+
+- **Clippy gate:** workspace `[lints.clippy]` + `clippy.toml`; pre-submit `cargo clippy` in `docs/AGENT_PROMPT_coding.md` (`f4475b2`).
+
+### Deferred
+
+- Mode B IMPORT happy-path on live target peer — separate scenario (s2 legacy superseded).
+- Full multi-hour CY soak — wave-by-wave with lab genesis; optional before public testnet (V7).
+
+---
+
+## 20260608T00:00Z — MVP v6 V6-9 slashing + peer score closeout (`tasks/20260608-v6-sprint9-slashing-peers-coding.json`)
+
+### Added
+
+- **ADR 0010 apply:** `append_evidence`, deterministic `record_id`, duplicate reject; no seizure (`7086434`).
+- **v6-rfc15:** `PeerSyncScoreCache` in pwmd, score-biased peer selection, `peer_score_*` tests.
+- **Review:** `docs/reviews/v6-sprint9-slashing-peers-coding-review-20260608.md`.
+
+### Deferred
+
+- Bridge commitment mismatch score penalty; seal `UnavailableProposer` hook wire-up; RPC `/v1/peers/scores`.
+
+---
+
+## 20260607T23:00Z — MVP v6 V6-8 conservation delay closeout (`tasks/20260607-v6-sprint8-conservation-coding.json`)
+
+### Added
+
+- **ADR 0009 bit 1 apply:** `conservation_flag()`, pending queue enqueue, `drain_conservation_at_height` on `Chain::seal`, emergency cancels pending (`b9e0e1c`).
+- **Tests:** `conservation_*` + `conservation_seal_drains`.
+- **Review:** `docs/reviews/v6-sprint8-conservation-coding-review-20260607.md`.
+
+### Deferred
+
+- Silent failed-drain observability (review nit); `ConservationDelayRequired` unused under pending-only profile.
+
+---
+
+## 20260607T22:00Z — MVP v6 V6-7 emergency sweep closeout (`tasks/20260607-v6-sprint7-emergency-sweep-coding.json`)
+
+### Added
+
+- **ADR 0011 apply:** fee=0 `ActivatePolicy`, `activation_target == rescue`, same-shard spendable evacuation; `E_POLICY_ACTIVATION_*` rejects (`85241e9`).
+- **pwm-cli:** prepared activation via `--save-activation-tx` / `--activation-tx`; emergency_activation_* tests.
+- **Review:** `docs/reviews/v6-sprint7-emergency-sweep-coding-review-20260607.md`.
+
+### Deferred
+
+- RFC10 wallet `prepared_policy_activation` persist; CONSERVATION + evac interaction — V6-8.
+
+---
+
+## 20260607T20:00Z — MVP v6 V6-6 COSIGN_NON_DISABLEABLE closeout (`tasks/20260607-v6-sprint6-cosign-flags-coding.json`)
+
+### Added
+
+- **ADR 0009 bit 0:** decode from `AccountId`; baseline cosign for protected actions; `E_POLICY_FLAG_NON_DISABLEABLE` on weaken cosign PolicyTx; emergency rescue exception (`b3750cf`).
+- **Tests:** `policy_flag_*` (5 tests); bridge testing PASS.
+
+### Deferred
+
+- Review nits: Deferred SetPolicy weaken test, precheck parity; Export cosign gate — V6-7 follow-up.
+
+---
+
+## 20260607T18:00Z — MVP v6 V6-5 Mode B escrow closeout (`tasks/20260607-v6-sprint5-mode-b-escrow-coding.json`)
+
+### Added
+
+- **Mode B escrow (pwm-core):** EXPORT atomic `CrossShardLock` + spendable debit; seal-tick refund at `unlock_height`; happy IMPORT → `Released`; late IMPORT → `E_EXPORT_LOCK_REFUNDED` (`937bb83`).
+- **Tests:** `escrow_*` lib tests + `scripts/mode_b_escrow_smoke.cmd`.
+- **Review:** `docs/reviews/20260607-v6-sprint5-mode-b-escrow-review.md` (PASS_WITH_NITS).
+
+### Changed
+
+- **Harness:** smoke launcher path fix (`7601287`).
+
+### Deferred
+
+- **pwmd preflight** reject code after refund; **cross-shard federation** source lock release — V6-10 / follow-up.
+
+---
+
+## 20260607T12:00Z — MVP v6 V6-4b leader failover closeout (`tasks/20260606-v6-sprint4b-leader-failover-coding.json`)
+
+### Added
+
+- **Primary-miss failover:** `pwmd` seal loop waits profile tick, bounded `skip_missed_h`, failover seal at `height+1` per RFC16 §3 (`6d802b0`).
+- **Harness:** `miss_skip_failover_seals` lib test; bridge testing PASS (`test_project.cmd` + miss_skip gate).
+- **Build tooling:** MSYS2/UCRT wrappers (`build_project.cmd`, `test_project.cmd`, `scripts/*.sh`, `.build.env`).
+
+### Changed
+
+- **V6-4 umbrella:** closed fully — rotation (`fad86d8`) + failover; review `docs/reviews/20260607-v6-4b-leader-failover-review.md`.
+
+### Deferred
+
+- **Quorum-timeout miss trigger** (RFC16 §3 second path); **sync/snapshot height gap** on skip — `issues-report.md`.
+
+---
+
+## 20260605T16:00Z — MVP v6 V6-4 leader rotation partial (`tasks/20260603-v6-sprint4-leader-rotation-coding.json`)
+
+### Added
+
+- **Proposer rotation:** `height % active_len` over stake-gated active set (`pick_prod_idx`, shared epoch helpers).
+- **Trust snapshot:** epoch-aware `prod_idx` validation (`trust_tail_prod_idx`).
+- **Cluster gate:** propose only when local node matches scheduled leader; `build_project.cmd` / `test_project.cmd`.
+
+### Deferred
+
+- **V6-4b:** RFC16 §3 primary miss detection and failover seal at `height+1` (runtime + harness).
+
+---
+
+## 2026-06-03T12:00Z — MVP v6 V6-3 stake admission closeout (`tasks/20260605-v6-sprint3-stake-admission-coding.json`)
+
+### Added
+
+- **Stake-gated validator admission:** active `ValidatorSet` пересчитывается на epoch boundary по `min_validator_stake` (merge `2b1c7d5`).
+
+### Changed
+
+- **Orchestrator prompts:** worktree cleanup после merge; дефолты CQDS без дублирования MCP-контрактов в handoff; путь worktree — `.cqds/worktrees/` (не sibling-каталог).
+
+---
+
 ## 2026-05-30T14:00Z — MVP v5 sprint-final closeout (`tasks/done/20260530-v5-sprint-final-closeout.json`)
 
 ### Added

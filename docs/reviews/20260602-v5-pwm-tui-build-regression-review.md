@@ -183,7 +183,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260602-v5-pwm-tui-build-regression-review.md'
 git add 'tasks/20260602-v5-pwm-tui-build-regression-coding.json'
 git commit -m 'docs(v5-tui): build regression review PASS_WITH_NITS + task update'

@@ -37,7 +37,7 @@ Slice28 coding is accepted for the requested automated checks. `pwm-tui` tests p
 
 ## Notes
 
-- CQDS process tooling could not be used from this subagent interface, so checks were run through the local shell in `P:\opt\docker\PWM-cryptocurrency`.
+- CQDS process tooling could not be used from this subagent interface, so checks were run through the local shell in `P:\opt\docker\pwm-protocol`.
 - `cargo run -q -p pwm-tui -- --help` failed once while trying to replace `target\debug\pwm-tui.exe` with `os error 5`; the existing binary help command passed immediately afterward.
 - No `docs/MVP-checklist.md` rows were changed.
 - Cleanup: yes; no `pwmd` or `pwm-tui` processes were left running.

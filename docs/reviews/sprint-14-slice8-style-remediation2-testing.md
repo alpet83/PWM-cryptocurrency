@@ -1,6 +1,6 @@
 # Sprint 14 — Slice 8 style remediation 2 testing
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 
 ## Verdict
 

@@ -220,7 +220,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260508-shard-sync-architecture-and-sprint.md'
 git add 'tasks/20260508-shard-sync-sprint-design.json'
 git commit -m 'docs: shard-sync architecture review and sprint design ticket'

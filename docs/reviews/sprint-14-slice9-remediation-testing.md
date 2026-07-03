@@ -1,7 +1,7 @@
 # Sprint 14 Slice 9 Remediation Testing
 
 Date: 2026-04-28
-Repository: `P:/opt/docker/PWM-cryptocurrency`
+Repository: `P:/opt/docker/pwm-protocol`
 
 ## Scope
 

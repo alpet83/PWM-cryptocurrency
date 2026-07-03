@@ -1,7 +1,7 @@
 # Sprint 15 / S3 testing: genesis/hash guardrails
 
 Дата: 2026-04-29
-Репозиторий: `P:/opt/docker/PWM-cryptocurrency`
+Репозиторий: `P:/opt/docker/pwm-protocol`
 
 ## Scope и проверка
 

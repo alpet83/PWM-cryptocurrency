@@ -1,7 +1,7 @@
 # Sprint 14 Slice 19 — remediation testing report
 
 Date: 2026-04-29  
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 
 ## Verdict
 

@@ -34,7 +34,7 @@ Full logs were not archived; reruns use the commands above.
 
 ## CQDS / MCP
 
-- Consulted MCP **`cq_help`** for `cq_process_ctl` prior to execution planning; tests were run locally via `cargo` from repo root (`P:\opt\docker\PWM-cryptocurrency`) after successful preflight.
+- Consulted MCP **`cq_help`** for `cq_process_ctl` prior to execution planning; tests were run locally via `cargo` from repo root (`P:\opt\docker\pwm-protocol`) after successful preflight.
 
 ---
 

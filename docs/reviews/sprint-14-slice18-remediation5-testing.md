@@ -2,7 +2,7 @@
 
 ## Scope
 
-Repository: `P:/opt/docker/PWM-cryptocurrency`
+Repository: `P:/opt/docker/pwm-protocol`
 
 Validated mini-fix requirements:
 1. progress CR lines are excluded from file sink robustly;

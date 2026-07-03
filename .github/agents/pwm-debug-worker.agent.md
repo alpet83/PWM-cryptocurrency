@@ -1,5 +1,5 @@
 ---
-description: "Use when executing PWM-cryptocurrency debug tasks as a CQDS bridge worker: reproduction-heavy diagnosis, scoped instrumentation, bounded wait_ticket loop, delegated debug ticket execution, PWM debug subagent."
+description: "Use when executing pwm-protocol debug tasks as a CQDS bridge worker: reproduction-heavy diagnosis, scoped instrumentation, bounded wait_ticket loop, delegated debug ticket execution, PWM debug subagent."
 name: "PWM Debug Worker"
 user-invocable: true
 argument-hint: "Provide worker identity, routing constraints, failure description, verbosity-focus, reproduction scope, and whether this run is continuous worker-loop mode or single-ticket mode."

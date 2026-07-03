@@ -1,12 +1,12 @@
 # Sprint 14 Slice 3 Testing Evidence
 
 Date: 2026-04-28
-Repository: `P:/opt/docker/PWM-cryptocurrency`
+Repository: `P:/opt/docker/pwm-protocol`
 Scope: independent testing for Slice 3 (owner rows in TUI left panel, active owner highlight/index, v2 fallback behavior, no obvious secret leakage in owner rows path).
 
 ## Executed commands
 
-Run via `user-cqds_mcp_mini` `cq_process_ctl` (`host=true`, `cwd=P:\opt\docker\PWM-cryptocurrency`):
+Run via `user-cqds_mcp_mini` `cq_process_ctl` (`host=true`, `cwd=P:\opt\docker\pwm-protocol`):
 
 1. `cargo test -p pwm-tui` (baseline before changes)
 2. `cargo test -p pwm-tui owner_and_receivers`

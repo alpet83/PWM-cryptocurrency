@@ -2,7 +2,7 @@
 
 ## Scope
 
-Repository: `P:/opt/docker/PWM-cryptocurrency`
+Repository: `P:/opt/docker/pwm-protocol`
 
 Validated items:
 1. `LOGGING_STYLE.md` exists and matches requested palette rules.

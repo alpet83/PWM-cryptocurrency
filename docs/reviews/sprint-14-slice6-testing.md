@@ -1,7 +1,7 @@
 # Sprint 14 — Slice 6 testing (independent)
 
 Date: 2026-04-28  
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 
 ## Scope
 

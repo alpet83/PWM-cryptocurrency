@@ -1,6 +1,6 @@
 # Wallet Schema Version Behavior — 2026-04-28
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`  
+Repo: `P:/opt/docker/pwm-protocol`  
 Scope: объяснить, почему новые wallet-файлы сейчас могут быть schema v1/v2, где назначается `schema_version`, как работает `--upgrade-wallet`, и что менять для цели «все новые сохранения по умолчанию в latest schema».
 
 > Историческая заметка: этот review фиксирует состояние до обновления write-path. Актуальный статус: create-paths (`addr-bruteforce`, `wallet init`, `wallet import-seed`) теперь сохраняют wallet сразу в schema v3.

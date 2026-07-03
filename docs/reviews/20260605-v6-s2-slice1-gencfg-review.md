@@ -1,7 +1,7 @@
 # Review: V6-2 slice 1 — GenCfg V6 parameters
 
 **Ticket:** `tasks/20260605-v6-s2-slice1-gencfg.json`  
-**Worktree:** `P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model` (branch `v6/20260605-v6-sprint2-core-model`)  
+**Worktree:** `P:/opt/docker/pwm-protocol-worktrees/v6-sprint2-core-model` (branch `v6/20260605-v6-sprint2-core-model`)  
 **Reviewer:** pwm-review  
 **Date:** 2026-06-05  
 **Specs:** `docs/rfc/addenda/v6-rfc4-validators-stake-admission.md`, `docs/rfc/addenda/v6-rfc9-mode-b-escrow.md`, `docs/adr/0009-address-flags-runtime-enforcement.md`

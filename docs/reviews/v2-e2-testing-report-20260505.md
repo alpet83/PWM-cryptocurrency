@@ -8,7 +8,7 @@
 
 **PASS**
 
-## Commands (host: Windows, repo `P:\opt\docker\PWM-cryptocurrency`)
+## Commands (host: Windows, repo `P:\opt\docker\pwm-protocol`)
 
 | Command | Result | Notes |
 |--------|--------|--------|

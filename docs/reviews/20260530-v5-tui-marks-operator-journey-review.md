@@ -183,7 +183,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260530-v5-tui-marks-operator-journey-review.md'
 git add 'tasks/done/20260530-v5-tui-marks-operator-journey-review.json'
 git commit -m 'docs(v5-tui): review marks operator journey'

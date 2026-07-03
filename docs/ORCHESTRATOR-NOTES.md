@@ -42,7 +42,7 @@
 |------|----------|
 | `slice_id` | `tasks/20260605-v6-sprint2-core-model.json` |
 | `delegation_mode` | `worktree_bridge` (git worktree вручную; bridge `create_worktree_branch` недоступен) |
-| `worktree_root` | `P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model` |
+| `worktree_root` | `P:/opt/docker/pwm-protocol-worktrees/v6-sprint2-core-model` |
 | `branch` | `v6/20260605-v6-sprint2-core-model` |
 | `conveyor_cycles` | slice 1 coding in progress |
 | `agents` | pwm-coding (slice 1) |
@@ -68,7 +68,7 @@
 |------|----------|
 | `slice_id` | `tasks/20260605-v6-sprint3-stake-admission-coding.json` |
 | `delegation_mode` | `worktree_bridge` + **bridge `share_ticket`** |
-| `worktree_root` | `P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint3-stake-admission` |
+| `worktree_root` | `P:/opt/docker/pwm-protocol-worktrees/v6-sprint3-stake-admission` |
 | `agents` | bridge `pwm-coding_32320` → pwm-review → pwm-testing |
 | `conveyor_cycles` | 1 |
 | `efficiency_rating` | A |
@@ -91,7 +91,7 @@
 | `reasoning_waste` | low |
 | `lesson` | Failover на main без worktree ок при одном файле; retest-тикет отдельно от coding bridge ticket; miss_skip вне default test_project.sh — явно в AC. |
 
-**Follow-ups (non-blocking):** quorum-timeout miss; sync height gap (`issues-report.md`).
+**Follow-ups (non-blocking):** quorum-timeout miss; sync height gap (`docs/issues-report.md`).
 
 ---
 

@@ -9,7 +9,7 @@ Root cause category: **logic bug / lifecycle not reaching save path** (не conf
 ## Reproduction on HEAD
 
 Environment:
-- repo: `P:/opt/docker/PWM-cryptocurrency`
+- repo: `P:/opt/docker/pwm-protocol`
 - binary: `pwmd`
 - explicit `--data-file` provided
 
@@ -38,7 +38,7 @@ Observed runtime:
 File check:
 
 ```powershell
-Test-Path P:\opt\docker\PWM-cryptocurrency\tmp\slice19-state\pwm-data.json
+Test-Path P:\opt\docker\pwm-protocol\tmp\slice19-state\pwm-data.json
 ```
 
 Result: `False` (file missing).
@@ -48,8 +48,8 @@ Also reproduced with absolute path:
 ```powershell
 cargo run -p pwmd --bin pwmd -- `
   --listen 127.0.0.1:3041 `
-  --state-root P:\opt\docker\PWM-cryptocurrency\tmp\slice19-abs `
-  --data-file P:\opt\docker\PWM-cryptocurrency\tmp\slice19-abs\pwm-data.json `
+  --state-root P:\opt\docker\pwm-protocol\tmp\slice19-abs `
+  --data-file P:\opt\docker\pwm-protocol\tmp\slice19-abs\pwm-data.json `
   --network-id slice19-net `
   --domain-hi 0x2C `
   --cluster-id slice19-cluster `

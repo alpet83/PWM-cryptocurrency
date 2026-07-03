@@ -1,6 +1,6 @@
 # Sprint 14 — Slice 20 remediation2 (coding)
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 
 Цель: добить оставшиеся блокеры Slice20 (A–E) после FAIL-репорта из `docs/reviews/sprint-14-slice20-testing-remediation.md`, сделав правки в прод-логике (а не “только тесты”), и закрепить регрессы тестами.
 

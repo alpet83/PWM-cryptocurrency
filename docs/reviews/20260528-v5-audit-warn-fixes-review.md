@@ -163,7 +163,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260528-v5-audit-warn-fixes-review.md'
 git add 'tasks/done/20260528-v5-audit-warn-fixes-review.json'
 git commit -m 'docs(v5-audit): review warn fix closure'

@@ -2,7 +2,7 @@
 
 **Роль:** pwm-review (read-only анализ исходников).  
 **Дата:** 2026-04-27  
-**Метод поиска:** локальный `rg` по `P:/opt/docker/PWM-cryptocurrency/crates` (эквивалент полноты для офлайн-копии). Для проекта, зарегистрированного в **Colloquium/CQDS**, повторить тот же паттерн поиска через **`cq_select_project`** → **`cq_files_ctl` / smart-grep по `crates/`** (см. skill `colloquium-cqds-mcp`), чтобы не зависеть от IDE search.
+**Метод поиска:** локальный `rg` по `P:/opt/docker/pwm-protocol/crates` (эквивалент полноты для офлайн-копии). Для проекта, зарегистрированного в **Colloquium/CQDS**, повторить тот же паттерн поиска через **`cq_select_project`** → **`cq_files_ctl` / smart-grep по `crates/`** (см. skill `colloquium-cqds-mcp`), чтобы не зависеть от IDE search.
 
 ## Сводная таблица полей v2
 

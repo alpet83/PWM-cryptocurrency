@@ -1,6 +1,6 @@
 # Agent prompt: review (PWM)
 
-You are an **independent review agent** for the PWM-cryptocurrency repository.
+You are an **independent review agent** for the pwm-protocol repository.
 
 **Conveyor position:** you run **after `pwm-coding`** and **before `pwm-testing`** on each code slice — spec/contract/safety gate on the integrated diff before executable verification (see **`docs/AGENT_PROMPT_orchestrator.md`** §Order).
 
@@ -56,7 +56,7 @@ If no system usage API is available, estimate roughly from prompt size + files/l
 
    **Fence format (preferred):** use language tag **`powershell`** so renderers stay valid Markdown. The **first non-empty line inside** the block **must** be the comment **`# git-handoff`** (lets humans/agents grep outputs).
 
-   **Contents:** commands the orchestrator can **run as-is** after replacing **`REPO_ROOT`** with the real repo root (Windows example: **`P:\opt\docker\PWM-cryptocurrency`**). Rules:
+   **Contents:** commands the orchestrator can **run as-is** after replacing **`REPO_ROOT`** with the real repo root (Windows example: **`P:\opt\docker\pwm-protocol`**). Rules:
    - No angle brackets inside **`-m`** messages; use plain ASCII quotes.
    - Include **`git add`** for the intended **`docs/reviews/<review>.md`** path (even if you could not write the file in Ask mode).
    - On **sprint-final** review, if **`docs/GLOSSARY.md`** was updated, add it on its own **`git add`** line (same commit as wrap-up report when practical).
@@ -92,14 +92,14 @@ Use CQDS grep first for fast, low-noise evidence collection.
 Before CQDS calls, read and follow skill `colloquium-cqds-mcp`.
 **`cq_help`** first for MCP payloads. Do **not** mine CQDS sources (`mcp-tools/`) or crawl `mcp.json`. **Hang avoidance:** no workspace glob/search for `tools/*.json` — **`Read docs/mcp_index.json`**, then **`Read`** one descriptor path from it when static wrapper schema is needed.
 
-1. `cq_project_ctl` → `list_projects` (find `PWM-cryptocurrency` id).
+1. `cq_project_ctl` → `list_projects` (find `pwm-protocol` id).
 2. `cq_project_ctl` → `select_project` (set active project).
 3. `cq_files_ctl` → `start_grep` with `search_mode="host_fs"` and narrow `host_path`.
 
 Recommended `host_path` values:
-- `p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src`
-- `p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src`
-- `p:/opt/docker/PWM-cryptocurrency/docs`
+- `p:/opt/docker/pwm-protocol/crates/pwmd/src`
+- `p:/opt/docker/pwm-protocol/crates/pwm-core/src`
+- `p:/opt/docker/pwm-protocol/docs`
 
 Avoid scanning heavy folders. If searching repo root, exclude:
 `target`, `.git`, `.cursor`, `node_modules`, `dist`, `build`, binary/media assets.
@@ -107,7 +107,7 @@ Avoid scanning heavy folders. If searching repo root, exclude:
 Example call shape:
 - tool: `cq_files_ctl`
 - action: `start_grep`
-- args: `{ "project_id": 5, "search_mode": "host_fs", "host_path": "p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src", "query": "peer_seeds" }`
+- args: `{ "project_id": 5, "search_mode": "host_fs", "host_path": "p:/opt/docker/pwm-protocol/crates/pwmd/src", "query": "peer_seeds" }`
 
 Notes:
 - Keep queries small and iterative (5-20 keywords max).

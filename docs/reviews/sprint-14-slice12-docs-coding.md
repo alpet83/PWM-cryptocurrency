@@ -1,7 +1,7 @@
 # Sprint 14 — Slice 12 (Docs) Coding Note
 
 Дата: 2026-04-28  
-Репозиторий: `P:/opt/docker/PWM-cryptocurrency`
+Репозиторий: `P:/opt/docker/pwm-protocol`
 
 ## Что изменено
 

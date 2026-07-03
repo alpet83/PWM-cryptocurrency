@@ -26,7 +26,7 @@ Slice goal (ticket + `docs/pwm-cli.md` §tx-init, runbook soak dependency): alig
 | v2 single-account: no regression | **Met** | `resolve_wallet_account` v2 fallback when `account_index == wallet.derivation_index`. `--index 0` default unchanged. `--master` still uses `load_tx_signer_source` (pre-existing dev path). |
 | Unit tests: multi-account signer; mocked RPC 404 → nonce 0 | **Partial** | `tx_init_sel_wallet_idx` covers v3 signer selection. **No** test for 404 → nonce 0 (nor direct `parse_nonce_init_response` exercise in this slice). |
 | `docs/pwm-cli.md`: `--index` = signer + Init body; not wallet default | **Mostly met** | `--index` and Signing flow updated. Does not explicitly contrast with CLI “default account” (min `derivation_index` from `wallet account list`). |
-| `cargo test -p pwm-cli` green | **Met** | `tx_init_*` tests pass under `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency`. |
+| `cargo test -p pwm-cli` green | **Met** | `tx_init_*` tests pass under `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol`. |
 
 **Root-cause fix:** Confirmed — wallet-path `tx-init` no longer calls `load_tx_signer_source` (default signer); it selects by `--index`.
 

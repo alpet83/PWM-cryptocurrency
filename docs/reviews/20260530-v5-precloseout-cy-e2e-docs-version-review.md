@@ -198,7 +198,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260530-v5-precloseout-cy-e2e-docs-version-review.md'
 git commit -m 'docs(v5-precloseout): doc alignment review PASS_WITH_NITS'
 ```

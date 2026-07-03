@@ -70,7 +70,7 @@ This matches explicit unknown/unavailable semantics (no fake "initialized/uninit
 3. **Foreign visibility blocker**: CY query for known DO address did not return authoritative home balance (`home_lookup_status=not_found`, `authoritative_home_balance=null`).
 
 ## Minimal repro
-1. In `P:/opt/docker/PWM-cryptocurrency`, run:
+1. In `P:/opt/docker/pwm-protocol`, run:
    - `.\node-1.ps1`
    - `.\node-2.ps1`
 2. Wait 2-3 minutes, inspect node logs:

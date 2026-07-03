@@ -75,7 +75,7 @@ token_usage: { "source": "estimate", "input": null, "output": null, "total": 900
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/rfc/15-same-shard-sync-v1.md'
 git add 'docs/reviews/20260508-rfc15-l2-storm-guard-review.md'
 git add 'tasks/20260508-rfc15-cluster-l2-storm-guard.json'

@@ -1,4 +1,4 @@
-`PROJECT_ROOT=p:\opt\docker\PWM-cryptocurrency`
+`PROJECT_ROOT=p:\opt\docker\pwm-protocol`
 
 You are the **PWM polish bridge worker** for the repository at `$PROJECT_ROOT`.
 

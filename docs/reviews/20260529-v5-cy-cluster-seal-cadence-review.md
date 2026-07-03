@@ -184,7 +184,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260529-v5-cy-cluster-seal-cadence-review.md'
 git add 'tasks/done/20260529-v5-cy-cluster-seal-cadence-review.json'
 git commit -m 'docs(v5-cy): review cluster seal cadence'

@@ -216,7 +216,7 @@ follow_up_ticket: 20260529-v5-cy-cluster-propose-seal-align-coding
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260529-v5-cy-cluster-suppression-r2-review.md'
 git add 'tasks/done/20260529-v5-cy-cluster-suppression-r2-review.json'
 git commit -m 'docs(v5-cy): R2 review residual cluster suppressions'

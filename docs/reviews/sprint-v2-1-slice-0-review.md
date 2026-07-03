@@ -9,7 +9,7 @@
 `docs/reviews/sprint-v2-1-slice-0-test-report.md`,  
 `tasks/20260505-v2-s1-s0-spec-impl-audit.json`  
 
-Метод: чтение артефактов и плана; выборочная верификация утверждений аудита через CQDS `cq_files_ctl#start_grep` (`project_id: 5`, `host_path: p:/opt/docker/PWM-cryptocurrency/crates/pwm-core/src`). Прод-код `crates/*` не изменялся.
+Метод: чтение артефактов и плана; выборочная верификация утверждений аудита через CQDS `cq_files_ctl#start_grep` (`project_id: 5`, `host_path: p:/opt/docker/pwm-protocol/crates/pwm-core/src`). Прод-код `crates/*` не изменялся.
 
 ## Scope recap
 

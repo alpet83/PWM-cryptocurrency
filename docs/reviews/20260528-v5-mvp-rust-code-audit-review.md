@@ -462,7 +462,7 @@ Result is `PARTIAL` rather than `PASS` because the audit found follow-up issues 
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260528-v5-mvp-rust-code-audit-review.md'
 git add 'tasks/done/20260528-v5-mvp-rust-code-audit-review.json'
 git commit -m 'docs(v5): rust code audit review'

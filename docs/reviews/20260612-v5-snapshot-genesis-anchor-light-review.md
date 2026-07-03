@@ -233,7 +233,7 @@ GLOSSARY.md: без изменений (нового жаргона не поя�
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260612-v5-snapshot-genesis-anchor-light-review.md'
 git add 'tasks/20260612-v5-snapshot-genesis-anchor-light-coding.json'
 git commit -m "docs(adr-0008): genesis anchor light review — PASS_WITH_NITS"

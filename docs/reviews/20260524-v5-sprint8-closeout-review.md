@@ -122,7 +122,7 @@ Alphabetical index (Latin + Cyrillic blocks) updated accordingly. Footer timesta
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260524-v5-sprint8-closeout-review.md'
 git add 'docs/MVP-checklist.md'
 git add 'docs/CHANGELOG.md'

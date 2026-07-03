@@ -1,7 +1,7 @@
 # Sprint 14 Slice 20 — Deep Investigation (testing)
 
 ## Scope and setup
-- Repo: `P:/opt/docker/PWM-cryptocurrency`
+- Repo: `P:/opt/docker/pwm-protocol`
 - Controlled setup: two `pwmd` nodes from the same genesis (`tmp/genesis-custom.json`)
   - CY node: `127.0.0.1:3030`, `--domain-hi 0x2C`, state `tmp/slice20-investigation/cy/pwm-data.json`
   - DO node: `127.0.0.1:3131`, `--domain-hi 0x32`, state `tmp/slice20-investigation/do/pwm-data.json`

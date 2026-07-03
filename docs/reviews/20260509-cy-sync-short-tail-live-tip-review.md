@@ -96,7 +96,7 @@ GLOSSARY.md: без изменений (нового жаргона для сл�
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260509-cy-sync-short-tail-live-tip-review.md'
 git commit -m 'docs(review): CY lab short tail vs live tip and Sync progress logging'
 ```

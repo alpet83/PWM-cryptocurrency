@@ -1,7 +1,7 @@
 # Sprint 14 Closeout Testing Validation
 
 Date: 2026-04-28
-Repository: `P:/opt/docker/PWM-cryptocurrency`
+Repository: `P:/opt/docker/pwm-protocol`
 Scope:
 - `docs/reviews/sprint-14-closeout.md`
 - `docs/reviews/sprint-14-checklist.md`

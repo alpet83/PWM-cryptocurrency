@@ -9,7 +9,7 @@ Ticket: `tasks/20260517-v4-sprint6-closeout.json`.
 ## Environment
 
 - Host: Windows; `powershell.exe` (Core `pwsh` not on PATH).
-- **`CARGO_TARGET_DIR=F:\pwm-test\PWM-cryptocurrency`** (created; builds off project volume).
+- **`CARGO_TARGET_DIR=F:\pwm-test\pwm-protocol`** (created; builds off project volume).
 
 ## Preflight
 

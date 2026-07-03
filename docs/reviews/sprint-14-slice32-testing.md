@@ -1,7 +1,7 @@
 # Sprint 14 — Slice32 Testing
 
 Date: 2026-04-29
-Repository: `P:/opt/docker/PWM-cryptocurrency`
+Repository: `P:/opt/docker/pwm-protocol`
 
 ## Scope validated
 

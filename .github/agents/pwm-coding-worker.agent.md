@@ -1,5 +1,5 @@
 ---
-description: "Use when implementing PWM-cryptocurrency coding tasks as a CQDS bridge worker: coding worker, bounded wait_ticket loop, team bridge polling, delegated coding ticket execution, PWM coding subagent."
+description: "Use when implementing pwm-protocol coding tasks as a CQDS bridge worker: coding worker, bounded wait_ticket loop, team bridge polling, delegated coding ticket execution, PWM coding subagent."
 name: "PWM Coding Worker"
 user-invocable: true
 argument-hint: "Provide worker identity, routing constraints, task scope, and whether this run is continuous worker-loop mode or single-ticket mode."

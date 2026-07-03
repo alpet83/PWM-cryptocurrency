@@ -243,7 +243,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260529-v5-cy-cluster-attest-suppression-review.md'
 git add 'tasks/done/20260529-v5-cy-cluster-attest-suppression-review.json'
 git commit -m 'docs(v5-cy): review cluster attest suppression'

@@ -1,7 +1,7 @@
 # Sprint 14 Slice 16 — testing report
 
 Date: 2026-04-28  
-Repo: `P:/opt/docker/PWM-cryptocurrency`  
+Repo: `P:/opt/docker/pwm-protocol`  
 Scope: validate Slice16 runtime/docs contract for finalize flow, flow trace diagnostics, and persistence failure surfacing.
 
 ## Verdict

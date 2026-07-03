@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Repo: `P:/opt/docker/PWM-cryptocurrency`
+- Repo: `P:/opt/docker/pwm-protocol`
 - Goal: reproduce and localize:
   - cross-shard send/import flow behavior,
   - address-book add/persist/readback,

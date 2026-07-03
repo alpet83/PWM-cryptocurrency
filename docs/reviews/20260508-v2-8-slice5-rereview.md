@@ -27,7 +27,7 @@
 
 ## 5. Tests
 
-Выполнено локально (workspace `P:\opt\docker\PWM-cryptocurrency`):
+Выполнено локально (workspace `P:\opt\docker\pwm-protocol`):
 
 | Команда | Результат |
 |---------|-----------|

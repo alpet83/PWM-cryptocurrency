@@ -13,11 +13,11 @@ clean clone -> генерация demo genesis -> проверка premine 21B P
 
 - Windows PowerShell 5.1+ или PowerShell 7+.
 - Установлен Rust/Cargo.
-- Репозиторий открыт в корне `PWM-cryptocurrency`.
+- Репозиторий открыт в корне `pwm-protocol`.
 - Для Windows build рекомендуется isolated target:
 
 ```powershell
-$env:CARGO_TARGET_DIR="F:\pwm-test\PWM-cryptocurrency"
+$env:CARGO_TARGET_DIR="F:\pwm-test\pwm-protocol"
 ```
 
 ## 2) Premine math и raw scale

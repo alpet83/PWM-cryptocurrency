@@ -45,7 +45,7 @@
 
 ### Grep-наборы для верификации после правок
 
-Используйте тот же корень репозитория (`PWM-cryptocurrency`):
+Используйте тот же корень репозитория (`pwm-protocol`):
 
 1. Транспорт / prod vs test:  
    `run_transport_tick`, `spawn_transport_loop`, `dial_stub_attempt`, `run_transport_tick_with`

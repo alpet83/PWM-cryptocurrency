@@ -4,14 +4,14 @@
 
 - **Primary source:** CQDS cached index via MCP `cq_files_ctl` → `get_index` with `project_id=5`.
 - Snapshot metadata from index:
-  - `project_name`: `PWM-cryptocurrency`
+  - `project_name`: `pwm-protocol`
   - `context_date`: `2026-04-20`
   - `last_build_kind`: `full`
   - indexed files: `3598`
   - indexed entities: `2055`
 - Practical caveats:
   - cache includes build artifacts (`target/...`), so raw entity counts are noisy;
-  - part of source paths appears in both forms (`crates/...` and `PWM-cryptocurrency/crates/...`), so duplicates exist;
+  - part of source paths appears in both forms (`crates/...` and `pwm-protocol/crates/...`), so duplicates exist;
   - below is a **deduplicated, practical map** focused on `crates/*/src`.
 
 ## Crate map

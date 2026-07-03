@@ -145,10 +145,10 @@ PASS_EVIDENCE: slice=account_info account=pwm1-... head_height=3 marks_stored=42
 For **pwm-testing** on Windows, run the live smoke via MCP **`cq_process_ctl`** (**`spawn` + long `wait`**, `host: true`), per **`docs/AGENT_PROMPT_testing.md`**.
 
 1. Skill **`colloquium-cqds-mcp`**, `project_id: 5`; contract from **`cq_help`** (`cq_process_ctl#spawn`, `#wait`, `#status`, `#io`, `#kill`).
-2. **`spawn`**: `cwd` = repo root on Windows (e.g. `P:\opt\docker\PWM-cryptocurrency`); **`command`** array example:
+2. **`spawn`**: `cwd` = repo root on Windows (e.g. `P:\opt\docker\pwm-protocol`); **`command`** array example:
 
 ```text
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File P:\opt\docker\PWM-cryptocurrency\scripts\devnet_v5_operator_smoke.ps1 -CleanState -SmokeSeconds 120
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File P:\opt\docker\pwm-protocol\scripts\devnet_v5_operator_smoke.ps1 -CleanState -SmokeSeconds 120
 ```
 
 3. In **`env`**, set **`CARGO_TARGET_DIR`** outside the clone if needed (see **`docs/AGENT_PROMPT_testing.md`** Windows section).

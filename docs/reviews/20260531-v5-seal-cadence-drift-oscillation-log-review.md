@@ -189,7 +189,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260531-v5-seal-cadence-drift-oscillation-log-review.md'
 git commit -m 'docs(v5-seal): cadence drift log review REQUEST_CHANGES — envelope breach 257ms vs 1000ms'
 ```

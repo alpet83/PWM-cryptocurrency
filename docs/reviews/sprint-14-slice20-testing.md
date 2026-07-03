@@ -1,7 +1,7 @@
 # Sprint 14 — Slice 20 testing (end-to-end validation)
 
 ## Scope
-- Repo: `P:/opt/docker/PWM-cryptocurrency`
+- Repo: `P:/opt/docker/pwm-protocol`
 - Goal: validate Slice20 after coding changes against required 6 checks.
 - Stand: two `pwmd` nodes with explicit runtime labels:
   - CY: `127.0.0.1:4030`, `domain_hi=0x2C`, state `tmp/slice20-e2e/cy/pwm-data.json`

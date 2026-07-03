@@ -2,7 +2,7 @@
 
 Слайс: **S15-S3.14**. Контекст coding: `PeerWireMsg::Heartbeat` + federation gossip, `pwmd` **0.1.31**, артефакт `docs/reviews/sprint-15-s3-14-coding.md`.
 
-Окружение: локальный репозиторий `P:\opt\docker\PWM-cryptocurrency`, Windows PowerShell. Hang-watchdog не требовался (все команды завершились штатно).
+Окружение: локальный репозиторий `P:\opt\docker\pwm-protocol`, Windows PowerShell. Hang-watchdog не требовался (все команды завершились штатно).
 
 ## Команды
 

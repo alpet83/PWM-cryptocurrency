@@ -1,5 +1,5 @@
 ---
-description: "Use when executing PWM-cryptocurrency review tasks as a CQDS bridge worker: independent review, Markdown report delivery, bounded wait_ticket loop, delegated review ticket execution, PWM review subagent."
+description: "Use when executing pwm-protocol review tasks as a CQDS bridge worker: independent review, Markdown report delivery, bounded wait_ticket loop, delegated review ticket execution, PWM review subagent."
 name: "PWM Review Worker"
 user-invocable: true
 argument-hint: "Provide worker identity, routing constraints, changed scope or diff summary, review focus, and whether this run is continuous worker-loop mode or single-ticket mode."

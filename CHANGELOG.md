@@ -4,6 +4,30 @@ Notable behavior and documentation changes. Section timestamps are **UTC**, deri
 
 ---
 
+## 20260629T00:00Z — MVP v7 closeout (`v0.7.0`)
+
+### Added
+
+- **Pipeline performance gate:** V7-1 flamegraph/perfmon work closed the transfer ramp target with about `76 tx/s` sustained evidence; hot-path fixes include lean `ClusterPropose`, `block_timing` tail-read, seal digest gating, and `Arc<SignedTx>` ingress.
+- **Operator UX:** TUI and `/v1/account` now expose pending conservation transfers, including `fee_pwm` for operator parity.
+- **Emergency recovery:** ADR 0012 runtime closes the stake-evacuation gap: emergency `ActivatePolicy` evacuates liquid + `staked_pwm_raw` to rescue atomically.
+- **Offchain batch API:** production `/v1/offchain/*` Merkle batch/proof surface with chain-visible anchor surrogate.
+- **Devnet prep:** `configs/devnet-genesis.json` 21B launch-candidate manifest, validator onboarding runbook, and throughput gate evidence note.
+- **BFT ADR-gate:** ADR 0015 chooses V7 Option A continuation; CometBFT/ABCI study moves to Phase 4, custom Rust BFT is not default.
+
+### Changed
+
+- **MVP-checklist §0v7:** all V7 sprint rows closed.
+- **CONCEPT_ROADMAP:** V7 sprint table and readiness criteria marked done; v0.25 history row added.
+- **GLOSSARY:** V7 terms added for pending conservation, offchain batches, and BFT ADR-gate.
+
+### Deferred
+
+- Fresh live devnet ramp rerun remains an operator launch step after the private validator key bundle is installed.
+- Full BFT implementation remains Phase 4; no `Chain::seal` replacement or wire change in V7.
+
+---
+
 ## 20260617T17:00Z — MVP v6 owner sign-off + publication batch (`v6.0.0`)
 
 ### Added
@@ -19,7 +43,7 @@ Notable behavior and documentation changes. Section timestamps are **UTC**, deri
 
 ### Publication (next step)
 
-- `git_safe_commit` dry_run → apply (runtime) → commit (`P:\GitHub\PWM-cryptocurrency`, `public_repo=true`).
+- `git_safe_commit` dry_run → apply (runtime) → commit (`P:\GitHub\pwm-protocol`, `public_repo=true`).
 
 ---
 
@@ -85,7 +109,7 @@ Notable behavior and documentation changes. Section timestamps are **UTC**, deri
 ### Deferred
 
 - Mode B IMPORT happy-path on live target peer — separate scenario (s2 legacy superseded).
-- Full multi-hour CY soak — wave-by-wave with lab genesis; optional before public testnet (V7).
+- Full multi-hour CY soak — wave-by-wave with lab genesis; optional before devnet (V7).
 
 ---
 

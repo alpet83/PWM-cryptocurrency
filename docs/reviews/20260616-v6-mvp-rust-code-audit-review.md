@@ -338,7 +338,7 @@ Result is `PARTIAL` / `needs attention` because follow-up issues need coding-own
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260616-v6-mvp-rust-code-audit-review.md'
 git add 'tasks/20260616-v6-mvp-rust-code-audit-review.json'
 git add 'tasks/20260603-v6-prepublication-umbrella.json'

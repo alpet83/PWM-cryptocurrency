@@ -37,9 +37,27 @@ Consensus + address-security трек **MVP v6** ведётся отдельно
 | [x] | **Pre-publication (review):** rust code audit artifact [reviews/20260616-v6-mvp-rust-code-audit-review.md](reviews/20260616-v6-mvp-rust-code-audit-review.md) (`needs attention`, 0 Critical); follow-up tickets optional pre-V7. |
 | [x] | **Pre-publication (docs):** release notes [releases/v6.0.0.md](releases/v6.0.0.md), README*, CONCEPT_PROGRESS; umbrella phase `v6-prepub-docs-manuals`. |
 | [x] | **Owner sign-off:** MVP v6 approved (2026-06-17); tag `MVP-V6-RC` / release `v6.0.0`. |
-| [ ] | **Publication:** mirror `git_safe_commit` dry_run→apply→commit на `P:\GitHub\PWM-cryptocurrency` — [MVP_PUBLICATION.md](MVP_PUBLICATION.md). |
+| [ ] | **Publication:** mirror `git_safe_commit` dry_run→apply→commit на `P:\GitHub\pwm-protocol` — [MVP_PUBLICATION.md](MVP_PUBLICATION.md). |
 | [~] | Mode B **IMPORT happy-path** on live target peer — deferred (s2 legacy superseded; single-shard refund sufficient for V6 gate). |
-| [~] | Full multi-hour CY soak — wave-by-wave with lab genesis; optional hardening before public testnet (V7). |
+| [~] | Full multi-hour CY soak — wave-by-wave with lab genesis; optional hardening before devnet (V7). |
+
+---
+
+## 0v7. MVP v7 — external integration + devnet closeout (closed 2026-06-29)
+
+| Status | Item |
+|--------|--------|
+| [x] | **V7-1 pipeline performance:** perfmon S1-S3, flamegraph hot-path fixes, P2P lean propose, block_timing tail-read, seal digest gate, `Arc<SignedTx>` ingress; sustained throughput evidence ~76 tx/s. |
+| [x] | **V7-2 addr-bruteforce v2:** occupied-skip resume + deterministic CPU MT; docs/runbook updated; `tasks/20260616-v7-bruteforce-occupied-skip-mt.json`. |
+| [x] | **V7-3 TUI conservation pending:** `/v1/account` exposes `pending_conservation` + `fee_pwm`; TUI compact/detail line shows pending outgoing conservation transfers. |
+| [x] | **V7-4 emergency stake evac:** ADR 0012 implemented — atomic evac of `staked_pwm_raw` + liquid balance to rescue on emergency `ActivatePolicy`; validator index regression covered. |
+| [x] | **V7-5 offchain batch production:** `/v1/offchain/*` Merkle batch API with proof verification and chain-visible anchor surrogate. |
+| [x] | **V7-6 devnet genesis + operator onboarding:** 21B devnet genesis manifest, validator onboarding runbook, throughput gate evidence note. |
+| [x] | **V7-7 BFT ADR-gate:** ADR 0015 accepted for planning — V7 continues Option A; CometBFT/ABCI study deferred to Phase 4; no `Chain::seal` replacement in V7. |
+| [x] | **V7 closeout docs:** MVP-checklist, CONCEPT_ROADMAP, CHANGELOG, GLOSSARY updated for v0.7.0. |
+| [x] | **Plan:** detailed plan [plans/mvp_v7.md](plans/mvp_v7.md) used as sprint traceability source. |
+
+See [CONCEPT_ROADMAP.md](CONCEPT_ROADMAP.md) §MVP V7 and [plans/mvp_v7.md](plans/mvp_v7.md).
 
 ---
 
@@ -67,7 +85,7 @@ Consensus + address-security трек **MVP v6** ведётся отдельно
 | [x] | Integrated V4 gate: `cargo fmt --check`, `cargo check --workspace`, `cargo test -p pwmd --lib`, `cargo test -p pwm-core --lib`, full `pwm-cli`, policy filters and snapshot bench compile; smoke report [20260517-v4-integrated-smoke.md](reviews/20260517-v4-integrated-smoke.md), ticket [20260517-v4-sprint6-closeout.json](../tasks/20260517-v4-sprint6-closeout.json). |
 | [x] | **Demo publication slice (thin operator harness):** live CY policy-matrix smoke **`scripts/cy_cluster_policy_matrix_e2e.ps1`** exercised via **`pwm-testing`** + **`cq_process_ctl`** (**PASS**, **exit 0**); runbook [runbooks/cy-cluster-policy-matrix-e2e.md](runbooks/cy-cluster-policy-matrix-e2e.md), ticket [20260517-cy-cluster-policy-matrix-e2e-live.json](../tasks/20260517-cy-cluster-policy-matrix-e2e-live.json); commit после фиксации harness. Явно **не** многопользовательский/regression/soak-слой: долговременную симуляцию активности и расширенные policy-кейсы оставить на рост протокола / отдельные тикеты. |
 | [x] | **V4.x minimal path (spec only):** ADR 0005 deferred activation — **Accepted** в V5-1 ([adr/0005-policy-deferred-activation.md](adr/0005-policy-deferred-activation.md)); runtime — V5-4. Address flags / `conservation` — ADR 0006 (spec only, enforcement V6). |
-| [~] | Full `cargo test --workspace`, manual TUI operation and long-running devnet soak were not part of V4-6; keep them as optional hardening gates before a public testnet announcement. |
+| [~] | Full `cargo test --workspace`, manual TUI operation and long-running devnet soak were not part of V4-6; keep them as optional hardening gates before a Phase 4 public testnet announcement. |
 
 ---
 
@@ -116,7 +134,7 @@ Consensus + address-security трек **MVP v6** ведётся отдельно
 | [x] | Workspace: `pwm-core`, `pwmd`, `pwm-cli`, `pwm-tui` |
 | [x] | `cargo check` / `cargo test -p pwm-core` |
 | [x] | Push на `local`/Gitea по необходимости (выполнен после фиксации полного MVP-чеклиста) |
-| [x] | `PWM-cryptocurrency` в `git.local/setup-repos.sh` |
+| [x] | `pwm-protocol` в `git.local/setup-repos.sh` |
 | [x] | MCP-корни для multi-root (`cqds-cursor.code-workspace`) |
 | [x] | Промпты для агентов: [AGENT_PROMPTS.md](AGENT_PROMPTS.md) |
 | [x] | `.gitattributes`: есть `* text=auto`; добавлены явные LF-паттерны (`*.rs`, `*.toml`, `docs/**/*.md`) (2026-05-06) |

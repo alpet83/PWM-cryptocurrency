@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Repo: `P:/opt/docker/PWM-cryptocurrency`
+- Repo: `P:/opt/docker/pwm-protocol`
 - Host: Windows; toolchain via PowerShell `cargo`.
 - Date: 2026-05-01
 

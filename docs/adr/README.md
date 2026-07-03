@@ -32,6 +32,9 @@ MVP v4 policy runtime уже закрыт; текущий статус верс�
 | [0010-slashing-evidence-stubs.md](0010-slashing-evidence-stubs.md) | Slashing evidence append-only stubs; no seizure | Accepted (V6) |
 | [0011-policy-activation-target.md](0011-policy-activation-target.md) | `ActivatePolicy.activation_target`, fee-free activation, emergency evac | Accepted (V6) |
 | [0012-emergency-stake-evacuation.md](0012-emergency-stake-evacuation.md) | Emergency activation evacuates `staked_pwm_raw` to rescue (extends 0011) | Accepted (V7 impl) |
+| [0013-tx-pipeline-seda.md](0013-tx-pipeline-seda.md) | Tx Pipeline — SEDA architecture | Accepted (V7-S1) |
+| [0014-account-hot-index-and-lockfree-chain.md](0014-account-hot-index-and-lockfree-chain.md) | Account Hot Index and Lock-Free Chain | Draft (V7) |
+| [0015-bft-migration-gate.md](0015-bft-migration-gate.md) | BFT migration gate | Accepted (V7 planning; impl deferred Phase 4) |
 
 ## V6 RFC addenda
 

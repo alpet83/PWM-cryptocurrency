@@ -1,7 +1,7 @@
 # Sprint 14 Slice 2 Testing (pwm-cli wallet account list/add/use)
 
 ## Scope
-- Repository: `P:/opt/docker/PWM-cryptocurrency`
+- Repository: `P:/opt/docker/pwm-protocol`
 - Target: `pwm-cli` wallet account commands (`list`, `add`, `use`) and nearby wallet regressions.
 
 ## What Ran

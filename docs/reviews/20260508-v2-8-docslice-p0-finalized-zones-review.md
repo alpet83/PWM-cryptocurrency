@@ -111,7 +111,7 @@
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260508-v2-8-docslice-p0-finalized-zones-review.md'
 git add 'tasks/20260508-v2-sprint8-docslice-p0-finalized-zones.json'
 git add 'docs/plans/mvp_v2.md'

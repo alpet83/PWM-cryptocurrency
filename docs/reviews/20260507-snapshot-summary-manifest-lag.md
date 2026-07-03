@@ -14,7 +14,7 @@
 
 На пути **seal** вызывается `json_file_seal_persist`: сначала каждый раз добавляется блок в JSONL и **перезаписывается manifest** с актуальным `canonical_h`, а **`pwm-data.json` с `checkpoint_height` переписывается только если `h % SNAP_CHK_BLK_IV == 0`** (константа **100**).
 
-```853:859:p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/snapshot/io.rs
+```853:859:p:/opt/docker/pwm-protocol/crates/pwmd/src/snapshot/io.rs
 pub(crate) fn json_file_seal_persist(path: &FsPath, inner: &Inner) -> Result<(), String> {
     incremental::append_tip_block(path, inner)?;
     let h = inner.chain.tip_h();
@@ -27,7 +27,7 @@ pub(crate) fn json_file_seal_persist(path: &FsPath, inner: &Inner) -> Result<(),
 
 Внутри `append_block_for_epoch` после записи epoch-файла manifest всегда получает `canonical_h = h` текущего блока:
 
-```86:101:p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/snapshot/incremental.rs
+```86:101:p:/opt/docker/pwm-protocol/crates/pwmd/src/snapshot/incremental.rs
     let mut man = if let Some(m) = load_manifest(summary_path)? {
         m
     } else {
@@ -43,7 +43,7 @@ pub(crate) fn json_file_seal_persist(path: &FsPath, inner: &Inner) -> Result<(),
 
 При старте с `snapshot_verify_chain = false` (дефолт в `config.rs`) загрузчик видит расхождение и **принудительно включает полную верификацию**:
 
-```582:592:p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/snapshot/io.rs
+```582:592:p:/opt/docker/pwm-protocol/crates/pwmd/src/snapshot/io.rs
     if snap.blocks_stored == BlocksStored::Epochs && !effective_opts.verify_chain && mp.exists() {
         if let Ok(Some(man)) = incremental::read_epoch_manifest(path) {
             if man.canonical_h > 0 && man.canonical_h != snap.checkpoint_height {
@@ -65,7 +65,7 @@ pub(crate) fn json_file_seal_persist(path: &FsPath, inner: &Inner) -> Result<(),
 
 `SnapshotBackend::save` для JsonFile вызывает `json_file_runtime_persist`, который после `sync_epoch_to_tip` **всегда** вызывает `save_checkpoint_summary` — тогда `checkpoint_height` совпадает с tip:
 
-```813:817:p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/snapshot/io.rs
+```813:817:p:/opt/docker/pwm-protocol/crates/pwmd/src/snapshot/io.rs
 pub(crate) fn json_file_runtime_persist(path: &FsPath, inner: &Inner) -> Result<(), String> {
     if manifest_file_path(path).exists() {
         incremental::sync_epoch_to_tip(path, inner)?;
@@ -78,7 +78,7 @@ pub(crate) fn json_file_runtime_persist(path: &FsPath, inner: &Inner) -> Result<
 
 Каждый файл пишется атомарно (temp → fsync → rename) для epoch-шарда и manifest:
 
-```374:388:p:/opt/docker/PWM-cryptocurrency/crates/pwmd/src/snapshot/incremental.rs
+```374:388:p:/opt/docker/pwm-protocol/crates/pwmd/src/snapshot/incremental.rs
 fn write_manifest(summary_path: &Path, man: &EpochManifest) -> Result<(), String> {
     // ...
         f.sync_all().map_err(|e| format!("manifest fsync: {e}"))?;

@@ -31,9 +31,18 @@ Common CQDS tools:
 - `cq_project_ctl#project_status`
 - `cq_files_ctl#start_grep` then `cq_project_ctl#fetch_result`
 - `cq_files_ctl#read_file`
-- `cq_files_ctl#replace`
+- `cq_files_ctl#replace` — server-side Colloquium tree only; not default for local `$PROJECT_ROOT` edits when `user-gitbash` is up
 - `cq_exec_ctl#exec`
 - `cq_exec_ctl#spawn_script`
+
+### File edits — local checkout (`user-gitbash`)
+
+**Default for content changes under `P:/opt/docker/pwm-protocol`** (not IDE `Write` / `StrReplace`):
+
+1. **`git_mcp_script`** — `recipe_id` + `inputs`: `editor_single_file`, `editor_write_lint_commit`, `editor_write_lint_undo`.
+2. **`git_write_file`** + **`git_write_undo`** — lone write; keep `write_id` for rollback.
+
+Paths: forward slashes in JSON. Inline script: single-quoted strings; `OKResult`/`FailedResult` returns. Normative: `.cqds/prompts/15-file-editing-gitbash.md`, `.cqds/prompts/65-mcp-script.md`.
 
 Fallback rule:
 
@@ -166,7 +175,84 @@ Tool: `cq_team_bridge_ctl`
 }
 ```
 
-### 8) Rebuild CQDS code index (background)
+### 8) Companion bridge/ticket diagnostics (`get_status`)
+
+Tool: `cq_companion_ctl`
+
+**RPC-first:** MCP вызывает `POST /control/get_status` на companion (`companion_api_url`). Ответ живого инстанса: `instance`, `workers[].availability` (`free`|`busy`|`blocked`), `dialog_phase`, `subagents`, `bridge_status`, `queue_tickets[]`.
+
+Для **нескольких companion** (например Windows + WSL2) указывайте `companion_api_url` явно.
+
+```json
+{
+	"action": "get_status",
+	"args": {
+		"project_id": 5,
+		"worker_class": "coding",
+		"companion_api_url": "http://127.0.0.1:8099"
+	}
+}
+```
+
+При недоступном RPC — fallback `source: filesystem_fallback` (только дерево `team-tasks/`, без runtime диалогов).
+
+Опционально: `worker_id`, `include_workers: false`.
+
+### 9) Delegate edit to local `pwm_editor` (companion subagent)
+
+Tool: `cq_companion_ctl`
+
+Prerequisites: companion running for project 5; `[worker.pwm_editor]` bootstrapped (`bootstrap_probe` ok).
+
+Policy:
+
+- For edits under `crates/**`, this path is mandatory.
+- Do not use Codex ad-hoc `spawnAgent` / `wait` flow for crate mutations.
+- Pass `edit_plan` + `allowlist`; if `pwm_editor` is unavailable, mark `BLOCKED` (no standalone fallback spawn).
+
+```json
+{
+	"action": "subagent_call",
+	"args": {
+		"project_id": 5,
+		"worker_id": "pwm_editor",
+		"worker_class": "subagent",
+		"task": "Edit P:/opt/docker/pwm-protocol/crates/cqds-delegation-smoke/src/lib.rs only. Change delegation_ping() to return \"ok-v3\" and delegation_version() to 3. Update unit tests. Reply DONE after save.",
+		"edit_plan": [
+			{"path": "crates/cqds-delegation-smoke/src/lib.rs", "action": "replace_span", "reason": "ticket change"}
+		],
+		"allowlist": ["crates/cqds-delegation-smoke/src/lib.rs"],
+		"timeout_sec": 300
+	}
+}
+```
+
+Responses:
+
+- `status: done` — use `result`; verify file on disk anyway.
+- `status: pending` + `call_id` — poll (§9).
+- `status: busy` — retry after ~30s or fail ticket.
+- `status: worker_not_found` | `companion_unavailable` — companion / worker config issue (mark ticket `BLOCKED` for crate edits).
+
+Do **not** use `cq_files_ctl#replace` on the same slice when ticket requires editor delegation.
+
+### 10) Poll pending `subagent_call`
+
+Tool: `cq_companion_ctl`
+
+```json
+{
+	"action": "subagent_poll",
+	"args": {
+		"project_id": 5,
+		"call_id": "<call_id from subagent_call>"
+	}
+}
+```
+
+Poll until `done` or `failed`. Local Ollama edits often need several polls (30–120s total).
+
+### 11) Rebuild CQDS code index (background)
 
 Tool: `cq_files_ctl`
 

@@ -91,7 +91,7 @@ No new runtime code in review deliverables. Documented V6 safety boundaries rema
 | Issue | Ticket / note | Status |
 |---|---|---|
 | Mode B IMPORT happy-path on target peer | MVP-checklist `[~]` | Deferred — not V6 blocker |
-| Full multi-hour CY soak | MVP-checklist `[~]` / CHANGELOG Deferred | Optional before public testnet (V7) |
+| Full multi-hour CY soak | MVP-checklist `[~]` / CHANGELOG Deferred | Optional before Phase 4 public testnet |
 | `pwmd` snapshot_roaming: 2 FAIL (`marks_quota`) | Pre-V6 carry-forward | Separate coding ticket if still failing |
 | Owner sign-off + publication tag | `20260615-v6-sprint11-closeout` | Pending |
 | `mvp_v6.md` todo `v6-delegation-notes-bootstrap` | ORCHESTRATOR-NOTES template | Still `pending` — process nit, not V6 protocol blocker |

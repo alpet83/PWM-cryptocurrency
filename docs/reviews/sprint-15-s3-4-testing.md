@@ -1,7 +1,7 @@
 # Sprint 15 S3.4 testing: one-window peer relay
 
 Date: 2026-04-29  
-Repository: `P:/opt/docker/PWM-cryptocurrency`  
+Repository: `P:/opt/docker/pwm-protocol`  
 Verdict: **PASS**
 
 ## Final Retest After Remediation2

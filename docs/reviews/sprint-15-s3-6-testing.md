@@ -66,7 +66,7 @@ Result: **PASS**. The failure is surfaced as a specific `last_peer_error`, not o
 
 ## Automated regression checks
 
-All commands ran in `P:\opt\docker\PWM-cryptocurrency`.
+All commands ran in `P:\opt\docker\pwm-protocol`.
 
 - `cargo test -p pwmd tests::real_transport_tick_connects_seed_and_accepts_handshake -- --exact` -> PASS, `1 passed`.
 - `cargo test -p pwmd tests::real_transport_tick_rejects_genesis_mismatch_and_tracks_reason -- --exact` -> PASS, `1 passed`.

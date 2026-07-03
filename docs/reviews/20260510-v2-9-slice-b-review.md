@@ -112,7 +112,7 @@ Minor: the doc comment on `cluster_2of2_gate_ok` overstates wire coverage given 
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260510-v2-9-slice-b-review.md'
 git add 'tasks/20260513-v2-sprint9-rfc16-cluster-attestation.json'
 git commit -m 'docs(v2-9): Slice B cluster wave review and traceability'

@@ -87,9 +87,9 @@
 **Важно:** нужна **свежая** сборка `pwmd` с этим патчем. Если `cargo build` падает с `failed to remove ... pwmd.exe (os error 5)`, остановите процессы, держащие бинарь, либо соберите в отдельный target-dir и задайте harness-окружение:
 
 ```powershell
-$env:CARGO_TARGET_DIR='P:\opt\docker\PWM-cryptocurrency\.wave-build-target'
+$env:CARGO_TARGET_DIR='P:\opt\docker\pwm-protocol\.wave-build-target'
 cargo build -p pwmd -p pwm-cli
-$env:PWM_WORKSPACE_TARGET_ROOT='P:\opt\docker\PWM-cryptocurrency\.wave-build-target'
+$env:PWM_WORKSPACE_TARGET_ROOT='P:\opt\docker\pwm-protocol\.wave-build-target'
 python scripts/wave_a_same_shard_stop.py --keep-artifacts
 ```
 

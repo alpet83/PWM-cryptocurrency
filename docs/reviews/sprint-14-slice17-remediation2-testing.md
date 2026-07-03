@@ -1,7 +1,7 @@
 # Sprint 14 — Slice 17 Remediation2 Testing
 
 Date: 2026-04-29  
-Repository: `P:/opt/docker/PWM-cryptocurrency`  
+Repository: `P:/opt/docker/pwm-protocol`  
 Mode: focused retest after deadlock remediation
 
 ## Verdict

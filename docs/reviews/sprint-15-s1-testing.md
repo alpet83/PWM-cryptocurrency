@@ -1,7 +1,7 @@
 # Sprint 15 / S1 testing: cross-shard hardening (final verification after remediation2)
 
 Date: 2026-04-29  
-Repo: `P:/opt/docker/PWM-cryptocurrency`  
+Repo: `P:/opt/docker/pwm-protocol`  
 Mode: focused automated checks (`pwmd`, local `cargo test`)
 
 ## Commands run (final)

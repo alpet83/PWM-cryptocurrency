@@ -25,6 +25,8 @@
 - `listen: SocketAddr` — адрес bind HTTP-сервера;
 - `genesis: GenesisSource` — источник genesis (`DevNet` или `JsonFile(PathBuf)`);
 - `data_file: PathBuf` — путь JSON snapshot-файла.
+- `rpc_allowed_ips: Vec<String>` — статический IP/CIDR allowlist для всех `/v1/*` RPC endpoints; bare IP трактуется как `/32` для IPv4 или `/128` для IPv6; пустой список вместе с `rpc_allowed_auto = 0` сохраняет прежний режим без IP-gate. Реализация: `crates/pwmd/src/rpc_allow.rs` (commit `59e0cc0`).
+- `rpc_allowed_auto: u16` — startup window в секундах для auto-enrollment: пока окно открыто, каждый connecting source IP добавляется в session-local dynamic allowlist и остаётся разрешённым до остановки процесса; `0` выключает auto-enrollment.
 - `snapshot_verify_chain: bool` — audit/recovery режим полной replay-проверки epoch snapshot при загрузке; по умолчанию выключен.
 - `shard: ShardId` — внутренняя метка **process shard** (Phase 1 map по домену отправителя), выводится в статусе и участвует в preflight-guards; задаётся конфигурацией identity, **не** отдельным устаревшим CLI-флагом.
 - `identity: RuntimeIdentity` — эффективный launch identity tuple (`network_id`, `cluster_domain_hi`, `cluster_id`, `node_id`) + режим (`explicit` или neutral relay baseline).
@@ -34,6 +36,7 @@
 - `listen = 127.0.0.1:3030`;
 - `genesis = DevNet`;
 - `data_file = state/neutral/127.0.0.1+3030/pwm-data.json` (neutral relay-baseline: изоляция по RPC listen);
+- `rpc_allowed_ips = []`, `rpc_allowed_auto = 0` — IP allowlist полностью выключен для backward compatibility;
 - `identity` поднимается в relay-baseline профиле; shard-enforced semantics включаются только при explicit domain-конфиге.
 
 ## CLI-флаги `pwmd`
@@ -43,6 +46,8 @@
 - `--genesis-file <PATH>` (если не задан, используется встроенный `dev_net()`);
 - `--state-root <DIR>` (default `state`, используется для default data path);
 - `--data-file <PATH>` (по умолчанию `state/<effective-state-namespace>/pwm-data.json`);
+- `--rpc-allowed-ip <IP_OR_CIDR[,IP_OR_CIDR...]>` (`PWM_RPC_ALLOWED_IPS`) — статический allowlist source IP/CIDR для `/v1/*`; при непустом списке все не совпавшие IP получают `403 FORBIDDEN`, если они не были auto-enrolled.
+- `--rpc-allowed-auto <SECONDS>` (`PWM_RPC_ALLOWED_AUTO`) — окно auto-enrollment source IP после старта; `0` выключает окно.
 - `--network-id <STRING>`;
 - `--domain-hi <u8|0xNN>`;
 - `--domain-cluster <u8|0xNN>` (primary alias для `--domain-hi`);
@@ -102,6 +107,10 @@ Runtime log-control operator RPC:
 - auth gate: loopback accepted; non-loopback requires `PWM_ADMIN_TOKEN` with `Authorization: Bearer <token>`;
 - payload validation: `level` (`trace|debug|info|warn|error`), `focus` (`transport:peers|sync:live|seal:loop|snapshot|api|all`), `ttl_seconds` (`1..=3600`);
 - required safety: TTL/auto-restore and audit events (`pwmd::operator`) for set/clear/expire/reject.
+
+Admin RPC auth gate:
+- `POST /v1/shutdown` and `POST /v1/bridge-federation/reset` use the same operator-auth policy fixed in `f91c477`: loopback callers are accepted; non-loopback callers must send `Authorization: Bearer <PWM_ADMIN_TOKEN>`.
+- The IP allowlist is an outer source-IP gate. A non-loopback admin request must pass both the IP allowlist, when configured, and the operator token gate.
 
 Storage namespace (domain-first):
 - **explicit** identity: snapshot под `state/domain-hi-0xNN/pwm-data.json` (и рядом `epochs/` при epoch-хранилище);
@@ -237,6 +246,9 @@ Palette contract в TTY (если ANSI разрешен и `NO_COLOR` не за�
 
 - `PWM_CORS_ORIGINS` — обязателен для non-loopback bind (`0.0.0.0`, публичные интерфейсы), формат: список origin через запятую.
 - `PWM_RPC` — не параметр процесса `pwmd`, но операционно критичен: клиенты используют его как endpoint ноды.
+- `PWM_RPC_ALLOWED_IPS` — comma-separated list of source IP/CIDR entries for the `/v1/*` RPC allowlist, same format as `--rpc-allowed-ip`.
+- `PWM_RPC_ALLOWED_AUTO` — `u16` seconds for startup source-IP auto-enrollment; `0` disables auto-enrollment.
+- `PWM_ADMIN_TOKEN` — bearer token for non-loopback operator/admin endpoints (`Authorization: Bearer <token>`); loopback callers are accepted without the token.
 - `PWM_LOG_NAME` — alias для `--log-name`.
 - `PWM_LOG_DIR` — alias для `--log-dir`.
 - `PWM_LOG_FILE_TEMPLATE` — alias для `--log-file-template`.
@@ -615,6 +627,8 @@ Legacy handling:
 - По умолчанию нода слушает только loopback (`127.0.0.1:3030`), что безопаснее для dev-режима.
 - CORS permissive включается только на loopback bind.
 - Для non-loopback bind требуется явный allowlist через `PWM_CORS_ORIGINS`; иначе запуск блокируется.
+- RPC source-IP allowlist задаётся отдельно через `--rpc-allowed-ip` / `PWM_RPC_ALLOWED_IPS`; если список пуст и `--rpc-allowed-auto=0`, поведение полностью backward-compatible и IP-gate не устанавливается.
+- Admin endpoints (`/v1/shutdown`, `/v1/bridge-federation/reset`, `/v1/operator/log/override`) принимают loopback без токена; non-loopback требует `Authorization: Bearer <PWM_ADMIN_TOKEN>`.
 - Лимит тела `POST /v1/tx` фиксирован 256 KiB, чтобы ограничить перегрузку JSON parser/mempool path.
 - Snapshot save errors surfaced to operators: API paths return `500` on persistence failure, and seal-loop failures mark `/v1/status` as `ready_degraded` until a later successful save.
 

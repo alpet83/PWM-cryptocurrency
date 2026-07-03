@@ -24,7 +24,7 @@
 
 ### 2.1 Ненулевой exit и диагностика (stderr)
 
-В наблюдаемом прогоне на Windows (репо `P:\opt\docker\PWM-cryptocurrency`, бинарь `pwmd` из общего `rust-target-shared`) после остановки нод:
+В наблюдаемом прогоне на Windows (репо `P:\opt\docker\pwm-protocol`, бинарь `pwmd` из общего `rust-target-shared`) после остановки нод:
 
 - В stderr напечатан блок **`=== Wave A hash divergence diagnostics ===`** с полями:
   - `tip_hash_equal`, `last_epoch_hash_equal`

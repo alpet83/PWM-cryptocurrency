@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Repo: `P:/opt/docker/PWM-cryptocurrency`
+- Repo: `P:/opt/docker/pwm-protocol`
 - Target command:
   `cargo run -p pwmd -- --listen 127.0.0.1:3030 --state-root ./tmp/state-testnet --data-file ./tmp/state-testnet/pwm-data.json --genesis-file ./tmp/genesis-custom.json --genesis-passphrase 12345 --network-id testnet-qa --domain-hi 0x2C --cluster-id test-cluster-CY --node-id test-node-CY`
 

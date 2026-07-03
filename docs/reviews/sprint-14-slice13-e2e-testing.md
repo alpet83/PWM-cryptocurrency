@@ -1,6 +1,6 @@
 # Sprint 14 — Slice 13 E2E testing (CY -> DO anomaly)
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`  
+Repo: `P:/opt/docker/pwm-protocol`  
 Date: 2026-04-28  
 Scope: full reproduction from scratch for user-reported anomaly: cross-shard transfer `CY -> DO` drains sender, recipient unchanged, no visible history after restart, and suspected missing `pwm-data`/logs persistence.
 

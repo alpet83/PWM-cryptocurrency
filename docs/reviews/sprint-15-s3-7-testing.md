@@ -1,7 +1,7 @@
 # Sprint 15 S3.7 stateful peer transport testing
 
 Date: 2026-04-30 (retested after trust-boundary remediation and S3.7 expectation alignment)  
-Repository: `P:/opt/docker/PWM-cryptocurrency`  
+Repository: `P:/opt/docker/pwm-protocol`  
 Verdict: **PASS**
 
 ## Scope
@@ -43,7 +43,7 @@ Targeted revalidation for S15-S3.7 (post-remediation):
 
 ## Test environment (fresh roots/ports)
 
-- Evidence root: `P:/opt/docker/PWM-cryptocurrency/.tmp-test/s15-s3-7-gate-20260430-090935`
+- Evidence root: `P:/opt/docker/pwm-protocol/.tmp-test/s15-s3-7-gate-20260430-090935`
 - Node A:
   - RPC `127.0.0.1:21930`
   - peer listen `127.0.0.1:22930`

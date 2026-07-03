@@ -1,7 +1,7 @@
 # Review: V6-2 slice 2 — ActivatePolicy `activation_target` wire
 
 **Ticket:** `tasks/20260605-v6-s2-slice2-activate-policy-wire.json`  
-**Worktree:** `P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model`  
+**Worktree:** `P:/opt/docker/pwm-protocol-worktrees/v6-sprint2-core-model`  
 **Branch:** `v6/20260605-v6-sprint2-core-model`  
 **Reviewer:** pwm-review  
 **Date:** 2026-06-05  

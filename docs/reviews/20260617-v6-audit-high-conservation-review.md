@@ -110,7 +110,7 @@ Wire JSON / u128: not applicable (no peer wire / RFC wire contract in this slice
 - `conservation_emergency_cancels_pending` — emergency + evac + cancelled drain.
 - `conservation_delay_execute`, `conservation_incoming_not_delayed`, `chain::conservation_seal_drains`.
 
-**Executed (review):** `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-core --lib conservation_` → **8 passed**.
+**Executed (review):** `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-core --lib conservation_` → **8 passed**.
 
 **Optional follow-up (non-blocking):** тест на `Unstake` или `SetPolicy` reject при pending; интеграция drain-retry log с pwmd tracing вместо `eprintln!`.
 

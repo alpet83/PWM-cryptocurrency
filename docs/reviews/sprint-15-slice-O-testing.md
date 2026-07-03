@@ -11,7 +11,7 @@
 | **`user-cqds_mcp_mini`** `cq_project_ctl#select_project` (`project_id`: **5**) | **OK** |
 | **`cq_files_ctl#start_grep`** (`query`: `rpc_account`) | **OK** — `status: ok`, продолжение через `chunk_continuation`; на первых чанках **hits пустые** (совпадений в проиндексированном объёме не найдено при частичном скане). |
 | **`cq_project_ctl#fetch_result`** (второй чанк, `offset`: 50) | **OK** — `status: ok`, `hits: []`, `next_offset`: 100. |
-| **Fallback** `rg` (`P:\opt\docker\PWM-cryptocurrency\crates\pwm-tui`) | **OK** — например `crates/pwm-tui/src/tx_submit.rs` (локальное дерево); см. примечание про Git ниже. |
+| **Fallback** `rg` (`P:\opt\docker\pwm-protocol\crates\pwm-tui`) | **OK** — например `crates/pwm-tui/src/tx_submit.rs` (локальное дерево); см. примечание про Git ниже. |
 
 ### Коммиты (`git log -8`)
 
@@ -34,7 +34,7 @@
 
 ### Тесты
 
-Репозиторий: `P:\opt\docker\PWM-cryptocurrency`. Фоновые `pwmd` / `pwm-tui` не поднимались.
+Репозиторий: `P:\opt\docker\pwm-protocol`. Фоновые `pwmd` / `pwm-tui` не поднимались.
 
 | Команда | Итог | Примечание |
 |---------|------|------------|
@@ -105,7 +105,7 @@ participation:
 
 ### Тесты
 
-Репозиторий: `P:\opt\docker\PWM-cryptocurrency`. Фоновые `pwmd` / `pwm-tui` не поднимались.
+Репозиторий: `P:\opt\docker\pwm-protocol`. Фоновые `pwmd` / `pwm-tui` не поднимались.
 
 | Команда | Итог | Примечание |
 |---------|------|------------|
@@ -149,7 +149,7 @@ participation:
 | Метод | Результат |
 |--------|-----------|
 | **`user-cqds_mcp_mini`** `cq_files_ctl#start_grep` (`project_id`: 5) | **FAILED**: `All connection attempts failed` — CQDS недоступен из сессии. |
-| **Fallback** `rg` из `P:\opt\docker\PWM-cryptocurrency` | **OK**: совпадения в `docs/` (`MVP-checklist.md`, `CODEBASE_REFACTORING.md`, sprint-15 slice-O docs). |
+| **Fallback** `rg` из `P:\opt\docker\pwm-protocol` | **OK**: совпадения в `docs/` (`MVP-checklist.md`, `CODEBASE_REFACTORING.md`, sprint-15 slice-O docs). |
 
 ### Коммиты (`git log -5`)
 
@@ -167,7 +167,7 @@ participation:
 
 ### Тесты
 
-Репозиторий: `P:\opt\docker\PWM-cryptocurrency`. Фоновые `pwmd` / `pwm-tui` не поднимались.
+Репозиторий: `P:\opt\docker\pwm-protocol`. Фоновые `pwmd` / `pwm-tui` не поднимались.
 
 | Команда | Итог | Примечание |
 |---------|------|------------|
@@ -228,7 +228,7 @@ participation:
 | Метод | Результат |
 |--------|-----------|
 | **`user-cqds_mcp_mini`** `cq_files_ctl#start_grep` (`project_id`: 5) | **FAILED**: `All connection attempts failed` — сессия без CQDS. |
-| **Fallback** `rg` из `P:\opt\docker\PWM-cryptocurrency` | **OK**: совпадения `S15-O` / `slice-O` / `CODEBASE_REFACTOR` в `docs/`, `tasks/` (план, чеклист, `CODEBASE_REFACTORING.md`, `MVP-checklist.md`). |
+| **Fallback** `rg` из `P:\opt\docker\pwm-protocol` | **OK**: совпадения `S15-O` / `slice-O` / `CODEBASE_REFACTOR` в `docs/`, `tasks/` (план, чеклист, `CODEBASE_REFACTORING.md`, `MVP-checklist.md`). |
 
 ### Коммиты (`git log -3`)
 
@@ -246,7 +246,7 @@ participation:
 
 ### Тесты
 
-Репозиторий: `P:\opt\docker\PWM-cryptocurrency`. Локальный shell (PowerShell), без фоновых `pwmd` / `pwm-tui`; зависших процессов не создавалось.
+Репозиторий: `P:\opt\docker\pwm-protocol`. Локальный shell (PowerShell), без фоновых `pwmd` / `pwm-tui`; зависших процессов не создавалось.
 
 | Команда | Итог | Примечание |
 |---------|------|------------|

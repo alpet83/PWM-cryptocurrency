@@ -1,6 +1,6 @@
 # Sprint 14 Slice 7 — testing report
 
-Repository: `P:/opt/docker/PWM-cryptocurrency`  
+Repository: `P:/opt/docker/pwm-protocol`  
 Date: 2026-04-28
 
 ## Verdict

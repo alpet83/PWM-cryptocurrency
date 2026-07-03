@@ -1,6 +1,6 @@
 # Sprint 14 — Slice 20 remediation4 (coding)
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 
 ## Verdict
 Implemented.

@@ -1,7 +1,7 @@
 # Review: V6-2 slice 4 — V6 reject codes + validate_tx_shape stubs
 
 **Ticket:** `tasks/20260605-v6-s2-slice4-reject-stubs.json`  
-**Worktree:** `P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model`  
+**Worktree:** `P:/opt/docker/pwm-protocol-worktrees/v6-sprint2-core-model`  
 **Reviewer:** pwm-review  
 **Date:** 2026-06-05
 

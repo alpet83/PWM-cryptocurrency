@@ -1,6 +1,6 @@
 # Публикация MVP (публичное зеркало)
 
-Каноника описана в **`docs/COMMIT_PROTOCOL.md`**: рантайм `P:\opt\docker\PWM-cryptocurrency` → зеркало `P:\GitHub\PWM-cryptocurrency` только через MCP **`git_safe_commit`**.
+Каноника описана в **`docs/COMMIT_PROTOCOL.md`**: рантайм `P:\opt\docker\pwm-protocol` → зеркало `P:\GitHub\pwm-protocol` только через MCP **`git_safe_commit`**.
 
 ## Когда публиковать
 
@@ -15,7 +15,7 @@
 3. Устранить **CRITICAL** из отчёта (обычно CRLF → LF по `.gitattributes`, исключить артефакты вроде `.tmp-test/` через `commit_prepare.toml`).
 4. Повторить **`dry_run`** до приемлемых предупреждений.
 5. **`git_safe_commit`** `mode=apply`, тот же `repo_path`, **`apply_token`** из последнего успешного dry-run, **`confirm=I_UNDERSTAND_AND_APPROVE`**.
-6. **`git_safe_commit`** `mode=commit`, **`repo_path`** = `P:\GitHub\PWM-cryptocurrency`, **`public_repo=true`**, **`commit_message`**, тот же **`confirm`**.
+6. **`git_safe_commit`** `mode=commit`, **`repo_path`** = `P:\GitHub\pwm-protocol`, **`public_repo=true`**, **`commit_message`**, тот же **`confirm`**.
 7. **`git push`** на `origin` — только по явной просьбе оператора (протокол).
 
 ## Рекомендация на следующий план

@@ -1,7 +1,7 @@
 # MVP SPEC v1 Testnet - Architecture Decision Options (No Auto-Decision)
 
 **Date:** 2026-04-23  
-**Repository:** `p:/opt/docker/PWM-cryptocurrency`  
+**Repository:** `p:/opt/docker/pwm-protocol`  
 **Primary intent:** provide clear architecture options and trade-offs for owner decision, without selecting automatically.
 
 ---

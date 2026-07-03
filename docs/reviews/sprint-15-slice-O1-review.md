@@ -6,7 +6,7 @@
 
 Заявленный объём **S15-O групп A+B**: инлайн trivial passthrough в TUI, правки pwmd/CLI по чеклисту A, общий **TextInput**, модули **pwm-core** `display` / `rpc` / `wallet_io` и подключение в **pwm-tui** и **pwm-cli**. Пункты **C** чеклиста (в т.ч. полная декомпозиция `pwm-tui/main.rs`) явно отложены на **O.1+** — в этом наборе коммитов они не выполняются.
 
-Поиск: **`cq_files_ctl#start_grep`** (`project_id` 5, `host_fs`, `p:/opt/docker/PWM-cryptocurrency/crates/pwm-tui/src`, запрос `pwm_core`) — **OK** (18 попаданий в `main.rs`); fallback к локальному поиску не потребовался для этого шага.
+Поиск: **`cq_files_ctl#start_grep`** (`project_id` 5, `host_fs`, `p:/opt/docker/pwm-protocol/crates/pwm-tui/src`, запрос `pwm_core`) — **OK** (18 попаданий в `main.rs`); fallback к локальному поиску не потребовался для этого шага.
 
 ---
 

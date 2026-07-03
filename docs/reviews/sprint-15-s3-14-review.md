@@ -1,4 +1,4 @@
-# Sprint 15 S3.14 — code review (PWM-cryptocurrency)
+# Sprint 15 S3.14 — code review (pwm-protocol)
 
 ## 1. Scope recap
 

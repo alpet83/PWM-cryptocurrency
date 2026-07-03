@@ -6,7 +6,7 @@
 
 **CQDS:** справка по MCP — **`cq_help`**; id сервера в Cursor может быть с префиксом **`user-`** (например `user-cqds_mcp_mini`). Перед CQDS-вызовами использовать skill **`colloquium-cqds-mcp`**. **`cq_team_bridge_ctl`:** для PWM — **`project_id: 5`**, без `tasks_root` (см. [AGENT_PROMPT_orchestrator.md](AGENT_PROMPT_orchestrator.md) § Team bridge). Исходники агента (`mcp-tools/`) и произвольный обход `mcp.json` — не для синтаксиса. Чтобы не зависать на поиске `tools/*.json`, статические имена действий смотреть через **`docs/mcp_index.json`** → точечное **`Read`** одного JSON из указанного каталога. Проблемы MCP/CQDS — эскалация владельцу.
 
-**pwm-testing на Windows:** все прогоны `cargo test`/`build`/`bench` — с `CARGO_TARGET_DIR` вне тома клона: по умолчанию **`F:\pwm-test\PWM-cryptocurrency`**, переопределение через **`PWM_TEST_TARGET_ROOT`**; см. [AGENT_PROMPT_testing.md](AGENT_PROMPT_testing.md) §Windows.
+**pwm-testing на Windows:** все прогоны `cargo test`/`build`/`bench` — с `CARGO_TARGET_DIR` вне тома клона: по умолчанию **`F:\pwm-test\pwm-protocol`**, переопределение через **`PWM_TEST_TARGET_ROOT`**; см. [AGENT_PROMPT_testing.md](AGENT_PROMPT_testing.md) §Windows.
 
 | Роль | Файл |
 |------|------|

@@ -1,4 +1,4 @@
-# PWM-cryptocurrency
+# pwm-protocol
 
 **Языки:** [English — README.md](README.md) · Русский (этот файл)
 
@@ -6,11 +6,23 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ![Интерфейс оператора pwm-tui (демо)](tui-demo-screenshot.png)
 
-## Текущий статус (MVP v6 — owner sign-off завершён)
+## Текущий статус (MVP v7 — owner sign-off завершён)
 
-**Опубликованный milestone — MVP v6** (incremental PoS + runtime address flags): спринты **V6-1…V6-11 PASS**; pre-publication soak PASS; rust audit готов; **owner sign-off одобрен** (2026-06-17). Пакет к публикации в публичное зеркало подготовлен — [releases/v6.0.0.md](docs/releases/v6.0.0.md). PoA lab — не production mainnet.
+**Опубликованный milestone — MVP v7** (performance gate + offchain batch API + emergency stake evacuation): спринты **V7-1…V7-5 PASS**; throughput gate ≥50 tx/s достигнут (~76 tx/s); rust audit готов; **owner sign-off одобрен** (2026-06-29). PoA lab — не production mainnet. План: [docs/plans/mvp_v7.md](docs/plans/mvp_v7.md).
+
+**Предыдущий опубликованный milestone — MVP v6** (incremental PoS + runtime address flags, 2026-06-17) — см. [releases/v6.0.0.md](docs/releases/v6.0.0.md).
 
 **Предыдущий опубликованный milestone — MVP v5** (2026-06-02).
+
+### MVP v7 (devnet lab)
+
+- **Pipeline performance gate:** ~76 tx/s sustained throughput; оптимизации по flamegraph: lean `ClusterPropose`, `block_timing` tail-read, seal digest gating, `Arc<SignedTx>` ingress.
+- **Operator UX:** TUI + `/v1/account` отображают pending conservation transfers с `fee_pwm`.
+- **Emergency stake evacuation (ADR 0012):** `ActivatePolicy` атомарно эвакуирует liquid + `staked_pwm_raw` на rescue (закрывает gap V6).
+- **Offchain batch API:** production `/v1/offchain/*` Merkle batch/proof с chain-visible anchor surrogate.
+- **Devnet genesis:** `configs/devnet-genesis.json` манифест 21B, runbook по onboarding валидаторов.
+- **BFT ADR-gate (ADR 0015):** выбран Option A continuation; CometBFT/ABCI — Фаза 4.
+- **CLI addr-bruteforce v2:** occupied-skip + CPU-MT для корректного перебора при пересекающихся профилях флагов.
 
 ### MVP v6 (devnet lab)
 
@@ -31,7 +43,7 @@ PWM — **нативная криптовалюта с моделью matrixchai
 - **ADR-пакет опубликован** в `docs/adr/` и задаёт архитектурные границы foundation-слоя.
 - **Runtime log-control RPC относится к operator/debug поверхности** и явно не входит в стабильный public API.
 
-**Сборки Windows:** у `pwmd`, `pwm` и `pwm-tui` в PE-ресурсы встраиваются метаданные **PWM MVP v6** и общая иконка PWM (`assets/branding/pwm.ico`), если при сборке на Windows доступен resource compiler.
+**Сборки Windows:** у `pwmd`, `pwm` и `pwm-tui` в PE-ресурсы встраиваются метаданные **PWM MVP v7** и общая иконка PWM (`assets/branding/pwm.ico`), если при сборке на Windows доступен resource compiler.
 
 **Что уже работает (V6 closeout на базе V5+V4):**
 
@@ -116,6 +128,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:3031/v1/dev/peers"
 
 - README (English): [README.md](README.md)
 - Прогресс концепта / карта покрытия whitepaper (публикуется): `docs/CONCEPT_PROGRESS.md`
+- План MVP v7 (текущий milestone): `docs/plans/mvp_v7.md`
 - Release notes MVP v6: `docs/releases/v6.0.0.md`
 - План MVP v6: `docs/plans/mvp_v6.md`
 - V6 owner stability soak: `docs/runbooks/v6-owner-stability-soak-50k.md`

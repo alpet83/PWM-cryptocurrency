@@ -1,6 +1,6 @@
 # Sprint 14 - Slice 20 remediation4 testing
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 
 ## Verdict
 
@@ -19,7 +19,7 @@ The remediation4 handoff flow passed the targeted coding-report command set. Sou
 
 ## Commands run
 
-All commands were run via CQDS `cq_process_ctl` host mode from `P:\opt\docker\PWM-cryptocurrency`.
+All commands were run via CQDS `cq_process_ctl` host mode from `P:\opt\docker\pwm-protocol`.
 
 ```text
 cargo fmt

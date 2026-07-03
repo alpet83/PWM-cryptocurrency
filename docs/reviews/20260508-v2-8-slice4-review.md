@@ -1,6 +1,6 @@
 # Independent review — V2-8 Slice 4 (epoch catch-up fallback)
 
-**Repo:** PWM-cryptocurrency  
+**Repo:** pwm-protocol  
 **Coding commit:** `4df23d53a431e02ade502201aaeebc7926aefd06`  
 **RFC baseline:** `docs/rfc/15-same-shard-sync-v1.md` (§6.3 epoch catch-up, §8 Anti-DoS, §9 legacy, §10 observability; Slice 4 acceptance в §11)  
 **Testing input:** `docs/reviews/20260508-v2-8-slice4-testing.md` — присутствует, результат **PASS** (юниты + check + naming)  

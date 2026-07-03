@@ -23,7 +23,7 @@
 
 ## 5. Tests
 
-Локально (workspace `P:\opt\docker\PWM-cryptocurrency`, HEAD **`23a183f`**):
+Локально (workspace `P:\opt\docker\pwm-protocol`, HEAD **`23a183f`**):
 
 | Команда | Результат |
 |---------|-----------|

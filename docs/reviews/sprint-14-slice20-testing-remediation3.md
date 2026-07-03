@@ -1,6 +1,6 @@
 # Sprint 14 Slice20 Remediation3 Testing
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 
 ## Verdict
 `PASS`

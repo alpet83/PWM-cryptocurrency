@@ -2,7 +2,7 @@
 
 **Agent:** pwm-testing  
 **Date:** 2026-04-30 (local wall clock, TZ Europe/Moscow for HTTP poll timestamps)  
-**Environment:** Windows 10, repo `P:\opt\docker\PWM-cryptocurrency`, ports **3030/3031** HTTP and **3130/3131** transport (defaults from `node-1.ps1` / `node-2.ps1` — no port conflict; alternate ports **not** required).
+**Environment:** Windows 10, repo `P:\opt\docker\pwm-protocol`, ports **3030/3031** HTTP and **3130/3131** transport (defaults from `node-1.ps1` / `node-2.ps1` — no port conflict; alternate ports **not** required).
 
 ## Commands (planned vs executed)
 

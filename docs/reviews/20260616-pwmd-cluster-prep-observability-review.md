@@ -63,7 +63,7 @@ Wire JSON / u128: not applicable (no peer wire / RFC wire contract in this slice
 - `status_exposes_identity_signals` — регрессия `cluster_prep.phase=ready` на dev net.
 - `sync_stall_tick_10s` — 10s cadence при неизменном `rem`.
 
-**Reviewer execution** (`CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency`):
+**Reviewer execution** (`CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol`):
 
 - `cargo test -p pwmd --lib cluster_prep` → 1 passed.
 - `cargo test -p pwmd --lib sync_stall_tick` → 1 passed.

@@ -17,6 +17,7 @@
 | 2026-05-27 | `20260524-v5-s8-slice3-op-smoke-ipv4-claim-testing-rerun2` | `scripts/devnet_v5_operator_smoke.ps1` | `-Ipv4ClaimOnly` still ran marks/deferred loops because slice booleans ignored the IPv4-only switch | Gate marks/deferred off when `Ipv4ClaimOnly` is set | pwm-testing | validated; final smoke FAIL `E_POLICY_SCHEMA_INVALID` |
 | 2026-05-27 | `20260524-v5-s8-slice3-op-smoke-ipv4-claim-testing-rerun2` | `scripts/devnet_v5_operator_smoke.ps1` | `claim-ipv4-batch` JSON parsing was contaminated by `cargo run` status lines captured via `2>&1` | Run helper through `cargo run --quiet` | pwm-testing | validated; final smoke FAIL `E_POLICY_SCHEMA_INVALID` |
 | 2026-06-01 | `20260612-v5-snapshot-genesis-anchor-light-coding` | `crates/pwmd/src/snapshot/types.rs` + `crates/pwmd/src/tests/snapshot_roaming.rs` | `snap_or_mk_quota` + `snap_reject_quota_mismatch` FAIL: v3 snapshots have no `marks_quota`; injected rows were ignored. | **Cancelled:** tests removed in `20260602-v5-pwmd-remove-legacy-marks-quota-coding`; legacy `marks_quota` mirror stripped from pwmd snapshot wire (v3 uses `stored_marks` only). | pwm-coding | N/A — tests deleted |
+| 2026-07-01 | `handoff-pwmd-compile-20260701` | `crates/pwmd/src/snapshot/ch_http.rs` | build errors: unknown fields `staked` and `last_stake_change_height` referenced in snapshot code; `acc.staked`/`acc.last_stake_change_height` not present on `Account` | Hand off to `pwm-coding`: update `Account` field names/uses or snapshot code to match `pwm-core` types; not fixed by pwm-testing (production code) | pwm-testing | BLOCKED |
 
 ## Entry template (copy for new rows)
 
@@ -28,4 +29,4 @@
 
 ---
 
-_Last updated: 2026-06-02_
+_Last updated: 2026-07-01_

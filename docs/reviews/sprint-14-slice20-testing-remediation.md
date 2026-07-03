@@ -1,6 +1,6 @@
 # Sprint 14 — Slice 20 testing remediation (re-run after fixes)
 
-Repo: `P:/opt/docker/PWM-cryptocurrency`
+Repo: `P:/opt/docker/pwm-protocol`
 Run dir: `tmp/slice20-e2e-accept-20260429`
 Date: 2026-04-29
 

@@ -1,7 +1,7 @@
 # Sprint 14 Slice 14 - testing report
 
 Date: 2026-04-28
-Repository: `P:/opt/docker/PWM-cryptocurrency`
+Repository: `P:/opt/docker/pwm-protocol`
 Scope: validate slice14 (`rows -> accounts` rename + F7 hint removal)
 
 ## Verdict

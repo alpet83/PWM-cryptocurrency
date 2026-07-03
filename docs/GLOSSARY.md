@@ -405,7 +405,27 @@
   - **Prepared policy activation:** подписанная `ActivatePolicy` (часто `fee=0`), сохранённая `tx-init` в wallet или `--save-activation-tx` для cold-storage до broadcast.
   - **s2c vs s2 (legacy):** s2 superseded — roaming intent TTL ≠ Mode B refund; gate закрыт variant C (single-shard refund).
   - **Genesis loader fix:** `conservation_delay_blocks` и `cross_shard_lock_timeout_blocks` из JSON genesis больше не игнорируются при load (V6-10 chore).
-  - **Deferrals (не блокеры V6):** Mode B IMPORT happy-path на target peer; полный multi-hour soak — опционально до public testnet (V7).
+  - **Deferrals (не блокеры V6):** Mode B IMPORT happy-path на target peer; полный multi-hour soak — опционально до Phase 4 public testnet.
+
+---
+
+## MVP V7: external integration closeout {#thema-v7-closeout}
+
+### `PendingConservationTransfer` {#term-pending-conservation-transfer}
+
+- **Простыми словами:** запись в очереди состояния для исходящего `Transfer` с адреса `CONSERVATION`: sender, recipient, amount, fee, nonce, `enqueue_height`, `execute_at_height`.
+- **Где встречается:** `State.pending_conservation`, `PendingConservationOut`, `/v1/account`, TUI account view.
+
+### `OffchainBatch` {#term-offchain-batch}
+
+- **Простыми словами:** группа offchain burn/settlement entries, для которой сервер считает Merkle root и выдаёт proof для проверки отдельной записи.
+- **Где встречается:** `/v1/offchain/batch`, `/v1/offchain/batch/:id`, `/v1/offchain/batch/:id/proof/:entry_index`.
+
+### BFT ADR-gate {#term-bft-adr-gate}
+
+- **Простыми словами:** V7 decision gate по миграции consensus: продолжить Option A в V7, изучать CometBFT/ABCI в Phase 4, не начинать custom Rust BFT без отдельного ADR.
+- **Где встречается:** ADR 0015, `CONCEPT_ROADMAP.md` R3/R13, V7-7 closeout.
+
 
 ---
 
@@ -424,6 +444,7 @@
 | A attester | [Attester](#term-attester) |
 | A auto-attest (incoming propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
 | C conservation delay | [Conservation delay](#term-conservation-delay) |
+| O `OffchainBatch` | [OffchainBatch](#term-offchain-batch) |
 | C `COSIGN_NON_DISABLEABLE` | [COSIGN_NON_DISABLEABLE](#term-cosign-non-disableable) |
 | C CY soak V6 (s1…s4) | [CY soak V6](#term-cy-soak-v6) |
 | C `ClaimIPv4Batch` | [ClaimIPv4Batch](#term-claim-ipv4-batch) |
@@ -441,6 +462,7 @@
 | S Sprint-final closeout (V5) | [Sprint-final closeout](#term-v5-closeout-new) |
 | S Sprint-final closeout (V6) | [Sprint-final closeout V6](#term-v6-closeout-new) |
 | S stake admission | [Stake admission](#term-stake-admission) |
+| B BFT ADR-gate | [BFT ADR-gate](#term-bft-adr-gate) |
 | B Bootstrap Snapshot (future) | [Bootstrap Snapshot](#term-bootstrap-snapshot-v3) |
 | B `binding_mismatch` | [binding_mismatch](#term-binding-mismatch) |
 | C capability / `PWM_PROTOCOL_VERSION` | [Capability / версия](#term-capability-version) |
@@ -452,6 +474,7 @@
 | G `run_cluster_gate` / gate | [`run_cluster_gate`](#term-run-cluster-gate) |
 | K k-of-n | [k-of-n](#term-k-of-n) |
 | N `node_instance_id`, `--node-instance-id` | [membership](#term-membership) |
+| P `PendingConservationTransfer` | [PendingConservationTransfer](#term-pending-conservation-transfer) |
 | P premine 21B (raw) | [Premine 21B](#term-premine-21b) |
 | P Policy reject / `E_POLICY_*` | [Policy reject](#term-policy-reject) |
 | P PolicyTx / PolicyAction | [PolicyTx](#term-policytx) |
@@ -485,15 +508,18 @@
 | ipv4_claimed_phase | [ipv4_claimed_phase](#term-ipv4-claimed-phase) |
 | Курсор марок (`marks_last_block`) | [marks_last_block](#term-marks-last-block) |
 | Mode B escrow | [Mode B escrow](#term-mode-b-escrow) |
+| OffchainBatch | [OffchainBatch](#term-offchain-batch) |
 | Ленивые марки (lazy marks) | [Lazy marks](#term-lazy-marks) |
 | Отложенная активация политики | [Deferred policy](#term-deferred-policy) |
 | PASS_EVIDENCE | [PASS_EVIDENCE](#term-pass-evidence) |
+| PendingConservationTransfer | [PendingConservationTransfer](#term-pending-conservation-transfer) |
 | Peer sync score | [Peer sync score](#term-peer-sync-score) |
 | API freeze `/v1/*` (V3) | [API freeze V3](#term-api-freeze-v1) |
 | Архитектурные записи ADR (V3) | [ADR V3](#term-adr-v3-package) |
 | Авто-аттестация (входящий propose) | [Авто-ClusterAttest](#term-auto-cluster-attest) |
 | Аренда в процессе (lease) | [`process-local`](#term-process-local-lease) |
 | Аттестер | [Attester](#term-attester) |
+| BFT ADR-gate | [BFT ADR-gate](#term-bft-adr-gate) |
 | Bootstrap Snapshot (будущий) | [Bootstrap Snapshot](#term-bootstrap-snapshot-v3) |
 | Гейт (кластерный) | [`run_cluster_gate`](#term-run-cluster-gate) |
 | Гейт replay (V3) | [Replay determinism gate](#term-replay-det-gate-v3) |

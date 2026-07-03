@@ -1,4 +1,4 @@
-# PWM-cryptocurrency
+# pwm-protocol
 
 **Languages:** English (this file) · [Русский — README-ru.md](README-ru.md)
 
@@ -6,11 +6,23 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ![pwm-tui operator UI (demo)](tui-demo-screenshot.png)
 
-## Current status (MVP v6 — owner sign-off complete)
+## Current status (MVP v7 — owner sign-off complete)
 
-**Published milestone: MVP v6** (incremental PoS + address security runtime): sprint gates **V6-1…V6-11 PASS**; pre-publication soak PASS; rust audit artifact done; **owner sign-off approved** (2026-06-17). Public mirror publication batch prepared — see [releases/v6.0.0.md](docs/releases/v6.0.0.md). PoA lab topology — not a production mainnet product launch.
+**Published milestone: MVP v7** (performance gate + offchain batch API + emergency stake evacuation): sprint gates **V7-1…V7-5 PASS**; throughput gate ≥50 tx/s closed at ~76 tx/s; rust audit artifact done; **owner sign-off approved** (2026-06-29). PoA lab topology — not a production mainnet product launch. Plan: [docs/plans/mvp_v7.md](docs/plans/mvp_v7.md).
+
+**Prior published milestone: MVP v6** (incremental PoS + address security runtime, 2026-06-17) — see [releases/v6.0.0.md](docs/releases/v6.0.0.md).
 
 **Prior published milestone: MVP v5** (tokenomics hardening, 2026-06-02).
+
+### MVP v7 highlights (devnet lab)
+
+- **Pipeline performance gate:** ~76 tx/s sustained throughput; flamegraph-driven fixes: lean `ClusterPropose`, `block_timing` tail-read, seal digest gating, `Arc<SignedTx>` ingress.
+- **Operator UX:** TUI + `/v1/account` expose pending conservation transfers with `fee_pwm` for operator parity.
+- **Emergency stake recovery (ADR 0012):** `ActivatePolicy` evacuates liquid + `staked_pwm_raw` to rescue atomically (closes V6 gap).
+- **Offchain batch API:** production `/v1/offchain/*` Merkle batch/proof surface with chain-visible anchor surrogate.
+- **Devnet genesis:** `configs/devnet-genesis.json` 21B launch-candidate manifest, validator onboarding runbook.
+- **BFT ADR-gate (ADR 0015):** V7 Option A continuation chosen; CometBFT/ABCI study deferred to Phase 4.
+- **CLI addr-bruteforce v2:** occupied-skip + CPU-MT for correct brute across intersecting flag profiles.
 
 ### MVP v6 highlights (devnet lab)
 
@@ -115,6 +127,7 @@ Expect `phase=ready`, peer visibility on both sides, and namespaces `domain-hi-0
 
 - README (Russian): [README-ru.md](README-ru.md)
 - Concept progress / whitepaper coverage map (published): `docs/CONCEPT_PROGRESS.md`
+- MVP v7 plan (current milestone): `docs/plans/mvp_v7.md`
 - MVP v6 release notes: `docs/releases/v6.0.0.md`
 - MVP v6 consensus + address security plan: `docs/plans/mvp_v6.md`
 - V6 owner stability soak runbook: `docs/runbooks/v6-owner-stability-soak-50k.md`

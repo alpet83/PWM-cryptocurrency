@@ -1,7 +1,7 @@
 # Sprint 15 S3.5 testing: one-window relay polish/docs
 
 Date: 2026-04-30  
-Repository: `P:/opt/docker/PWM-cryptocurrency`  
+Repository: `P:/opt/docker/pwm-protocol`  
 Verdict: **PASS**
 
 ## Scope Checked

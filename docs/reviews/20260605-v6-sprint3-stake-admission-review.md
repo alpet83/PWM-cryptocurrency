@@ -1,7 +1,7 @@
 # Review: V6-3 stake-gated validator admission
 
 **Ticket:** `20260605-v6-sprint3-stake-admission-coding`  
-**Branch / worktree:** `v6/20260605-v6-sprint3-stake-admission` @ `P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint3-stake-admission`  
+**Branch / worktree:** `v6/20260605-v6-sprint3-stake-admission` @ `P:/opt/docker/pwm-protocol-worktrees/v6-sprint3-stake-admission`  
 **Spec:** `docs/rfc/addenda/v6-rfc4-validators-stake-admission.md`, `docs/plans/mvp_v6.md` (V6-3)  
 **Reviewer:** `pwm-review`  
 **Date:** 2026-06-05

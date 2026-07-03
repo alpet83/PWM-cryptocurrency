@@ -3,7 +3,7 @@
 **Date:** 2026-05-09  
 **Ticket:** `tasks/20260509-s21-followup-mini-tests.json`  
 **Coding commit (anchored):** `6a33cb9b484934fc386129243229942cfe655f51`  
-**Platform:** Windows (repo `P:\opt\docker\PWM-cryptocurrency`)
+**Platform:** Windows (repo `P:\opt\docker\pwm-protocol`)
 
 ## Verdict: **PARTIAL** (targeted **PASS**; full `pwmd` suite **FAIL** on known `transport_peer`)
 

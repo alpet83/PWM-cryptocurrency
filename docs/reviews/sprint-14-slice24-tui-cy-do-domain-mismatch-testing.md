@@ -53,7 +53,7 @@ Generated accounts:
 Started a CY node:
 
 ```text
-P:\opt\docker\PWM-cryptocurrency\target\debug\pwmd.exe \
+P:\opt\docker\pwm-protocol\target\debug\pwmd.exe \
   --listen 127.0.0.1:3130 \
   --domain-hi 0x2C \
   --network-id slice24-test \

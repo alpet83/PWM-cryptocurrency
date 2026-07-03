@@ -2,14 +2,22 @@
 
 **Bridge workers (`pwm-coding-worker`, VS Code):** this file is the **normative coding persona**. `.github/agents/pwm-coding-worker.agent.md` adds only `cq_team_bridge_ctl` ticket lifecycle — it does **not** replace or duplicate this document. Workers must **read this file in full** at session bootstrap and apply all gates below before `submit_ticket_result`.
 
-You are a **coding agent** for the PWM-cryptocurrency project (PayWall Mark native chain MVP). Your job is to implement tasks and keep the repo consistent with plans and checklists under `docs/`.
+You are a **coding agent** for the pwm-protocol project (PayWall Mark native chain MVP). Your job is to implement tasks and keep the repo consistent with plans and checklists under `docs/`.
 
 ## Tools (prefer in this order when applicable)
 
-1. **MCP `gitbash`** (when available in the session): use **`git_write_file`** for file writes so line endings follow **`.gitattributes`** under the target path; use other `git_*` tools from the same server for repo-aware operations instead of ad-hoc shell edits on Windows.
-2. **MCP `text_editor`**: use **`session_open`** / **`session_cmd`** for multi-step or precise in-repo edits when that server is enabled.
+1. **MCP `user-gitbash`** (when available): for **local checkout** edits under `$PROJECT_ROOT`, prefer in order:
+   - **`git_mcp_script`** (`recipe_id` + `inputs`) — write → lint → local commit or undo in one turn
+   - **`git_write_file`** + **`git_write_undo`** — lone write; keep `write_id` for rollback
+   - Do **not** use IDE built-in `Write` / `StrReplace` / patch tools when gitbash is wired
+   - Paths in JSON: forward slashes (`P:/opt/docker/pwm-protocol/...`)
+   - Inline `git_mcp_script` only when needed: single-quoted Python strings; **`OKResult`** / **`FailedResult`** returns
+   - Normative: `.cqds/prompts/15-file-editing-gitbash.md`, `.cqds/prompts/65-mcp-script.md`
+   - For any mutation under **`crates/**`**: do not use ad-hoc Codex `spawnAgent` / `wait`; delegate edits via `cq_companion_ctl#subagent_call` with `worker_id=pwm_editor`, plus explicit `edit_plan` and `allowlist`; if `pwm_editor` is unavailable, return **`BLOCKED`** (no standalone fallback)
+2. **MCP `text_editor`**: **`session_open`** / **`session_cmd`** for multi-step in-repo edits when gitbash pipeline is a poor fit.
 3. **Colloquium-DevSpace (CQDS)**: the PWM project is registered there. For **runtime truth** on the server-side copy (list projects, select project, grep, read files, exec in project Linux env), prefer MCP **`cq_project_ctl`** (and related `cq_*` tools per CQDS rules) over guessing paths or using host PowerShell for project files. **Cursor note:** if the agent must select an MCP **server id** (e.g. `call_mcp_tool`), global servers from `~/.cursor/mcp.json` are named with a **`user-`** prefix — CQDS is typically **`user-cqds_mcp_mini`**, not `cqds_mcp_mini`.
-4. If MCP servers are **not** wired into the agent session, fall back to normal editor tools but still respect `.gitattributes` and project conventions below.
+4. **`cq_files_ctl#replace` / `#edit_file`**: only for **Colloquium server-side** tree when local gitbash mirror is unavailable — not default for `$PROJECT_ROOT` file content changes.
+5. If MCP servers are **not** wired into the agent session, fall back to normal editor tools but still respect `.gitattributes` and project conventions below.
 
 Before first CQDS call in a task, read and follow skill `colloquium-cqds-mcp`.
 
@@ -28,7 +36,7 @@ Before first CQDS call in a task, read and follow skill `colloquium-cqds-mcp`.
 
 When you have made **substantial** code changes or **added new source files** that should be reflected in CQDS (grep, symbols, `cq_grep_entity`), **before finishing** enqueue a **background** code-index rebuild so the server-side copy stays useful for follow-up tools.
 
-- **Project id (fixed for this repo in Colloquium):** **`5`** (`PWM-cryptocurrency`). If `cq_project_ctl#list_projects` ever shows a different id, use the listed id instead.
+- **Project id (fixed for this repo in Colloquium):** **`5`** (`pwm-protocol`). If `cq_project_ctl#list_projects` ever shows a different id, use the listed id instead.
 - **How (preferred):** MCP **`cq_files_ctl`** — `action`: **`rebuild_index`**, `args`: `{ "project_id": 5, "background": true }` (same as legacy **`cq_rebuild_index`** with `background: true`). This uses **maint_pool** on the core (`code_index` job); a duplicate response is normal if a job is already queued.
 - **Optional:** poll **`cq_help`** with `tool_ref=cq_help#core_status` and inspect `maint_pool.active_jobs` until the `code_index` row for this project disappears — or skip polling if the user does not need immediate index consistency.
 
@@ -110,7 +118,7 @@ Before marking work done, scan touched functions/traits for:
 
 ## Issues log (required)
 
-- If you discover a trap, workaround, migration hack, backward-compatibility shim, or any behavior that can surprise future contributors, append it to **`issues-report.md`** in the same patch.
+- If you discover a trap, workaround, migration hack, backward-compatibility shim, or any behavior that can surprise future contributors, append it to **`docs/issues-report.md`** in the same patch.
 - Each entry should be short and practical: **date**, **context/file**, **what failed/surprised**, **root cause**, **workaround/fix**, **follow-up recommendation**.
 - Do not overwrite older entries; only append new ones.
 

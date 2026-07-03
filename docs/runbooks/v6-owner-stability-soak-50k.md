@@ -410,8 +410,8 @@ $PWM --rpc "$RPC" tx-policy-activate \
 | Проверка | Ожидание |
 |----------|----------|
 | Victim `balance_pwm` | `0` (эвакуировано) |
-| Victim `staked` / marks | **V6:** остаются on-chain ([ADR 0011](../adr/0011-policy-activation-target.md) non-goal). **V7:** stake эвакуируется на rescue ([ADR 0012](../adr/0012-emergency-stake-evacuation.md)); marks не переносятся |
-| Rescue `balance_pwm` | ≥ funding − fees (liquid portion; **V6:** без victim stake; **V7:** включая evacuated stake) |
+| Victim `staked` / marks | **V6:** остаются on-chain ([ADR 0011](../adr/0011-policy-activation-target.md) non-goal). **V7:** `staked=0`, stake эвакуируется на rescue ([ADR 0012](../adr/0012-emergency-stake-evacuation.md)); marks не переносятся |
+| Rescue `balance_pwm` | ≥ funding − fees (**V6:** только liquid portion, без victim stake; **V7:** liquid + весь evacuated stake) |
 | `pending_conservation` | пусто для victim |
 | Emergency policy | active, account `finalized` |
 | Activation tx | `fee=0` |

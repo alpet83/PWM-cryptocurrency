@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Repo: `P:/opt/docker/PWM-cryptocurrency`
+- Repo: `P:/opt/docker/pwm-protocol`
 - Date: 2026-05-01
 
 ## Commands

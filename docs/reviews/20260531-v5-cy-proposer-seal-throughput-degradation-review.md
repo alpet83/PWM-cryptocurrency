@@ -234,7 +234,7 @@ token_usage:
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260531-v5-cy-proposer-seal-throughput-degradation-review.md'
 git commit -m 'docs(v5-seal): throughput degradation review PASS - cluster gate dominated, profiling map'
 ```

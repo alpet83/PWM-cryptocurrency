@@ -192,7 +192,7 @@
 
 - Дата: 2026-05-22 (обновлено под схему bridge v2)
 - Контекст/файлы: bridge worker loop, `cq_team_bridge_ctl`, вызов без `project_id` → дефолт `cqds/tasks`
-- Симптом: PWM coding worker забирал `debug/demo/smoke` тикеты из общей очереди установки CQDS, хотя workspace был `PWM-cryptocurrency`; оркестратор создавал `create_ticket` без `project_id`, полагаясь на `project_ref` или явный `tasks_root`.
+- Симптом: PWM coding worker забирал `debug/demo/smoke` тикеты из общей очереди установки CQDS, хотя workspace был `pwm-protocol`; оркестратор создавал `create_ticket` без `project_id`, полагаясь на `project_ref` или явный `tasks_root`.
 - Причина: legacy-дефолт MCP (`tasks_root` → `…/cqds/tasks`), если **`project_id` не передан**; `project_ref` не участвует в резолве очереди; bridge матчит по `agent_name`/`worker_lane`, не фильтрует чужие smoke-тикеты во внешней очереди.
 - Фикс/обход: **все** вызовы `cq_team_bridge_ctl` для PWM — с **`project_id: 5`**; **`tasks_root` не указывать** (только advanced override). Оркестратор: `share_ticket` на `tasks/<slice-id>.json`. Воркер: см. `.github/agents/pwm-coding-worker.agent.md`. Промпт: `docs/AGENT_PROMPT_orchestrator.md` § Team bridge.
 - Что проверить потом: перезапуск MCP после обновления `cq_help` (warning obsolete server); orphan `t-*` в `cqds/tasks/queue` — не трогать как PWM-очередь.
@@ -798,3 +798,42 @@
 - Причина: helper signer selection всегда пытался `m/0/0`, не учитывая single-account метаданные v2 кошелька.
 - Фикс/обход: добавлен fallback: при `index=0` и schema v2 использовать `wallet.derivation_index`; для schema v3 дефолт остаётся `m/0/0` (другие аккаунты — только с явным `--index`).
 - Что проверить потом: если потребуется отличать «`--index` не передан» от явного `--index 0`, добавить Optional-аргумент в CLI слой и прокидывать это различие до signer helper.
+
+- 2026-06-27, V7-S3 hot index: `Chain::seal` does not expose changed account IDs, so the sealer safely rebuilds and ArcSwap-swaps the full hot map once per sealed block. Follow-up: return changed account IDs for incremental refresh.
+
+- 2026-06-27, async epoch writer: a direct synchronous append when `SyncSender::try_send` returns `Full` can overtake older queued blocks and break epoch continuity. Fix: use a blocking FIFO send to the sole writer; append directly only after writer disconnection.
+
+- 2026-06-27, BlockWriter fail-fast state: the writer must retain its first append error across flushes; clearing it lets later flushes report success while the epoch is incomplete. Fix: keep a permanent failed state, warn for every skipped block, and recover on the shutdown sync path.
+
+- Date: 2026-06-29
+- Context/files: `crates/pwmd/src/tests/http_status.rs` (`v1_tx_event_sealed`) while validating perfmon S3.
+- Symptom: full `cargo test -p pwmd` repeatedly times out in `v1_tx_event_sealed`, but the same test passes when run directly.
+- Root cause: likely timing sensitivity in the sealed-event async harness under full-suite load; the perfmon S3 endpoint does not touch tx event or seal loop semantics.
+- Workaround/fix: use focused rerun (`cargo test -p pwmd v1_tx_event_sealed -- --nocapture`) to confirm the test itself, and use `cargo test -p pwmd --lib -- --skip v1_tx_event_sealed` to validate the remaining suite when triaging this flake.
+- Follow-up recommendation: move the sealed-event wait to a deterministic seal trigger or widen/diagnose the timeout before treating full-suite failures here as product regressions.
+
+- Дата: 2026-06-29 (pwmd lib suite: `v1_tx_event_sealed` timeout only inside full run)
+- Контекст/файлы: `crates/pwmd/src/tests/http_status.rs` (`tests::http_status::v1_tx_event_sealed`), тикет `20260629-v7-3-tui-conservation-pending`.
+- Симптом: `build_project.cmd test -p pwmd --lib` и single-thread variant стабильно падают на `sealed event timeout`, но `build_project.cmd test -p pwmd v1_tx_event_sealed -- --nocapture` проходит и печатает perfmon snapshot.
+- Причина: не связана с изменениями AcctOut/TUI; вероятная suite-order или timing зависимость в sealed-event тесте.
+- Фикс/обход: для этого среза зафиксированы `cargo check`, clippy и isolated rerun; full-suite failure оставлен как внешний test-harness follow-up.
+- Что проверить потом: стабилизировать ожидание sealed event или изолировать shared state/clock assumptions в `v1_tx_event_sealed`, чтобы полный `pwmd --lib` не зависел от порядка тестов.
+
+- 2026-07-02 — `crates/pwm-core/src/state.rs` emergency evacuation fee path: fee was checked before evacuation but subtracted after the sender balance could be zeroed, causing debug panic or release u128 wrap if a nonzero-fee emergency redirect reached the state transition. Fixed by checked fee debit before moving balance/stake to the rescue target and enabled release overflow checks. Follow-up: keep fee-bearing policy activation tests around emergency routing so validation and state transition semantics stay aligned.
+- 2026-07-03 — `crates/pwmd/src/api/handlers_account.rs` `/v1/accounts`: the handler held `inner.read().await` while awaiting foreign home lookup per account, which can starve the write-preferring seal task. Fixed by snapshotting account, peer view, and pending conservation rows into owned data under the read guard, then dropping the guard before async lookups. Follow-up: audit other HTTP handlers for lock guards crossing await points.
+- 2026-07-03 — `crates/pwmd/src/relay.rs` `relay_import`: source roaming state was marked imported after a peer returned bare HTTP 204, coupling local intent finality to an unauthenticated remote self-report. Fixed by marking the intent relayed on delivery and promoting it to imported only when trusted imported cross-shard facts are ingested. Follow-up: keep relay success tests asserting relayed vs imported state boundaries.
+- 2026-07-03 — `crates/pwm-core/src/ser_json_u128.rs` and `tx.rs`: JSON u128 negatives produced generic serde type errors and transaction envelopes allowed Import/BurnMark-only companion fields on unrelated bodies. Fixed with explicit signed integer visitor rejection/`u128` acceptance and shape guards for `import_fee`, `import_provenance`, and `burn_purpose`. Follow-up: keep wire-shape tests for companion fields as new envelope fields are added.
+- 2026-07-03 — `crates/pwmd/src/api/handlers_shutdown.rs` and `handlers_bridge.rs`: shutdown and bridge-federation reset endpoints were reachable without operator authentication on non-loopback binds, allowing remote node stop or federation trust reset. Fixed by sharing the operator auth gate and requiring loopback or a valid bearer token before side effects. Follow-up: keep new admin/control endpoints behind the shared helper by default.
+- 2026-07-03 — `crates/pwmd/src/api/handlers_account.rs` `/v1/account/:id`: the single-account handler held `inner.read().await` while awaiting foreign home lookup, unlike the list endpoint snapshot path, which could starve seal writes under remote lookup load. Fixed by snapshotting the account, peer view, and pending conservation rows under a scoped read guard before async lookup. Follow-up: keep HTTP handlers free of lock guards across await points.
+
+- 2026-07-03 - `crates/pwmd/src/api/handlers_backfill.rs` `/v1/cross-shard/backfill`: the endpoint allowed unauthenticated callers to supply an arbitrary `peer_base`, causing SSRF risk and remote-triggered validator-key signing. Fixed by requiring operator auth before side effects and accepting caller-supplied peer bases only when they are bare HTTP(S) origins in the configured relay peer set. Follow-up: keep future operator-triggered network fetch/signing endpoints on the shared auth and allowlist path.
+
+- 2026-07-03 - `crates/pwmd/src/api/handlers_offchain.rs` and `offchain.rs` `/v1/offchain/batch`: unauthenticated callers could submit repeated large offchain batches into an unbounded in-memory `HashMap`, risking process OOM. Fixed by requiring ready state, capping per-request entries, and evicting the lowest batch id when the process-local store reaches its cap. Follow-up: consider operator auth or persistence-backed quotas if offchain batch ingestion becomes externally exposed.
+
+## 2026-07-03 - RPC IP allowlist is disabled by default
+
+- Context/file: `crates/pwmd/src/rpc_allow.rs`, `crates/pwmd/src/api/router.rs`
+- What failed/surprised: Adding `rpc_allowed_ips` without `rpc_allowed_auto` can lock out remote RPC clients unless their source IP matches the static list.
+- Root cause: The compatibility path intentionally allows all IPs only when both the static list is empty and auto-enrollment is disabled.
+- Workaround/fix: Configure explicit CIDRs via `--rpc-allowed-ip` or use a short `--rpc-allowed-auto` window at startup to enroll known clients.
+- Follow-up recommendation: Document the rollout sequence in operator deployment notes before enabling non-loopback RPC binds.

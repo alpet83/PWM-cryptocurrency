@@ -101,7 +101,7 @@ token_usage: { "source": "estimate", "input": null, "output": null, "total": 120
 
 ```powershell
 # git-handoff
-Set-Location 'P:\opt\docker\PWM-cryptocurrency'
+Set-Location 'P:\opt\docker\pwm-protocol'
 git add 'docs/reviews/20260507-node1-stake-balance-investigation.md'
 git add 'tasks/20260507-node1-stake-balance-investigation.json'
 git commit -m 'docs(review): stake/balance investigation node-1 state-testnet'

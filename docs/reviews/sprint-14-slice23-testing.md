@@ -28,7 +28,7 @@ The recipient-init gate held for same-shard transfers, target-side imports, forg
 - `cargo test -p pwmd restart` -> PASS, 0 tests matched, 339 ms.
 - `cargo check` -> PASS, 425 ms.
 
-Harness: CQDS `cq_process_ctl` host mode, cwd `P:\opt\docker\PWM-cryptocurrency`. No hang watchdog triggered.
+Harness: CQDS `cq_process_ctl` host mode, cwd `P:\opt\docker\pwm-protocol`. No hang watchdog triggered.
 
 ## Notes
 

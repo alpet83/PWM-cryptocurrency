@@ -27,5 +27,5 @@
       "done_at": "2026-06-15T19:55:00+03:00"
     }
   ],
-  "notes": "Testing used CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency when repo target locked. Final gate: cargo fmt --check PASS; cargo test -p pwm-core --lib PASS; cargo test -p pwmd --lib PASS (455 passed, 0 failed). Commit hash: d251fb5c1c773a651fa7e9b65f01352de778be89."
+  "notes": "Testing used CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol when repo target locked. Final gate: cargo fmt --check PASS; cargo test -p pwm-core --lib PASS; cargo test -p pwmd --lib PASS (455 passed, 0 failed). Commit hash: d251fb5c1c773a651fa7e9b65f01352de778be89."
 }

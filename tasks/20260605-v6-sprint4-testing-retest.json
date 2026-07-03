@@ -21,7 +21,7 @@
       "worker_id": "pwm-testing_67480",
       "result": "PASS",
       "artifacts": ["test_project.cmd"],
-      "notes": "CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency; 169+3 tests",
+      "notes": "CARGO_TARGET_DIR=F:\\pwm-test\\pwm-protocol; 169+3 tests",
       "tokens": { "source": "estimate", "total": 21000, "confidence": "low" },
       "done_at": "2026-06-05"
     }

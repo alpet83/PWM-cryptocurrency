@@ -35,7 +35,7 @@
         "cargo fmt --all -- --check",
         "cargo test -p pwmd",
         "cargo check --workspace",
-        "Host Windows: chained via cmd /c \"cd /d P:\\\\opt\\\\docker\\\\PWM-cryptocurrency && cargo fmt --all -- --check && cargo test -p pwmd && cargo check --workspace\" → exit 0",
+        "Host Windows: chained via cmd /c \"cd /d P:\\\\opt\\\\docker\\\\pwm-protocol && cargo fmt --all -- --check && cargo test -p pwmd && cargo check --workspace\" → exit 0",
         "pwmd: 194 lib + 3 bin tests passed"
       ],
       "tokens": {

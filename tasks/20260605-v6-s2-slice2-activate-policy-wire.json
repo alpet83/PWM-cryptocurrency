@@ -4,7 +4,7 @@
   "title": "V6-2 slice 2: ActivatePolicy activation_target wire",
   "status": "done",
   "parent_ticket": "20260605-v6-sprint2-core-model",
-  "worktree_root": "P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model",
+  "worktree_root": "P:/opt/docker/pwm-protocol-worktrees/v6-sprint2-core-model",
   "branch": "v6/20260605-v6-sprint2-core-model",
   "related_docs": ["docs/adr/0011-policy-activation-target.md", "docs/rfc/addenda/v6-rfc6-activate-policy-activation-target.md"],
   "brief": "Extend PolicyAction::ActivatePolicy with optional activation_target; update signing canonical bytes and JSON serde; fix compile sites. No fee=0 enforcement yet.",

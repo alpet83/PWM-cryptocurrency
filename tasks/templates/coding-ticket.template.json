@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "YYYYMMDD-<slug>",
+  "target_agent_name": "pwm-coding",
+  "worker_class": "coding",
+  "planned_for": "YYYY-MM-DD",
+  "title": "<Краткий заголовок задачи>",
+  "status": "pending",
+  "mvp_checklist": [],
+  "brief": "<Контекст: что уже сделано, какой bottleneck/баг/задача. Ссылки на коммиты, ADR, планы. Criterion DONE — по каким признакам задача считается выполненной.>",
+  "model_tier": {
+    "coding": "codex",
+    "note": "<Пояснение сложности: точечные правки / архитектурные изменения / риски>"
+  },
+  "steps": [
+    "1. <Первый шаг — обычно: прочитать ключевые файлы>",
+    "2. <Основная правка: что менять, в каком файле, строки>",
+    "3. <cargo test -p pwmd 2>&1 | tail -20 — PASS обязателен>",
+    "4. <Smoke / интеграционная проверка>",
+    "5. <git_safe_commit: files=[...], message='<prefix>: <описание>'>"
+  ],
+  "notes": "SCOPE OUT:\n- <что НЕ входит в этот тикет>\n\nKEY FILES:\n- <crate/src/file.rs строки X-Y: зачем>\n\nCONCURRENCY / SAFETY:\n- <если есть lock/async нюансы>\n\nBRANCH: mvp-v7",
+  "delegations": [],
+  "commits": [],
+  "artifacts": {},
+  "shared": false,
+  "branch_id": "mvp-v7"
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "YYYYMMDD-<slug>-review",
+  "target_agent_name": "pwm-review",
+  "worker_class": "review",
+  "planned_for": "YYYY-MM-DD",
+  "title": "Review <тема>: <краткое описание>",
+  "status": "pending",
+  "task_kind": "review",
+  "coding_ticket_id": "<YYYYMMDD-coding-ticket-id>",
+  "commit": "<git-sha>",
+  "brief": "<Что ревьюируется: слайс/фича/фикс. Контекст: что изменилось, почему.>",
+  "focus_areas": [
+    "<Конкретный вопрос 1: файл, строки, сомнение>",
+    "<Конкретный вопрос 2: корректность concurrency / lock>",
+    "<Конкретный вопрос 3: тестовое покрытие>",
+    "<Конкретный вопрос 4: потенциальная регрессия>"
+  ],
+  "notes": "НОРМАТИВ: docs/adr/<номер>.md, docs/plans/<план>.md §<секция>\n\nSCOPE: только изменения в коммите <sha>, не весь codebase.\n\nFORMAT: вердикт approve / approve_with_nits / request_changes + приоритизированный список нитов.",
+  "delegations": [],
+  "commits": [],
+  "artifacts": {},
+  "shared": false,
+  "branch_id": "mvp-v7"
+}

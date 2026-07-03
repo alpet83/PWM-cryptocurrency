@@ -14,7 +14,7 @@
   "acceptance_criteria": [
     "Root cause: cluster_attest_waiting_sync (live_synced_attesters=0) до cluster_attest_ready — зафиксирован в notes/тесте",
     "Unit/integration тест pwmd: proposer не seal пока attester не synced; после inject attest ACK — seal в пределах N poll ticks",
-    "cargo test -p pwmd lifecycle cluster_gate — green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)",
+    "cargo test -p pwmd lifecycle cluster_gate — green (CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol)",
     "Краткий operator note: порядок рестарта CY (attester sync до seal) если by-design"
   ],
   "related_tickets": ["20260616-pwmd-cluster-prep-observability"],

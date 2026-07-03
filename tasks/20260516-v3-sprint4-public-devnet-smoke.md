@@ -13,10 +13,10 @@
 
 | Item | Value |
 |------|--------|
-| Repo root | `P:\opt\docker\PWM-cryptocurrency` |
+| Repo root | `P:\opt\docker\pwm-protocol` |
 | Host OS | Windows 10 (`win32 10.0.19045`) |
 | Preflight (`tools/dev/preflight_target_debug.ps1`) | `target/debug` **226 464 982** bytes, below 4096 MiB — **removed: no** |
-| `CARGO_TARGET_DIR` | `F:\pwm-test\PWM-cryptocurrency` (created/exists) |
+| `CARGO_TARGET_DIR` | `F:\pwm-test\pwm-protocol` (created/exists) |
 
 ## Preflight: processes / ports
 
@@ -32,7 +32,7 @@
 ### Commands executed
 
 ```powershell
-$env:CARGO_TARGET_DIR = 'F:\pwm-test\PWM-cryptocurrency'
+$env:CARGO_TARGET_DIR = 'F:\pwm-test\pwm-protocol'
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\dev\preflight_target_debug.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-genesis-build.ps1 `
   -WalletPath 'tmp\pwm-testing-demo-wallet.yaml' `
@@ -46,7 +46,7 @@ Premine verifier: **`Premine verified: 21000000000000000 raw`** (exit **0**) —
 ### Build warmup
 
 ```powershell
-$env:CARGO_TARGET_DIR = 'F:\pwm-test\PWM-cryptocurrency'
+$env:CARGO_TARGET_DIR = 'F:\pwm-test\pwm-protocol'
 cargo build -p pwmd --bin pwmd
 ```
 
@@ -56,9 +56,9 @@ cargo build -p pwmd --bin pwmd
 - **Environment (inherited by child shells):**
 
   ```text
-  PWM_DEMO_GENESIS_PATH=P:\opt\docker\PWM-cryptocurrency\tmp\v3-smoke-s4\genesis-custom.json
+  PWM_DEMO_GENESIS_PATH=P:\opt\docker\pwm-protocol\tmp\v3-smoke-s4\genesis-custom.json
   PWM_DEMO_GENESIS_PASSPHRASE=12345
-  CARGO_TARGET_DIR=F:\pwm-test\PWM-cryptocurrency
+  CARGO_TARGET_DIR=F:\pwm-test\pwm-protocol
   ```
 
 - **Genesis file:** isolated under `tmp\v3-smoke-s4` (fresh JSON for this run).

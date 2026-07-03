@@ -10,8 +10,8 @@
 | Item | Value |
 |------|-------|
 | Host | Windows (Git Bash) |
-| Repo | `P:/opt/docker/PWM-cryptocurrency` |
-| `CARGO_TARGET_DIR` | `F:/pwm-test/PWM-cryptocurrency` |
+| Repo | `P:/opt/docker/pwm-protocol` |
+| `CARGO_TARGET_DIR` | `F:/pwm-test/pwm-protocol` |
 | Preflight | `bash tools/dev/preflight_target_debug.sh` → **ok** (3299 MiB / threshold 4096 MiB, no cleanup) |
 | Live CY cluster | **not required** |
 
@@ -27,7 +27,7 @@ bash tools/dev/preflight_target_debug.sh
 ### Targeted (pwmd, cluster prep observability)
 
 ```bash
-export CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency
+export CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol
 cargo test -p pwmd cluster_prep
 cargo test -p pwmd sync_stall_tick
 ```
@@ -66,7 +66,7 @@ cargo test -p pwm-cli
 |----|-------|--------|
 | `cargo test -p pwmd` green | Full suite | **PASS** (469) |
 | `cargo test -p pwm-cli` green | Full suite | **PASS** (187) |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency` | Isolated target on Windows | **PASS** |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol` | Isolated target on Windows | **PASS** |
 | Preflight `tools/dev/preflight_target_debug.sh` | Size guard | **PASS** |
 | Targeted `cluster_prep` / `sync_stall_tick` | pwmd unit tests | **PASS** (2/2) |
 | No live CY | No cluster soak run | **N/A** (by design) |

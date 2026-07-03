@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "20260625-v7-s1-ramp-head-wait-fix",
+  "target_agent_name": "pwm-coding",
+  "worker_class": "coding",
+  "planned_for": "2026-06-25",
+  "title": "V7-S1: fix ramp overlap → head-wait перед следующим уровнем, re-run soak",
+  "status": "pending",
+  "brief": "Анализ логов (docs/reviews/20260625-v7-s1-log-timing-report.md) установил root cause head_stall при level 34:\n\nramp отправляет level N+1 до того как head продвинулся за batch_height level N → в mempool накапливается 60+ pending txs с перекрывающимися нонсами → seal loop тратит ~6 секунд выгоняя bad-nonce по одной tx/сек вместо запечатывания блока.\n\nАттестация в норме (RTT p50=390ms, max=714ms при timeout=2000ms). Исправление — исключительно в ramp-скрипте.\n\nCRITERION DONE:\n1. scripts/cy_cluster_transfer_ramp_soak.py: после отправки batch level N ждёт подтверждения head > batch_height перед подачей level N+1.\n2. Ramp soak повторно прогнан, достигает ≥50 tx/block без head_stall.\n3. seal_skip bad-nonce evictions в логах отсутствуют или единичны (не шторм).\n4. Результат добавлен в docs/reviews/v7-s1-slice4-ramp-results.md (append секция ## Re-run).\n5. git_safe_commit изменений.",
+  "model_tier": {
+    "coding": "codex",
+    "note": "Правка только в ramp-скрипте Python. Низкий риск."
+  },
+  "steps": [
+    "1. Прочитать scripts/cy_cluster_transfer_ramp_soak.py — найти место где level инкрементируется и следующий batch отправляется (после сбора статистики текущего блока).",
+
+    "2. ПРАВКА: после успешного batch на high N добавить ожидание head_height > batch_height перед увеличением level.\n   Логика:\n     # дождаться пока пропозер продвинет head за только что отправленный batch\n     deadline = time.monotonic() + args.stall_timeout_ms / 1000\n     while time.monotonic() < deadline:\n         current_head = poll_head_height(rpc)  # уже есть в скрипте\n         if current_head > batch_height:\n             break\n         time.sleep(args.head_poll_ms / 1000)\n     else:\n         stop_reason = 'head_stall'\n         break\n   ВАЖНО: batch_height — это high-блок текущего уровня (тот за которым отправлялись txs). Проверить как он называется в контексте скрипта.",
+
+    "3. Убедиться что --stall-timeout-ms (default 5000) и --head-poll-ms (default 100) покрывают задержку аттестации (~800ms) с запасом. Если нужно — поднять default до 8000ms.",
+
+    "4. python -m py_compile scripts/cy_cluster_transfer_ramp_soak.py — синтаксис OK.",
+
+    "5. ЗАПУСК re-run soak:\n   python scripts/cy_cluster_transfer_ramp_soak.py \\\n     --rpc http://127.0.0.1:3030 \\\n     --wallet tmp/demo-genesis-wallet.yaml \\\n     --out-prefix tmp/v7-s1-rerun-soak\n   Ожидаемый результат: level растёт до 50+, seal_slip_ms flat, нет bad-nonce в логах.",
+
+    "6. Если ≥50 tx/block достигнуто — проверить sustained ≥60 блоков (добавить --min-soak-blocks 60 или эквивалент).",
+
+    "7. Добавить секцию в docs/reviews/v7-s1-slice4-ramp-results.md:\n   ## Re-run after head-wait fix\n   | metric | value |\n   |--------|-------|\n   | stop_reason | ... |\n   | max_level | ... |\n   | avg_tx_per_sec | ... |\n   | sprint_criterion_met | yes/no |",
+
+    "8. git_safe_commit files=[scripts/cy_cluster_transfer_ramp_soak.py, docs/reviews/v7-s1-slice4-ramp-results.md], message='fix(ramp): head-wait после batch, re-run V7-S1 soak'"
+  ],
+  "notes": "ROOT CAUSE (из log report):\n- bad-nonce шторм доминирует: ~6s из 8s задержки\n- seal_suppressed_by_cluster → attest accepted за 714ms → но seal loop занят eviction\n- peer storm guard / socket_read_timeout под нагрузкой → кратковременный cluster_attest_waiting_sync (+0.5s)\n\nSCOPE OUT:\n- Изменения seal loop / mempool eviction batching (Slice 5 / отдельный тикет если head-wait не хватит)\n- Изменения wire, snapshot, Chain::seal\n\nКОНТРОЛЬ: если после fix ramp всё ещё head_stall — значит secondary bottleneck (peer saturation / cluster_route_slow под 50+ tx) становится первичным. Зафиксировать findings, эскалировать.\n\nKEY FILES:\n- scripts/cy_cluster_transfer_ramp_soak.py — поиск: level increment, head poll loop\n- docs/reviews/v7-s1-slice4-ramp-results.md — append Re-run секция",
+  "delegations": [],
+  "commits": [],
+  "artifacts": {},
+  "shared": false,
+  "branch_id": "mvp-v7"
+}

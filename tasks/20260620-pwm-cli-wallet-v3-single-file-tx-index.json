@@ -24,7 +24,7 @@
     "docs/pwm-cli.md: таблица команд с --index; emergency same-wallet пример",
     "docs/runbooks/v6-owner-stability-soak-50k.md: §Emergency primary = один wallet v3; шаги 2–8b переписать без обязательных tmp/v6-soak-wallet-*.yaml; split files — optional footnote",
     "Unit-тесты pwm-cli: parse + signer selection per command; prepared activation stale nonce message (mock RPC 409)",
-    "cargo test -p pwm-cli green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)"
+    "cargo test -p pwm-cli green (CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol)"
   ],
   "depends_on": ["20260617-pwm-cli-tx-init-v3-wallet-account-index"],
   "delegations": [
@@ -57,7 +57,7 @@
       "artifacts": {
         "testing_md": "tasks/20260620-pwm-cli-wallet-v3-single-file-tx-index-testing.md"
       },
-      "notes": "195 passed (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency). v2 fallback nit verified. Operator live soak still open per operator_gate."
+      "notes": "195 passed (CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol). v2 fallback nit verified. Operator live soak still open per operator_gate."
     }
   ],
   "artifacts": {
@@ -75,5 +75,5 @@
   "operator_gate": {
     "live_cy": "после merge: emergency soak на demo-genesis-wallet.yaml с 3 accounts, stake между init и activate через tx-policy-activate --index"
   },
-  "notes": "PASS_WITH_NITS закрыт; pwm-testing PASS 2026-06-17: cargo test -p pwm-cli 195/195 green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency). v2 fallback (tx_v2_idx_fallback), parse/signer/409 focus tests green. Operator live CY soak — operator_gate."
+  "notes": "PASS_WITH_NITS закрыт; pwm-testing PASS 2026-06-17: cargo test -p pwm-cli 195/195 green (CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol). v2 fallback (tx_v2_idx_fallback), parse/signer/409 focus tests green. Operator live CY soak — operator_gate."
 }

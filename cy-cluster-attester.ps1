@@ -1,8 +1,10 @@
 # RFC16 attester - shard CY lab. Pair with cy-cluster-proposer.ps1 and cy-cluster-follower.ps1.
 # UTF-8 with BOM - safe for Windows PowerShell 5.1 on localized Windows.
+param([switch]$Release)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 . (Join-Path $PSScriptRoot 'cy-cluster-common.ps1')
+$buildProfile = if ($Release) { 'release' } else { 'debug' }
 
 foreach ($dir in @($CyStateAttester)) {
     if (-not (Test-Path -LiteralPath $dir)) {
@@ -18,11 +20,18 @@ Initialize-CyLabPeersFile
 
 $clusterMembers = $CyInstanceProposer + ',' + $CyInstanceAttester
 
-$pwmdExe = Join-Path $PSScriptRoot '..\rust-target-shared\debug\pwmd.exe'
-$pwmdExeAbs = [System.IO.Path]::GetFullPath($pwmdExe)
+# Release: prefer MSVC build (has PDB symbols for samply), fall back to GNU.
+if ($Release) {
+    $pwmdMsvc   = "F:\pwm-test\shared\release\pwmd.exe"
+    $pwmdGnu    = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\rust-target-shared\release\pwmd.exe"))
+    $pwmdExeAbs = if (Test-Path -LiteralPath $pwmdMsvc) { $pwmdMsvc } else { $pwmdGnu }
+} else {
+    $pwmdExeAbs = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\rust-target-shared\debug\pwmd.exe"))
+}
+$cargoReleaseFlag = if ($Release) { @('--release') } else { @() }
 
 $cargoArgs = @(
-    'run', '-p', 'pwmd', '--bin', 'pwmd', '--',
+    'run', '-p', 'pwmd', '--bin', 'pwmd') + $cargoReleaseFlag + @('--',
     '--listen', $CyRpcAttester,
     '--state-root', $CyStateAttester,
     '--data-file', (Join-Path $CyStateAttester 'pwm-data.json'),
@@ -67,7 +76,7 @@ $pwmdArgs = @(
 )
 
 # RFC16 §8.2: cluster-role=attester derives standby (replay-only, no competing local seal loop).
-Write-Host "Starting CY cluster attester. RPC=$CyRpcAttester peer=$CyPeerAttester peers-list=$CyPeersFile (seal loop off; proposer seals)."
+Write-Host "Starting CY cluster attester [$buildProfile]. RPC=$CyRpcAttester peer=$CyPeerAttester peers-list=$CyPeersFile (seal loop off; proposer seals)."
 if (Test-Path -LiteralPath $pwmdExeAbs) {
     & $pwmdExeAbs @pwmdArgs
 }

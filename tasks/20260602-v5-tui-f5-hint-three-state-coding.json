@@ -73,7 +73,7 @@
       "artifacts": [],
       "tokens": { "source": "estimate", "input": 12000, "output": 2000, "total": 14000, "confidence": "low" },
       "done_at": "2026-06-02",
-      "notes": "preflight: no target/debug (clean). cargo check -p pwm-tui OK. cargo test -p pwm-tui --lib: 36/36 PASS incl. f5_hint_allow_burn, f5_hint_stake_first, f5_hint_wait_accrue, tui_loop::f5_retired_claim_no_submit. check_entity_name_segments: 0 violations (burn_form, lib, tui_loop). CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency."
+      "notes": "preflight: no target/debug (clean). cargo check -p pwm-tui OK. cargo test -p pwm-tui --lib: 36/36 PASS incl. f5_hint_allow_burn, f5_hint_stake_first, f5_hint_wait_accrue, tui_loop::f5_retired_claim_no_submit. check_entity_name_segments: 0 violations (burn_form, lib, tui_loop). CARGO_TARGET_DIR=F:\\pwm-test\\pwm-protocol."
     }
   ],
   "commits": [],

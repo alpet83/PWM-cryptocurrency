@@ -12,8 +12,8 @@
 | Command | Result |
 |---|---|
 | `bash tools/dev/preflight_target_debug.sh` | OK — `target/debug` 3442 MiB (threshold 4096 MiB), `removed: no` |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli tx_init_` | **4 passed** |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli` | **189 passed** (182 lib + 3 claim_ipv4_batch + 4 cli_smoke) |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli tx_init_` | **4 passed** |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli` | **189 passed** (182 lib + 3 claim_ipv4_batch + 4 cli_smoke) |
 
 ## Acceptance criteria
 

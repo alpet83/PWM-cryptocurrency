@@ -10,7 +10,7 @@
     "cli_dispatch: tx/account/roaming/node команды exit early если --rpc offline",
     "Локальные команды (key-gen, genesis-build, addr-*, wallet/*, off-demo) работают с --rpc offline",
     "Unit-тесты is_rpc_offline + parse --rpc offline; docs/pwm-cli.md + runbook v6-owner-stability-soak-50k.md: заменить dead port 59999 на --rpc offline где уместно",
-    "cargo test -p pwm-cli — green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)"
+    "cargo test -p pwm-cli — green (CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol)"
   ],
   "delegations": [
     {

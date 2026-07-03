@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "20260618-delegation-smoke-e2e",
+  "title": "E2E: pwm-coding delegates Rust edit to local pwm_editor",
+  "brief": "Vertical slice: coding worker must NOT edit files directly. Delegate bump of cqds-delegation-smoke v2→v3 via cq_companion_ctl#subagent_call → pwm_editor (pi/Ollama). Coding worker verifies and submits.",
+  "task_kind": "coding",
+  "target_agent_name": "pwm-coding",
+  "worker_class": "coding",
+  "branch_id": "main",
+  "acceptance_criteria": [
+    "All Rust edits performed only through subagent_call to worker_id pwm_editor",
+    "crates/cqds-delegation-smoke/src/lib.rs: delegation_ping -> ok-v3, delegation_version -> 3, tests updated",
+    "cargo test -p cqds-delegation-smoke passes",
+    "submit result_payload includes editor_delegation: true and subagent_calls[]"
+  ],
+  "artifacts": {
+    "files": [
+      "crates/cqds-delegation-smoke/src/lib.rs"
+    ]
+  },
+  "delegations": [
+    {
+      "agent": "pwm-coding",
+      "worker_class": "coding",
+      "prompt_summary": "Orchestrate E2E: subagent_call pwm_editor for lib.rs v2→v3, verify, submit with editor_delegation"
+    },
+    {
+      "agent": "pwm-editor",
+      "worker_class": "subagent",
+      "role": "editor",
+      "prompt_summary": "Edit crates/cqds-delegation-smoke/src/lib.rs only: ok-v3, version 3"
+    }
+  ],
+  "notes": "Probe ticket for companion subagent vertical orchestration. Revert lib.rs after green run if desired.",
+  "delegation": {
+    "version": 1,
+    "invite_note": "E2E DELEGATION SMOKE — editor_delegation: required\n\nDo NOT use cq_files_ctl replace/edit on this slice.\n\n1) Read crates/cqds-delegation-smoke/src/lib.rs (current v2 / ok-v2).\n2) cq_companion_ctl subagent_call worker_id=pwm_editor timeout_sec=300 with task: bump delegation_ping to \"ok-v3\", delegation_version to 3, fix unit tests in same file only. Absolute path P:/opt/docker/pwm-protocol/crates/cqds-delegation-smoke/src/lib.rs\n3) Poll subagent_poll if pending.\n4) Verify on disk + cargo test -p cqds-delegation-smoke via cq_exec.\n5) Submit PASS with editor_delegation and subagent_calls in result_payload.\n\nSkill: colloquium-cqds-mcp; project_id: 5.\nMCP cache: .github/mcp-cache/pwm-coding.md §8–9."
+  }
+}

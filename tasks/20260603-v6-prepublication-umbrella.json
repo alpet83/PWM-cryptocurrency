@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "20260603-v6-prepublication-umbrella",
   "title": "V6 pre-publication: owner stability soak + rust audit + docs refresh",
-  "status": "in_progress",
+  "status": "done",
   "delegation_mode": "operator_first",
   "depends_on": [
     "20260615-v6-sprint11-closeout"
@@ -53,7 +53,9 @@
       "owner": "operator",
       "gate": "git_safe_commit dry_run→apply public mirror",
       "ticket": "tasks/20260617-v6-publication-mirror.json",
-      "status": "in_progress"
+      "status": "done",
+      "completed_at": "2026-06-17",
+      "notes": "Mirror commits 1dd04e7 + dffc2e7 + 66b93ac on P:/GitHub/pwm-protocol."
     }
   ],
   "artifacts": {
@@ -63,5 +65,5 @@
     "release_notes": "docs/releases/v6.0.0.md",
     "runtime_rc_tag": "MVP-V6-RC"
   },
-  "notes": "Owner sign-off 2026-06-17. Pending: git_safe_commit mirror batch (tasks/20260617-v6-publication-mirror.json)."
+  "notes": "Owner sign-off 2026-06-17. Mirror publication complete; tag v6.0.0 on mirror (local). Pending owner-only: git push mirror + tags."
 }

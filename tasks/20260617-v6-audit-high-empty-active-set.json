@@ -47,7 +47,7 @@
         "tasks/20260617-v6-audit-high-empty-active-set.json"
       ],
       "done_at": "2026-06-17T16:30:00Z",
-      "notes": "preflight target/debug 3794MiB (removed: no). CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency: cargo fmt --check OK; pwmd epoch_empty_active_midchain_diag 1/1; pwmd prod_pick_fatal_start (filter prod_pick_fatal) 1/1; pwm-core --lib 192 passed, 1 ignored. No cluster/3030/13030."
+      "notes": "preflight target/debug 3794MiB (removed: no). CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol: cargo fmt --check OK; pwmd epoch_empty_active_midchain_diag 1/1; pwmd prod_pick_fatal_start (filter prod_pick_fatal) 1/1; pwm-core --lib 192 passed, 1 ignored. No cluster/3030/13030."
     }
   ],
   "commits": [

@@ -7,6 +7,12 @@
   "status": "open",
   "mvp_checklist": ["§4 …"],
   "brief": "Цель, ограничения, критерий done.",
+  "model_tier": {
+    "coding": null,
+    "review": null,
+    "testing": null,
+    "note": "Опционально. Примеры: coding=codex, review=grok-acp, testing=composer-2. Берётся из perf-optimization-spectrum.md или grok-mvp7-model-review."
+  },
   "delegations": [
     {
       "agent": "pwm-coding",

@@ -1,13 +1,13 @@
 {
   "id": "20260617-v6-publication-mirror",
   "title": "MVP v6 mirror publication (git_safe_commit dry_run→apply→commit)",
-  "status": "in_progress",
+  "status": "done",
   "parent_umbrella": "20260603-v6-prepublication-umbrella",
-  "brief": "Owner sign-off MVP v6 approved 2026-06-17. Sync runtime P:/opt/docker/PWM-cryptocurrency to public mirror P:/GitHub/PWM-cryptocurrency per COMMIT_PROTOCOL.md. Tags: MVP-V6-RC (done on runtime), v6.0.0 on mirror after commit.",
+  "brief": "Owner sign-off MVP v6 approved 2026-06-17. Sync runtime P:/opt/docker/pwm-protocol to public mirror P:/GitHub/pwm-protocol per COMMIT_PROTOCOL.md. Tags: MVP-V6-RC (done on runtime), v6.0.0 on mirror after commit.",
   "acceptance_criteria": [
     "git_safe_commit dry_run: zero CRITICAL on publication batch",
     "git_safe_commit apply with dry_run_token + confirm",
-    "git_safe_commit commit on P:/GitHub/PWM-cryptocurrency public_repo=true",
+    "git_safe_commit commit on P:/GitHub/pwm-protocol public_repo=true",
     "Umbrella 20260603-v6-prepublication-umbrella status done",
     "Optional: git push mirror + tags v6.0.0 on owner request"
   ],
@@ -17,6 +17,13 @@
     "runtime_tag": "MVP-V6-RC",
     "release_doc": "docs/releases/v6.0.0.md"
   },
-  "notes": "Orchestrator runs MCP gitbash only; no manual git on mirror.",
+  "mirror_commits": [
+    {"sha": "1dd04e7", "message": "feat(v6): consensus evolution, address flags, operator binaries", "files": 86},
+    {"sha": "dffc2e7", "message": "docs(v6): release notes, ADRs, runbooks, reviews", "files": 75},
+    {"sha": "66b93ac", "message": "chore(tasks): V6 sprint and pre-publication tickets", "files": 68}
+  ],
+  "completed_at": "2026-06-17",
+  "mirror_tag": {"name": "v6.0.0", "sha": "66b93ac", "annotated": true},
+  "notes": "Mirror apply + 3 partial commits via git_safe_commit (public_repo=true). Tag v6.0.0 on mirror (local); push by owner.",
   "delegations": []
 }

@@ -129,7 +129,7 @@
         "cargo test -p pwmd --lib v3_replay_det_gate_ok",
         "cargo test -p pwmd --lib epoch_man_v",
         "cargo check -p pwmd --lib",
-        "CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency (Windows isolated target)",
+        "CARGO_TARGET_DIR=F:\\pwm-test\\pwm-protocol (Windows isolated target)",
         "Docs reviewed: docs/guide-node-storage-and-snapshot.md, docs/runbook-store-snapshots.md — terminology boundaries OK"
       ],
       "tokens": {

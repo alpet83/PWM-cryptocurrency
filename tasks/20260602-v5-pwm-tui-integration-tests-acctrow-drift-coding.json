@@ -68,7 +68,7 @@
       "artifacts": [],
       "tokens": { "source": "estimate", "input": 12000, "output": 2000, "total": 14000, "confidence": "low" },
       "done_at": "2026-06-02",
-      "notes": "cargo test -p pwm-tui send_form: 6/6 PASS (send_form_fixed_skip_to, send_form_inline_mid_ops, send_form_new_to_first, val_send_form_ambig_to, val_send_form_pretty_ok, val_send_form_yes_needed). cargo test -p pwm-tui wallet_roaming: compiles+runs, 0 tests matched filter (all existing tests likely #[ignore] or different names), returncode=0. cargo test -p pwm-tui --lib: 36/36 PASS (no regression). check_entity_name_segments: 0 violations (test_support, send_form, wallet_roaming). CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency."
+      "notes": "cargo test -p pwm-tui send_form: 6/6 PASS (send_form_fixed_skip_to, send_form_inline_mid_ops, send_form_new_to_first, val_send_form_ambig_to, val_send_form_pretty_ok, val_send_form_yes_needed). cargo test -p pwm-tui wallet_roaming: compiles+runs, 0 tests matched filter (all existing tests likely #[ignore] or different names), returncode=0. cargo test -p pwm-tui --lib: 36/36 PASS (no regression). check_entity_name_segments: 0 violations (test_support, send_form, wallet_roaming). CARGO_TARGET_DIR=F:\\pwm-test\\pwm-protocol."
     }
   ],
   "commits": [],

@@ -1,4 +1,4 @@
-﻿# CY E2E s2 — marks saturation soak harness
+# CY E2E s2 — marks saturation soak harness
 # Owner cluster stays up; use -SkipCluster -NoStopCluster for live soak.
 # Example: ./scripts/cy_cluster_marks_soak.ps1 -SkipCluster -NoStopCluster
 

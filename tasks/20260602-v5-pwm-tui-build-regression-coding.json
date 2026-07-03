@@ -115,7 +115,7 @@
         "confidence": "medium"
       },
       "done_at": "2026-06-02",
-      "notes": "preflight: PS1 fallback (bash/WSL unavailable), no target/debug, PASS. cargo check -p pwm-tui: PASS (16.51s). cargo test -p pwm-tui --lib: 33/33 PASS (0.01s). form_amount filter: 7/7 PASS. Integration tests send_form/wallet_roaming: compile FAIL (AcctRow E0063, 20+5 sites missing active_policies/dormant_policies/effective_marks + 7 more fields). Pre-existing drift confirmed — separate follow-up ticket per review Nit4. CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency. No harness fixes applied. cleanup: no processes to kill."
+      "notes": "preflight: PS1 fallback (bash/WSL unavailable), no target/debug, PASS. cargo check -p pwm-tui: PASS (16.51s). cargo test -p pwm-tui --lib: 33/33 PASS (0.01s). form_amount filter: 7/7 PASS. Integration tests send_form/wallet_roaming: compile FAIL (AcctRow E0063, 20+5 sites missing active_policies/dormant_policies/effective_marks + 7 more fields). Pre-existing drift confirmed — separate follow-up ticket per review Nit4. CARGO_TARGET_DIR=F:\\pwm-test\\pwm-protocol. No harness fixes applied. cleanup: no processes to kill."
     }
   ],
   "commits": [],

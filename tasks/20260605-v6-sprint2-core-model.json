@@ -5,7 +5,7 @@
   "title": "MVP v6 Sprint 2 — Core state model + snapshot v4 (umbrella)",
   "status": "done",
   "delegation_mode": "worktree_bridge",
-  "worktree_root": "P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model",
+  "worktree_root": "P:/opt/docker/pwm-protocol-worktrees/v6-sprint2-core-model",
   "branch": "v6/20260605-v6-sprint2-core-model",
   "slices": [
     "tasks/20260605-v6-s2-slice1-gencfg.json",

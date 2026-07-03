@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "20260625-v7-s1-slice3-integration",
+  "target_agent_name": "pwm-coding",
+  "worker_class": "coding",
+  "planned_for": "2026-06-25",
+  "title": "V7-S1 Slice 3: интеграция SEDA pipeline — убрать write lock из HTTP hot path",
+  "status": "pending",
+  "mvp_checklist": [
+    "§V7-S1 Slice 3 post-conditions"
+  ],
+  "brief": "РЕАЛЬНЫЙ BOTTLENECK (подтверждён замером): handlers_tx.rs держит a.inner.write().await для pool.push(tx) на горячем пути. При параллельных RPC-вызовах рамп-скрипта это создаёт write lock contention — seal_slip_ms растёт с 99→221→409ms при level 1→3→4. Цель Slice 3: HTTP-хандлер для обычных Transfer/Init/Stake/etc TX больше не берёт write lock — вместо этого пишет в канал. Seal loop дренирует канал в g.pool уже под своим write lock.\n\nПРЕД-УСЛОВИЯ:\n1. Slice 2 post-condition: WorkerPool, affinity, backpressure в pipeline/ работают, cargo test -p pwmd PASS.\n2. Прочитать docs/adr/0013-tx-pipeline-seda.md и docs/plans/mvp_v7s1.md §Slice 3.\n3. Прочитать crates/pwmd/src/api/handlers_tx.rs (строки 40–270) и crates/pwmd/src/lifecycle.rs (строки ~1810–1820, pool.take).\n4. Прочитать crates/pwmd/src/state.rs (App struct, строки 51–125).\n\nCRITERION DONE:\n1. App struct (state.rs) содержит tx_ingress поле: Arc<TxIngressChannel> где TxIngressChannel = {sender: mpsc::Sender<SignedTx>, receiver: Mutex<mpsc::Receiver<SignedTx>>} с bounded cap (256).\n2. handlers_tx.rs горячий путь (non-roaming Transfer/Init/Stake/TxSend/etc):\n   - Читает состояние через КРАТКИЙ read lock (для precheck_apply_with_ctx)\n   - БОЛЬШЕ НЕ берёт write lock для pool.push\n   - Отправляет tx в tx_ingress.sender.try_send(tx)\n   - При полном канале возвращает 507 INSUFFICIENT_STORAGE\n   - Возвращает 202 Accepted (или 204 как раньше — без изменения wire)\n3. lifecycle.rs seal loop: перед g.pool.take(64) дренирует tx_ingress.receiver в g.pool (уже под write lock):\n   while let Ok(tx) = ingress_rx.try_recv() { let _ = g.pool.push(tx); }\n4. cargo test -p pwmd PASS.\n5. Базовый smoke: pwmd стартует, принимает tx через /v1/tx, txs появляются в блоках.\n6. Нет изменений Chain::seal сигнатуры, wire-протокола, snapshot-формата.\n7. git commit затронутых файлов через git_safe_commit.",
+  "model_tier": {
+    "coding": "codex",
+    "review": null,
+    "testing": null,
+    "note": "Точечные изменения в 3 файлах: state.rs (добавить поле), handlers_tx.rs (split lock), lifecycle.rs (drain перед take). Риск: нарушить существующие тесты handlers_tx — внимательно."
+  },
+  "steps": [
+    "1. Прочитать файлы (обязательно перед правками):\n   - crates/pwmd/src/state.rs строки 51–130 (App struct + Inner)\n   - crates/pwmd/src/api/handlers_tx.rs строки 40–270\n   - crates/pwmd/src/lifecycle.rs строки 1810–1825 (pool.take)",
+
+    "2. Создать TxIngressChannel в state.rs или pipeline/mod.rs:\n   pub struct TxIngressChannel {\n       pub sender: tokio::sync::mpsc::Sender<SignedTx>,\n       pub receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<SignedTx>>,\n   }\n   impl TxIngressChannel {\n       pub fn new(cap: usize) -> Self { ... }\n   }\n   Добавить поле в App: pub(crate) tx_ingress: Arc<TxIngressChannel>",
+
+    "3. Инициализировать tx_ingress в том месте где App создаётся (найти через grep 'App {' или 'App::' в main.rs / bootstrap.rs):\n   tx_ingress: Arc::new(TxIngressChannel::new(256))",
+
+    "4. Правка handlers_tx.rs — горячий путь (non-roaming ветка, ~строки 229–260):\n   БЫЛО:\n     let mut g = a.inner.write().await;\n     // ... precheck ...\n     g.pool.push(tx).map_err(|_| (507, 'mempool is full'))?;\n     drop(g);\n   СТАЛО:\n     // краткий read lock только для precheck\n     {\n         let g = a.inner.read().await;\n         let (next_h, next_ts) = g.chain.next_apply_ctx()...?;\n         g.chain.st.precheck_apply_with_ctx(&tx, next_h, next_ts, &g.chain.cfg)\n             .map_err(|e| tx_tip_precheck_err(&tx, e))?;\n     } // read lock дропается здесь\n     // push в канал без lock\n     a.tx_ingress.sender.try_send(tx.clone()).map_err(|_| {\n         (StatusCode::INSUFFICIENT_STORAGE, 'mempool is full'.to_string())\n     })?;\n     // логировать accepted\n   ВАЖНО: roaming ветки (Export/Import/ClaimIPv4Batch) не трогать — они используют g.chain.seal напрямую и требуют write lock.",
+
+    "5. Правка lifecycle.rs — seal loop, перед pool.take:\n   НАЙТИ строку: let txs = g.pool.take(64);\n   ДОБАВИТЬ ПЕРЕД НЕЙ:\n     // drain ingress channel into local mempool под write lock\n     if let Ok(rx) = app.tx_ingress.receiver.try_lock() {\n         while let Ok(tx) = rx.try_recv() {\n             let _ = g.pool.push(tx);\n         }\n     }\n   app здесь — переменная типа App (или &App), доступная в seal loop.",
+
+    "6. push_tx_flow для logging: если handlers_tx.rs вызывал push_tx_flow(&mut g, ..., 'accepted') под write lock — перенести лог до read lock или заменить на простой info!() без guard.",
+
+    "7. snap_save_locked + persist_snap: в горячем пути они тоже вызывались под write lock. Для канального пути — убрать (снапшот будет сохранён после seal как обычно). Проверить что snap не вызывается для not-yet-sealed txs.",
+
+    "8. cargo test -p pwmd 2>&1 | tail -10 — убедиться PASS. При провале тестов handlers_tx — исправить: тесты могут проверять что tx попадает в pool сразу, нужно адаптировать под новую модель (tx в канале, не в pool до следующего seal).",
+
+    "9. Smoke: запустить pwmd + отправить 1–2 tx через curl или pwm.exe, убедиться что они появляются в блоках.",
+
+    "10. git_safe_commit: files=[crates/pwmd/src/state.rs, crates/pwmd/src/api/handlers_tx.rs, crates/pwmd/src/lifecycle.rs, + pipeline если добавлялось TxIngressChannel туда], message='feat(pwmd): V7-S1 Slice 3 — tx ingress канал, убрать write lock из HTTP hot path'."
+  ],
+  "notes": "SCOPE GATE OUT:\n- Интеграция WorkerPool.process() в путь валидации (это Slice 3.5 или Slice 4)\n- Изменения Chain::seal, wire, snapshot\n- ClusterReadyBatch / DataBroadcast интеграция\n\nCONCURRENCY INVARIANT:\nПосле правки — два места пишут в g.pool:\n1. Seal loop: дренирует tx_ingress под write lock (НОВОЕ)\n2. Roaming/Import: g.chain.seal + g.pool напрямую под write lock (СТАРОЕ, не трогать)\nЭто безопасно: оба под write lock, никакой гонки.\n\nPRE-CHECK НЮАНС:\nКраткий read lock для precheck проверяет состояние на момент запроса — к моменту seal состояние может измениться (другой блок sealed). Это нормально: Chain::seal отклонит невалидный tx через first_bad_tx_ctx → prepend_block. Семантика 'accepted in pipeline' ≠ 'гарантированно в блоке'.\n\nTOKIO MUTEX для receiver:\nИспользовать tokio::sync::Mutex (не std::sync::Mutex) т.к. seal loop — async task. try_lock() на tokio Mutex возвращает Result без await.\n\nCAPACITY 256:\nДостаточно для бёрстов при 59 аккаунтах × 4–5 блоков в буфере. При переполнении → 507 → клиент retry.\n\nКЛЮЧЕВЫЕ ФАЙЛЫ:\n- crates/pwmd/src/state.rs строки 51–125: App struct\n- crates/pwmd/src/api/handlers_tx.rs строки 85–260: write lock pattern\n- crates/pwmd/src/lifecycle.rs строка ~1816: g.pool.take(64)\n- crates/pwmd/src/bootstrap.rs или main.rs: место создания App",
+  "delegations": [],
+  "commits": [],
+  "artifacts": {},
+  "shared": false,
+  "branch_id": "mvp-v7"
+}

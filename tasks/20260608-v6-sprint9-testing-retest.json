@@ -4,7 +4,7 @@
   "title": "V6-9 retest: pwm-testing evidence_ + peer_score_ + test_project",
   "status": "done",
   "delegation_mode": "worktree_bridge",
-  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260608-v6-sprint9-slashing-peers-coding",
+  "worktree_root": "P:/opt/docker/pwm-protocol/.cqds/worktrees/20260608-v6-sprint9-slashing-peers-coding",
   "branch": "v6/20260608-v6-sprint9-slashing-peers-coding",
   "worker_lane": "testing",
   "target_agent": "pwm-testing",

@@ -4,7 +4,7 @@
   "title": "V6-3: Stake-gated validator admission at epoch boundary",
   "status": "done",
   "delegation_mode": "worktree_bridge",
-  "worktree_root": "P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint3-stake-admission",
+  "worktree_root": "P:/opt/docker/pwm-protocol-worktrees/v6-sprint3-stake-admission",
   "branch": "v6/20260605-v6-sprint3-stake-admission",
   "delegations": [
     {

@@ -20,5 +20,5 @@
   },
   "delegations": [],
   "commits": ["7ea8932"],
-  "notes": "Поиск: cq_project_ctl select_project project_id 5 → cq_files_ctl start_grep → cq_project_ctl fetch_result; fallback: rg P:/opt/docker/PWM-cryptocurrency. Контейнеры CQDS должны быть запущены."
+  "notes": "Поиск: cq_project_ctl select_project project_id 5 → cq_files_ctl start_grep → cq_project_ctl fetch_result; fallback: rg P:/opt/docker/pwm-protocol. Контейнеры CQDS должны быть запущены."
 }

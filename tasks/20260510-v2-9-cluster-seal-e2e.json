@@ -64,40 +64,40 @@
       "commands": [
         {
           "cmd": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/dev/preflight_target_debug.ps1",
-          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "cwd": "P:\\opt\\docker\\pwm-protocol",
           "result": "PASS",
           "hang_watchdog": false,
           "notes": "exit 0; reported target/debug 226464982 bytes vs 4096 MiB cap"
         },
         {
           "cmd": "cargo fmt --check",
-          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "cwd": "P:\\opt\\docker\\pwm-protocol",
           "result": "PASS",
           "hang_watchdog": false
         },
         {
           "cmd": "cargo check --workspace",
-          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "cwd": "P:\\opt\\docker\\pwm-protocol",
           "result": "PASS",
           "hang_watchdog": false
         },
         {
           "cmd": "python scripts/check_rust_fn_name_segments.py crates/pwmd/src/transport/peer_session/mod.rs crates/pwmd/src/transport/peer_session/inbound.rs crates/pwmd/src/transport/peer_session/seed/session/steady_session.rs crates/pwmd/src/transport/peer_session/seed/session/initial_exchange.rs crates/pwmd/src/transport/tests/production.rs",
-          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "cwd": "P:\\opt\\docker\\pwm-protocol",
           "result": "PASS",
           "hang_watchdog": false,
           "notes": "violations: [] on all listed files"
         },
         {
           "cmd": "cargo test -p pwmd",
-          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "cwd": "P:\\opt\\docker\\pwm-protocol",
           "result": "PASS",
           "hang_watchdog": false,
           "notes": "327 lib + 6 main + 1 integration; 0 failed; ~35s lib phase"
         },
         {
           "cmd": "cargo bench -p pwmd --bench snapshot_load --no-run",
-          "cwd": "P:\\opt\\docker\\PWM-cryptocurrency",
+          "cwd": "P:\\opt\\docker\\pwm-protocol",
           "result": "PASS",
           "hang_watchdog": false,
           "notes": "bench profile compile ~34s"

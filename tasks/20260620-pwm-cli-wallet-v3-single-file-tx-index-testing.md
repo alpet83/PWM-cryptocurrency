@@ -12,12 +12,12 @@
 | Command | Result |
 |---|---|
 | `bash tools/dev/preflight_target_debug.sh` | OK — `target/debug` 3774 MiB (threshold 4096 MiB), `removed: no` |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli tx_cmd_idx_parse` | **1 passed** |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli tx_v2_idx_fallback` | **1 passed** |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli tx_pol_nonce_409` | **1 passed** |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli tx_pol_act_sw_idx` | **1 passed** |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli tx_init_wallet_idx` | **1 passed** |
-| `CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency cargo test -p pwm-cli` | **195 passed** (188 lib + 3 claim_ipv4_batch + 4 cli_smoke) |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli tx_cmd_idx_parse` | **1 passed** |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli tx_v2_idx_fallback` | **1 passed** |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli tx_pol_nonce_409` | **1 passed** |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli tx_pol_act_sw_idx` | **1 passed** |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli tx_init_wallet_idx` | **1 passed** |
+| `CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol cargo test -p pwm-cli` | **195 passed** (188 lib + 3 claim_ipv4_batch + 4 cli_smoke) |
 
 ## Focus tests (review nit fix included)
 
@@ -62,5 +62,5 @@ agent: pwm-testing
 result: PASS
 artifacts: tasks/20260620-pwm-cli-wallet-v3-single-file-tx-index-testing.md
 preflight_target_debug: 3774MiB / 4096MiB threshold, removed: no, script: preflight_target_debug.sh
-cargo: CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency, 195 passed, 0 failed
+cargo: CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol, 195 passed, 0 failed
 ```

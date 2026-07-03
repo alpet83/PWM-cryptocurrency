@@ -4,7 +4,7 @@
   "title": "S15-S3.16 cycle2: credit = debit on cross-shard + TUI step 5 balance check",
   "status": "completed",
   "brief": "После cycle1 снова: списание на source есть, зачисления на target нет (чистые блокчейны, ноды перезапущены). Стабилизировать завершение межшардовой транзакции. TUI: добавить шаг 5 — проверка изменения баланса получателя (target RPC / корректное поле). Приёмка: по итогам pwm-testing на активных нодах сумма списания = сумма зачисления (с учётом явно задокументированных комиссий, если они не нулевые).",
-  "search_hint_for_agents": "Встроенный grep IDE может зависать — использовать терминальный **rg** в `P:/opt/docker/PWM-cryptocurrency` или MCP **user-cqds_mcp_mini** (`cq_files_ctl` + `start_grep` / `cq_fetch_result`) по проекту в Colloquium; не полагаться на один только Cursor workspace search.",
+  "search_hint_for_agents": "Встроенный grep IDE может зависать — использовать терминальный **rg** в `P:/opt/docker/pwm-protocol` или MCP **user-cqds_mcp_mini** (`cq_files_ctl` + `start_grep` / `cq_fetch_result`) по проекту в Colloquium; не полагаться на один только Cursor workspace search.",
   "acceptance": [
     "Импорт на target реально меняет баланс получателя на ожидаемую величину (сверка с суммой списания и политикой fee).",
     "pwm-tui: после шагов 1–4 выводится шаг 5 с результатом проверки баланса (OK/FAIL + детали).",

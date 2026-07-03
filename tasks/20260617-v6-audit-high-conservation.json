@@ -21,7 +21,7 @@
       "cargo run pwmd on 3030/13030",
       "stop/kill owner pwmd processes"
     ],
-    "testing": "cargo test -p pwm-core --lib only; CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency"
+    "testing": "cargo test -p pwm-core --lib only; CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol"
   },
   "delegations": [
     {
@@ -51,7 +51,7 @@
         "tasks/20260617-v6-audit-high-conservation.json"
       ],
       "done_at": "2026-06-17T14:30:00Z",
-      "notes": "preflight 3794MiB/4096 no remove; CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency; fmt --check OK; pwm-core --lib 192 passed 1 ignored 0 failed (~35s); conservation_* 8/8 incl export/stake race + drain requeue; pwmd skipped per cluster_safety; no live cluster scripts."
+      "notes": "preflight 3794MiB/4096 no remove; CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol; fmt --check OK; pwm-core --lib 192 passed 1 ignored 0 failed (~35s); conservation_* 8/8 incl export/stake race + drain requeue; pwmd skipped per cluster_safety; no live cluster scripts."
     }
   ],
   "commits": [],

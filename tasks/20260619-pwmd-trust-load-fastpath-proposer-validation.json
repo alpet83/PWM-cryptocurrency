@@ -19,7 +19,7 @@
     "Trust validate: INFO progress каждые ~10s (stage=trust_validate или reuse chain_verify pattern) с height/percent/elapsed",
     "snapshot startup load ok: validate_ms для trust @ tip≥100k — регрессионный unit/bench test или documented benchmark in testing.md; target validate_ms << 60_000 на fixture ~10k blocks (scale linearly documented)",
     "Full verify (--snapshot-verify-chain) поведение не ослаблено",
-    "cargo test -p pwmd snapshot incremental io — green (CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency)",
+    "cargo test -p pwmd snapshot incremental io — green (CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol)",
     "docs/guide-node-storage-and-snapshot.md: trust-load = O(tail + optional epoch tail), не genesis replay; SLO note для operators"
   ],
   "depends_on": [

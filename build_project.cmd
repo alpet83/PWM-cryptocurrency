@@ -13,6 +13,7 @@ if not exist "%MSYS_BASH%" (
 if not defined HOME if defined USERPROFILE set "HOME=%USERPROFILE%"
 set "MSYSTEM=UCRT64"
 set "CHERE_INVOKING=1"
+set "RUST_BACKTRACE=1"
 
 pushd "%PROJECT_ROOT%" >nul
 "%MSYS_BASH%" -lc "bash ./scripts/build_project.sh ""$@""" -- %*

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "20260617-cy-cluster-transfer-ramp-throughput",
+  "title": "CY cluster transfer-ramp throughput soak (progressive txs/block)",
+  "status": "done",
+  "delegation_mode": "local_orchestrator",
+  "brief": "Python harness для ramp Transfer нагрузки на CY proposer. Bridge worker недоступен — реализовано локально в Cursor (scripts/).",
+  "acceptance_criteria": [
+    "scripts/cy_cluster_transfer_ramp_soak.py: ramp, bootstrap fund, address_book, send-probe, client JSONL + md report",
+    "scripts/_analyze_transfer_ramp.py: join block_timing",
+    "docs/runbooks/cy-cluster-transfer-ramp-throughput.md",
+    "Smoke PASS на live proposer (минимум несколько блоков)"
+  ],
+  "artifacts": {
+    "script": "scripts/cy_cluster_transfer_ramp_soak.py",
+    "analyzer": "scripts/_analyze_transfer_ramp.py",
+    "runbook": "docs/runbooks/cy-cluster-transfer-ramp-throughput.md"
+  },
+  "notes": "2026-06-17: bridge недоступен — реализовано локально (Python). Smoke PASS: 5 блоков, senders=3, stop seal_slip_degradation при level=4 (slip 325ms vs baseline ~77ms). Артефакт: tmp/cy-transfer-ramp-20260617_184604.*",
+  "delegations": [
+    {
+      "agent": "orchestrator-local",
+      "prompt_summary": "Python cy_cluster_transfer_ramp_soak.py + analyzer + runbook",
+      "result": "PASS",
+      "artifacts": [
+        "scripts/cy_cluster_transfer_ramp_soak.py",
+        "scripts/_analyze_transfer_ramp.py",
+        "docs/runbooks/cy-cluster-transfer-ramp-throughput.md",
+        "tmp/cy-transfer-ramp-20260617_184604.client.jsonl",
+        "tmp/cy-transfer-ramp-20260617_184604.md"
+      ],
+      "done_at": "2026-06-17"
+    }
+  ]
+}

@@ -5,14 +5,14 @@ rem Repeated single-cycle companion runs for wait_peek_ticket statistics.
 rem Defaults are chosen for Windows / cmd usage and can be overridden via env vars.
 
 set "PYTHON=C:\Python314\python.exe"
-set "PROJECT_ROOT=P:\opt\docker\PWM-cryptocurrency\"
+set "PROJECT_ROOT=P:\opt\docker\pwm-protocol\"
 set "COMPANION=P:\opt\docker\cqds\mcp-tools\cqds_companion.py"
 set "CONFIG=%PROJECT_ROOT%\.cqds\cqds_companion.toml"
 set "LOG_DIR=%PROJECT_ROOT%\scripts\logs\wait_peek_stats"
 
 P:
 
-cd  P:\opt\docker\PWM-cryptocurrency\
+cd  P:\opt\docker\pwm-protocol\
 set "RUNS=%CQDS_WAIT_PEEK_RUNS%"
 if not defined RUNS set "RUNS=2"
 

@@ -70,5 +70,5 @@
     "audit": "docs/CODEBASE_REFACTORING.md §2.2",
     "review_md": "docs/reviews/sprint-15-slice-O1-wave26-29-peer-session-split-review.md"
   },
-  "notes": "Реализация в **локальной** копии репозитория в Cursor (Windows), путь workspace `PWM-cryptocurrency`. **pwm-review** в конвейере не записал файл (Ask/read-only режим субагента); оркестратор сохранил `artifacts.review_md` и закрыл тикет. Для следующих батчей: pwm-review в режиме с записью или полный Markdown в ответ для оркестратора."
+  "notes": "Реализация в **локальной** копии репозитория в Cursor (Windows), путь workspace `pwm-protocol`. **pwm-review** в конвейере не записал файл (Ask/read-only режим субагента); оркестратор сохранил `artifacts.review_md` и закрыл тикет. Для следующих батчей: pwm-review в режиме с записью или полный Markdown в ответ для оркестратора."
 }

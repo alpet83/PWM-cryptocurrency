@@ -32,7 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\dev\preflight_target_d
 
 ## Оператор: burn через ведомый RPC (минимум attester)
 
-Из корня репо `P:\opt\docker\PWM-cryptocurrency`, с genesis/wallet, согласованными с `cy-cluster-*.ps1` / `tmp/genesis-custom.json`:
+Из корня репо `P:\opt\docker\pwm-protocol`, с genesis/wallet, согласованными с `cy-cluster-*.ps1` / `tmp/genesis-custom.json`:
 
 1. Убедиться, что кошелёк **реально** открывается (обязательная проверка passphrase):
 

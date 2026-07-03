@@ -4,7 +4,7 @@
   "title": "V6-5: Mode B EXPORT lock + timeout refund + IMPORT release",
   "status": "done",
   "delegation_mode": "worktree_bridge",
-  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260607-v6-sprint5-mode-b-escrow-coding",
+  "worktree_root": "P:/opt/docker/pwm-protocol/.cqds/worktrees/20260607-v6-sprint5-mode-b-escrow-coding",
   "branch": "v6/20260607-v6-sprint5-mode-b-escrow-coding",
   "mvp_checklist": [
     "docs/plans/mvp_v6.md § Sprint V6-5",

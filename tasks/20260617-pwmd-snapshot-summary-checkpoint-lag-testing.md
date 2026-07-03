@@ -9,8 +9,8 @@
 | Item | Value |
 |------|-------|
 | Host | Windows (Git Bash) |
-| Repo | `P:/opt/docker/PWM-cryptocurrency` |
-| `CARGO_TARGET_DIR` | `F:/pwm-test/PWM-cryptocurrency` |
+| Repo | `P:/opt/docker/pwm-protocol` |
+| `CARGO_TARGET_DIR` | `F:/pwm-test/pwm-protocol` |
 | Preflight | `bash tools/dev/preflight_target_debug.sh` → **ok** (3758 MiB / threshold 4096 MiB, `removed: no`) |
 | Live CY cluster | **not required** |
 
@@ -33,7 +33,7 @@ bash tools/dev/preflight_target_debug.sh
 ### Targeted acceptance
 
 ```bash
-export CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency
+export CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol
 cargo test -p pwmd shutdown_skip
 cargo test -p pwmd snapshot
 ```

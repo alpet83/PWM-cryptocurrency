@@ -1,4 +1,4 @@
-﻿# CY E2E s3 - mass BurnMark batch soak harness
+# CY E2E s3 - mass BurnMark batch soak harness
 # Simulates offchain-aggregated burn burst landing on-chain.
 # Use -SkipCluster -NoStopCluster when operator cluster already live.
 # Example: ./scripts/cy_cluster_mass_burn_soak.ps1 -SkipCluster -NoStopCluster

@@ -28,7 +28,7 @@ def _read_payload(input_path: str | None) -> dict[str, Any]:
 
 def _norm_path(p: str) -> str:
     p = p.replace("\\", "/")
-    m = "PWM-cryptocurrency/"
+    m = "pwm-protocol/"
     i = p.find(m)
     if i >= 0:
         p = p[i + len(m) :]

@@ -49,7 +49,7 @@
       "artifacts": [
         "tmp/cy_policy_matrix_e2e_20260517_161554.md",
         "tmp/cy-matrix-e2e-20260517_161554/ (brute-*.log, proposer/attester stdout+stderr, prem-accounts.txt, cy-lab-peers.yaml)",
-        "MCP cq_process_ctl host: cq_help cq_process_ctl#spawn|wait|status|io|kill; spawn timeout 7200s env CARGO_TARGET_DIR=F:\\pwm-test\\PWM-cryptocurrency PWM_TEST_TARGET_ROOT=F:\\pwm-test; process_guid 3b7e6a89-e76f-4e25-8ee4-bab6734a1fa1 pid 66688"
+        "MCP cq_process_ctl host: cq_help cq_process_ctl#spawn|wait|status|io|kill; spawn timeout 7200s env CARGO_TARGET_DIR=F:\\pwm-test\\pwm-protocol PWM_TEST_TARGET_ROOT=F:\\pwm-test; process_guid 3b7e6a89-e76f-4e25-8ee4-bab6734a1fa1 pid 66688"
       ],
       "tokens": {
         "source": "estimate",

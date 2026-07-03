@@ -10,9 +10,9 @@
 | Item | Value |
 |------|-------|
 | Host | Windows (Git Bash) |
-| Repo | `P:/opt/docker/PWM-cryptocurrency` |
-| `CARGO_TARGET_DIR` | `F:/pwm-test/PWM-cryptocurrency` |
-| Preflight | `bash tools/dev/preflight_target_debug.sh` → **partial** (repo `target/debug` 4304 MiB > 4096 MiB; `rm -rf target/debug` failed: `pwmd.exe` permission denied — likely locked process). Tests used isolated `F:/pwm-test/PWM-cryptocurrency`; `removed: no` |
+| Repo | `P:/opt/docker/pwm-protocol` |
+| `CARGO_TARGET_DIR` | `F:/pwm-test/pwm-protocol` |
+| Preflight | `bash tools/dev/preflight_target_debug.sh` → **partial** (repo `target/debug` 4304 MiB > 4096 MiB; `rm -rf target/debug` failed: `pwmd.exe` permission denied — likely locked process). Tests used isolated `F:/pwm-test/pwm-protocol`; `removed: no` |
 | Live CY cluster | **not required** |
 
 ## Scope files (coding slice)
@@ -36,7 +36,7 @@ bash tools/dev/preflight_target_debug.sh
 ### Targeted (slice unit tests)
 
 ```bash
-export CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency
+export CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol
 cargo test -p pwmd init_prep_throttle_loading
 cargo test -p pwmd status_cluster_prep_loading
 ```
@@ -58,7 +58,7 @@ cargo test -p pwmd status_cluster_prep_loading
 ### Full crate suites
 
 ```bash
-export CARGO_TARGET_DIR=F:/pwm-test/PWM-cryptocurrency
+export CARGO_TARGET_DIR=F:/pwm-test/pwm-protocol
 cargo test -p pwm-cli
 cargo test -p pwmd
 ```

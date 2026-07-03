@@ -4,7 +4,7 @@
   "title": "V6-8 retest: pwm-testing conservation_* + test_project",
   "status": "done",
   "delegation_mode": "worktree_bridge",
-  "worktree_root": "P:/opt/docker/PWM-cryptocurrency/.cqds/worktrees/20260607-v6-sprint8-conservation-coding",
+  "worktree_root": "P:/opt/docker/pwm-protocol/.cqds/worktrees/20260607-v6-sprint8-conservation-coding",
   "branch": "v6/20260607-v6-sprint8-conservation-coding",
   "worker_lane": "testing",
   "target_agent": "pwm-testing",

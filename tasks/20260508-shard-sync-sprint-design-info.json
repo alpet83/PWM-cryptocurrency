@@ -246,7 +246,7 @@
   "log_digest": [
     {
       "source": "CQDS project_status",
-      "snippet_lines_or_summary": "Project PWM-cryptocurrency (id=5): scan_stale, index_stale — index cache outdated (cache_mtime < latest_file_ts). Recommendation: rebuild index before deep CQDS searches.",
+      "snippet_lines_or_summary": "Project pwm-protocol (id=5): scan_stale, index_stale — index cache outdated (cache_mtime < latest_file_ts). Recommendation: rebuild index before deep CQDS searches.",
       "severity": "warning"
     }
   ],

@@ -2,16 +2,16 @@
 
 ## Symptom B: 08:51 startup timeout
 ### orig_B_proposer (`logs/2026-05-31/pwmd-cy-proposer-082709.log`)
-- line 7 `[08:27:10.573] #INFO: snapshot loading started: P:\opt\docker\PWM-cryptocurrency\tmp\state-cy-proposer\pwm-data.json`
+- line 7 `[08:27:10.573] #INFO: snapshot loading started: P:\opt\docker\pwm-protocol\tmp\state-cy-proposer\pwm-data.json`
 - line 12 `[08:27:10.575] #INFO: pwmd listening on http://127.0.0.1:3030 peer=127.0.0.1:13030 shard=CY state_ns=domain-hi-0x2c identity=(testnet-qa,0x2C,test-cluster-CY,cy-proposer) mode=shard_enforced(explicit-domain-config)`
-- line 13 `[08:27:18.596] #INFO: snapshot startup load ok | path=P:\opt\docker\PWM-cryptocurrency\tmp\state-cy-proposer\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8022 summary_read_ms=1 epochs_ms=44 validate_ms=7976 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch=`
+- line 13 `[08:27:18.596] #INFO: snapshot startup load ok | path=P:\opt\docker\pwm-protocol\tmp\state-cy-proposer\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8022 summary_read_ms=1 epochs_ms=44 validate_ms=7976 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch=`
 - line 16 `[08:27:18.596] #INFO: pwmd startup phase: ready (snapshot loaded)`
 - line 4 `[08:27:10.561] #INFO: cluster_attest enabled=true role=Proposer members=cy-quorum-proposer,cy-quorum-attester quorum=1/2 blocks_per_hour=3600 seal_interval_ms=1000 attest_timeout_ms=2000 heartbeat_interval_ms=1000 seal_ahead_ms=100 note=s2_lease_orthogonal_genesis_timing`
 - line 49 timeout height=65301 elapsed_ms=6907 limit_ms=2000 at 08:51:16.461
 ### orig_B_attester (`logs/2026-05-31/pwmd-cy-attester-085107.log`)
-- line 7 `[08:51:08.130] #INFO: snapshot loading started: P:\opt\docker\PWM-cryptocurrency\tmp\state-cy-attester\pwm-data.json`
+- line 7 `[08:51:08.130] #INFO: snapshot loading started: P:\opt\docker\pwm-protocol\tmp\state-cy-attester\pwm-data.json`
 - line 12 `[08:51:08.132] #INFO: pwmd listening on http://127.0.0.2:3030 peer=127.0.0.2:13030 shard=CY state_ns=domain-hi-0x2c identity=(testnet-qa,0x2C,test-cluster-CY,cy-attester) mode=shard_enforced(explicit-domain-config)`
-- line 13 `[08:51:16.303] #INFO: snapshot startup load ok | path=P:\opt\docker\PWM-cryptocurrency\tmp\state-cy-attester\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8173 summary_read_ms=0 epochs_ms=44 validate_ms=8127 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch=`
+- line 13 `[08:51:16.303] #INFO: snapshot startup load ok | path=P:\opt\docker\pwm-protocol\tmp\state-cy-attester\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8173 summary_read_ms=0 epochs_ms=44 validate_ms=8127 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch=`
 - line 16 `[08:51:16.304] #INFO: pwmd startup phase: ready (snapshot loaded)`
 - line 4 `[08:51:08.119] #INFO: cluster_attest enabled=true role=Attester members=cy-quorum-proposer,cy-quorum-attester quorum=1/2 blocks_per_hour=3600 seal_interval_ms=1000 attest_timeout_ms=2000 heartbeat_interval_ms=1000 seal_ahead_ms=100 note=s2_lease_orthogonal_genesis_timing`
 

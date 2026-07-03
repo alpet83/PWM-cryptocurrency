@@ -5,7 +5,7 @@
   "status": "done",
   "parent_ticket": "20260605-v6-sprint2-core-model",
   "delegation_mode": "worktree_bridge",
-  "worktree_root": "P:/opt/docker/PWM-cryptocurrency-worktrees/v6-sprint2-core-model",
+  "worktree_root": "P:/opt/docker/pwm-protocol-worktrees/v6-sprint2-core-model",
   "branch": "v6/20260605-v6-sprint2-core-model",
   "related_docs": [
     "docs/rfc/addenda/v6-rfc4-validators-stake-admission.md",

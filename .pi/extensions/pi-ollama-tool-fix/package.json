@@ -1,0 +1,13 @@
+{
+  "name": "pi-ollama-tool-fix",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi extension: normalize Ollama text JSON tool calls into native toolCall blocks",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "scripts": {
+    "test": "node --test test/parse-tool-calls.test.mjs"
+  }
+}

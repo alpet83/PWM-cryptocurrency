@@ -27,7 +27,8 @@ pwm-data.json
 /*.code-workspace
 
 # Team bridge runtime (cq_team_bridge_ctl); versioned tickets: tasks/*.json, tasks/done/
-/.cqds/
+/.cqds/*
+!/.cqds/lint_providers.toml
 /tasks/workers/
 /tasks/events/
 
@@ -40,3 +41,18 @@ pwm-data.json
 # Ad-hoc exports (keep markdown canonical)
 /docs/*.docx
 /docs/*.pdf
+
+# Root-level session scratch (never commit)
+/agent_prompt.md
+/agent_test.txt
+/big_trace.txt
+/test.out
+/query.txt
+/pi-mcp-smoke.txt
+/openrouter.html
+/python_overflow_bug.py
+/scripts/logs/
+
+/debug/
+/.rustc_info.json
+codex.log

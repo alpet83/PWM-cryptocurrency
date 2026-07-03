@@ -7,7 +7,7 @@
   "acceptance_criteria": [
     "crates/pwmd/src/snapshot/io.rs: progress log содержит height, total_blocks, percent_complete, elapsed_ms; без block_idx и blocks_done",
     "percent_complete: 0–100 (целое), (i * 100) / total_blocks при i блоках до текущей итерации; total_blocks=0 без паники",
-    "cargo test -p pwmd snapshot — green на Windows target dir F:/pwm-test/PWM-cryptocurrency при необходимости"
+    "cargo test -p pwmd snapshot — green на Windows target dir F:/pwm-test/pwm-protocol при необходимости"
   ],
   "delegations": [
     {

@@ -6,9 +6,9 @@
   "mvp_checklist": [],
   "brief": "Симптом (cy-cluster-attester + proposer): Sync progress goal≈tip пропозера, mem=0 — пир видит tip, но не применяет блоки. RCA: pwm_core::TAIL_BLOCK_CAP=1000, on_hdr_req/on_blk_req/on_cup_req читают только g.chain.blocks; при tip>1000 первый блок в RAM > from_h=1 → headers_range NACK, цепочка не стартует. Приёмка: после фикса пересобрать и снова запустить cy-cluster-proposer.ps1 + cy-cluster-attester.ps1 — attester mem растёт, в tmp/state-cy-attester появляется persist. Реализация: читать последовательные блоки из JsonFile epochs (manifest + JSONL) когда RAM не покрывает from_h; для blk req добавить optional block_heights на wire (serde default) + в SyncPeerState хранить (height,hash) в pend_blk/wait_blk для заполнения; fallback без высот — preserve compat. Добавить интеграционный/юнит тест на сценарий «tip>tail, peer from_h ниже front». Делегации: pwm-debug (кратко подтвердить RCA) опционально; pwm-coding → pwm-testing → pwm-review.",
   "references": [
-    "p:/opt/docker/PWM-cryptocurrency/cy-cluster-common.ps1",
-    "p:/opt/docker/PWM-cryptocurrency/cy-cluster-proposer.ps1",
-    "p:/opt/docker/PWM-cryptocurrency/cy-cluster-attester.ps1",
+    "p:/opt/docker/pwm-protocol/cy-cluster-common.ps1",
+    "p:/opt/docker/pwm-protocol/cy-cluster-proposer.ps1",
+    "p:/opt/docker/pwm-protocol/cy-cluster-attester.ps1",
     "crates/pwm-core/src/chain.rs (TAIL_BLOCK_CAP)",
     "crates/pwmd/src/snapshot/incremental.rs (load_block_at_height, manifest)",
     "tasks/20260514-slice-sync-disk-progress-standby-persist-debug.md"

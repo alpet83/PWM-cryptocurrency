@@ -122,7 +122,7 @@
       [
         8,
         "10:16:21.442",
-        "[10:16:21.442] #INFO: snapshot loading started: P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-proposer\\pwm-data.json"
+        "[10:16:21.442] #INFO: snapshot loading started: P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-proposer\\pwm-data.json"
       ],
       [
         12,
@@ -132,7 +132,7 @@
       [
         13,
         "10:16:29.378",
-        "[10:16:29.378] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-proposer\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=7935 summary_read_ms=4 epochs_ms=57 validate_ms=7870 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
+        "[10:16:29.378] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-proposer\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=7935 summary_read_ms=4 epochs_ms=57 validate_ms=7870 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
       ],
       [
         16,
@@ -184,7 +184,7 @@
       [
         7,
         "10:16:23.852",
-        "[10:16:23.852] #INFO: snapshot loading started: P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-attester\\pwm-data.json"
+        "[10:16:23.852] #INFO: snapshot loading started: P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-attester\\pwm-data.json"
       ],
       [
         12,
@@ -194,7 +194,7 @@
       [
         13,
         "10:16:31.775",
-        "[10:16:31.775] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-attester\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=7922 summary_read_ms=3 epochs_ms=51 validate_ms=7863 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
+        "[10:16:31.775] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-attester\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=7922 summary_read_ms=3 epochs_ms=51 validate_ms=7863 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
       ],
       [
         16,
@@ -278,7 +278,7 @@
       [
         7,
         "08:27:10.573",
-        "[08:27:10.573] #INFO: snapshot loading started: P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-proposer\\pwm-data.json"
+        "[08:27:10.573] #INFO: snapshot loading started: P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-proposer\\pwm-data.json"
       ],
       [
         12,
@@ -288,7 +288,7 @@
       [
         13,
         "08:27:18.596",
-        "[08:27:18.596] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-proposer\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8022 summary_read_ms=1 epochs_ms=44 validate_ms=7976 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
+        "[08:27:18.596] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-proposer\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8022 summary_read_ms=1 epochs_ms=44 validate_ms=7976 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
       ],
       [
         16,
@@ -330,7 +330,7 @@
       [
         7,
         "08:51:08.130",
-        "[08:51:08.130] #INFO: snapshot loading started: P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-attester\\pwm-data.json"
+        "[08:51:08.130] #INFO: snapshot loading started: P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-attester\\pwm-data.json"
       ],
       [
         12,
@@ -340,7 +340,7 @@
       [
         13,
         "08:51:16.303",
-        "[08:51:16.303] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-attester\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8173 summary_read_ms=0 epochs_ms=44 validate_ms=8127 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
+        "[08:51:16.303] #INFO: snapshot startup load ok | path=P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-attester\\pwm-data.json mode=epochs tip_h=65300 canonical_h=65300 total_ms=8173 summary_read_ms=0 epochs_ms=44 validate_ms=8127 into_runtime_ms=0 absorb_tail_ms=0 ch_http_ms=0 ch_parse_ms=0 ch_branch="
       ],
       [
         16,
@@ -501,7 +501,7 @@
       [
         6,
         "10:27:45.095",
-        "[10:27:45.095] #INFO: snapshot loading started: P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-proposer\\pwm-data.json"
+        "[10:27:45.095] #INFO: snapshot loading started: P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-proposer\\pwm-data.json"
       ]
     ],
     "sync_stalls": [],
@@ -548,7 +548,7 @@
       [
         7,
         "10:27:42.148",
-        "[10:27:42.148] #INFO: snapshot loading started: P:\\opt\\docker\\PWM-cryptocurrency\\tmp\\state-cy-attester\\pwm-data.json"
+        "[10:27:42.148] #INFO: snapshot loading started: P:\\opt\\docker\\pwm-protocol\\tmp\\state-cy-attester\\pwm-data.json"
       ]
     ],
     "sync_stalls": [

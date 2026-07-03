@@ -6,10 +6,10 @@
   "mvp_checklist": [],
   "brief": "Оператор: предыдущий pwm-review не опирался на явные пути логов; нужна синхронная ревизия с дискавери файлов в репозитории. Также сверить: (1) ведомая нода зеркалит пропозера и периодически персистит; (2) аттестатор = то же + RFC16 attest; (3) пропозер сейлит и персистит. Ожидание: запрет локальной продукции блоков на аттестаторе должен вытекать из cluster-role, а не только из --debug-disable-seal-loop. Зафиксировать расхождения RFC↔код↔лаунчеры и черновик фиксов (для pwm-coding), если их нет в отчёте 20260513-attester-sync-persistence-review.md.",
   "log_paths_operator": {
-    "repo_root_windows": "P:\\opt\\docker\\PWM-cryptocurrency",
+    "repo_root_windows": "P:\\opt\\docker\\pwm-protocol",
     "cwd_for_cy_scripts": "Репозиторий: скрипты делают Set-Location $PSScriptRoot → логи относительно корня репо.",
     "pwmd_defaults": "cli: --log-dir default 'logs' (env PWM_LOG_DIR). Шаблоны из LoggingConfig: main '{date}/{log_name}-{node_id}-{time}.log', peer '{date}/pwmd-peer-{node_id}-{time}.log'. {date} = YYYY-MM-DD по UTC из logging.rs now_tokens.",
-    "example_glob_peer": "P:/opt/docker/PWM-cryptocurrency/logs/*/pwmd-peer-cy-attester*.log — см. CyNodeAttester в cy-cluster-common.ps1",
+    "example_glob_peer": "P:/opt/docker/pwm-protocol/logs/*/pwmd-peer-cy-attester*.log — см. CyNodeAttester в cy-cluster-common.ps1",
     "code_refs": "crates/pwmd/src/main.rs (--log-dir), crates/pwmd/src/config.rs (file_template defaults), crates/pwmd/src/logging.rs (expand_log_template_path, is_peer_target)"
   },
   "delegations": [

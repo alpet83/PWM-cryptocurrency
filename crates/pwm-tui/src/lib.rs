@@ -4,17 +4,19 @@ use pwm_core::{account_id_to_human, append_addr_book, AccountId};
 use ratatui::prelude::*;
 
 mod config;
+mod journal;
 #[doc(hidden)]
 pub mod test_support;
 pub mod tui_loop;
 
-pub use config::Args;
 #[allow(unused_imports)]
 pub(crate) use config::{
-    base_url, http_client, inter_shard_status_short, parse_status_shard_label, rpc_context_label,
-    shard_cli_hint, shard_hint_rpc, wallet_unlock_secs_clamped, DEBUG_FETCH_INTERVAL,
-    OP_HISTORY_MAX_ITEMS, SEND_FLOW_STEP_TIMEOUT,
+    base_url, http_client, inter_shard_status_short, parse_status_shard_label, resolve_wallet_dir,
+    rpc_context_label, shard_cli_hint, shard_hint_rpc, wallet_unlock_secs_clamped,
+    DEBUG_FETCH_INTERVAL, OP_HISTORY_MAX_ITEMS, SEND_FLOW_STEP_TIMEOUT,
 };
+pub use config::{init_tx_history_dir, resolve_wallet_file, wallet_dir, Args, TX_HISTORY_DIR};
+pub use journal::{append_tx, make_journal_filename, read_journal, JournalEntry};
 
 mod status;
 
@@ -119,10 +121,7 @@ pub(crate) use account_view::{
 };
 
 mod selection;
-pub(crate) use selection::{
-    clamp_sel, move_selection_down, move_selection_up, receiver_table_len, selected_row_for_panel,
-    selected_to_receiver,
-};
+pub(crate) use selection::{receiver_table_len, selected_row_for_panel, selected_to_receiver};
 
 /// Preflight selected row for actions that require init: blocks unknown home-init nonce; may run auto `submit_init`.
 pub(crate) fn preflight_sel_init_auto(

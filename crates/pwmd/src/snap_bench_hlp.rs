@@ -8,7 +8,7 @@ pub const DEFAULT_BENCH_SNAPSHOT_PATH: &str = "./tmp/state-testnet/pwm-data.json
 pub const DEFAULT_BENCH_GENESIS_PATH: &str = "./tmp/genesis-custom.json";
 
 /// Directory with `pwm-data.json` (and optional `genesis-custom.json`) for full-chain benches.
-/// Example: `PWM_SNAPSHOT_BENCH_DIR=P:\opt\docker\PWM-cryptocurrency\tmp\state-testnet`
+/// Example: `PWM_SNAPSHOT_BENCH_DIR=P:\opt\docker\pwm-protocol\tmp\state-testnet`
 pub const ENV_SNAPSHOT_BENCH_DIR: &str = "PWM_SNAPSHOT_BENCH_DIR";
 
 /// Resolves the benchmark snapshot path from the environment.

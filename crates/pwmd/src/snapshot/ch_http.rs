@@ -206,7 +206,7 @@ fn encode_shard_balance_json(st: &State) -> Result<String, String> {
         let hi = domain_of_account_id(id).to_be_bytes()[0];
         let k = format!("0x{:02x}", hi);
         let row = sums.entry(k).or_insert(0);
-        *row = row.saturating_add(acc.balance_pwm.saturating_add(acc.staked));
+        *row = row.saturating_add(acc.balance_pwm.saturating_add(acc.staked_pwm_raw));
     }
     let obj: serde_json::Map<String, serde_json::Value> = sums
         .into_iter()
@@ -769,7 +769,7 @@ mod tests {
         let blocks = chain.blocks.iter().cloned().collect::<Vec<_>>();
         let st = super::replay_state_at(&cfg, &blocks, 1).expect("replay");
         let acc = st.get(&signer).expect("signer account");
-        assert_eq!(acc.last_stake_change_height, 1);
+        assert_eq!(acc.marks_last_block, 1);
     }
 
     /// No-op unless `PWM_CLICKHOUSE_TEST_URL` is set (`clickhouse-snapshot` only).

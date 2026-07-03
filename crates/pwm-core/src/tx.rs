@@ -75,7 +75,11 @@ pub enum PolicyAction {
     },
     ActivatePolicy {
         policy_id: u8,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "crate::ser_bin::opt_hex32"
+        )]
         activation_target: Option<AccountId>,
     },
     DeactivatePolicy {
@@ -106,6 +110,7 @@ pub enum CosignRole {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Cosignature {
+    #[serde(with = "crate::ser_bin::hex32")]
     pub signer_pk: [u8; 32],
     pub role: CosignRole,
     #[serde(with = "crate::ser_bin::sig64")]
@@ -128,10 +133,15 @@ pub struct InitV4Extension {
     pub owner_kind: String,
     pub owner_display_name: String,
     pub owner_country_hint: String,
+    #[serde(with = "crate::ser_bin::hex32")]
     pub company_metadata_commitment: [u8; 32],
     pub external_verification_ref: String,
     pub requested_domain_lo: u8,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::ser_bin::opt_hex32"
+    )]
     pub rescue_address: Option<AccountId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_policies: Vec<InitPolicyEntry>,
@@ -153,6 +163,7 @@ pub enum TxBody {
         flags: u32,
     },
     Transfer {
+        #[serde(with = "crate::ser_bin::hex32")]
         to: AccountId,
         #[serde(with = "crate::ser_json_u128")]
         amount: u128,
@@ -169,16 +180,19 @@ pub enum TxBody {
     },
     BurnMark {
         mark_amount: u32,
+        #[serde(with = "crate::ser_bin::opt_hex32")]
         beneficiary: Option<AccountId>,
     },
     #[serde(rename = "claim_ipv4_batch")]
     ClaimIPv4Batch {
         phase: u8,
+        #[serde(with = "crate::ser_bin::hex32")]
         batch_root: [u8; 32],
         #[serde(with = "crate::ser_bin::sig64")]
         registry_sig: [u8; 64],
     },
     Export {
+        #[serde(with = "crate::ser_bin::hex32")]
         to: AccountId,
         target_domain: u16,
         #[serde(with = "crate::ser_json_u128")]
@@ -187,12 +201,15 @@ pub enum TxBody {
         fee: u128,
     },
     Import {
+        #[serde(with = "crate::ser_bin::hex32")]
         to: AccountId,
         #[serde(with = "crate::ser_json_u128")]
         amount: u128,
+        #[serde(with = "crate::ser_bin::hex32")]
         export_id: [u8; 32],
     },
     Policy {
+        #[serde(with = "crate::ser_bin::hex32")]
         target_account: AccountId,
         action: PolicyAction,
         #[serde(with = "crate::ser_json_u128")]
@@ -213,6 +230,7 @@ impl<'de> Deserialize<'de> for TxBody {
                 flags: u32,
             },
             Transfer {
+                #[serde(with = "crate::ser_bin::hex32")]
                 to: AccountId,
                 #[serde(with = "crate::ser_json_u128")]
                 amount: u128,
@@ -229,16 +247,19 @@ impl<'de> Deserialize<'de> for TxBody {
             },
             BurnMark {
                 mark_amount: u32,
+                #[serde(with = "crate::ser_bin::opt_hex32")]
                 beneficiary: Option<AccountId>,
             },
             #[serde(rename = "claim_ipv4_batch")]
             ClaimIpv4Batch {
                 phase: u8,
+                #[serde(with = "crate::ser_bin::hex32")]
                 batch_root: [u8; 32],
                 #[serde(with = "crate::ser_bin::sig64")]
                 registry_sig: [u8; 64],
             },
             Export {
+                #[serde(with = "crate::ser_bin::hex32")]
                 to: AccountId,
                 target_domain: u16,
                 #[serde(with = "crate::ser_json_u128")]
@@ -247,12 +268,15 @@ impl<'de> Deserialize<'de> for TxBody {
                 fee: u128,
             },
             Import {
+                #[serde(with = "crate::ser_bin::hex32")]
                 to: AccountId,
                 #[serde(with = "crate::ser_json_u128")]
                 amount: u128,
+                #[serde(with = "crate::ser_bin::hex32")]
                 export_id: [u8; 32],
             },
             Policy {
+                #[serde(with = "crate::ser_bin::hex32")]
                 target_account: AccountId,
                 action: PolicyAction,
                 #[serde(with = "crate::ser_json_u128")]
@@ -340,6 +364,7 @@ impl TxBody {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignedTx {
     pub domain_code: u16,
+    #[serde(with = "crate::ser_bin::hex32")]
     pub signer_pk: [u8; 32],
     pub derivation_index: u32,
     pub nonce: u64,
@@ -591,7 +616,17 @@ impl SignedTx {
 
 /// Structural checks before state application.
 pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
-    if !tx.verify_sig() {
+    validate_tx_shape_inner(tx, true)
+}
+
+/// Like [`validate_tx_shape`] but skips the Ed25519 signature check.
+/// Use only when the caller has already verified the signature (e.g. precheck worker).
+pub(crate) fn validate_shape_no_sig(tx: &SignedTx) -> Result<(), TxError> {
+    validate_tx_shape_inner(tx, false)
+}
+
+fn validate_tx_shape_inner(tx: &SignedTx, check_sig: bool) -> Result<(), TxError> {
+    if check_sig && !tx.verify_sig() {
         return Err(TxError::BadSignature);
     }
     let aid = tx.computed_account_id();
@@ -618,6 +653,7 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
                 .ok_or(TxError::InvalidPurposeLength)?;
             validate_burn_purpose(&normalized)?;
         }
+        _ if tx.burn_purpose.is_some() => return Err(TxError::PolicySchemaInvalid),
         TxBody::ClaimIPv4Batch { registry_sig, .. } => {
             if registry_sig.iter().all(|b| *b == 0) {
                 return Err(TxError::PolicySchemaInvalid);
@@ -627,6 +663,9 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
             if tx.import_fee.unwrap_or(0) < MIN_IMPORT_FEE_UNITS {
                 return Err(TxError::ImportFeeTooLow);
             }
+        }
+        _ if tx.import_fee.is_some() || tx.import_provenance.is_some() => {
+            return Err(TxError::PolicySchemaInvalid);
         }
         TxBody::Policy {
             target_account,
@@ -649,12 +688,12 @@ pub fn validate_tx_shape(tx: &SignedTx) -> Result<(), TxError> {
                     policy_id,
                     activation_target,
                 } => {
-                    if *fee != 0 {
-                        return Err(TxError::PolicyActivationFeeMustBeZero);
-                    }
                     let Some(pol) = PolicyKind::from_policy_id(*policy_id) else {
                         return Err(TxError::PolicySchemaInvalid);
                     };
+                    if *fee != 0 && pol != PolicyKind::RoutingEmergencyRedirect {
+                        return Err(TxError::PolicyActivationFeeMustBeZero);
+                    }
                     if pol == PolicyKind::RoutingEmergencyRedirect && activation_target.is_none() {
                         return Err(TxError::PolicyActivationTargetRequired);
                     }
@@ -808,7 +847,7 @@ pub fn import_context_is_valid(tx: &SignedTx) -> bool {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TxError {
     #[error("bad signature")]
     BadSignature,
@@ -919,6 +958,45 @@ mod tests {
         panic!("failed to find non-flagged signer");
     }
 
+    fn hex_transfer_tx() -> SignedTx {
+        let (sk, idx) = signer(&[90u8; 32]);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let mut to = probe.computed_account_id();
+        to[0] = to[0].wrapping_add(1);
+        let domain = domain_of_account_id(&probe.computed_account_id());
+        SignedTx::sign_body(
+            &sk,
+            domain,
+            idx,
+            6,
+            TxBody::Transfer {
+                to,
+                amount: 25,
+                fee: 2,
+            },
+        )
+    }
+
+    fn signed_transfer(seed: &[u8; 32]) -> (SigningKey, SignedTx) {
+        let (sk, idx) = signer(seed);
+        let probe = SignedTx::sign_body(&sk, 0, idx, 0, TxBody::Stake { amount: 1 });
+        let mut to = probe.computed_account_id();
+        to[0] = to[0].wrapping_add(1);
+        let domain = domain_of_account_id(&probe.computed_account_id());
+        let tx = SignedTx::sign_body(
+            &sk,
+            domain,
+            idx,
+            6,
+            TxBody::Transfer {
+                to,
+                amount: 25,
+                fee: 2,
+            },
+        );
+        (sk, tx)
+    }
+
     /// Regulatory domain `0x2C00` rejects init at wrong lo byte (formerly `validate_tx_shape_accepts_regulatory_init_lo_zero`).
     #[test]
     fn reg_init_lo0_bad_shape() {
@@ -965,6 +1043,24 @@ mod tests {
         tx.set_burn_purpose_signed(&sk, "bad\u{0001}purpose".to_string());
         let err = validate_tx_shape(&tx).expect_err("purpose with C0 must fail");
         assert!(matches!(err, TxError::InvalidPurposeChars));
+    }
+
+    #[test]
+    fn import_fee_rejects_non_import() {
+        let (sk, mut tx) = signed_transfer(&[79u8; 32]);
+        tx.set_import_fee_signed(&sk, MIN_IMPORT_FEE_UNITS);
+
+        let err = validate_tx_shape(&tx).expect_err("transfer cannot carry import fee");
+        assert!(matches!(err, TxError::PolicySchemaInvalid));
+    }
+
+    #[test]
+    fn burn_purpose_rejects_non_burn() {
+        let (sk, mut tx) = signed_transfer(&[80u8; 32]);
+        tx.set_burn_purpose_signed(&sk, "purpose".to_string());
+
+        let err = validate_tx_shape(&tx).expect_err("transfer cannot carry burn purpose");
+        assert!(matches!(err, TxError::PolicySchemaInvalid));
     }
 
     #[test]
@@ -1147,6 +1243,43 @@ mod tests {
         let encoded = to_vec(&tx).expect("signed tx json");
         let decoded: SignedTx = from_slice(&encoded).expect("signed tx decode");
         assert_eq!(decoded, tx);
+    }
+
+    #[test]
+    fn tx_json_hex_round_trip() {
+        let tx = hex_transfer_tx();
+        let value = serde_json::to_value(&tx).expect("serialize transfer");
+        let signer_pk = value["signer_pk"].as_str().expect("hex signer_pk");
+        let signature = value["signature"].as_str().expect("hex signature");
+        let to = value["body"]["transfer"]["to"]
+            .as_str()
+            .expect("hex transfer to");
+        let TxBody::Transfer {
+            to: expected_to, ..
+        } = &tx.body
+        else {
+            unreachable!("transfer fixture")
+        };
+        assert_eq!(signer_pk, hex::encode(tx.signer_pk));
+        assert_eq!(signature, hex::encode(tx.signature));
+        assert_eq!(to, hex::encode(expected_to));
+        assert_eq!(signer_pk.len(), 64);
+        assert_eq!(signature.len(), 128);
+        assert_eq!(to.len(), 64);
+        assert_eq!(serde_json::from_value::<SignedTx>(value).unwrap(), tx);
+    }
+
+    #[test]
+    fn tx_json_legacy_arr_compat() {
+        let tx = hex_transfer_tx();
+        let TxBody::Transfer { to, .. } = &tx.body else {
+            unreachable!("transfer fixture")
+        };
+        let mut value = serde_json::to_value(&tx).expect("serialize transfer");
+        value["signer_pk"] = serde_json::to_value(tx.signer_pk.as_slice()).unwrap();
+        value["signature"] = serde_json::to_value(tx.signature.as_slice()).unwrap();
+        value["body"]["transfer"]["to"] = serde_json::to_value(to.as_slice()).unwrap();
+        assert_eq!(serde_json::from_value::<SignedTx>(value).unwrap(), tx);
     }
 
     #[test]

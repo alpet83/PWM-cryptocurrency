@@ -6,6 +6,7 @@ use super::io::{self, SnapshotLoadOpts};
 use super::telemetry::SnapIoTiming;
 use super::types::SnapshotData;
 use crate::state::Inner;
+use pwm_core::block::Block;
 use pwm_core::genesis::GenCfg;
 use std::path::{Path, PathBuf};
 #[cfg(feature = "clickhouse-snapshot")]
@@ -16,6 +17,8 @@ use tracing::{debug, warn};
 pub(crate) enum SealPersistMode {
     /// Background cadence hit (every `SNAP_CHK_BLK_IV` blocks in lifecycle).
     Periodic,
+    /// Writer is already tip-aligned; write only the checkpoint summary.
+    PeriodicSummary,
     /// Explicit full flush (graceful shutdown / safe fallback).
     ShutdownFull,
 }
@@ -86,20 +89,41 @@ pub(crate) enum SnapshotBackend {
 }
 
 impl SnapshotBackend {
-    /// Seal-time persistence: JsonFile tip-sync + summary flush; ClickHouse keeps native behavior.
+    /// Seal-time persistence with a summary-only branch for a flushed JsonFile writer.
     pub(crate) fn save_seal_persist(
         &self,
         inner: &Inner,
         mode: SealPersistMode,
     ) -> Result<(), String> {
         match self {
-            Self::JsonFile { path } => {
-                let _ = mode;
-                io::json_file_seal_persist(Path::new(path), inner)
-            }
+            Self::JsonFile { path } => match mode {
+                SealPersistMode::PeriodicSummary => {
+                    io::save_checkpoint_summary(Path::new(path), inner)
+                }
+                SealPersistMode::Periodic | SealPersistMode::ShutdownFull => {
+                    io::json_file_seal_persist(Path::new(path), inner)
+                }
+            },
             #[cfg(feature = "clickhouse-snapshot")]
             Self::ClickHouse(c) => ch_save_seal_fallback(c, inner, mode),
         }
+    }
+
+    /// Returns the direct JsonFile path, excluding ClickHouse fallback paths.
+    pub(crate) fn json_path(&self) -> Option<&Path> {
+        match self {
+            Self::JsonFile { path } => Some(path.as_path()),
+            #[cfg(feature = "clickhouse-snapshot")]
+            Self::ClickHouse(_) => None,
+        }
+    }
+
+    /// Synchronous append used only when enqueueing into the writer fails.
+    pub(crate) fn recover_append(&self, block: &Block) -> Result<(), String> {
+        let path = self
+            .json_path()
+            .ok_or_else(|| "block writer recovery requires JsonFile backend".to_string())?;
+        super::incremental::append_block_for_epoch(path, block)
     }
 
     /// Tip summary without new block (e.g. relay roaming); JsonFile rewrites `pwm-data.json` only.

@@ -249,6 +249,8 @@ pub(super) async fn v1_status(State(a): State<App>) -> Json<StatusOut> {
         snapshot_file,
         snapshot_error,
         cluster_domain_hi: a.identity.cluster_domain_hi,
+        pipeline_metrics: a.pipeline_metrics.snapshot(),
+        tx_counters: crate::pipeline::counters::snapshot(),
         bridge_exported_registry_size,
         bridge_imported_set_size,
         bridge_registered_without_import,
@@ -346,7 +348,7 @@ async fn cluster_prep_out(a: &App) -> ClusterPrepOut {
         _ => None,
     };
     if let Some(blocked_reason) = init_blocked {
-        let waiting_since_raw = a.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+        let waiting_since_raw = a.cluster_prep_wait_ms.load(Ordering::Acquire);
         let waiting_since_ms = if waiting_since_raw > 0 {
             waiting_since_raw
         } else {
@@ -378,7 +380,7 @@ async fn cluster_prep_out(a: &App) -> ClusterPrepOut {
     } else {
         "waiting_attester"
     };
-    let waiting_since_raw = a.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+    let waiting_since_raw = a.cluster_prep_wait_ms.load(Ordering::Acquire);
     let waiting_since_ms = (waiting_since_raw > 0).then_some(waiting_since_raw);
     let waiting_sec = waiting_since_ms.map(|since| now_ms.saturating_sub(since) / 1000);
     ClusterPrepOut {
@@ -423,7 +425,7 @@ mod tests {
         app.cluster_cfg.enabled = true;
         app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
         app.cluster_cfg.quorum_k = 1;
-        app.cluster_prep_waiting_since_ms
+        app.cluster_prep_wait_ms
             .store(12_345, std::sync::atomic::Ordering::Release);
         let out = v1_status(State(app)).await.0;
         assert_eq!(out.cluster_prep.phase, "waiting_attester");
@@ -446,7 +448,7 @@ mod tests {
             *st = crate::state::InitState::loading(None);
         }
         let now_ms = crate::current_time_ms().unwrap_or(0);
-        app.cluster_prep_waiting_since_ms.store(
+        app.cluster_prep_wait_ms.store(
             now_ms.saturating_sub(5_000),
             std::sync::atomic::Ordering::Release,
         );

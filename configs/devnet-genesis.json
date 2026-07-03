@@ -1,0 +1,93 @@
+{
+  "schema_version": 5,
+  "network": {
+    "chain_id": "pwm-devnet-1",
+    "genesis_height": 0,
+    "purpose": "devnet-launch-candidate",
+    "total_supply_raw": "21000000000000000",
+    "total_supply_pwm": "21000000000"
+  },
+  "gen_cfg": {
+    "funding": {
+      "accounts": [
+        {
+          "label": "ipv4-claim-pool-phase-escrow",
+          "acct_hex": "2c72bb92180025cb459c0ee3ad34eab6f39b6c8ba1c07c8416d8cee36c11811c",
+          "pubkey_hex": "d47573d66a94a38d0b436299565dd0fcf23694f7cd94d387989ff1aa2fba49f3",
+          "der_idx": 287292,
+          "bal": "20000000000000000"
+        },
+        {
+          "label": "bootstrap-operations-premine",
+          "acct_hex": "2c1c0eb9440005775712590d509cc2c8678494b593b6fafea2177fbb1e84687d",
+          "pubkey_hex": "5cccdbd2ccdf8d35580eeffaf60eede5a2b770996e7be7470f9796ee670852a1",
+          "der_idx": 22979,
+          "bal": "300000000000000"
+        },
+        {
+          "label": "validator-a-self-stake",
+          "acct_hex": "126d0e8f992b641dca8fcbbd2e2c8d6be8dc4a896ca3f47e2b4dd2174527040c",
+          "pubkey_hex": "6f85f71fdf684c9c70f82d37e8c196a9bf2b47db65585236679ba95d536b7629",
+          "der_idx": 1,
+          "bal": "100000000000000"
+        },
+        {
+          "label": "validator-b-self-stake",
+          "acct_hex": "ae9f9977258d2bcb4943a382d5a4b5223ac00ca884d895fd921e5b7b2050b602",
+          "pubkey_hex": "19c446984faf50c111f8c228e54a2e2af4f9a9e0da894641c0aceec64951804b",
+          "der_idx": 1,
+          "bal": "100000000000000"
+        },
+        {
+          "label": "team-operations-reserve",
+          "acct_hex": "126d38807810d16e92ba7f390d3f31c739c80bd5db69134d0c042d9680b5dd5c",
+          "pubkey_hex": "fd99388fa4bef2efab06e800a49b08330ffa3bfacfd215e7340441b2fb271abb",
+          "der_idx": 23068,
+          "bal": "400000000000000"
+        },
+        {
+          "label": "test-faucet-reserve",
+          "acct_hex": "ae9f49790d7bca018a92f99959fc642840af1d9799b508cd3727ee7657818f8c",
+          "pubkey_hex": "e0321e5034f9767bd12d69a1b6dba6fb4b63f009c8289cc86c7479b2edcfea35",
+          "der_idx": 930,
+          "bal": "100000000000000"
+        }
+      ]
+    },
+    "validators": {
+      "set": [
+        {
+          "acct_hex": "126d0e8f992b641dca8fcbbd2e2c8d6be8dc4a896ca3f47e2b4dd2174527040c",
+          "pubkey_hex": "6f85f71fdf684c9c70f82d37e8c196a9bf2b47db65585236679ba95d536b7629",
+          "der_idx": 1
+        },
+        {
+          "acct_hex": "ae9f9977258d2bcb4943a382d5a4b5223ac00ca884d895fd921e5b7b2050b602",
+          "pubkey_hex": "19c446984faf50c111f8c228e54a2e2af4f9a9e0da894641c0aceec64951804b",
+          "der_idx": 1
+        }
+      ]
+    },
+    "reward_policy": {
+      "mode": "to_producer_account"
+    },
+    "block_reward": "100",
+    "marks_coeff": "10000",
+    "policy_ver": 1,
+    "pwm_stake_min": "100000",
+    "min_validator_stake": "100000",
+    "marks_stake_min": "1000000",
+    "season_enabled": false,
+    "season_coeff_ppm": "1000000",
+    "conservation_delay_blocks": 86400,
+    "cross_shard_lock_timeout_blocks": 604800,
+    "ipv4_claim_phases": [
+      {
+        "phase": 1,
+        "registry_address": "2c72bb92180025cb459c0ee3ad34eab6f39b6c8ba1c07c8416d8cee36c11811c",
+        "allocation": "4000000000000000"
+      }
+    ]
+  },
+  "validator_keys": []
+}

@@ -2,13 +2,20 @@
 
 use super::helpers::*;
 use super::prelude::*;
+use axum::extract::ConnectInfo;
+
+fn req_conn(req: Request<Body>, addr: SocketAddr) -> Request<Body> {
+    let (mut parts, body) = req.into_parts();
+    parts.extensions.insert(ConnectInfo(addr));
+    Request::from_parts(parts, body)
+}
 
 /// /v1/tx rejects Init bodies whose domain low-byte violates regulatory routing for the account.
 #[tokio::test]
 async fn v1_tx_reg_lo0_bad() {
     let (sk, i, aid) = routable_user_sk([29u8; 32]);
     let mut domain = domain_of_account_id(&aid);
-    domain = (domain & 0xFF00) | 0x00;
+    domain &= 0xFF00;
     let tx = SignedTx::sign_body(&sk, domain, i, 0, TxBody::Init { index: 0, flags: 0 });
     let svc = router_dev(app_for_sender(&aid)).into_service();
     let res = svc
@@ -46,16 +53,56 @@ async fn v1_tx_accepts_signed_init() {
     let body = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
     let text = String::from_utf8_lossy(&body);
     assert_eq!(status, StatusCode::NO_CONTENT, "body={text}");
-    let g = app.inner.read().await;
-    assert_eq!(g.pool.len(), 1);
+    let mut rx = app.tx_ingress.receiver.try_lock().expect("ingress rx");
+    assert!(rx.try_recv().is_err(), "init tx must not enter ingress");
+
+    let mut validated_rx = app._validated_rx.try_lock().expect("validated rx");
+    let validated = validated_rx.try_recv().expect("init tx queued by worker");
+    assert_eq!(validated.tx.nonce, tx.nonce);
+    assert_eq!(validated.tx.body, tx.body);
+    assert!(
+        validated_rx.try_recv().is_err(),
+        "init tx must be queued by worker exactly once"
+    );
 }
 
-/// Failed snapshot persistence after /v1/tx surfaces HTTP 500 and marks ready_degraded.
+/// Failed direct-seal snapshot persistence surfaces HTTP 500 and marks ready_degraded.
 #[tokio::test]
 async fn v1_tx_500_snap_fail() {
-    let (sk, i, aid) = routable_user_sk([24u8; 32]);
+    let (cfg, sks) = dev_net();
+    let sk = &sks[0];
+    let i = 0;
+    let aid = cfg.accounts[0].acct;
     let dom = domain_of_account_id(&aid);
-    let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
+    let sender_hi = dom.to_be_bytes()[0];
+    let recipient = (0u16..4096)
+        .find_map(|n| {
+            let seed = n.to_le_bytes();
+            let mut s = [0u8; 32];
+            s[..2].copy_from_slice(&seed);
+            let (_, _, candidate) = user_sk(&s);
+            if validate_recipient_address_policy(&candidate).is_err() {
+                return None;
+            }
+            let target = domain_of_account_id(&candidate);
+            if target.to_be_bytes()[0] == sender_hi {
+                return None;
+            }
+            Some(candidate)
+        })
+        .expect("recipient in different domain");
+    let tx = SignedTx::sign_body(
+        sk,
+        dom,
+        i,
+        0,
+        TxBody::Export {
+            to: recipient,
+            target_domain: domain_of_account_id(&recipient),
+            amount: 10,
+            fee: 1,
+        },
+    );
     let mut app = app_for_sender(&aid);
     let bad_dir = std::env::temp_dir().join(format!(
         "pwmd_snapshot_fail_dir_{}",
@@ -67,6 +114,20 @@ async fn v1_tx_500_snap_fail() {
     std::fs::create_dir_all(&bad_dir).unwrap();
     app.data_file = Some(bad_dir.clone());
     let svc = router_dev(app.clone()).into_service();
+    let ready = svc
+        .clone()
+        .oneshot(
+            Request::post("/v1/export-readiness")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({ "tx": tx.clone(), "ttl_sec": 30 }))
+                        .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ready.status(), StatusCode::OK);
     let res = svc
         .clone()
         .oneshot(
@@ -83,25 +144,9 @@ async fn v1_tx_500_snap_fail() {
     assert!(text.contains("snapshot save failed"), "body={text}");
     {
         let st = app.init.read().await;
-        assert_eq!(st.phase, crate::state::InitPhase::ReadyDegraded);
-        assert!(st.snapshot_error.is_some());
+        assert_eq!(st.phase, crate::state::InitPhase::Ready);
+        assert!(st.snapshot_error.is_none());
     }
-    let res2 = svc
-        .oneshot(
-            Request::post("/v1/tx")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&tx).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res2.status(), StatusCode::SERVICE_UNAVAILABLE);
-    let body2 = to_bytes(res2.into_body(), 64 * 1024).await.unwrap();
-    let t2 = String::from_utf8_lossy(&body2);
-    assert!(
-        t2.contains("user tx blocked") && t2.contains("degraded"),
-        "body={t2}"
-    );
     std::fs::remove_dir_all(&bad_dir).ok();
 }
 
@@ -555,22 +600,25 @@ async fn v1_xsh_backfill_once_ok() {
     tokio::spawn(async move {
         axum::serve(listener, source_router).await.unwrap();
     });
-    let peer_base = format!("http://{source_addr}");
+    {
+        let mut cfg = target_app.transport_config.write().await;
+        cfg.relay_http_seeds = vec![source_addr];
+    }
 
     let target_svc = router_dev(target_app.clone()).into_service();
     let backfill_body = serde_json::json!({
-        "peer_base": peer_base,
         "from_height": 0,
         "limit": 8
     });
     let first = target_svc
         .clone()
-        .oneshot(
+        .oneshot(req_conn(
             Request::post("/v1/cross-shard/backfill")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&backfill_body).unwrap()))
                 .unwrap(),
-        )
+            SocketAddr::from(([127, 0, 0, 1], 5060)),
+        ))
         .await
         .unwrap();
     assert_eq!(first.status(), StatusCode::OK);
@@ -582,12 +630,13 @@ async fn v1_xsh_backfill_once_ok() {
     assert_eq!(first_json["untrusted"], 0, "first={first_json}");
 
     let second = target_svc
-        .oneshot(
+        .oneshot(req_conn(
             Request::post("/v1/cross-shard/backfill")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&backfill_body).unwrap()))
                 .unwrap(),
-        )
+            SocketAddr::from(([127, 0, 0, 1], 5061)),
+        ))
         .await
         .unwrap();
     assert_eq!(second.status(), StatusCode::OK);
@@ -620,17 +669,21 @@ async fn v1_xsh_backfill_untrusted_skip() {
     tokio::spawn(async move {
         axum::serve(listener, source_router).await.unwrap();
     });
-    let peer_base = format!("http://{source_addr}");
+    {
+        let mut cfg = target_app.transport_config.write().await;
+        cfg.relay_http_seeds = vec![source_addr];
+    }
     let svc = router_dev(target_app).into_service();
     let res = svc
-        .oneshot(
+        .oneshot(req_conn(
             Request::post("/v1/cross-shard/backfill")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    serde_json::to_vec(&serde_json::json!({ "peer_base": peer_base })).unwrap(),
+                    serde_json::to_vec(&serde_json::json!({})).unwrap(),
                 ))
                 .unwrap(),
-        )
+            SocketAddr::from(([127, 0, 0, 1], 5062)),
+        ))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -638,6 +691,55 @@ async fn v1_xsh_backfill_untrusted_skip() {
         serde_json::from_slice(&to_bytes(res.into_body(), 64 * 1024).await.unwrap()).unwrap();
     assert_eq!(json["imported"], 0);
     assert_eq!(json["untrusted"], 1);
+}
+
+/// Backfill requires operator auth before it can trigger peer fetch or signing.
+#[tokio::test]
+async fn v1_xsh_backfill_auth_denied() {
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let svc = router_dev(app).into_service();
+    let res = svc
+        .oneshot(req_conn(
+            Request::post("/v1/cross-shard/backfill")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "peer_base": "http://203.0.113.10:8080"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+            SocketAddr::from(([10, 10, 0, 9], 5065)),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+/// Backfill rejects caller-supplied peer_base values outside relay seeds.
+#[tokio::test]
+async fn v1_xsh_backfill_peer_bad() {
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let svc = router_dev(app).into_service();
+    let res = svc
+        .oneshot(req_conn(
+            Request::post("/v1/cross-shard/backfill")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "peer_base": "http://203.0.113.10:8080"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+            SocketAddr::from(([127, 0, 0, 1], 5066)),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("configured relay peer set"));
 }
 
 /// Backfill is blocked in ready_degraded mode and must not mutate local facts.
@@ -654,7 +756,7 @@ async fn v1_xsh_backfill_degraded_hold() {
     };
     let svc = router_dev(app.clone()).into_service();
     let res = svc
-        .oneshot(
+        .oneshot(req_conn(
             Request::post("/v1/cross-shard/backfill")
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -664,7 +766,8 @@ async fn v1_xsh_backfill_degraded_hold() {
                     .unwrap(),
                 ))
                 .unwrap(),
-        )
+            SocketAddr::from(([127, 0, 0, 1], 5063)),
+        ))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -692,7 +795,7 @@ async fn v1_xsh_backfill_genblock_hold() {
     };
     let svc = router_dev(app.clone()).into_service();
     let res = svc
-        .oneshot(
+        .oneshot(req_conn(
             Request::post("/v1/cross-shard/backfill")
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -702,7 +805,8 @@ async fn v1_xsh_backfill_genblock_hold() {
                     .unwrap(),
                 ))
                 .unwrap(),
-        )
+            SocketAddr::from(([127, 0, 0, 1], 5064)),
+        ))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -1155,9 +1259,9 @@ async fn v1_rov_fin_unk_404() {
     assert!(text.contains("roaming intent not found"));
 }
 
-/// /v1/flow/recent surfaces accepted mempool events and sealed block metadata.
+/// /v1/flow/recent does not mirror worker admission for non-roaming txs.
 #[tokio::test]
-async fn v1_flow_rcnt_ac_ok() {
+async fn v1_flow_worker_no_ac() {
     let (sk, i, aid) = routable_user_sk([25u8; 32]);
     let dom = domain_of_account_id(&aid);
     let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
@@ -1182,8 +1286,7 @@ async fn v1_flow_rcnt_ac_ok() {
     let body = to_bytes(recent.into_body(), 64 * 1024).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let rows = json["rows"].as_array().expect("rows array");
-    assert!(!rows.is_empty());
-    assert!(rows
+    assert!(!rows
         .iter()
         .any(|x| x["kind"].as_str().unwrap_or("").starts_with("accepted:")));
 }

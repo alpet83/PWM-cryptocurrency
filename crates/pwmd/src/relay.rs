@@ -624,20 +624,20 @@ pub(crate) async fn relay_import(app: &App, tx: &SignedTx) -> Result<(), RelayEr
     )
     .await;
 
-    // Mirror roaming completion on the source shard (relay bypasses local seal path).
+    // Mirror relay progress only; trusted cross-shard facts confirm final import.
     {
         let mut g = app.inner.write().await;
         let bak = take_bak(&g);
-        g.roaming_pool.mark_import_by_export(export_key);
+        g.roaming_pool.mark_relayed_by_export(export_key);
         let h2 = g.chain.tip_h();
         let export_hex = hex::encode(export_key);
         g.push_flow(FlowTraceRow {
             at_height: h2,
-            kind: "roaming_status:imported".to_string(),
+            kind: "roaming_status:relayed".to_string(),
             tx_id: export_hex.clone(),
             export_id: Some(export_hex.clone()),
             intent_id: Some(export_hex),
-            note: Some("source roaming marked imported after relay_import delivered".into()),
+            note: Some("source roaming marked relayed after relay_import delivered".into()),
         });
         let save_pair = crate::snapshot::SnapshotBackend::from_data_file(app.data_file.as_ref())
             .map(|b| {

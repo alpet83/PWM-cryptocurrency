@@ -32,7 +32,7 @@ struct GenesisCfgV4 {
     policy_ver: u32,
     #[serde(default = "def_pwm_min_s")]
     pwm_stake_min: String,
-    #[serde(default = "def_min_val_stake_s")]
+    #[serde(default = "def_min_stake_s")]
     min_validator_stake: String,
     #[serde(default = "def_marks_min_s")]
     marks_stake_min: String,
@@ -161,7 +161,7 @@ fn def_pwm_min_s() -> String {
     DEF_PWM_STAKE_MIN.to_string()
 }
 
-fn def_min_val_stake_s() -> String {
+fn def_min_stake_s() -> String {
     DEF_PWM_STAKE_MIN.to_string()
 }
 

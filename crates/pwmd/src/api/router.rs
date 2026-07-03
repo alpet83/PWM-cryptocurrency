@@ -3,6 +3,7 @@
 use crate::App;
 use axum::{
     extract::DefaultBodyLimit,
+    middleware,
     routing::{get, post},
     Router,
 };
@@ -13,8 +14,10 @@ use super::handlers_backfill::{v1_cross_shard_backfill, v1_cross_shard_facts};
 use super::handlers_bridge::v1_bridge_federation_reset;
 use super::handlers_federation::v1_federation_shards;
 use super::handlers_lab_seal::{v1_lab_seal_control, v1_lab_seal_status, v1_lab_seal_step};
+use super::handlers_offchain::{v1_off_batch, v1_off_batch_get, v1_off_proof};
 use super::handlers_operator_log::{v1_log_ovr_del, v1_log_ovr_get, v1_log_ovr_set};
 use super::handlers_peer::{v1_dev_peers, v1_peer_hello};
+use super::handlers_perfmon::v1_perfmon;
 use super::handlers_roaming::{
     v1_export_handoff_register, v1_export_readiness, v1_roaming_intent_create,
     v1_roaming_intent_finalize, v1_roaming_intent_status,
@@ -22,11 +25,21 @@ use super::handlers_roaming::{
 use super::handlers_shutdown::v1_shutdown;
 use super::handlers_status::{v1_flow_recent, v1_head, v1_status};
 use super::handlers_tx::v1_tx;
+use super::handlers_version::v1_version;
 use super::types::V1_TX_BODY_LIMIT;
 
 /// After `with_state(app)` this is `Router<()>` (see axum `with_state` docs).
 pub fn router(app: App, cors: CorsLayer) -> Router {
-    Router::new()
+    let gate_app = app.clone();
+    let r = Router::new()
+        .route("/v1/offchain/batch", post(v1_off_batch))
+        .route("/v1/offchain/batch/:id", get(v1_off_batch_get))
+        .route(
+            "/v1/offchain/batch/:id/proof/:entry_index",
+            get(v1_off_proof),
+        )
+        .route("/v1/perfmon", get(v1_perfmon))
+        .route("/v1/version", get(v1_version))
         .route("/v1/status", get(v1_status))
         .route(
             "/v1/bridge-federation/reset",
@@ -61,6 +74,14 @@ pub fn router(app: App, cors: CorsLayer) -> Router {
         .route("/v1/dev/peers", get(v1_dev_peers))
         .route("/v1/federation/shards", get(v1_federation_shards))
         .layer(DefaultBodyLimit::max(V1_TX_BODY_LIMIT))
-        .layer(cors)
-        .with_state(app)
+        .layer(cors);
+    let r = if app.rpc_allow.disabled() {
+        r
+    } else {
+        r.layer(middleware::from_fn_with_state(
+            gate_app,
+            crate::rpc_allow::rpc_ip_gate,
+        ))
+    };
+    r.with_state(app)
 }

@@ -2,6 +2,82 @@
 
 use super::helpers::*;
 use super::prelude::*;
+use axum::extract::ConnectInfo;
+
+fn req_conn(req: Request<Body>, addr: SocketAddr) -> Request<Body> {
+    let (mut parts, body) = req.into_parts();
+    parts.extensions.insert(ConnectInfo(addr));
+    Request::from_parts(parts, body)
+}
+
+fn off_entry(nonce: u64) -> serde_json::Value {
+    serde_json::json!({
+        "account_id": hex::encode([7u8; 32]),
+        "amount": "1",
+        "nonce": nonce
+    })
+}
+
+/// Static RPC allowlists reject non-matching source IPs.
+#[tokio::test]
+async fn rpc_ip_static_rejects() {
+    let mut app = app_from_dev_net();
+    app.rpc_allow =
+        crate::rpc_allow::RpcAllowState::from_cfg(&["192.168.1.0/24".to_string()], 0).unwrap();
+    let svc = router_dev(app).into_service();
+    let req = Request::get("/v1/version").body(Body::empty()).unwrap();
+    let res = svc
+        .oneshot(req_conn(req, SocketAddr::from(([10, 0, 0, 9], 35000))))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+/// Static RPC allowlists accept matching CIDR source IPs.
+#[tokio::test]
+async fn rpc_ip_static_allows() {
+    let mut app = app_from_dev_net();
+    app.rpc_allow =
+        crate::rpc_allow::RpcAllowState::from_cfg(&["192.168.1.0/24".to_string()], 0).unwrap();
+    let svc = router_dev(app).into_service();
+    let req = Request::get("/v1/version").body(Body::empty()).unwrap();
+    let res = svc
+        .oneshot(req_conn(req, SocketAddr::from(([192, 168, 1, 44], 35000))))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+/// Auto-enrolled RPC source IPs remain allowed after the enrollment window closes.
+#[tokio::test]
+async fn rpc_ip_auto_sticks() {
+    let mut app = app_from_dev_net();
+    app.rpc_allow = crate::rpc_allow::RpcAllowState::from_cfg(&[], 60).unwrap();
+    let svc = router_dev(app.clone()).into_service();
+    let req = Request::get("/v1/version").body(Body::empty()).unwrap();
+    let enrolled = SocketAddr::from(([10, 0, 0, 9], 35000));
+    let res = svc.oneshot(req_conn(req, enrolled)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    app.rpc_allow = app.rpc_allow.with_closed_auto();
+    let svc = router_dev(app).into_service();
+    let req = Request::get("/v1/version").body(Body::empty()).unwrap();
+    let res = svc.oneshot(req_conn(req, enrolled)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let mut app = app_from_dev_net();
+    app.rpc_allow = crate::rpc_allow::RpcAllowState::from_cfg(&[], 60)
+        .unwrap()
+        .with_closed_auto();
+    let req = Request::get("/v1/version").body(Body::empty()).unwrap();
+    let unknown = SocketAddr::from(([10, 0, 0, 10], 35000));
+    let res = router_dev(app)
+        .into_service()
+        .oneshot(req_conn(req, unknown))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
 
 #[test]
 fn cors_loopback_is_permissive() {
@@ -21,6 +97,45 @@ fn cors_wild_listen_needs_origins() {
     if let Some(v) = old {
         std::env::set_var(key, v);
     }
+}
+
+/// Oversized offchain batches are rejected before parsing or storage.
+#[tokio::test]
+async fn v1_off_batch_413() {
+    let app = app_from_dev_net();
+    let body = (0..4097u64).map(off_entry).collect::<Vec<_>>();
+    let svc = router_dev(app).into_service();
+    let res = svc
+        .oneshot(
+            Request::post("/v1/offchain/batch")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+/// Offchain batch submission obeys the node readiness gate.
+#[tokio::test]
+async fn v1_off_batch_ready_gate() {
+    let app = app_from_dev_net();
+    {
+        let mut st = app.init.write().await;
+        *st = InitState::loading(Some(PathBuf::from("pwm-data.json")));
+    }
+    let svc = router_dev(app).into_service();
+    let res = svc
+        .oneshot(
+            Request::post("/v1/offchain/batch")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&vec![off_entry(1)]).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 /// parse_cluster_domain_hi accepts decimal and hex (0x…) cluster domain_hi inputs.
@@ -146,6 +261,13 @@ async fn v1_stat_default_lane_ns() {
     assert_eq!(v["cluster_domain_hi"], 0x10);
     assert_eq!(v["bridge_exported_registry_size"], 0);
     assert_eq!(v["bridge_imported_set_size"], 0);
+    assert_eq!(v["pipeline_metrics"]["enqueued"], 0);
+    assert_eq!(v["pipeline_metrics"]["dequeued"], 0);
+    assert_eq!(v["pipeline_metrics"]["rejected"], 0);
+    assert_eq!(v["pipeline_metrics"]["validated"], 0);
+    assert_eq!(v["pipeline_metrics"]["stale_validated"], 0);
+    assert_eq!(v["pipeline_metrics"]["queue_depth_max"], 0);
+    assert_eq!(v["pipeline_metrics"]["worker_wait_p50_ms"], 0);
     assert_eq!(v["roaming_relay_mode"], "peer_relay_one_window");
     assert_eq!(v["peer_relay_health"], "not_configured");
     assert_eq!(
@@ -308,6 +430,87 @@ async fn v1_acct_foreign_view_only() {
     assert!(foreign["spendable_on_this_shard"].is_null());
 }
 
+#[tokio::test]
+async fn pending_cons_api_shape() {
+    let app = app_from_devnet(DevLane::Lane0);
+    let sender = fake_account_id_with_domain(0x1001);
+    let other = fake_account_id_with_domain(0x1002);
+    let recipient = fake_account_id_with_domain(0x1003);
+    {
+        let mut g = app.inner.write().await;
+        g.chain.st.accounts.insert(
+            sender,
+            Account {
+                balance_pwm: 88,
+                initialized: true,
+                ..Account::default()
+            },
+        );
+        g.chain.st.accounts.insert(
+            other,
+            Account {
+                balance_pwm: 77,
+                initialized: true,
+                ..Account::default()
+            },
+        );
+        g.chain
+            .st
+            .pending_conservation
+            .push(pwm_core::state::PendingConservationTransfer {
+                sender,
+                recipient,
+                amount_pwm: 123,
+                fee_pwm: 4,
+                nonce: 5,
+                enqueue_height: 6,
+                execute_at_height: 9,
+                tx_hash: [0xAB; 32],
+            });
+    }
+    let svc = router_dev(app).into_service();
+    let sender_res = svc
+        .clone()
+        .oneshot(
+            Request::get(format!("/v1/account/{}", hex::encode(sender)))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sender_res.status(), StatusCode::OK);
+    let sender_bytes = to_bytes(sender_res.into_body(), 64 * 1024).await.unwrap();
+    let sender_json: serde_json::Value = serde_json::from_slice(&sender_bytes).unwrap();
+    let pending = sender_json["pending_conservation"]
+        .as_array()
+        .expect("pending_conservation array");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0]["recipient"], hex::encode(recipient));
+    assert_eq!(pending[0]["amount_pwm"], "123");
+    assert_eq!(pending[0]["fee_pwm"], "4");
+    assert_eq!(pending[0]["nonce"], 5);
+    assert_eq!(pending[0]["enqueue_height"], 6);
+    assert_eq!(pending[0]["execute_at_height"], 9);
+
+    let other_res = svc
+        .oneshot(
+            Request::get(format!("/v1/account/{}", hex::encode(other)))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(other_res.status(), StatusCode::OK);
+    let other_bytes = to_bytes(other_res.into_body(), 64 * 1024).await.unwrap();
+    let other_json: serde_json::Value = serde_json::from_slice(&other_bytes).unwrap();
+    assert!(
+        other_json.get("pending_conservation").is_none()
+            || other_json["pending_conservation"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+    );
+}
+
 /// /v1/accounts preserves the same split semantics for inserted local vs foreign-domain accounts.
 #[tokio::test]
 async fn v1_accts_foreign_split_ls() {
@@ -360,6 +563,26 @@ async fn v1_accts_foreign_split_ls() {
     assert_eq!(foreign["local_state_balance"], "77");
     assert_eq!(foreign["balance_pwm"], "0");
     assert!(foreign["spendable_on_this_shard"].is_null());
+}
+
+/// /v1/perfmon exposes the four registered performance entities.
+#[tokio::test]
+async fn v1_perfmon_rows_ok() {
+    let app = app_from_devnet(DevLane::Lane0);
+    let svc = router_dev(app).into_service();
+    let res = svc
+        .oneshot(Request::get("/v1/perfmon").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
+    let rows: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let rows = rows.as_array().expect("perfmon array");
+    assert_eq!(rows.len(), 4);
+    let names: Vec<&str> = rows.iter().filter_map(|row| row["name"].as_str()).collect();
+    for name in ["ed25519_verify", "chain_seal", "pool_drain", "state_apply"] {
+        assert!(names.contains(&name), "missing perfmon row {name}");
+    }
 }
 
 /// Genesis JSON v4 roundtrips decrypt validator enc_seed blobs into loaded signing keys.
@@ -529,20 +752,27 @@ async fn v1_stat_deg_snap_err() {
 #[tokio::test]
 async fn v1_stat_snap_tx_nl() {
     let mut app = app_for_devnet_sender(DevLane::Lane0);
-    let (sk0, i0, aid0) = routable_user_sk_for_app([99u8; 32], &app);
-    let (sk1, i1, aid1) = routable_user_sk_for_app([100u8; 32], &app);
-    let dom0 = domain_of_account_id(&aid0);
-    let dom1 = domain_of_account_id(&aid1);
-    {
+    let pairs: Vec<_> = (0..16u8)
+        .map(|i| {
+            let sender_seed = 99u8.wrapping_add(i.wrapping_mul(2));
+            let peer_seed = sender_seed.wrapping_add(1);
+            let (sender_sk, sender_i, sender_aid) = plain_user_sk(sender_seed, &app);
+            let (peer_sk, peer_i, peer_aid) = plain_user_sk(peer_seed, &app);
+            (sender_sk, sender_i, sender_aid, peer_sk, peer_i, peer_aid)
+        })
+        .collect();
+    let snapshot = {
         let mut g = app.inner.write().await;
-        if !g.chain.st.accounts.contains_key(&aid0) {
+        for (sender_sk, sender_i, sender_aid, peer_sk, peer_i, peer_aid) in &pairs {
+            let sender_dom = domain_of_account_id(sender_aid);
+            let peer_dom = domain_of_account_id(peer_aid);
             let init_sender = SignedTx::sign_body(
-                &sk0,
-                dom0,
-                i0,
+                sender_sk,
+                sender_dom,
+                *sender_i,
                 0,
                 TxBody::Init {
-                    index: i0,
+                    index: *sender_i,
                     flags: 0,
                 },
             );
@@ -550,44 +780,53 @@ async fn v1_stat_snap_tx_nl() {
                 .st
                 .apply_tx(&init_sender)
                 .expect("init sender account");
+            g.chain
+                .st
+                .accounts
+                .get_mut(sender_aid)
+                .expect("sender account in snapshot")
+                .balance_pwm = 50;
+            let init_peer = SignedTx::sign_body(
+                peer_sk,
+                peer_dom,
+                *peer_i,
+                0,
+                TxBody::Init {
+                    index: *peer_i,
+                    flags: 0,
+                },
+            );
+            g.chain.st.apply_tx(&init_peer).expect("init peer account");
         }
-        let init_peer = SignedTx::sign_body(
-            &sk1,
-            dom1,
-            i1,
-            0,
-            TxBody::Init {
-                index: i1,
-                flags: 0,
-            },
-        );
-        g.chain.st.apply_tx(&init_peer).expect("init peer account");
-    }
-    let tx = SignedTx::sign_body(
-        &sk0,
-        dom0,
-        i0,
-        0,
-        TxBody::Transfer {
-            to: aid1,
-            amount: 1,
-            fee: 0,
-        },
-    );
-    let tx_body = serde_json::to_vec(&tx).unwrap();
+        std::sync::Arc::new(g.chain.st.clone())
+    };
+    app.state_snapshot.store(snapshot);
 
     let snapshot_path = temp_path("lock_order_smoke");
     app.data_file = Some(snapshot_path.clone());
     let svc = router_dev(app.clone()).into_service();
 
-    for _ in 0..16 {
+    for (sender_sk, sender_i, sender_aid, _, _, peer_aid) in &pairs {
+        let sender_dom = domain_of_account_id(sender_aid);
+        let tx = SignedTx::sign_body(
+            sender_sk,
+            sender_dom,
+            *sender_i,
+            1,
+            TxBody::Transfer {
+                to: *peer_aid,
+                amount: 1,
+                fee: 0,
+            },
+        );
+        let tx_body = serde_json::to_vec(&tx).unwrap();
         let status_fut = svc
             .clone()
             .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap());
         let tx_fut = svc.clone().oneshot(
             Request::post("/v1/tx")
                 .header("content-type", "application/json")
-                .body(Body::from(tx_body.clone()))
+                .body(Body::from(tx_body))
                 .unwrap(),
         );
         let (status, tx_res) = tokio::time::timeout(Duration::from_secs(2), async move {
@@ -623,7 +862,7 @@ async fn v1_tx_rejects_domain_mismatch() {
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Underfunded transfer must not enter the mempool (conflict), avoiding seal-loop spam on the node.
+/// Underfunded non-roaming transfer is rejected by worker dry-run before ingress.
 #[tokio::test]
 async fn v1_tx_underfunded_xfer_mempool() {
     let app = app_for_devnet_sender(DevLane::Lane0);
@@ -631,7 +870,7 @@ async fn v1_tx_underfunded_xfer_mempool() {
     let (sk1, i1, aid1) = routable_user_sk_for_app([100u8; 32], &app);
     let dom0 = domain_of_account_id(&aid0);
     let dom1 = domain_of_account_id(&aid1);
-    {
+    let snapshot = {
         let mut g = app.inner.write().await;
         if !g.chain.st.accounts.contains_key(&aid0) {
             let init_sender = SignedTx::sign_body(
@@ -666,12 +905,14 @@ async fn v1_tx_underfunded_xfer_mempool() {
             .get_mut(&aid0)
             .expect("sender")
             .balance_pwm = 5;
-    }
+        std::sync::Arc::new(g.chain.st.clone())
+    };
+    app.state_snapshot.store(snapshot);
     let tx = SignedTx::sign_body(
         &sk0,
         dom0,
         i0,
-        0,
+        1,
         TxBody::Transfer {
             to: aid1,
             amount: 10,
@@ -688,15 +929,180 @@ async fn v1_tx_underfunded_xfer_mempool() {
         )
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    let body = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
-    let text = String::from_utf8_lossy(&body);
-    assert!(
-        text.to_ascii_lowercase().contains("insufficient") || text.contains("insufficient balance"),
-        "expected insufficient-balance hint, got: {text}"
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    {
+        let g = app.inner.read().await;
+        assert_eq!(g.pool.len(), 0, "mempool must stay empty after reject");
+    }
+    let mut rx = app.tx_ingress.receiver.try_lock().expect("ingress rx");
+    assert!(rx.try_recv().is_err(), "rejected tx must not enter ingress");
+}
+
+fn plain_user_sk(seed_start: u8, app: &App) -> (SigningKey, u32, pwm_core::AccountId) {
+    for attempt in 0..4096u16 {
+        let mut seed = [seed_start; 32];
+        seed[0] = seed_start.wrapping_add(attempt as u8);
+        seed[1] = (attempt >> 8) as u8;
+        let (sk, idx, aid) = user_sk(&seed);
+        if domain_of_account_id(&aid).to_be_bytes()[0] != app.identity.cluster_domain_hi {
+            continue;
+        }
+        if pwm_core::types::cosign_non_dis(&aid) || pwm_core::types::conservation_flag(&aid) {
+            continue;
+        }
+        let dom = domain_of_account_id(&aid);
+        let probe = SignedTx::sign_body(
+            &sk,
+            dom,
+            idx,
+            0,
+            TxBody::Init {
+                index: idx,
+                flags: 0,
+            },
+        );
+        if validate_tx_shape(&probe).is_ok() {
+            return (sk, idx, aid);
+        }
+    }
+    panic!("failed to find plain account for app domain");
+}
+
+#[tokio::test]
+async fn v1_tx_xfer_worker_once() {
+    let app = app_for_devnet_sender(DevLane::Lane0);
+    let (sk0, i0, aid0) = plain_user_sk(101, &app);
+    let (sk1, i1, aid1) = plain_user_sk(102, &app);
+    let dom0 = domain_of_account_id(&aid0);
+    let dom1 = domain_of_account_id(&aid1);
+    let snapshot = {
+        let mut g = app.inner.write().await;
+        if !g.chain.st.accounts.contains_key(&aid0) {
+            let init_sender = SignedTx::sign_body(
+                &sk0,
+                dom0,
+                i0,
+                0,
+                TxBody::Init {
+                    index: i0,
+                    flags: 0,
+                },
+            );
+            g.chain
+                .st
+                .apply_tx(&init_sender)
+                .expect("init sender account");
+        }
+        let init_peer = SignedTx::sign_body(
+            &sk1,
+            dom1,
+            i1,
+            0,
+            TxBody::Init {
+                index: i1,
+                flags: 0,
+            },
+        );
+        g.chain.st.apply_tx(&init_peer).expect("init peer account");
+        g.chain
+            .st
+            .accounts
+            .get_mut(&aid0)
+            .expect("sender")
+            .balance_pwm = 50;
+        std::sync::Arc::new(g.chain.st.clone())
+    };
+    app.state_snapshot.store(snapshot);
+    let tx = SignedTx::sign_body(
+        &sk0,
+        dom0,
+        i0,
+        1,
+        TxBody::Transfer {
+            to: aid1,
+            amount: 10,
+            fee: 0,
+        },
     );
-    let g = app.inner.read().await;
-    assert_eq!(g.pool.len(), 0, "mempool must stay empty");
+    let svc = router_dev(app.clone()).into_service();
+    let res = svc
+        .oneshot(
+            Request::post("/v1/tx")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&tx).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    let mut rx = app.tx_ingress.receiver.try_lock().expect("ingress rx");
+    assert!(rx.try_recv().is_err(), "valid tx must not enter ingress");
+
+    let mut validated_rx = app._validated_rx.try_lock().expect("validated rx");
+    let validated = validated_rx.try_recv().expect("valid tx queued by worker");
+    assert_eq!(validated.tx.nonce, tx.nonce);
+    assert_eq!(validated.tx.body, tx.body);
+    assert!(
+        validated_rx.try_recv().is_err(),
+        "valid tx must be queued by worker exactly once"
+    );
+
+    let metrics = app.pipeline_metrics.snapshot();
+    assert_eq!(metrics.enqueued, 1);
+    assert_eq!(metrics.validated, 1);
+    assert_eq!(metrics.rejected, 0);
+}
+
+#[tokio::test]
+async fn v1_tx_event_sealed() {
+    let (sk, i, aid) = routable_user_sk([33u8; 32]);
+    let dom = domain_of_account_id(&aid);
+    let tx = SignedTx::sign_body(&sk, dom, i, 0, TxBody::Init { index: 1, flags: 0 });
+    let app = app_for_sender(&aid);
+    let mut events = app.tx_events.subscribe();
+    let svc = router_dev(app.clone()).into_service();
+    let res = svc
+        .clone()
+        .oneshot(
+            Request::post("/v1/tx")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&tx).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+    spawn_seal_loop(app.clone());
+    let event = tokio::time::timeout(Duration::from_secs(10), events.recv())
+        .await
+        .expect("sealed event timeout")
+        .expect("sealed event");
+    match event {
+        crate::pipeline::TxEvent::Sealed { txid, block_height } => {
+            assert_eq!(txid, tx.tx_hash());
+            assert_eq!(block_height, 1);
+        }
+        crate::pipeline::TxEvent::Rejected { .. } => panic!("unexpected reject event"),
+    }
+
+    let res = svc
+        .oneshot(Request::get("/v1/perfmon").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = to_bytes(res.into_body(), 64 * 1024).await.unwrap();
+    let snapshot: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    eprintln!("perfmon: {:#}", snapshot);
+    let rows = snapshot.as_array().expect("perfmon array");
+    for name in ["chain_seal", "ed25519_verify"] {
+        let calls = rows
+            .iter()
+            .find(|row| row["name"] == name)
+            .and_then(|row| row["calls"].as_u64())
+            .unwrap_or(0);
+        assert!(calls > 0, "perfmon {name} calls must be > 0");
+    }
 }
 
 async fn assert_preflight_apply_parity(

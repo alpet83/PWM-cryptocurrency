@@ -275,6 +275,12 @@ impl RoamingPool {
         Ok(())
     }
 
+    pub(crate) fn mark_relayed_by_export(&mut self, export_id: [u8; 32]) {
+        if let Some(intent_id) = self.export_to_intent.get(&export_id).copied() {
+            self.set_status(intent_id, IntentStatus::Relayed, None);
+        }
+    }
+
     pub(crate) fn mark_import_by_export(&mut self, export_id: [u8; 32]) {
         if let Some(intent_id) = self.export_to_intent.get(&export_id).copied() {
             self.set_status(intent_id, IntentStatus::Imported, None);

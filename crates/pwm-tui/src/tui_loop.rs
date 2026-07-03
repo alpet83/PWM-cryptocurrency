@@ -1,23 +1,25 @@
 //! Ratatui event loop: keyboard routing, modals, send flow, redraw cadence.
 
+use crate::models::PendingConservationRow;
 use crate::{
-    account_id_to_human, append_addr_book, base_url, burn_replay_guard_status, centered_rect,
-    choose_identity, clamp_sel, debug_json, f5_build_burn_form, f5_burn_hint_text,
-    f6_build_send_form, f7_build_stake_form, format_acct_cell, format_balance_cell, format_hms_utc,
-    format_init_cell, format_marks_compact, format_policy_bits, handle_submit_done_history,
-    http_client, identity_f3_action_label, identity_lock_status_suffix, inter_shard_status_short,
-    is_cross_domain_route, mark_pct_hint, masked_with_caret, merge_rpc_health, move_selection_down,
-    move_selection_up, now_unix_secs, owner_and_receivers, pad_input_field, poll_snapshot,
-    preflight_sel_init_auto, preflight_xfer_dst, push_op_history, pwm_pct_hint, receiver_table_len,
-    selected_row_for_panel, send_replay_guard_status, start_rpc_worker, status_footer_line,
-    submit_stake, submit_unstake, validate_burn_form, validate_encrypt_passphrase_inputs,
-    validate_send_form, validate_stake_form, value_with_caret, wallet_apply_auto_lock,
-    wallet_lock_now, wallet_rekey, wallet_unlock, wallet_unlock_secs_clamped, AcctRow, Args,
-    BookPromptModal, BurnField, BurnForm, DebugCache, EncryptField, EncryptModal, IdentitySource,
-    OpStatus, OperationHistoryEntry, Panel, RpcEvent, RpcTask, SendField, SendForm, StakeField,
-    StakeForm, StakeMode, Ui, UnlockModal, DEBUG_FETCH_INTERVAL, DETAIL_CHUNK_ROWS,
-    FALLBACK_MODE_WARNING, FALLBACK_WARN_CHUNK_ROWS, MODAL_AMOUNT_INPUT_WIDTH,
-    UNKNOWN_INIT_NONCE_SENTINEL,
+    account_id_to_human, append_addr_book, append_tx, base_url, burn_replay_guard_status,
+    centered_rect, choose_identity, debug_json, f5_build_burn_form, f5_burn_hint_text,
+    f6_build_send_form, f7_build_stake_form, format_acct_cell, format_amount_compact,
+    format_balance_cell, format_hms_utc, format_init_cell, format_marks_compact,
+    format_policy_bits, handle_submit_done_history, http_client, identity_f3_action_label,
+    identity_lock_status_suffix, inter_shard_status_short, is_cross_domain_route,
+    make_journal_filename, mark_pct_hint, masked_with_caret, merge_rpc_health, now_unix_secs,
+    owner_and_receivers, pad_input_field, parse_hex_account_id, poll_snapshot,
+    preflight_sel_init_auto, preflight_xfer_dst, push_op_history, pwm_pct_hint, read_journal,
+    receiver_table_len, selected_row_for_panel, send_replay_guard_status, start_rpc_worker,
+    status_footer_line, submit_stake, submit_unstake, validate_burn_form,
+    validate_encrypt_passphrase_inputs, validate_send_form, validate_stake_form, value_with_caret,
+    wallet_apply_auto_lock, wallet_dir, wallet_lock_now, wallet_rekey, wallet_unlock,
+    wallet_unlock_secs_clamped, AcctRow, Args, BookPromptModal, BurnField, BurnForm, DebugCache,
+    EncryptField, EncryptModal, IdentitySource, JournalEntry, OpStatus, OperationHistoryEntry,
+    Panel, RpcEvent, RpcTask, SendField, SendForm, StakeField, StakeForm, StakeMode, Ui,
+    UnlockModal, DEBUG_FETCH_INTERVAL, DETAIL_CHUNK_ROWS, FALLBACK_MODE_WARNING,
+    FALLBACK_WARN_CHUNK_ROWS, MODAL_AMOUNT_INPUT_WIDTH, UNKNOWN_INIT_NONCE_SENTINEL,
 };
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
@@ -26,6 +28,7 @@ use crossterm::{
 };
 use pwm_core::display::PWM_RAW_SCALE;
 use pwm_core::genesis::DEF_BLOCKS_PER_HOUR;
+use pwm_core::types::conservation_flag;
 use pwm_core::MARKS_CAP;
 use ratatui::{
     prelude::{
@@ -33,9 +36,13 @@ use ratatui::{
         Terminal, Text,
     },
     style::Stylize,
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, Wrap},
+    widgets::{
+        Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, TableState, Wrap,
+    },
     Frame,
 };
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::stdout;
 use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
@@ -45,6 +52,25 @@ const F5_BURN_V5_STATUS: &str =
     "V5 marks: stake PWM with S, wait for blocks, then burn materialized marks with F5.";
 
 struct TerminalGuard;
+
+type AccountKey = [u8; 32];
+
+struct PendingJournal {
+    file_name: String,
+    entry: JournalEntry,
+    account_id: AccountKey,
+    track_nonce: bool,
+}
+
+struct HistoryRow {
+    ts: u64,
+    time: String,
+    kind: String,
+    to: String,
+    amount: String,
+    status: String,
+    info: String,
+}
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
@@ -57,6 +83,7 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
     let unlock_secs = wallet_unlock_secs_clamped(&args);
     let (mut identity, identity_note) = choose_identity(&args, unlock_secs)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let journal_dir = wallet_dir(&args);
     enable_raw_mode()?;
     let mut out = stdout();
     execute!(out, EnterAlternateScreen)?;
@@ -66,8 +93,12 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
     let inherit_host_colors = inherit_host_colors_enabled();
 
     let mut ui = Ui::default();
-    let mut owner_sel: usize = 0;
-    let mut recv_sel: usize = 0;
+    let mut owner_state = TableState::default();
+    owner_state.select(Some(0));
+    let mut recv_state = TableState::default();
+    recv_state.select(Some(0));
+    let mut owner_scroll = ScrollbarState::default();
+    let mut recv_scroll = ScrollbarState::default();
     let mut active = Panel::Owner;
     let mut info_modal: Option<String> = None;
     let mut action_note: Option<String> = None;
@@ -80,6 +111,10 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
     let mut book_prompt: Option<BookPromptModal> = None;
     let mut history_open = false;
     let mut op_history: Vec<OperationHistoryEntry> = Vec::new();
+    let mut journal_cache: Vec<JournalEntry> = Vec::new();
+    let mut pending_journal: HashMap<u64, PendingJournal> = HashMap::new();
+    let mut pending_nonces: HashMap<AccountKey, BTreeSet<u64>> = HashMap::new();
+    let mut pending_files: HashMap<AccountKey, String> = HashMap::new();
     let mut last = Instant::now() - Duration::from_secs(10);
     let dbg = debug_json();
     ui.identity_note = identity_note.clone();
@@ -103,6 +138,12 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                         ui.head_height = Some(head_height);
                     }
                     ui.rows = snapshot.rows;
+                    confirm_journal_nonces(
+                        journal_dir.as_deref(),
+                        &ui.rows,
+                        &mut pending_nonces,
+                        &mut pending_files,
+                    );
                     ui.err = snapshot.err;
                     ui.rpc_health = snapshot.rpc_health;
                     ui.rpc_shard_label = snapshot.rpc_shard_label;
@@ -126,6 +167,25 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                     to_id,
                     result,
                 }) => {
+                    if let Some(mut pending) = pending_journal.remove(&req_id) {
+                        if result.is_ok() {
+                            if !pending.track_nonce {
+                                pending.entry.status = "ok".to_string();
+                            }
+                            if let Some(dir) = journal_dir.as_deref() {
+                                write_journal(dir, &pending.file_name, &pending.entry);
+                            }
+                            if pending.track_nonce
+                                && pending.entry.nonce != UNKNOWN_INIT_NONCE_SENTINEL
+                            {
+                                pending_nonces
+                                    .entry(pending.account_id)
+                                    .or_default()
+                                    .insert(pending.entry.nonce);
+                                pending_files.insert(pending.account_id, pending.file_name);
+                            }
+                        }
+                    }
                     if inflight_burn_req_id == Some(req_id) {
                         inflight_burn_req_id = None;
                         action_note = None;
@@ -143,6 +203,9 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                         &result,
                     ) {
                         continue;
+                    }
+                    if result.is_ok() {
+                        let _ = rpc_tx.send(RpcTask::Poll);
                     }
                     if let Some(form) = send_form.as_mut() {
                         match result {
@@ -177,6 +240,12 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
         }
         let (owner_rows, _active_owner_idx, receiver_rows) =
             owner_and_receivers(&ui.rows, &identity);
+        let owner_len = owner_rows.len();
+        let recv_len = receiver_table_len(&receiver_rows);
+        clamp_state(&mut owner_state, owner_len);
+        clamp_state(&mut recv_state, recv_len);
+        let owner_sel = state_sel(&owner_state);
+        let recv_sel = state_sel(&recv_state);
 
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(k) = event::read()? {
@@ -391,6 +460,35 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                                             form.status = "submitting burn...".into();
                                             form.status_is_error = false;
                                             form.flow = None;
+                                            if journal_dir.is_some() {
+                                                let file_name =
+                                                    make_journal_filename(&hex::encode(from));
+                                                let nonce = owner_rows
+                                                    .iter()
+                                                    .find(|row| row.id == from)
+                                                    .map(|row| row.nonce)
+                                                    .unwrap_or(0);
+                                                let to = beneficiary
+                                                    .as_ref()
+                                                    .map(account_id_to_human)
+                                                    .unwrap_or_default();
+                                                let entry = JournalEntry::pending(
+                                                    "burn",
+                                                    to,
+                                                    format_amount_compact(u128::from(mark_amount)),
+                                                    format_amount_compact(0),
+                                                    nonce,
+                                                );
+                                                pending_journal.insert(
+                                                    send_req_id,
+                                                    PendingJournal {
+                                                        file_name,
+                                                        entry,
+                                                        account_id: from,
+                                                        track_nonce: false,
+                                                    },
+                                                );
+                                            }
                                             let _ = rpc_tx.send(RpcTask::SubmitBurnMark {
                                                 req_id: send_req_id,
                                                 from,
@@ -457,6 +555,11 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                                             send_req_id = send_req_id.wrapping_add(1);
                                             inflight_send_req_id = Some(send_req_id);
                                             let cross_domain = is_cross_domain_route(&from, &to);
+                                            let nonce = owner_rows
+                                                .iter()
+                                                .find(|row| row.id == from)
+                                                .map(|row| row.nonce)
+                                                .unwrap_or(UNKNOWN_INIT_NONCE_SENTINEL);
                                             push_op_history(
                                                 &mut op_history,
                                                 OperationHistoryEntry {
@@ -466,6 +569,7 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                                                     to_human: account_id_to_human(&to),
                                                     amount_units: amount,
                                                     fee_units: fee,
+                                                    nonce,
                                                     status: OpStatus::Pending,
                                                     note: if cross_domain {
                                                         "starting roaming intent...".into()
@@ -481,6 +585,26 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                                             };
                                             form.status_is_error = false;
                                             form.flow = None;
+                                            if journal_dir.is_some() {
+                                                let file_name =
+                                                    make_journal_filename(&hex::encode(from));
+                                                let entry = JournalEntry::pending(
+                                                    "send",
+                                                    account_id_to_human(&to),
+                                                    format_amount_compact(amount),
+                                                    format_amount_compact(fee),
+                                                    nonce,
+                                                );
+                                                pending_journal.insert(
+                                                    send_req_id,
+                                                    PendingJournal {
+                                                        file_name,
+                                                        entry,
+                                                        account_id: from,
+                                                        track_nonce: !conservation_flag(&from),
+                                                    },
+                                                );
+                                            }
                                             if cross_domain {
                                                 let _ = rpc_tx.send(RpcTask::SubmitRoamingIntent {
                                                     req_id: send_req_id,
@@ -653,6 +777,16 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                             }
                         }
                         KeyCode::Char('h') | KeyCode::Char('H') => {
+                            journal_cache = load_journal_cache(
+                                journal_dir.as_deref(),
+                                selected_row_for_panel(
+                                    active,
+                                    &owner_rows,
+                                    owner_sel,
+                                    &receiver_rows,
+                                    recv_sel,
+                                ),
+                            );
                             history_open = true;
                         }
                         KeyCode::Char('u') | KeyCode::Char('U') => {
@@ -678,16 +812,12 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                             }
                         }
                         KeyCode::Down => match active {
-                            Panel::Owner => {
-                                move_selection_down(&mut owner_sel, owner_len);
-                            }
-                            Panel::Receivers => {
-                                move_selection_down(&mut recv_sel, recv_len);
-                            }
+                            Panel::Owner => state_move_down(&mut owner_state, owner_len),
+                            Panel::Receivers => state_move_down(&mut recv_state, recv_len),
                         },
                         KeyCode::Up => match active {
-                            Panel::Owner => move_selection_up(&mut owner_sel),
-                            Panel::Receivers => move_selection_up(&mut recv_sel),
+                            Panel::Owner => state_move_up(&mut owner_state),
+                            Panel::Receivers => state_move_up(&mut recv_state),
                         },
                         _ => {}
                     }
@@ -695,10 +825,10 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
             }
         }
 
-        let owner_len = owner_rows.len();
-        let recv_len = receiver_table_len(&receiver_rows);
-        clamp_sel(&mut owner_sel, owner_len);
-        clamp_sel(&mut recv_sel, recv_len);
+        clamp_state(&mut owner_state, owner_len);
+        clamp_state(&mut recv_state, recv_len);
+        let owner_sel = state_sel(&owner_state);
+        let recv_sel = state_sel(&recv_state);
 
         let selected_row =
             selected_row_for_panel(active, &owner_rows, owner_sel, &receiver_rows, recv_sel);
@@ -709,15 +839,18 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
                 .as_ref()
                 .map(account_id_to_human)
                 .unwrap_or_else(|| "-".to_string());
+            let pending_inline = conservation_pending_inline(r);
             let mut detail_line = format!(
-                "selected: {} | init={} | nonce={}\nPWM: {}\nStaked: {}\nMarks: {}\nPolicy active: {}\nPolicy dormant: {}\nFinalized: {}\nRescue: {}\nOwner: {}/{}/{}",
-                format_acct_cell(r),
-                format_init_cell(r),
-                if r.nonce == UNKNOWN_INIT_NONCE_SENTINEL {
-                    "?".to_string()
-                } else {
-                    r.nonce.to_string()
-                },
+                "{}
+PWM: {}
+Staked: {}
+Marks: {}
+Policy active: {}
+Policy dormant: {}
+Finalized: {}
+Rescue: {}
+Owner: {}/{}/{}",
+                detail_head_line(r, &pending_inline),
                 format_balance_cell(r),
                 r.staked,
                 marks_txt,
@@ -743,6 +876,9 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
             );
             if let Some(left) = marks_hour_left(r, ui.head_height) {
                 detail_line.push_str(&format!("\nAccrual: ~{left} blocks until next mark hour"));
+            }
+            if let Some(pending_txt) = conservation_pending_txt(r) {
+                detail_line.push_str(&format!("\n{pending_txt}"));
             }
             ui.detail_line = detail_line;
             if dbg {
@@ -787,16 +923,21 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
             let is_fallback = matches!(identity, IdentitySource::SeedFallback);
             let (chunks, warn_chunk, detail_chunk, debug_chunk, foot_chunk) =
                 split_main_layout(f.size(), dbg, is_fallback);
-            render_main_panels(
-                f,
-                chunks[0],
-                &owner_rows,
-                owner_sel,
-                &receiver_rows,
-                recv_sel,
+            let rows = PanelRows {
+                owner: &owner_rows,
+                receiver: &receiver_rows,
+            };
+            let mut states = PanelStates {
+                owner_table: &mut owner_state,
+                owner_scroll: &mut owner_scroll,
+                recv_table: &mut recv_state,
+                recv_scroll: &mut recv_scroll,
+            };
+            let ctx = MainCtx {
                 active,
-                &identity,
-            );
+                identity: &identity,
+            };
+            render_main_panels(f, chunks[0], rows, &mut states, ctx);
 
             render_warn_strip(f, &chunks, warn_chunk);
 
@@ -817,7 +958,17 @@ pub fn run(mut args: Args) -> std::io::Result<()> {
             }
 
             if history_open {
-                render_history_overlay(f, f.size(), &op_history);
+                let pending = selected_row
+                    .map(|row| row.pending_conservation.as_slice())
+                    .unwrap_or(&[]);
+                render_history_overlay(
+                    f,
+                    f.size(),
+                    &op_history,
+                    &journal_cache,
+                    pending,
+                    ui.head_height,
+                );
             }
 
             if let Some(form) = send_form.as_ref() {
@@ -858,31 +1009,127 @@ fn inherit_host_colors_enabled() -> bool {
         .unwrap_or(false)
 }
 
+struct PanelRows<'a> {
+    owner: &'a [AcctRow],
+    receiver: &'a [AcctRow],
+}
+
+struct PanelStates<'a> {
+    owner_table: &'a mut TableState,
+    owner_scroll: &'a mut ScrollbarState,
+    recv_table: &'a mut TableState,
+    recv_scroll: &'a mut ScrollbarState,
+}
+
+struct MainCtx<'a> {
+    active: Panel,
+    identity: &'a IdentitySource,
+}
+
+struct PanelCtx<'a> {
+    active: Panel,
+    identity: &'a IdentitySource,
+    header: &'a Row<'static>,
+}
+
+struct OwnerState<'a> {
+    table: &'a mut TableState,
+    scroll: &'a mut ScrollbarState,
+}
+
+struct RecvState<'a> {
+    table: &'a mut TableState,
+    scroll: &'a mut ScrollbarState,
+}
+
+fn state_sel(state: &TableState) -> usize {
+    state.selected().unwrap_or(0)
+}
+
+fn clamp_state(state: &mut TableState, len: usize) {
+    if len == 0 {
+        state.select(None);
+        return;
+    }
+    let idx = state_sel(state).min(len - 1);
+    state.select(Some(idx));
+}
+
+fn state_move_down(state: &mut TableState, len: usize) {
+    if len == 0 {
+        state.select(None);
+        return;
+    }
+    let idx = state_sel(state).saturating_add(1).min(len - 1);
+    state.select(Some(idx));
+}
+
+fn state_move_up(state: &mut TableState) {
+    state.select(Some(state_sel(state).saturating_sub(1)));
+}
+
+fn body_rows(area: Rect) -> usize {
+    area.height.saturating_sub(1) as usize
+}
+
+fn render_scrollbar(
+    f: &mut Frame,
+    area: Rect,
+    rows_len: usize,
+    state: &TableState,
+    scroll: &mut ScrollbarState,
+) {
+    if rows_len <= body_rows(area) {
+        return;
+    }
+    *scroll = ScrollbarState::new(rows_len).position(state_sel(state));
+    f.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight),
+        area,
+        scroll,
+    );
+}
+
 /// Renders owner/receiver top panels with shared header row.
 fn render_main_panels(
     f: &mut Frame,
     area: Rect,
-    owner_rows: &[AcctRow],
-    owner_sel: usize,
-    receiver_rows: &[AcctRow],
-    recv_sel: usize,
-    active: Panel,
-    identity: &IdentitySource,
+    rows: PanelRows,
+    states: &mut PanelStates,
+    ctx: MainCtx,
 ) {
     let panels = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
     let header = panel_head_row();
-    render_owner_panel(f, panels[0], owner_rows, owner_sel, active, &header);
+    render_owner_panel(
+        f,
+        panels[0],
+        rows.owner,
+        OwnerState {
+            table: states.owner_table,
+            scroll: states.owner_scroll,
+        },
+        PanelCtx {
+            active: ctx.active,
+            identity: ctx.identity,
+            header: &header,
+        },
+    );
     render_recv_panel(
         f,
         panels[1],
-        receiver_rows,
-        recv_sel,
-        active,
-        identity,
-        &header,
+        rows.receiver,
+        RecvState {
+            table: states.recv_table,
+            scroll: states.recv_scroll,
+        },
+        PanelCtx {
+            active: ctx.active,
+            identity: ctx.identity,
+            header: &header,
+        },
     );
 }
 
@@ -909,6 +1156,27 @@ fn detail_marks_txt(row: &AcctRow) -> String {
     )
 }
 
+fn detail_head_line(row: &AcctRow, pending_inline: &str) -> String {
+    let nonce = if row.nonce == UNKNOWN_INIT_NONCE_SENTINEL {
+        "?".to_string()
+    } else {
+        row.nonce.to_string()
+    };
+    let acct = format_acct_cell(row);
+    if pending_inline.is_empty() {
+        format!(
+            "sel: {acct} | init={} | nonce={nonce}",
+            format_init_cell(row)
+        )
+    } else {
+        let pending = pending_inline.trim_start_matches(" | ");
+        format!(
+            "sel: {acct} | init={} | nonce={nonce} | {pending}",
+            format_init_cell(row)
+        )
+    }
+}
+
 fn marks_hour_left(row: &AcctRow, head_h: Option<u64>) -> Option<u64> {
     let eff = row.effective_marks.unwrap_or(row.marks);
     if row.staked < PWM_RAW_SCALE || eff != row.marks {
@@ -922,6 +1190,112 @@ fn marks_hour_left(row: &AcctRow, head_h: Option<u64>) -> Option<u64> {
     let since = head.saturating_sub(row.marks_last_block);
     let rem = bph - (since % bph);
     Some(rem)
+}
+
+fn confirm_journal_nonces(
+    wallet_dir: Option<&std::path::Path>,
+    rows: &[AcctRow],
+    pending_nonces: &mut HashMap<AccountKey, BTreeSet<u64>>,
+    pending_files: &mut HashMap<AccountKey, String>,
+) {
+    let Some(dir) = wallet_dir else {
+        return;
+    };
+    let account_keys = pending_nonces.keys().copied().collect::<Vec<_>>();
+    for account_id in account_keys {
+        let Some(row) = rows.iter().find(|row| row.id == account_id) else {
+            continue;
+        };
+        if let Some(nonces) = pending_nonces.get_mut(&account_id) {
+            nonces.remove(&UNKNOWN_INIT_NONCE_SENTINEL);
+        }
+        let confirmed = pending_nonces
+            .get(&account_id)
+            .map(|nonces| {
+                nonces
+                    .iter()
+                    .copied()
+                    .filter(|nonce| *nonce != UNKNOWN_INIT_NONCE_SENTINEL && *nonce < row.nonce)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if confirmed.is_empty() {
+            continue;
+        }
+        let Some(file_name) = pending_files.get(&account_id).cloned() else {
+            continue;
+        };
+        for nonce in confirmed {
+            let entry = JournalEntry::status_update(nonce);
+            if write_journal(dir, &file_name, &entry) {
+                if let Some(nonces) = pending_nonces.get_mut(&account_id) {
+                    nonces.remove(&nonce);
+                }
+            }
+        }
+        let empty = pending_nonces
+            .get(&account_id)
+            .map(BTreeSet::is_empty)
+            .unwrap_or(false);
+        if empty {
+            pending_nonces.remove(&account_id);
+            pending_files.remove(&account_id);
+        }
+    }
+}
+
+fn write_journal(dir: &std::path::Path, file_name: &str, entry: &JournalEntry) -> bool {
+    match append_tx(dir, file_name, entry) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("[journal] write error: {e}");
+            false
+        }
+    }
+}
+
+fn load_journal_cache(
+    wallet_dir: Option<&std::path::Path>,
+    selected: Option<&AcctRow>,
+) -> Vec<JournalEntry> {
+    let (Some(dir), Some(row)) = (wallet_dir, selected) else {
+        return Vec::new();
+    };
+    read_journal(dir, &make_journal_filename(&row.id_hex))
+}
+
+fn conservation_pending_txt(row: &AcctRow) -> Option<String> {
+    let next_h = row
+        .pending_conservation
+        .iter()
+        .map(|pending| pending.execute_at_height)
+        .min()?;
+    Some(format!(
+        "conservation pending: {} transfer(s), next execute at height {next_h}",
+        row.pending_conservation.len()
+    ))
+}
+
+fn conservation_pending_inline(row: &AcctRow) -> String {
+    let pending_sum: u128 = row
+        .pending_conservation
+        .iter()
+        .map(|pending| pending.amount_pwm)
+        .sum();
+    if pending_sum == 0 {
+        String::new()
+    } else {
+        format!(" | pending {}", format_amount_compact(pending_sum))
+    }
+}
+
+fn short_recipient(recipient: &str) -> String {
+    const PREFIX_LEN: usize = 28;
+    if recipient.len() <= PREFIX_LEN {
+        recipient.to_string()
+    } else {
+        format!("{}...", &recipient[..PREFIX_LEN])
+    }
 }
 
 fn marks_cell_style(row: &AcctRow) -> Style {
@@ -961,26 +1335,18 @@ fn render_owner_panel(
     f: &mut Frame,
     area: Rect,
     owner_rows: &[AcctRow],
-    owner_sel: usize,
-    active: Panel,
-    header: &Row<'static>,
+    state: OwnerState,
+    ctx: PanelCtx,
 ) {
-    let owner_focus_style = panel_focus_style(active, Panel::Owner);
+    let owner_focus_style = panel_focus_style(ctx.active, Panel::Owner);
     let owner_rows: Vec<Row> = owner_rows
         .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            let style = if i == owner_sel {
-                Style::default().reversed()
-            } else {
-                Style::default()
-            };
+        .map(|r| {
             Row::new(vec![
                 Cell::from(format_acct_cell(r)),
                 Cell::from(format_balance_cell(r)),
                 Cell::from(marks_cell(r)).style(marks_cell_style(r)),
             ])
-            .style(style)
         })
         .collect();
     let owner_block = Block::default()
@@ -990,6 +1356,7 @@ fn render_owner_panel(
         .title_style(owner_focus_style);
     let inner = owner_block.inner(area);
     f.render_widget(owner_block, area);
+    let rows_len = owner_rows.len();
     let owner_table = Table::new(
         owner_rows,
         [
@@ -998,8 +1365,10 @@ fn render_owner_panel(
             Constraint::Length(24),
         ],
     )
-    .header(header.clone());
-    f.render_widget(owner_table, inner);
+    .header(ctx.header.clone())
+    .highlight_style(Style::default().reversed());
+    f.render_stateful_widget(owner_table, inner, state.table);
+    render_scrollbar(f, inner, rows_len, state.table, state.scroll);
 }
 
 /// Renders receivers panel with "New Recipient" top row.
@@ -1007,46 +1376,29 @@ fn render_recv_panel(
     f: &mut Frame,
     area: Rect,
     receiver_rows: &[AcctRow],
-    recv_sel: usize,
-    active: Panel,
-    identity: &IdentitySource,
-    header: &Row<'static>,
+    state: RecvState,
+    ctx: PanelCtx,
 ) {
-    let recv_focus_style = panel_focus_style(active, Panel::Receivers);
+    let recv_focus_style = panel_focus_style(ctx.active, Panel::Receivers);
     let recv_rows: Vec<Row> = receiver_rows
         .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            let display_idx = i + 1;
-            let style = if display_idx == recv_sel {
-                Style::default().reversed()
-            } else {
-                Style::default()
-            };
+        .map(|r| {
             Row::new(vec![
                 Cell::from(format_acct_cell(r)),
                 Cell::from(format_balance_cell(r)),
                 Cell::from(marks_cell(r)).style(marks_cell_style(r)),
             ])
-            .style(style)
         })
         .collect();
-    let new_recipient_style = if recv_sel == 0 {
-        Style::default().reversed()
-    } else {
-        Style::default()
-    };
     let mut recv_rows_all = Vec::with_capacity(recv_rows.len() + 1);
-    recv_rows_all.push(
-        Row::new(vec![
-            Cell::from("New Recipient"),
-            Cell::from("-"),
-            Cell::from("-"),
-        ])
-        .style(new_recipient_style),
-    );
+    recv_rows_all.push(Row::new(vec![
+        Cell::from("New Recipient"),
+        Cell::from("-"),
+        Cell::from("-"),
+    ]));
     recv_rows_all.extend(recv_rows);
-    let recv_title = match identity {
+    let rows_len = recv_rows_all.len();
+    let recv_title = match ctx.identity {
         IdentitySource::Wallet(w) if !w.address_book.is_empty() => "Receivers (address book)",
         _ => "Receivers",
     };
@@ -1065,8 +1417,10 @@ fn render_recv_panel(
             Constraint::Length(24),
         ],
     )
-    .header(header.clone());
-    f.render_widget(recv_table, inner);
+    .header(ctx.header.clone())
+    .highlight_style(Style::default().reversed());
+    f.render_stateful_widget(recv_table, inner, state.table);
+    render_scrollbar(f, inner, rows_len, state.table, state.scroll);
 }
 
 /// Renders detail line and optional debug json area.
@@ -1264,10 +1618,18 @@ fn render_stake_modal(f: &mut Frame, screen: Rect, form: &StakeForm) {
 }
 
 /// Renders operation history overlay in empty/table modes.
-fn render_history_overlay(f: &mut Frame, screen: Rect, op_history: &[OperationHistoryEntry]) {
+fn render_history_overlay(
+    f: &mut Frame,
+    screen: Rect,
+    op_history: &[OperationHistoryEntry],
+    journal_cache: &[JournalEntry],
+    pending: &[PendingConservationRow],
+    head_height: Option<u64>,
+) {
     let area = centered_rect(86, 62, screen);
     f.render_widget(Clear, area);
-    if op_history.is_empty() {
+    let hist_rows = history_rows(op_history, journal_cache, pending, head_height);
+    if hist_rows.is_empty() {
         let body = Text::from(vec![
             Line::from("No operations yet."),
             Line::from(""),
@@ -1286,37 +1648,32 @@ fn render_history_overlay(f: &mut Frame, screen: Rect, op_history: &[OperationHi
     } else {
         let header = Row::new(vec![
             Cell::from("Time"),
-            Cell::from("Status"),
+            Cell::from("Kind"),
             Cell::from("To"),
             Cell::from("Amount"),
-            Cell::from("Note"),
+            Cell::from("Status"),
+            Cell::from("Info"),
         ])
         .style(Style::default().add_modifier(Modifier::BOLD));
-        let rows: Vec<Row> = op_history
-            .iter()
-            .map(|it| {
-                let status_style = match it.status {
-                    OpStatus::Pending => Style::default().fg(Color::Yellow),
-                    OpStatus::Ok => Style::default().fg(Color::Green),
-                    OpStatus::Error => Style::default().fg(Color::Red),
-                };
-                Row::new(vec![
-                    Cell::from(format_hms_utc(it.created_unix_secs)),
-                    Cell::from(it.status.as_str()).style(status_style),
-                    Cell::from(it.to_human.clone()),
-                    Cell::from(format!("{} (+fee {})", it.amount_units, it.fee_units)),
-                    Cell::from(format!("{} | from {}", it.note, it.from_human)),
-                ])
-            })
-            .collect();
+        let rows = hist_rows.into_iter().map(|row| {
+            Row::new(vec![
+                Cell::from(row.time),
+                Cell::from(row.kind),
+                Cell::from(row.to),
+                Cell::from(row.amount),
+                Cell::from(row.status.clone()).style(history_status_style(&row.status)),
+                Cell::from(row.info),
+            ])
+        });
         let table = Table::new(
             rows,
             [
                 Constraint::Length(10),
-                Constraint::Length(9),
-                Constraint::Percentage(33),
-                Constraint::Length(24),
-                Constraint::Min(20),
+                Constraint::Length(13),
+                Constraint::Min(22),
+                Constraint::Length(10),
+                Constraint::Length(10),
+                Constraint::Min(16),
             ],
         )
         .header(header)
@@ -1326,6 +1683,96 @@ fn render_history_overlay(f: &mut Frame, screen: Rect, op_history: &[OperationHi
                 .title("Operations History (latest first, H/Esc close)"),
         );
         f.render_widget(table, area);
+    }
+}
+
+fn history_rows(
+    op_history: &[OperationHistoryEntry],
+    journal_cache: &[JournalEntry],
+    pending: &[PendingConservationRow],
+    head_height: Option<u64>,
+) -> Vec<HistoryRow> {
+    let journal_nonces = journal_cache
+        .iter()
+        .filter_map(journal_nonce)
+        .collect::<HashSet<_>>();
+    let mut rows = pending
+        .iter()
+        .map(|item| pending_hist_row(item, head_height))
+        .chain(journal_cache.iter().map(journal_hist_row))
+        .chain(
+            op_history
+                .iter()
+                .filter(|item| !journal_nonces.contains(&item.nonce))
+                .map(op_hist_row),
+        )
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|row| std::cmp::Reverse(row.ts));
+    rows
+}
+
+fn journal_nonce(entry: &JournalEntry) -> Option<u64> {
+    if entry.nonce == UNKNOWN_INIT_NONCE_SENTINEL {
+        None
+    } else {
+        Some(entry.nonce)
+    }
+}
+
+const BLOCKS_PER_HOUR: u64 = 3600;
+
+fn pending_recipient(item: &PendingConservationRow) -> String {
+    parse_hex_account_id(&item.recipient)
+        .map(|id| account_id_to_human(&id))
+        .unwrap_or_else(|| item.recipient.clone())
+}
+
+fn pending_hist_row(item: &PendingConservationRow, head_height: Option<u64>) -> HistoryRow {
+    let blocks_left = item
+        .execute_at_height
+        .saturating_sub(head_height.unwrap_or(0));
+    let hours = blocks_left / BLOCKS_PER_HOUR;
+    HistoryRow {
+        ts: u64::MAX,
+        time: "-".to_string(),
+        kind: "conservation".to_string(),
+        to: short_recipient(&pending_recipient(item)),
+        amount: format_amount_compact(item.amount_pwm),
+        status: "pending".to_string(),
+        info: format!("~{}h (blk {})", hours, item.execute_at_height),
+    }
+}
+
+fn journal_hist_row(item: &JournalEntry) -> HistoryRow {
+    HistoryRow {
+        ts: item.ts,
+        time: format_hms_utc(item.ts),
+        kind: item.kind.clone(),
+        to: short_recipient(&item.to),
+        amount: item.amount_pwm.clone(),
+        status: item.status.clone(),
+        info: String::new(),
+    }
+}
+
+fn op_hist_row(item: &OperationHistoryEntry) -> HistoryRow {
+    HistoryRow {
+        ts: item.created_unix_secs,
+        time: format_hms_utc(item.created_unix_secs),
+        kind: "session_send".to_string(),
+        to: item.to_human.clone(),
+        amount: format!("{} (+fee {})", item.amount_units, item.fee_units),
+        status: item.status.as_str().to_string(),
+        info: String::new(),
+    }
+}
+
+fn history_status_style(status: &str) -> Style {
+    match status {
+        "pending" => Style::default().fg(Color::Yellow),
+        "ok" => Style::default().fg(Color::Green),
+        "error" => Style::default().fg(Color::Red),
+        _ => Style::default(),
     }
 }
 
@@ -1560,9 +2007,11 @@ fn render_burn_modal(f: &mut Frame, screen: Rect, form: &BurnForm) {
 #[cfg(test)]
 mod tests {
     use super::{
-        detail_marks_txt, f5_burn_status, marks_cell, marks_cell_style, marks_hour_left,
-        panel_focus_style, Panel, F5_BURN_V5_STATUS,
+        conservation_pending_inline, conservation_pending_txt, detail_head_line, detail_marks_txt,
+        f5_burn_status, marks_cell, marks_cell_style, marks_hour_left, panel_focus_style, Panel,
+        F5_BURN_V5_STATUS,
     };
+    use crate::models::PendingConservationRow;
     use crate::AcctRow;
     use pwm_core::MARKS_CAP;
     use ratatui::style::{Color, Modifier};
@@ -1578,6 +2027,7 @@ mod tests {
             marks_last_block: 0,
             effective_marks: None,
             marks_sat_pct: None,
+            pending_conservation: Vec::new(),
             staked: 0,
             rescue_address: None,
             active_policies: 0,
@@ -1658,6 +2108,44 @@ mod tests {
 
         row.staked = pwm_core::display::PWM_RAW_SCALE - 1;
         assert_eq!(marks_hour_left(&row, Some(150)), None);
+    }
+
+    #[test]
+    fn conservation_pending_line() {
+        let mut row = mk_row([6u8; 32], 10);
+        row.pending_conservation.push(PendingConservationRow {
+            recipient: hex::encode([7u8; 32]),
+            amount_pwm: 100,
+            nonce: 1,
+            enqueue_height: 2,
+            execute_at_height: 9,
+        });
+        row.pending_conservation.push(PendingConservationRow {
+            recipient: hex::encode([8u8; 32]),
+            amount_pwm: 200,
+            nonce: 2,
+            enqueue_height: 3,
+            execute_at_height: 7,
+        });
+
+        let txt = conservation_pending_txt(&row).expect("pending line");
+        assert!(txt.contains("2 transfer(s)"));
+        assert!(txt.contains("height 7"));
+        let inline = conservation_pending_inline(&row);
+        assert_eq!(inline, " | pending 300");
+        let head = detail_head_line(&row, &inline);
+        assert!(head.starts_with("sel:"));
+        assert!(head.ends_with(" | pending 300"));
+    }
+
+    #[test]
+    fn detail_head_plain_sel() {
+        let row = mk_row([8u8; 32], 10);
+        let head = detail_head_line(&row, "");
+
+        assert!(head.starts_with("sel:"));
+        assert!(head.contains(" | init="));
+        assert!(!head.starts_with("pending"));
     }
 }
 

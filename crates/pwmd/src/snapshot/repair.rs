@@ -414,10 +414,12 @@ fn epoch_files(summary_path: &Path) -> Result<Vec<(u64, PathBuf)>, String> {
         }
         let name = ent.file_name();
         let name = name.to_string_lossy();
-        if !name.starts_with("block_e") || !name.ends_with(".json") {
+        if !name.starts_with("block_e") || !name.ends_with(".jsonl") {
             continue;
         }
-        let idx_txt = name.trim_start_matches("block_e").trim_end_matches(".json");
+        let idx_txt = name
+            .trim_start_matches("block_e")
+            .trim_end_matches(".jsonl");
         let idx = idx_txt
             .parse::<u64>()
             .map_err(|e| format!("repair bad epoch file name {name}: {e}"))?;
@@ -462,7 +464,7 @@ mod tests {
             .parent()
             .expect("parent")
             .join("epochs")
-            .join("block_e0.json");
+            .join("block_e0.jsonl");
         let txt = fs::read_to_string(&f).expect("read");
         let mut lines: Vec<String> = txt.lines().map(ToString::to_string).collect();
         let mut blk: Block = serde_json::from_str(lines.last().expect("tail")).expect("decode");

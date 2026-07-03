@@ -107,6 +107,7 @@ pub fn mk_acct_row(id: AccountId) -> AcctRow {
         marks_last_block: 0,
         effective_marks: None,
         marks_sat_pct: None,
+        pending_conservation: Vec::new(),
         staked: 0,
         rescue_address: None,
         active_policies: 0,

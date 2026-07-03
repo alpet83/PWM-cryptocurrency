@@ -5,7 +5,7 @@ use crate::roaming::{IntentStatus, ReadinessCode};
 use crate::snapshot::SnapshotBackend;
 use crate::transport::is_peer_liveish;
 use crate::App;
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, StatusCode};
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
 use pwm_core::hd::domain_of_account_id;
 use pwm_core::reject_wire::tx_err_wire;
@@ -13,13 +13,53 @@ use pwm_core::tx::{TxBody, TxError};
 use pwm_core::SignedTx;
 use serde::Serialize;
 use serde_json::json;
-use tracing::error;
+use std::net::SocketAddr;
+use tracing::{error, warn};
 
 #[derive(Serialize)]
 struct ReadinessRejectOut {
     code: &'static str,
     hint: &'static str,
     message: String,
+}
+
+pub(super) fn ensure_operator_auth(
+    app: &App,
+    remote: Option<SocketAddr>,
+    headers: &HeaderMap,
+) -> Result<&'static str, (StatusCode, String)> {
+    if remote.is_some_and(|addr| addr.ip().is_loopback()) {
+        return Ok("loopback");
+    }
+    if let Some(expected) = app.op_token.as_ref() {
+        if bearer_token(headers).is_some_and(|got| got == expected.as_ref()) {
+            return Ok("token");
+        }
+    }
+    warn!(
+        target: "pwmd::operator",
+        event = "operator_auth_rejected",
+        remote = %remote_label(remote),
+        has_token_cfg = app.op_token.is_some(),
+        reason = "auth_gate"
+    );
+    Err((
+        StatusCode::FORBIDDEN,
+        "operator endpoint requires loopback or valid bearer token".to_string(),
+    ))
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    let raw = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    raw.strip_prefix("Bearer ")
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+}
+
+fn remote_label(remote: Option<SocketAddr>) -> String {
+    remote
+        .map(|addr| addr.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub(super) fn handoff_msg(
@@ -476,6 +516,7 @@ pub(super) fn acct_out_for_runtime(
         external_verification_ref: ac.external_verification_ref.clone(),
         requested_domain_lo: ac.requested_domain_lo,
         ipv4_claimed_phase: ac.ipv4_claimed_phase,
+        pending_conservation: Vec::new(),
     }
 }
 

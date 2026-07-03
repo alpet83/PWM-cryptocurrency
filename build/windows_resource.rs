@@ -25,7 +25,7 @@ pub fn configure_windows_resource(file_desc: &str) {
 
         let mut resource = WindowsResource::new();
         resource.set_icon(icon_path.to_string_lossy().as_ref());
-        resource.set("ProductName", "PWM MVP v6");
+        resource.set("ProductName", "PWM MVP v7");
         resource.set("FileDescription", file_desc);
         resource.set("FileVersion", &version);
         resource.set("ProductVersion", &version);

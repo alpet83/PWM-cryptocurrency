@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// Checkpoint interval for JsonFile `pwm-data.json` summary and CH `checkpoints__*` rows (seal path).
 pub(crate) const SNAP_CHK_BLK_IV: u64 = 100;
 
-/// Max block heights per `epochs/block_e*.json` JSONL file (wider files ⇒ fewer files on disk).
+/// Max block heights per `epochs/block_e*.jsonl` JSONL file (wider files ⇒ fewer files on disk).
 pub(crate) const EPOCH_SPAN: u64 = 1_000;
 pub(crate) const EPOCH_MANIFEST_FILE: &str = "pwm-epochs-manifest.json";
 pub(crate) const EPOCH_MAN_SCHEMA_CUR: u32 = 1;
@@ -56,7 +56,7 @@ pub(crate) fn epoch_range(idx: u64) -> EpochRange {
 }
 
 pub(crate) fn epoch_file_name(idx: u64) -> String {
-    format!("block_e{idx}.json")
+    format!("block_e{idx}.jsonl")
 }
 
 pub(crate) fn manifest_file_path(summary_path: &Path) -> PathBuf {
@@ -133,8 +133,8 @@ mod tests {
 
     #[test]
     fn epoch_name_map_ok() {
-        assert_eq!(epoch_file_name(0), "block_e0.json");
-        assert_eq!(epoch_file_name(17), "block_e17.json");
+        assert_eq!(epoch_file_name(0), "block_e0.jsonl");
+        assert_eq!(epoch_file_name(17), "block_e17.jsonl");
     }
 
     #[test]
@@ -142,7 +142,7 @@ mod tests {
         let base = Path::new("/tmp/pwm-data.json");
         assert_eq!(
             epoch_file_path(base, 3),
-            Path::new("/tmp/epochs/block_e3.json")
+            Path::new("/tmp/epochs/block_e3.jsonl")
         );
         assert_eq!(
             manifest_file_path(base),

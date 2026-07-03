@@ -2,6 +2,7 @@
 
 use crate::handshake::NodeHello;
 use crate::ledger::CrossShardSummary;
+use crate::pipeline::{QueueMetricsSnapshot, TxCounters};
 use crate::roaming::IntentStatus;
 use crate::transport::{
     ChurnSnapshot, PeerClass, PeerPolicySnapshot, PeerRecord, SoakConfidenceSnapshot,
@@ -26,6 +27,8 @@ pub struct StatusOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot_error: Option<String>,
     pub cluster_domain_hi: u8,
+    pub tx_counters: TxCounters,
+    pub pipeline_metrics: QueueMetricsSnapshot,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bridge_exported_registry_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -463,6 +466,16 @@ pub struct HeadOut {
 }
 
 #[derive(Serialize)]
+pub struct PendingConservationOut {
+    pub recipient: String,
+    pub amount_pwm: String,
+    pub fee_pwm: String,
+    pub nonce: u64,
+    pub enqueue_height: u64,
+    pub execute_at_height: u64,
+}
+
+#[derive(Serialize)]
 /// V2-2 Slice 0 API freeze: docs/reviews/sprint-v2-2-slice0-account-api-freeze.md.
 pub struct AcctOut {
     pub id: String,
@@ -507,6 +520,8 @@ pub struct AcctOut {
     pub requested_domain_lo: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ipv4_claimed_phase: Option<u8>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_conservation: Vec<PendingConservationOut>,
 }
 
 #[derive(Serialize)]
@@ -522,6 +537,30 @@ fn is_false(v: &bool) -> bool {
     !*v
 }
 
+#[derive(Deserialize)]
+pub struct OffchainEntryIn {
+    pub account_id: String,
+    pub amount: String,
+    pub nonce: u64,
+}
+
+#[derive(Serialize)]
+pub struct OffchainBatchOut {
+    pub batch_id: u64,
+    pub merkle_root: String,
+    pub entry_count: u64,
+    pub anchor_tx_hash: String,
+}
+
+#[derive(Serialize)]
+pub struct OffchainProofOut {
+    pub batch_id: u64,
+    pub entry_index: usize,
+    pub leaf_hash: String,
+    pub merkle_root: String,
+    pub anchor_tx_hash: String,
+    pub proof: Vec<crate::offchain::ProofStep>,
+}
 #[derive(Serialize)]
 pub struct PeerHelloOut {
     pub accepted: bool,

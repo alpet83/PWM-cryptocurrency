@@ -1,5 +1,6 @@
 //! Operator-only runtime log override RPC with TTL auto-restore.
 
+use super::common::ensure_operator_auth;
 use crate::state::LogOvrState;
 use crate::App;
 use axum::extract::{ConnectInfo, State};
@@ -53,7 +54,7 @@ pub(super) async fn v1_log_ovr_get(
     headers: HeaderMap,
 ) -> Result<Json<LogOvrOut>, (StatusCode, String)> {
     let remote = conn.map(|v| v.0);
-    let _auth_mode = ensure_op_log_auth(&a, remote, &headers)?;
+    let _auth_mode = ensure_operator_auth(&a, remote, &headers)?;
     clear_if_expired(&a).await?;
     let ctl = a.log_ctl.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -88,7 +89,7 @@ pub(super) async fn v1_log_ovr_set(
     Json(input): Json<LogOvrIn>,
 ) -> Result<Json<LogOvrOut>, (StatusCode, String)> {
     let remote = conn.map(|v| v.0);
-    let auth_mode = ensure_op_log_auth(&a, remote, &headers)?;
+    let auth_mode = ensure_operator_auth(&a, remote, &headers)?;
     let ctl = a.log_ctl.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         "runtime log control is unavailable".to_string(),
@@ -153,45 +154,9 @@ pub(super) async fn v1_log_ovr_del(
     headers: HeaderMap,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let remote = conn.map(|v| v.0);
-    let auth_mode = ensure_op_log_auth(&a, remote, &headers)?;
+    let auth_mode = ensure_operator_auth(&a, remote, &headers)?;
     let _had = clear_ovr(&a, "delete", auth_mode, remote).await?;
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn ensure_op_log_auth(
-    app: &App,
-    remote: Option<SocketAddr>,
-    headers: &HeaderMap,
-) -> Result<&'static str, (StatusCode, String)> {
-    if remote.is_some_and(|addr| addr.ip().is_loopback()) {
-        return Ok("loopback");
-    }
-    if let Some(expected) = app.op_token.as_ref() {
-        if bearer_token(headers).is_some_and(|got| got == expected.as_ref()) {
-            return Ok("token");
-        }
-    }
-    warn!(
-        target: "pwmd::operator",
-        event = "log_override_rejected",
-        remote = %remote_label(remote),
-        has_token_cfg = app.op_token.is_some(),
-        reason = "auth_gate"
-    );
-    Err((
-        StatusCode::FORBIDDEN,
-        "operator log override requires loopback or valid bearer token".to_string(),
-    ))
-}
-
-fn bearer_token(headers: &HeaderMap) -> Option<&str> {
-    let raw = headers
-        .get(axum::http::header::AUTHORIZATION)?
-        .to_str()
-        .ok()?;
-    raw.strip_prefix("Bearer ")
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
 }
 
 fn norm_level(raw: &str) -> Result<String, (StatusCode, String)> {

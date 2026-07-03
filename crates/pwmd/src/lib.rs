@@ -13,6 +13,7 @@ use tracing::{info, warn};
 
 mod api;
 mod block_timing;
+mod block_writer;
 mod bootstrap;
 mod bridge_trust;
 mod config;
@@ -25,9 +26,13 @@ mod lease_backend;
 mod ledger;
 mod lifecycle;
 mod logging;
+mod offchain;
 mod peer_list;
+pub(crate) mod perfmon;
+pub mod pipeline;
 mod relay;
 mod roaming;
+mod rpc_allow;
 #[doc(hidden)]
 pub mod snap_bench_hlp;
 mod snapshot;

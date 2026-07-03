@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const DEF_PATH: &str = "tmp/cy-lab-block-timing.jsonl";
+const JSONL_TAIL_BYTES: u64 = 4096;
 const PEND_MAX_RECORDS: usize = 1500;
 
 #[derive(Clone, Debug)]
@@ -110,8 +111,8 @@ pub(crate) struct SealCtx {
 pub(crate) struct ProfileTime {
     start_ms: Option<u64>,
     start_at: Option<std::time::Instant>,
-    checkpoints_abs_ms: BTreeMap<String, u64>,
-    checkpoints_rel_ms: BTreeMap<String, f64>,
+    checkpoints_abs_ms: BTreeMap<&'static str, u64>,
+    checkpoints_rel_ms: BTreeMap<&'static str, f64>,
 }
 
 impl ProfileTime {
@@ -123,17 +124,16 @@ impl ProfileTime {
         self.checkpoints_rel_ms.clear();
     }
 
-    pub(crate) fn checkpoint(&mut self, name: &str) {
+    pub(crate) fn checkpoint(&mut self, name: &'static str) {
         let ts = crate::current_time_ms().unwrap_or(0);
         self.checkpoint_at(name, ts);
     }
 
-    pub(crate) fn checkpoint_at(&mut self, name: &str, timestamp_ms: u64) {
+    pub(crate) fn checkpoint_at(&mut self, name: &'static str, timestamp_ms: u64) {
         if self.start_ms.is_none() {
             self.start_ms = Some(timestamp_ms);
         }
-        self.checkpoints_abs_ms
-            .insert(name.to_string(), timestamp_ms);
+        self.checkpoints_abs_ms.insert(name, timestamp_ms);
         let rel_ms = if let Some(base) = self.start_ms {
             timestamp_ms.saturating_sub(base) as f64
         } else {
@@ -142,7 +142,7 @@ impl ProfileTime {
                 .map(|started_at| started_at.elapsed().as_secs_f64() * 1000.0)
                 .unwrap_or(0.0)
         };
-        self.checkpoints_rel_ms.insert(name.to_string(), rel_ms);
+        self.checkpoints_rel_ms.insert(name, rel_ms);
     }
 
     #[allow(dead_code)]
@@ -163,13 +163,16 @@ impl ProfileTime {
         let mut checkpoints_abs_ms = Map::new();
         let mut checkpoints_rel_ms = Map::new();
         for (name, ts) in &self.checkpoints_abs_ms {
-            checkpoints_abs_ms.insert(name.clone(), Value::from(*ts));
+            checkpoints_abs_ms.insert((*name).to_string(), Value::from(*ts));
             let rel_ms = self
                 .checkpoints_rel_ms
                 .get(name)
                 .copied()
                 .unwrap_or_else(|| ts.saturating_sub(start_ms) as f64);
-            checkpoints_rel_ms.insert(name.clone(), Value::from(round_ms(rel_ms, ms_digits)));
+            checkpoints_rel_ms.insert(
+                (*name).to_string(),
+                Value::from(round_ms(rel_ms, ms_digits)),
+            );
         }
         root.insert("start_ms".to_string(), Value::from(start_ms));
         root.insert(
@@ -935,12 +938,68 @@ fn append_jsonl(cfg: &BlockTimingCfg, row: &RowOut) -> Result<(), String> {
 }
 
 fn trim_jsonl_tail(path: &Path, max_rows: usize) -> Result<(), String> {
-    let raw = fs::read_to_string(path).map_err(|e| {
+    let file_len = fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
+    let raw = if file_len <= JSONL_TAIL_BYTES {
+        read_full_jsonl(path)?
+    } else {
+        // NOTE: block_timing JSONL may be removed in a future version; tail-read pattern preserved for reference.
+        match read_tail_jsonl(path, file_len) {
+            Ok(tail) if tail.lines().count() >= max_rows => tail,
+            Ok(_) | Err(_) => read_full_jsonl(path)?,
+        }
+    };
+    trim_raw_jsonl(path, &raw, max_rows)
+}
+
+fn read_full_jsonl(path: &Path) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| {
         format!(
             "block_timing jsonl trim read failed path={}: {e}",
             path.display()
         )
+    })
+}
+
+fn read_tail_jsonl(path: &Path, file_len: u64) -> Result<String, String> {
+    let start = file_len.saturating_sub(JSONL_TAIL_BYTES);
+    let mut file = OpenOptions::new().read(true).open(path).map_err(|e| {
+        format!(
+            "block_timing jsonl tail open failed path={}: {e}",
+            path.display()
+        )
     })?;
+    file.seek(SeekFrom::Start(start)).map_err(|e| {
+        format!(
+            "block_timing jsonl tail seek failed path={}: {e}",
+            path.display()
+        )
+    })?;
+
+    let mut tail = Vec::new();
+    file.read_to_end(&mut tail).map_err(|e| {
+        format!(
+            "block_timing jsonl tail read failed path={}: {e}",
+            path.display()
+        )
+    })?;
+    if start > 0 {
+        let first_nl = tail
+            .iter()
+            .position(|b| *b == b'\n')
+            .ok_or_else(|| "block_timing jsonl tail has no complete line".to_string())?;
+        tail = tail.split_off(first_nl + 1);
+    }
+    if tail.last().copied() != Some(b'\n') {
+        let last_nl = tail
+            .iter()
+            .rposition(|b| *b == b'\n')
+            .ok_or_else(|| "block_timing jsonl tail has no final line".to_string())?;
+        tail.truncate(last_nl + 1);
+    }
+    Ok(String::from_utf8_lossy(&tail).into_owned())
+}
+
+fn trim_raw_jsonl(path: &Path, raw: &str, max_rows: usize) -> Result<(), String> {
     let lines: Vec<&str> = raw.lines().collect();
     if lines.len() <= max_rows {
         return Ok(());
@@ -1099,17 +1158,49 @@ mod tests {
         ));
 
         let mut content = String::new();
-        for i in 0..1505usize {
+        for i in 0..15usize {
             content.push_str(&format!("{{\"n\":{i}}}\n"));
         }
         fs::write(&p, content).expect("seed jsonl");
 
-        trim_jsonl_tail(&p, 1500).expect("trim");
+        trim_jsonl_tail(&p, 10).expect("trim");
         let raw = fs::read_to_string(&p).expect("trimmed jsonl");
         let lines: Vec<&str> = raw.lines().collect();
-        assert_eq!(lines.len(), 1500);
+        assert_eq!(lines.len(), 10);
         assert!(lines.first().is_some_and(|line| line.contains("\"n\":5")));
-        assert!(lines.last().is_some_and(|line| line.contains("\"n\":1504")));
+        assert!(lines.last().is_some_and(|line| line.contains("\"n\":14")));
+    }
+
+    #[test]
+    fn jsonl_tail_large_falls_back() {
+        let mut p = std::env::temp_dir();
+        let seq = TEST_SEQ.fetch_add(1, Ordering::Relaxed);
+        p.push(format!(
+            "pwm-bt-trim-large-{}-{}-{}.jsonl",
+            std::process::id(),
+            crate::current_time_ms().unwrap_or(0),
+            seq
+        ));
+
+        let mut content = String::new();
+        for i in 0..1700usize {
+            content.push_str(&format!(r#"{{"n":{i},"pad":"xxxxxxxx"}}"#));
+            content.push('\n');
+        }
+        fs::write(&p, content).expect("seed large jsonl");
+        assert!(fs::metadata(&p).expect("metadata").len() > JSONL_TAIL_BYTES);
+
+        trim_jsonl_tail(&p, 1500).expect("trim large");
+        let raw = fs::read_to_string(&p).expect("trimmed large jsonl");
+        let lines: Vec<&str> = raw.lines().collect();
+        assert_eq!(lines.len(), 1500);
+        assert!(lines
+            .first()
+            .is_some_and(|line| line.contains(r#""n":200"#)));
+        assert!(lines
+            .last()
+            .is_some_and(|line| line.contains(r#""n":1699"#)));
+        let _ = fs::remove_file(&p);
     }
 
     #[test]

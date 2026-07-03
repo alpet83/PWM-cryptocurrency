@@ -1094,7 +1094,7 @@ mod tests {
 
     /// Hex hash embedded in INFO message must not get per-digit magenta zebra.
     #[test]
-    fn num_hi_skip_hex_inside_message() {
+    fn hi_skip_hex_in_msg() {
         let hash = "6f85f71fdf684c9c70f82d37e8c196a9bf2b47db65585236679ba95d536b7629";
         let msg = format!(
             "deployment_profile=single_sealer validator_identity_hash={hash} lease_ttl_ms=10000"

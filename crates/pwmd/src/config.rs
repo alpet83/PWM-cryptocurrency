@@ -58,6 +58,8 @@ pub struct ClusterCfg {
     /// Proposer-only: fire eager cluster propose this many ms before `next_seal` grid
     /// deadline so attester can ACK before the seal tick (0 = disabled).
     pub seal_ahead_ms: u64,
+    /// Proposer-only: include full tail blocks in `ClusterPropose` messages.
+    pub full_blocks: bool,
     /// Shared JSONL path for per-block cluster timing rows (disabled when empty).
     pub block_timing_path: Option<PathBuf>,
     /// Max tolerated tip lag (blocks) for counting a live attester as sync-ready.
@@ -75,6 +77,7 @@ impl Default for ClusterCfg {
             quorum_n: 2,
             attest_timeout_ms: 1_000,
             seal_ahead_ms: 100,
+            full_blocks: false,
             block_timing_path: None,
             att_max_tip_lag: 1,
         }
@@ -119,6 +122,8 @@ pub struct PwmdConfig {
     pub listen: SocketAddr,
     pub genesis: GenesisSource,
     pub data_file: PathBuf,
+    pub rpc_allowed_ips: Vec<String>,
+    pub rpc_allowed_auto: u16,
     #[cfg(feature = "clickhouse-snapshot")]
     pub clickhouse_url: Option<String>,
     #[cfg(feature = "clickhouse-snapshot")]
@@ -332,6 +337,8 @@ impl Default for PwmdConfig {
             genesis: GenesisSource::DevNet,
             // Neutral default isolates snapshot path per RPC listen (see main.rs).
             data_file: PathBuf::from("state/neutral/127.0.0.1+3030/pwm-data.json"),
+            rpc_allowed_ips: Vec::new(),
+            rpc_allowed_auto: 0,
             #[cfg(feature = "clickhouse-snapshot")]
             clickhouse_url: None,
             #[cfg(feature = "clickhouse-snapshot")]
@@ -672,6 +679,7 @@ mod tests {
             quorum_n: 4,
             attest_timeout_ms: 300,
             seal_ahead_ms: 100,
+            full_blocks: false,
             block_timing_path: None,
             att_max_tip_lag: 1,
         };
@@ -689,6 +697,7 @@ mod tests {
             quorum_n: 2,
             attest_timeout_ms: 300,
             seal_ahead_ms: 100,
+            full_blocks: false,
             block_timing_path: None,
             att_max_tip_lag: 1,
         };
@@ -710,6 +719,7 @@ mod tests {
             quorum_n: 3,
             attest_timeout_ms: 300,
             seal_ahead_ms: 100,
+            full_blocks: false,
             block_timing_path: None,
             att_max_tip_lag: 1,
         };
@@ -727,6 +737,7 @@ mod tests {
             quorum_n: 2,
             attest_timeout_ms: 300,
             seal_ahead_ms: 100,
+            full_blocks: false,
             block_timing_path: None,
             att_max_tip_lag: 1,
         };

@@ -1367,7 +1367,7 @@ mod tests {
     }
 
     #[test]
-    fn trust_prod_tail_bnd_tx_ok() {
+    fn trust_tail_bnd_tx_ok() {
         let sfx = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")

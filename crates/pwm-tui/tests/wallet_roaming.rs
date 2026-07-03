@@ -939,6 +939,7 @@ fn op_hist_cap_max() {
                 to_human: "to".into(),
                 amount_units: 1,
                 fee_units: 0,
+                nonce: i as u64,
                 status: pwm_tui::OpStatus::Pending,
                 note: "queued".into(),
             },
@@ -958,6 +959,7 @@ fn op_hist_set_req() {
         to_human: "t".into(),
         amount_units: 7,
         fee_units: 1,
+        nonce: 17,
         status: pwm_tui::OpStatus::Pending,
         note: "submitting".into(),
     }];
@@ -979,6 +981,7 @@ fn submit_done_hist_closed() {
         to_human: "t".into(),
         amount_units: 7,
         fee_units: 1,
+        nonce: 42,
         status: pwm_tui::OpStatus::Pending,
         note: "submitting".into(),
     }];

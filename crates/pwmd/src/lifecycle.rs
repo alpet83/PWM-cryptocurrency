@@ -3,12 +3,15 @@
 
 use crate::api::common::{rollback_commit, take_bak};
 use crate::block_timing;
+use crate::block_writer::BlockWriter;
 use crate::bootstrap::app_from_genesis_id;
 use crate::config::PwmdConfig;
 use crate::debug_dump::{align_mid_on, mid_wait_ms};
 use crate::handshake::{ClusterRole, DeploymentProfile, SealRole};
 use crate::lease::{step_lease, LeaseCfg, LeaseEvent, LeaseState};
 use crate::ledger::{summary_log_line, SUMMARY_BLOCK_INTERVAL};
+use crate::perfmon;
+use crate::pipeline::{counters, TxEvent};
 use crate::runtime_shard_label;
 use crate::snapshot::{
     BlocksStored, SealPersistMode, SnapIoTiming, SnapshotBackend, SnapshotLoadOpts,
@@ -23,14 +26,16 @@ use crate::{
     spawn_peer_listener_loop, spawn_stateful_transport_loop, spawn_transport_loop,
 };
 use pwm_core::absorb_blocks_tail;
+use pwm_core::block::Block;
 use pwm_core::chain::{pick_prod_idx, roll_epoch_if_needed};
 use pwm_core::state::State;
 use pwm_core::tx::{SignedTx, TxBody};
-use pwm_core::SealTimeMode;
+use pwm_core::{SealEntry, SealTimeMode};
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, debug_span, error, info, warn};
 
 pub const AUTOSNAPSHOT_BLOCK_INTERVAL: u64 = crate::snapshot::epoch::SNAP_CHK_BLK_IV;
 /// Standby sync checkpoint interval (height 1 and then every N blocks).
@@ -53,7 +58,7 @@ const PREP_SUMMARY_IV_SEC: u64 = 30;
 const SEAL_SUPPRESS_ALERT_PCT: f64 = 1.0;
 /// Wall-clock poll cadence for the proposer deadline scheduler (variant C).
 /// Under load gates re-check every 10 ms; under no load it bounds idle sleep.
-const SEAL_POLL_INTERVAL_MS: u64 = 50;
+const SEAL_POLL_INTERVAL_MS: u64 = 10;
 /// Minimum interval between identical CAS-miss warnings in lease gate path.
 const LEASE_REJECT_WARN_MS: u64 = 5_000;
 /// Idle pause when no attester peer is connected and quorum is impossible.
@@ -829,6 +834,21 @@ fn tx_bal_diffs(before: &State, after: &State, tx: &SignedTx) -> Vec<([u8; 32], 
         .collect()
 }
 
+fn seal_entry_hash(entry: &SealEntry) -> [u8; 32] {
+    match entry {
+        SealEntry::Raw(tx) | SealEntry::PreValidated { tx, .. } => tx.tx_hash(),
+    }
+}
+
+fn dedup_seal_entries(entries: &mut Vec<SealEntry>) {
+    let mut seen = HashSet::new();
+    entries.retain(|entry| seen.insert(seal_entry_hash(entry)));
+}
+
+fn skip_evicted_entries(entries: &mut Vec<SealEntry>, evicted: &HashSet<[u8; 32]>) {
+    entries.retain(|entry| !evicted.contains(&seal_entry_hash(entry)));
+}
+
 fn first_bad_tx_ctx(
     st: &State,
     txs: &[SignedTx],
@@ -838,7 +858,10 @@ fn first_bad_tx_ctx(
 ) -> Option<(usize, String)> {
     let mut sim = st.clone();
     for (i, tx) in txs.iter().enumerate() {
-        if let Err(err) = sim.apply_tx_with_ctx(tx, blk_h, blk_ts, gen_cfg) {
+        let apply_scope = perfmon::PERF_STATE_APPLY.begin();
+        let apply_result = sim.apply_tx_with_ctx(tx, blk_h, blk_ts, gen_cfg);
+        apply_scope.end(apply_result.is_ok());
+        if let Err(err) = apply_result {
             return Some((i, err.to_string()));
         }
     }
@@ -856,6 +879,11 @@ fn log_tx_debug(before: &State, after: &State, height: u64, txs: &[SignedTx]) {
 }
 
 fn log_tx_commit_delta(before: &State, after: &State, height: u64, txs: &[SignedTx]) {
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        let _ = height; // height is included by logs elsewhere; keep signature symmetry with debug.
+        return;
+    }
+
     for tx in txs {
         let tx_id = hex::encode(tx.tx_hash());
         let sender = tx.computed_account_id();
@@ -869,7 +897,7 @@ fn log_tx_commit_delta(before: &State, after: &State, height: u64, txs: &[Signed
             .unwrap_or((0, 0));
 
         // Keep wording aligned with `/v1/tx`'s export/import commit logs.
-        info!(
+        debug!(
             "tx commit delta: kind={} tx_id={} sender={} bal:{}->{} nonce:{}->{}",
             tx_kind(tx),
             tx_id,
@@ -954,6 +982,7 @@ pub(crate) fn periodic_snap_save(
     g: &crate::state::Inner,
     height: u64,
     source: &'static str,
+    writer: Option<&BlockWriter>,
 ) -> Option<(Option<std::path::PathBuf>, Result<(), String>)> {
     if !autosnap_hit(height) {
         return None;
@@ -962,10 +991,33 @@ pub(crate) fn periodic_snap_save(
         "autosnapshot checkpoint hit source={} interval={} height={}",
         source, AUTOSNAPSHOT_BLOCK_INTERVAL, height
     );
-    Some((
-        backend.init_state_path(),
-        backend.save_seal_persist(g, SealPersistMode::Periodic),
-    ))
+    let path = backend.init_state_path();
+    let mode = if let Some(writer) = writer {
+        if let Err(err) = writer.flush() {
+            return Some((path, Err(err)));
+        }
+        SealPersistMode::PeriodicSummary
+    } else {
+        SealPersistMode::Periodic
+    };
+    Some((path, backend.save_seal_persist(g, mode)))
+}
+
+fn enqueue_sealed_block(app: &App, block: Arc<Block>) -> Result<(), String> {
+    let Some(writer) = app.block_writer.as_ref() else {
+        return Ok(());
+    };
+    if let Err(enqueue_err) = writer.enqueue(Arc::clone(&block)) {
+        let backend = app.autosnapshot_backend.as_ref().ok_or_else(|| {
+            format!("block enqueue failed without snapshot backend: {enqueue_err}")
+        })?;
+        backend.recover_append(&block).map_err(|recovery_err| {
+            format!(
+                "block enqueue failed: {enqueue_err}; synchronous recovery failed: {recovery_err}"
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub(crate) async fn periodic_snap_finish(
@@ -1367,6 +1419,8 @@ pub(crate) async fn seal_manual_paused(app: &App) -> bool {
 
 pub fn spawn_seal_loop(app: App) {
     tokio::spawn(async move {
+        // Best-effort only: Tokio may migrate this task to another worker thread after awaits.
+        let _ = thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max);
         let bph = {
             let g = app.inner.read().await;
             g.chain.cfg.blocks_per_hour
@@ -1423,6 +1477,8 @@ pub fn spawn_seal_loop(app: App) {
         // sleeping a full nominal between attempts.
         let mut next_seal_time_ms =
             align_next_seal_ms(crate::current_time_ms().unwrap_or(0), nominal_ms);
+        let mut evicted_hashes = HashSet::new();
+        let mut evicted_tip = drift_window_h;
         info!(
             "seal_scheduler mode=deadline_poll poll_ms={} nominal_ms={} grid=multiples_of_nominal next_seal_time_ms={}",
             SEAL_POLL_INTERVAL_MS, nominal_ms, next_seal_time_ms
@@ -1511,10 +1567,9 @@ pub fn spawn_seal_loop(app: App) {
             let init_state = app.init.read().await.clone();
             if !init_state.allows_chain_progress() {
                 if is_proposer {
-                    let waiting_since = app.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+                    let waiting_since = app.cluster_prep_wait_ms.load(Ordering::Acquire);
                     let waiting_since = if waiting_since == 0 {
-                        app.cluster_prep_waiting_since_ms
-                            .store(now_ms, Ordering::Release);
+                        app.cluster_prep_wait_ms.store(now_ms, Ordering::Release);
                         now_ms
                     } else {
                         waiting_since
@@ -1550,8 +1605,7 @@ pub fn spawn_seal_loop(app: App) {
                 continue;
             }
             if is_proposer {
-                app.cluster_prep_waiting_since_ms
-                    .store(0, Ordering::Release);
+                app.cluster_prep_wait_ms.store(0, Ordering::Release);
             }
             if app.debug_disable_seal_loop {
                 // Follower / replay-only mode: chain height may advance via sync apply, not local seal.
@@ -1591,10 +1645,9 @@ pub fn spawn_seal_loop(app: App) {
                 let preflight = cluster_seal_preflight(true, att.sync_n, app.cluster_cfg.quorum_k);
                 if matches!(preflight, SealPreflight::WaitingAttester) {
                     let gate_h = att.local_h.saturating_add(1).max(1);
-                    let waiting_since = app.cluster_prep_waiting_since_ms.load(Ordering::Acquire);
+                    let waiting_since = app.cluster_prep_wait_ms.load(Ordering::Acquire);
                     let waiting_since = if waiting_since == 0 {
-                        app.cluster_prep_waiting_since_ms
-                            .store(now_ms, Ordering::Release);
+                        app.cluster_prep_wait_ms.store(now_ms, Ordering::Release);
                         now_ms
                     } else {
                         waiting_since
@@ -1631,8 +1684,7 @@ pub fn spawn_seal_loop(app: App) {
                     tokio::time::sleep(Duration::from_millis(SEAL_WAIT_PEER_MS)).await;
                     continue;
                 }
-                app.cluster_prep_waiting_since_ms
-                    .store(0, Ordering::Release);
+                app.cluster_prep_wait_ms.store(0, Ordering::Release);
                 if !attester_was_ready {
                     info!(
                         "cluster_attest_ready live_synced_attesters={} live_connected_attesters={} quorum_k={} max_tip_lag={}",
@@ -1720,6 +1772,7 @@ pub fn spawn_seal_loop(app: App) {
                 let g = app.inner.read().await;
                 g.chain.tip_h().saturating_add(1)
             };
+            let lease_gate_start_at = Instant::now();
             seal_pt.checkpoint("lease_gate_begin");
             if !run_lease_gate(&app).await {
                 seal_pt.checkpoint("lease_gate_blocked");
@@ -1747,6 +1800,7 @@ pub fn spawn_seal_loop(app: App) {
             // Gate fast-path: after deadline, if quorum flips to ready during this
             // same poll tick, re-check once and seal immediately (no extra poll sleep).
             // Invariant preserved: this branch runs only after should_attempt_seal().
+            let cluster_gate_start_at = Instant::now();
             seal_pt.checkpoint("cluster_gate_begin");
             let mut gate_ok = run_cluster_gate(&app, Some(&mut gate_log_dedup)).await;
             let gate_recheck_used = gate_recheck_needed(is_proposer, gate_ok);
@@ -1788,6 +1842,8 @@ pub fn spawn_seal_loop(app: App) {
                 continue;
             }
             seal_pt.checkpoint("cluster_gate_ok");
+            let cluster_gate_us = cluster_gate_start_at.elapsed().as_micros();
+            let lease_gate_us = lease_gate_start_at.elapsed().as_micros();
             if let Some(bt) = app.block_timing.as_ref() {
                 block_timing::note_gate_ok(
                     bt,
@@ -1800,8 +1856,8 @@ pub fn spawn_seal_loop(app: App) {
             }
             // Variant C: capture the next deadline *before* attempting to seal so a post-seal
             // operational delay does not stack into the next interval. Only commit
-            // `next_seal_time_ms = scheduled_next` on `Ok(seal)`; on Err / retry path the
-            // deadline stays put and the next iteration may re-attempt immediately.
+            // `next_seal_time_ms = scheduled_next` on `Ok(seal)`; retry paths move the
+            // deadline by one poll interval to avoid a lock-bound microcycle.
             let scheduled_next =
                 align_next_seal_ms(crate::current_time_ms().unwrap_or(0), nominal_ms);
             maybe_align_mid(&app).await;
@@ -1809,26 +1865,89 @@ pub fn spawn_seal_loop(app: App) {
             let mut g = app.inner.write().await;
             seal_pt.checkpoint("after_write_lock");
             let now_h = g.chain.tip_h();
+            if now_h != evicted_tip {
+                evicted_hashes.clear();
+                evicted_tip = now_h;
+            }
             let expired = g.roaming_pool.expire_by_height(now_h);
             if expired > 0 {
                 info!("expired roaming intents count={} height={}", expired, now_h);
             }
-            let txs = g.pool.take(64);
-            let st_before = g.chain.st.clone();
+            let pool_scope = perfmon::PERF_POOL_DRAIN.begin();
+            if let Ok(mut rx) = app.tx_ingress.receiver.try_lock() {
+                while let Ok(tx) = rx.try_recv() {
+                    let _ = g.pool.push(tx);
+                }
+            }
+            let block_cap = 64usize;
+            let mut entries = Vec::with_capacity(block_cap);
+            if let Ok(mut rx) = app._validated_rx.try_lock() {
+                let _span = debug_span!("seal.drain_validated").entered();
+                while entries.len() < block_cap {
+                    match rx.try_recv() {
+                        Ok(validated) => {
+                            app.pipeline_metrics.inc_dequeued();
+                            if validated.validated_at_height != now_h {
+                                app.pipeline_metrics.inc_stale_validated();
+                            }
+                            entries.push(SealEntry::PreValidated {
+                                tx: validated.tx,
+                                at_height: validated.validated_at_height,
+                            });
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            let remaining = block_cap.saturating_sub(entries.len());
+            entries.extend(g.pool.take(remaining).into_iter().map(SealEntry::Raw));
+            skip_evicted_entries(&mut entries, &evicted_hashes);
+            dedup_seal_entries(&mut entries);
+            pool_scope.end(true);
+            let st_before = tracing::enabled!(tracing::Level::DEBUG).then(|| g.chain.st.clone());
             let persist_back = app.autosnapshot_backend.is_some() && autosnap_hit(now_h + 1);
             let bak_opt = persist_back.then(|| take_bak(&g));
             seal_pt.checkpoint("before_chain_seal");
-            match g.chain.seal(txs) {
+            let seal_scope = perfmon::PERF_CHAIN_SEAL.begin();
+            let seal_result = g.chain.seal_entries(entries);
+            seal_scope.end(seal_result.is_ok());
+            match seal_result {
                 Ok(()) => {
                     let seal_done_ms = crate::current_time_ms().unwrap_or(now_ms);
                     seal_pt.checkpoint_at("after_chain_seal", seal_done_ms);
+                    let sealed_state = Arc::new(g.chain.st.clone());
+                    app.state_snapshot.store(sealed_state);
+                    app.hot_index.refresh(&g.chain.st);
+                    app.pipeline_metrics.finish_block();
                     next_seal_time_ms = scheduled_next;
                     turn_watch_deadline_ms = None;
                     turn_watch_microcycles = 0;
                     turn_watch_alerted = false;
                     let h = g.chain.tip_h();
+                    evicted_hashes.clear();
+                    evicted_tip = h;
+                    app.worker_tip_height
+                        .store(h, std::sync::atomic::Ordering::Relaxed);
                     let stop_h = app.debug_stop_height;
                     if is_proposer {
+                        const GATE_LOG_THRESHOLD_US: u128 = 1_000;
+                        if cluster_gate_us > GATE_LOG_THRESHOLD_US
+                            || lease_gate_us > GATE_LOG_THRESHOLD_US
+                        {
+                            info!(
+                                "seal_gate_profile h={} cluster_gate_us={} lease_gate_us={} cluster_gate_ms={:.1} recheck={}",
+                                h, cluster_gate_us, lease_gate_us,
+                                cluster_gate_us as f64 / 1000.0,
+                                gate_recheck_used
+                            );
+                        } else {
+                            debug!(
+                                "seal_gate_profile h={} cluster_gate_us={} lease_gate_us={} cluster_gate_ms={:.1} recheck={}",
+                                h, cluster_gate_us, lease_gate_us,
+                                cluster_gate_us as f64 / 1000.0,
+                                gate_recheck_used
+                            );
+                        }
                         supp_win.close_sealed();
                     }
                     if h == 1 || h % 10 == 0 {
@@ -1842,48 +1961,77 @@ pub fn spawn_seal_loop(app: App) {
                         );
                         pending_ticks_since_last_sealed = 0;
                     }
-                    if let Some(blk) = g.chain.blocks.back() {
+                    let sealed_block = g.chain.blocks.back().cloned().map(Arc::new);
+                    if let Some(blk) = sealed_block.as_deref() {
                         let txs = blk.txs.clone();
-                        log_tx_debug(&st_before, &g.chain.st, h, &txs);
-                        log_tx_commit_delta(&st_before, &g.chain.st, h, &txs);
+                        counters::inc_sealed_by(u64::try_from(txs.len()).unwrap_or(u64::MAX));
+                        if let Some(st_before) = st_before.as_ref() {
+                            log_tx_debug(st_before, &g.chain.st, h, &txs);
+                            log_tx_commit_delta(st_before, &g.chain.st, h, &txs);
+                        }
                         for tx in &txs {
                             g.record_cross_shard_tx(tx, h);
+                            let _ = app.tx_events.send(TxEvent::Sealed {
+                                txid: tx.tx_hash(),
+                                block_height: h,
+                            });
+                        }
+                        if !txs.is_empty() {
+                            if let Some(bt) = app.block_timing.as_ref() {
+                                let wall_total_ms = seal_turn_start_at
+                                    .as_ref()
+                                    .map(|started_at| {
+                                        (started_at.elapsed().as_secs_f64() * 100.0).round() / 100.0
+                                    })
+                                    .unwrap_or(0.0);
+                                block_timing::note_seal(
+                                    bt,
+                                    block_timing::SealCtx {
+                                        h,
+                                        r: 0,
+                                        seal_ms: block_timing::now_ms_f64(),
+                                        wall_total_ms,
+                                        pending_ticks: pending_ticks_since_last_sealed,
+                                        gate_recheck: gate_recheck_used,
+                                        autosnap: persist_back,
+                                        supp_strike: supp_win.supp_marked,
+                                        attest_to: supp_win.timeout_marked_h == Some(h),
+                                        nom_ms: nominal_ms,
+                                        grid_ms: next_seal_time_ms,
+                                        profile_json: seal_pt
+                                            .json_stats_with_precision("{\"scope\":\"seal\"}", 2),
+                                    },
+                                );
+                            }
                         }
                     }
                     if h > 0 && h % SUMMARY_BLOCK_INTERVAL == 0 {
                         info!("{}", summary_log_line(&g.cross_shard.summary()));
                     }
-                    let save_result = app
-                        .autosnapshot_backend
-                        .as_ref()
-                        .and_then(|backend| periodic_snap_save(backend, &g, h, "seal"));
-                    if let Some(bt) = app.block_timing.as_ref() {
-                        let wall_total_ms = seal_turn_start_at
-                            .as_ref()
-                            .map(|started_at| {
-                                (started_at.elapsed().as_secs_f64() * 100.0).round() / 100.0
-                            })
-                            .unwrap_or(0.0);
-                        block_timing::note_seal(
-                            bt,
-                            block_timing::SealCtx {
-                                h,
-                                r: 0,
-                                seal_ms: block_timing::now_ms_f64(),
-                                wall_total_ms,
-                                pending_ticks: pending_ticks_since_last_sealed,
-                                gate_recheck: gate_recheck_used,
-                                autosnap: persist_back,
-                                supp_strike: supp_win.supp_marked,
-                                attest_to: supp_win.timeout_marked_h == Some(h),
-                                nom_ms: nominal_ms,
-                                grid_ms: next_seal_time_ms,
-                                profile_json: seal_pt
-                                    .json_stats_with_precision("{\"scope\":\"seal\"}", 2),
-                            },
-                        );
-                    }
                     drop(g);
+                    let append_result = sealed_block
+                        .map(|block| enqueue_sealed_block(&app, block))
+                        .unwrap_or(Ok(()));
+                    let save_result = match append_result {
+                        Ok(()) => {
+                            if let Some(backend) = app.autosnapshot_backend.as_ref() {
+                                let g = app.inner.read().await;
+                                periodic_snap_save(
+                                    backend,
+                                    &g,
+                                    h,
+                                    "seal",
+                                    app.block_writer.as_ref(),
+                                )
+                            } else {
+                                None
+                            }
+                        }
+                        Err(err) => app
+                            .autosnapshot_backend
+                            .as_ref()
+                            .map(|backend| (backend.init_state_path(), Err(err))),
+                    };
                     periodic_snap_finish(&app, h, bak_opt, save_result).await;
                     let drift_blocks = h.saturating_sub(drift_window_h);
                     if drift_blocks >= SEAL_DRIFT_WINDOW_BLOCKS {
@@ -1929,34 +2077,76 @@ pub fn spawn_seal_loop(app: App) {
                             Err(err) => {
                                 warn!("seal skip: failed to resolve apply ctx: {}", err);
                                 g.pool.prepend_block(txs);
+                                next_seal_time_ms = crate::current_time_ms()
+                                    .unwrap_or(now_ms)
+                                    .saturating_add(SEAL_POLL_INTERVAL_MS);
                                 continue;
                             }
                         };
                         let drop_at =
                             first_bad_tx_ctx(&g.chain.st, &txs, blk_h, blk_ts, &g.chain.cfg);
                         if let Some((i, err)) = drop_at {
+                            let bad_sender_id = txs[i].computed_account_id();
+                            let on_chain_nonce = g
+                                .chain
+                                .st
+                                .get(&bad_sender_id)
+                                .map(|account| account.nonce)
+                                .unwrap_or(0);
+                            evicted_hashes.insert(txs[i].tx_hash());
+                            let mut stale_hashes = HashSet::new();
+                            for tx in txs[i + 1..].iter() {
+                                let sender_id = tx.computed_account_id();
+                                if sender_id == bad_sender_id && tx.nonce <= on_chain_nonce {
+                                    let tx_hash = tx.tx_hash();
+                                    stale_hashes.insert(tx_hash);
+                                    evicted_hashes.insert(tx_hash);
+                                }
+                            }
+                            counters::inc_rejected_by(
+                                1 + u64::try_from(stale_hashes.len()).unwrap_or(u64::MAX),
+                            );
+                            if !stale_hashes.is_empty() {
+                                warn!(
+                                    "seal skip: evicting {} stale same-sender txs sender={}",
+                                    stale_hashes.len(),
+                                    hex::encode(bad_sender_id)
+                                );
+                            }
                             warn!(
                                 "seal skip: evicting unapplicable tx at index {} ({}), requeueing {} others",
                                 i,
                                 err,
-                                txs.len().saturating_sub(1)
+                                txs.len().saturating_sub(1 + stale_hashes.len())
                             );
                             let mut kept = Vec::with_capacity(txs.len().saturating_sub(1));
                             kept.extend(txs[..i].iter().cloned());
-                            kept.extend(txs[i + 1..].iter().cloned());
+                            kept.extend(
+                                txs[i + 1..]
+                                    .iter()
+                                    .filter(|tx| !stale_hashes.contains(&tx.tx_hash()))
+                                    .cloned(),
+                            );
                             kept
                         } else {
                             warn!(
                                 "seal skip: {} (could not locate failing tx; requeue full batch)",
                                 e
                             );
+                            // TODO: These are requeued, not permanently dropped; track as rejected for backpressure visibility.
+                            counters::inc_rejected_by(u64::try_from(txs.len()).unwrap_or(u64::MAX));
                             txs
                         }
                     } else {
                         warn!("seal skip: {}", e);
+                        // TODO: These are requeued, not permanently dropped; track as rejected for backpressure visibility.
+                        counters::inc_rejected_by(u64::try_from(txs.len()).unwrap_or(u64::MAX));
                         txs
                     };
                     g.pool.prepend_block(replay);
+                    next_seal_time_ms = crate::current_time_ms()
+                        .unwrap_or(now_ms)
+                        .saturating_add(SEAL_POLL_INTERVAL_MS);
                 }
             }
         }
@@ -2256,6 +2446,7 @@ async fn align_summary_post_verify(
 pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
     config.validate_persist_snap()?;
     config.validate_cluster_cfg()?;
+    debug!("perfmon entities: {}", perfmon::REGISTRY.len());
     if config.transport.enabled && config.transport.peer_listen == config.listen {
         return Err(format!(
             "peer listener must use a dedicated socket; rpc={} peer={}",
@@ -2292,6 +2483,10 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .map(Arc::<str>::from);
+    app.rpc_allow = crate::rpc_allow::RpcAllowState::from_cfg(
+        &config.rpc_allowed_ips,
+        config.rpc_allowed_auto,
+    )?;
     if let Some(ref raw) = config.node_instance_id_override {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
@@ -2334,7 +2529,19 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
         let g = app.inner.read().await;
         hex::encode(digest(&g.chain.cfg.state0()))
     };
-    app.autosnapshot_backend = Some(config.persisted_snap_backend(&genesis_d_hex)?);
+    if let Some(writer) = app.block_writer.take() {
+        writer.shutdown()?;
+    }
+    let backend = config.persisted_snap_backend(&genesis_d_hex)?;
+    if let Some(path) = backend.json_path() {
+        let g = app.inner.read().await;
+        crate::snapshot::incremental::sync_epoch_to_tip(path, &g)?;
+    }
+    app.block_writer = backend
+        .json_path()
+        .map(|path| BlockWriter::new(path.to_path_buf()))
+        .transpose()?;
+    app.autosnapshot_backend = Some(backend);
     app.snapshot_verify_chain = config.snapshot_verify_chain;
     app.exit_on_fatal_snapshot = config.exit_on_fatal_snapshot;
     app.broke_trust_test = config.broke_trust_test;
@@ -2490,6 +2697,10 @@ pub async fn run_with(config: PwmdConfig) -> Result<(), String> {
             transport_cfg.heartbeat_interval_ms,
             app.cluster_cfg.seal_ahead_ms
         );
+        info!(
+            full_blocks = app.cluster_cfg.full_blocks,
+            "cluster propose mode"
+        );
     } else {
         info!("cluster_attest enabled=false");
     }
@@ -2585,14 +2796,14 @@ mod tests {
     use super::{
         align_next_seal_ms, apply_cluster_timing, attester_alive, autosnap_hit,
         cluster_pending_summary_hit, cluster_prop_ms, cluster_seal_preflight, cluster_timing_ms,
-        compute_suppress_pct, count_sync_ready_hs, gate_recheck_needed, is_suppress_alert,
-        lease_renew_log_hit, local_prod_for_h, mk_pick_fatal_diag, poll_sleep_ms,
-        record_cluster_prop_tick, run_cluster_gate, run_gate_obs, run_lease_gate,
+        compute_suppress_pct, count_sync_ready_hs, dedup_seal_entries, gate_recheck_needed,
+        is_suppress_alert, lease_renew_log_hit, local_prod_for_h, mk_pick_fatal_diag,
+        poll_sleep_ms, record_cluster_prop_tick, run_cluster_gate, run_gate_obs, run_lease_gate,
         seal_drift_adjust_ms, seal_drift_clamp_envelope, seal_drift_in_deadband, seal_envelope_pct,
-        seal_interval_ms, should_attempt_seal, should_fire_seal_ahead, skip_missed_h,
-        spawn_seal_loop, tx_bal_diffs, AttSyncCtx, ClusterGateDedup, GateBlock, SealAheadWindow,
-        SealPreflight, SealSuppressWindow, SuppressReason, AUTOSNAPSHOT_BLOCK_INTERVAL,
-        PROD_PICK_EMPTY_ERR, SEAL_POLL_INTERVAL_MS,
+        seal_interval_ms, should_attempt_seal, should_fire_seal_ahead, skip_evicted_entries,
+        skip_missed_h, spawn_seal_loop, tx_bal_diffs, AttSyncCtx, ClusterGateDedup, GateBlock,
+        SealAheadWindow, SealPreflight, SealSuppressWindow, SuppressReason,
+        AUTOSNAPSHOT_BLOCK_INTERVAL, PROD_PICK_EMPTY_ERR, SEAL_POLL_INTERVAL_MS,
     };
     use crate::bootstrap::app_from_genesis_id;
     use crate::config::GenesisSource;
@@ -2610,8 +2821,9 @@ mod tests {
     use pwm_core::hd::{account_id_from_parts, domain_of_account_id};
     use pwm_core::tx::{SignedTx, TxBody};
     use pwm_core::types::Account;
-    use pwm_core::{Chain, SealTimeMode};
+    use pwm_core::{Chain, SealEntry, SealTimeMode};
     use slip10_ed25519::derive_ed25519_private_key;
+    use std::collections::HashSet;
     use std::sync::Arc;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -2647,6 +2859,49 @@ mod tests {
             der_idx,
         };
         (sk, grow, vrow)
+    }
+
+    fn seal_tx(nonce: u64, to: u8) -> SignedTx {
+        let (gen, sks) = pwm_core::dev_net();
+        SignedTx::sign_body(
+            &sks[0],
+            domain_of_account_id(&gen.accounts[0].acct),
+            gen.accounts[0].der_idx,
+            nonce,
+            TxBody::Transfer {
+                to: [to; 32],
+                amount: 1,
+                fee: 0,
+            },
+        )
+    }
+
+    #[test]
+    fn dedup_seal_entries_removes_dup() {
+        let tx = seal_tx(0, 7);
+        let mut entries = vec![
+            SealEntry::Raw(tx.clone()),
+            SealEntry::PreValidated { tx, at_height: 4 },
+        ];
+
+        dedup_seal_entries(&mut entries);
+
+        assert_eq!(entries.len(), 1);
+        assert!(matches!(entries[0], SealEntry::Raw(_)));
+    }
+
+    #[test]
+    fn eviction_skip_set() {
+        let evicted = seal_tx(0, 7);
+        let kept = seal_tx(1, 8);
+        let kept_hash = kept.tx_hash();
+        let hashes = HashSet::from([evicted.tx_hash()]);
+        let mut entries = vec![SealEntry::Raw(evicted), SealEntry::Raw(kept)];
+
+        skip_evicted_entries(&mut entries, &hashes);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(super::seal_entry_hash(&entries[0]), kept_hash);
     }
 
     #[tokio::test]
@@ -3673,9 +3928,9 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let snapshot_path =
-            std::env::temp_dir().join(format!("pwmd-slice19-snapshot-{suffix}.json"));
-        let _ = std::fs::remove_file(&snapshot_path);
+        let snapshot_dir = std::env::temp_dir().join(format!("pwmd-slice19-snapshot-{suffix}"));
+        let snapshot_path = snapshot_dir.join("pwm-data.json");
+        std::fs::create_dir_all(&snapshot_dir).expect("create snapshot directory");
 
         let identity = default_runtime_identity_neutral();
         let app = app_from_genesis_id(
@@ -3708,6 +3963,12 @@ mod tests {
             // Prime chain to 99 so first loop seal hits periodic autosnapshot boundary at 100.
             for _ in 0..(AUTOSNAPSHOT_BLOCK_INTERVAL - 1) {
                 g.chain.seal(vec![]).expect("prime seal");
+                let block = g.chain.blocks.back().expect("prime tip").clone();
+                app.block_writer
+                    .as_ref()
+                    .expect("block writer")
+                    .enqueue(Arc::new(block))
+                    .expect("enqueue prime block");
             }
             let tx = SignedTx::sign_body(
                 sender,
@@ -3742,7 +4003,42 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
         assert!(ok, "snapshot file was not created after seal");
-        let _ = std::fs::remove_file(&snapshot_path);
+        app.shutdown_requested
+            .store(true, std::sync::atomic::Ordering::Release);
+        let writer = app.block_writer.as_ref().expect("block writer");
+        writer.flush().expect("flush block writer");
+
+        let epoch_path = snapshot_dir.join("epochs").join("block_e0.jsonl");
+        let epoch = std::fs::read_to_string(&epoch_path).expect("read epoch JSONL");
+        let transfer_block = epoch
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("parse block JSON"))
+            .find(|block| {
+                block["txs"]
+                    .as_array()
+                    .is_some_and(|txs| txs.iter().any(|tx| tx["body"].get("transfer").is_some()))
+            })
+            .expect("transfer block");
+        let transfer = transfer_block["txs"]
+            .as_array()
+            .expect("block transactions")
+            .iter()
+            .find(|tx| tx["body"].get("transfer").is_some())
+            .expect("transfer transaction");
+        let signer_pk = transfer["signer_pk"].as_str().expect("hex signer_pk");
+        let signature = transfer["signature"].as_str().expect("hex signature");
+        let to = transfer["body"]["transfer"]["to"]
+            .as_str()
+            .expect("hex transfer.to");
+        assert_eq!(signer_pk.len(), 64);
+        assert_eq!(signature.len(), 128);
+        assert_eq!(to.len(), 64);
+        assert!(signer_pk.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(signature.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(to.bytes().all(|byte| byte.is_ascii_hexdigit()));
+
+        writer.shutdown().expect("shutdown block writer");
+        std::fs::remove_dir_all(&snapshot_dir).expect("remove snapshot directory");
     }
 
     #[tokio::test]

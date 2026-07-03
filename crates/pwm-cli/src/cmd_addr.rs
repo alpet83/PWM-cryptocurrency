@@ -373,6 +373,7 @@ pub(crate) fn run_addr_bruteforce(
     flags_mask: u32,
     expected_flags: u32,
     max_try: u32,
+    count: u32,
     wallet_out: Option<PathBuf>,
     wal_out_explicit: bool,
     overwrite_wallet: bool,
@@ -380,6 +381,7 @@ pub(crate) fn run_addr_bruteforce(
     upgrade_wallet: bool,
     rpc_base: &str,
 ) {
+    let count = count.max(1);
     let wallet_out = resolve_wallet_out_path(wallet_out)
         .unwrap_or_else(|e| exit_user_error(&format!("failed to resolve wallet output path: {e}")));
     let seed = resolve_master_seed(
@@ -404,6 +406,8 @@ pub(crate) fn run_addr_bruteforce(
             .unwrap_or_else(|e| exit_user_error(&e));
     let dom = domain_entry.raw as u16;
     let domain_mode = DomainMatchMode::HighByteOnly;
+
+    // Determine resume index from existing wallet (skips already-found accounts).
     let resume_start_index = bruteforce_resume_index(
         &wallet_out,
         upgrade_wallet,
@@ -413,139 +417,165 @@ pub(crate) fn run_addr_bruteforce(
         domain_mode,
     )
     .unwrap_or_else(|e| exit_user_error(&e));
-    let attempts_budget = bf_attempt_budget(resume_start_index, max_try);
-    let end_index = bf_end_index(resume_start_index, max_try);
+
     eprintln!(
-        "addr-bruteforce search plan: resume_start_index={resume_start_index} max_try={max_try} end_index={end_index:?} attempts_budget={attempts_budget}"
+        "addr-bruteforce search plan: count={count} resume_start_index={resume_start_index} max_try={max_try}"
     );
-    let started = Instant::now();
-    let Some(end_index) = end_index else {
-        exit_user_error(&bf_no_match_msg(
-            resume_start_index,
-            None,
-            max_try,
-            attempts_budget,
-            flags_mask,
-            expected_flags,
-        ));
-    };
-    let hit = brute_force_from_index(
-        &seed,
-        dom,
-        domain_mode,
-        flags_mask,
-        expected_flags,
-        resume_start_index,
-        end_index,
-        5,
-        |p: BruteforceProgress| {
-            println!("{}", fmt_addr_bruteforce_progress(p));
-        },
-    )
-    .unwrap_or_else(|| {
-        exit_user_error(&bf_no_match_msg(
-            resume_start_index,
-            Some(end_index),
-            max_try,
-            attempts_budget,
-            flags_mask,
-            expected_flags,
-        ))
-    });
-    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
-    let attempts = (hit.derivation_index - resume_start_index) as u64 + 1;
-    let attempts_per_sec = if elapsed_ms > 0.0 {
-        (attempts as f64) / (elapsed_ms / 1000.0)
+
+    let http_client = if !is_rpc_offline(rpc_base) {
+        Some(http_client_for_rpc())
     } else {
-        0.0
+        None
     };
 
-    let id_hex = hex::encode(hit.account_id);
-    let id_pretty = account_id_to_human(&hit.account_id);
-    let account_id_bech32dx = account_id_to_bech32dx(&hit.account_id);
-    let wallet_write = persist_wallet_account_output(
-        &wallet_out,
-        seed,
-        hit.signing_key,
-        hit.verifying_key,
-        hit.derivation_index,
-        hit.domain,
-        flags_mask,
-        expected_flags,
-        hit.derived_flags,
-        id_hex.clone(),
-        id_pretty.clone(),
-        None,
-        wallet_protection,
-        overwrite_wallet,
-    )
-    .unwrap_or_else(|e| exit_user_error(&e));
-    if warn_plaintext && wallet_write != "appended" {
+    let started = Instant::now();
+    let mut found = 0u32;
+    // current_index advances past the last hit so each iteration explores new space.
+    let mut current_index = resume_start_index;
+
+    while found < count {
+        let end_index = match bf_end_index(current_index, max_try) {
+            Some(e) => e,
+            None => exit_user_error(&bf_no_match_msg(
+                current_index,
+                None,
+                max_try,
+                0,
+                flags_mask,
+                expected_flags,
+            )),
+        };
+
+        let hit = brute_force_from_index(
+            &seed,
+            dom,
+            domain_mode,
+            flags_mask,
+            expected_flags,
+            current_index,
+            end_index,
+            5,
+            |p: BruteforceProgress| {
+                eprintln!("{}", fmt_addr_bruteforce_progress(p));
+            },
+        )
+        .unwrap_or_else(|| {
+            exit_user_error(&format!(
+                "addr-bruteforce: found {found}/{count} address(es); no further match in \
+                 derivation range {current_index}..={end_index} (max_try={max_try})\n\
+                 hint: increase --max-try or reduce --count"
+            ))
+        });
+
+        found += 1;
+        let id_hex = hex::encode(hit.account_id);
+        let id_pretty = account_id_to_human(&hit.account_id);
+        let account_id_bech32dx = account_id_to_bech32dx(&hit.account_id);
+        let iter_elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let iter_attempts = (hit.derivation_index - current_index) as u64 + 1;
+        let attempts_per_sec = if iter_elapsed_ms > 0.0 {
+            (iter_attempts as f64) / (iter_elapsed_ms / 1000.0)
+        } else {
+            0.0
+        };
+
         eprintln!(
-            "warning: --wallet-out without passphrase (no --wallet-passphrase and no PWM_WALLET_PASSPHRASE): wallet will be saved in plaintext-dev mode"
+            "found {found}/{count} at derivation_index={}",
+            hit.derivation_index
         );
-    }
 
-    for line in fmt_addr_bruteforce_results(
-        resume_start_index,
-        &id_hex,
-        &id_pretty,
-        &account_id_bech32dx,
-        hit.derivation_index,
-        hit.domain,
-        domain_entry.label,
-        flags_mask,
-        expected_flags,
-        hit.derived_flags,
-        wallet_out.as_path(),
-        wallet_write,
-        attempts,
-        elapsed_ms,
-        attempts_per_sec,
-    ) {
-        println!("{line}");
-    }
-
-    if is_rpc_offline(rpc_base) {
-        eprintln!("addr-bruteforce: offline mode (--rpc offline); skipped auto tx-init");
-        eprintln!("hint: brute-force result and wallet are saved; initialize this address manually before tx-send/tx-burn-mark:");
-        print_tx_init_hint(
-            wallet_out.as_path(),
+        let wallet_write = persist_wallet_account_output(
+            &wallet_out,
+            seed,
+            hit.signing_key,
+            hit.verifying_key,
             hit.derivation_index,
+            hit.domain,
+            flags_mask,
+            expected_flags,
             hit.derived_flags,
-        );
-        return;
-    }
+            id_hex.clone(),
+            id_pretty.clone(),
+            None,
+            wallet_protection.clone(),
+            // Only overwrite on the very first account; subsequent ones always append.
+            overwrite_wallet && found == 1,
+        )
+        .unwrap_or_else(|e| exit_user_error(&e));
 
-    let c = http_client_for_rpc();
-    let init_sk = SigningKey::from_bytes(&hit.signing_key);
-    match try_auto_init(
-        &c,
-        rpc_base,
-        &init_sk,
-        hit.domain,
-        hit.derivation_index,
-        hit.derived_flags,
-    ) {
-        Ok(status) => {
-            eprintln!("addr-bruteforce: auto tx-init succeeded on current RPC ({status})");
-        }
-        Err(e) => {
-            eprintln!("addr-bruteforce: auto tx-init failed: {e}");
-            if is_rpc_unavailable_error(&e) {
-                eprintln!(
-                    "hint: RPC unavailable; initialize address manually before tx-send/tx-burn-mark:"
-                );
-            } else {
-                eprintln!(
-                    "hint: brute-force result and wallet are saved; initialize this address manually before tx-send/tx-burn-mark:"
-                );
-            }
-            print_tx_init_hint(
-                wallet_out.as_path(),
-                hit.derivation_index,
-                hit.derived_flags,
+        if warn_plaintext && wallet_write != "appended" {
+            eprintln!(
+                "warning: --wallet-out without passphrase: wallet saved in plaintext-dev mode"
             );
         }
+
+        for line in fmt_addr_bruteforce_results(
+            current_index,
+            &id_hex,
+            &id_pretty,
+            &account_id_bech32dx,
+            hit.derivation_index,
+            hit.domain,
+            domain_entry.label,
+            flags_mask,
+            expected_flags,
+            hit.derived_flags,
+            wallet_out.as_path(),
+            wallet_write,
+            iter_attempts,
+            iter_elapsed_ms,
+            attempts_per_sec,
+        ) {
+            println!("{line}");
+        }
+
+        // Auto tx-init for online mode.
+        if let Some(ref c) = http_client {
+            let init_sk = SigningKey::from_bytes(&hit.signing_key);
+            match try_auto_init(
+                c,
+                rpc_base,
+                &init_sk,
+                hit.domain,
+                hit.derivation_index,
+                hit.derived_flags,
+            ) {
+                Ok(status) => {
+                    eprintln!(
+                        "addr-bruteforce: auto tx-init succeeded ({status}) for index={}",
+                        hit.derivation_index
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "addr-bruteforce: auto tx-init failed for index={}: {e}",
+                        hit.derivation_index
+                    );
+                    if is_rpc_unavailable_error(&e) {
+                        eprintln!("hint: RPC unavailable; initialize manually:");
+                    } else {
+                        eprintln!("hint: initialize manually:");
+                    }
+                    print_tx_init_hint(
+                        wallet_out.as_path(),
+                        hit.derivation_index,
+                        hit.derived_flags,
+                    );
+                }
+            }
+        }
+
+        // Advance search start past this hit for the next iteration.
+        current_index = hit.derivation_index + 1;
+    }
+
+    let total_elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+    eprintln!(
+        "addr-bruteforce: done — found {found}/{count} address(es) in {total_elapsed_ms:.0}ms"
+    );
+
+    if is_rpc_offline(rpc_base) {
+        eprintln!("addr-bruteforce: offline mode; skipped auto tx-init for all {found} account(s)");
+        eprintln!("hint: initialize each address manually with `pwm tx-init --wallet {} --index <N> --flags 0`", wallet_out.display());
     }
 }

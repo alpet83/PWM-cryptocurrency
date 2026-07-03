@@ -8,6 +8,15 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::time::Instant;
 
+#[derive(Clone)]
+pub struct PendingConservationRow {
+    pub recipient: String,
+    pub amount_pwm: u128,
+    pub nonce: u64,
+    pub enqueue_height: u64,
+    pub execute_at_height: u64,
+}
+
 /// One row from `GET /v1/accounts`.
 #[derive(Clone)]
 pub struct AcctRow {
@@ -20,6 +29,7 @@ pub struct AcctRow {
     pub marks_last_block: u64,
     pub effective_marks: Option<u32>,
     pub marks_sat_pct: Option<u8>,
+    pub pending_conservation: Vec<PendingConservationRow>,
     pub staked: u128,
     pub rescue_address: Option<AccountId>,
     pub active_policies: u16,
@@ -205,6 +215,7 @@ mod tests {
             marks_last_block: 0,
             effective_marks: None,
             marks_sat_pct: None,
+            pending_conservation: Vec::new(),
             staked,
             rescue_address: None,
             active_policies: 0,

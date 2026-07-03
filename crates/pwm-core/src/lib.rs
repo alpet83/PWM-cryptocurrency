@@ -24,7 +24,7 @@ pub mod wallet_io;
 pub mod wallet_read;
 
 pub use bridge_commitment::BridgeFederationCommitment;
-pub use chain::{absorb_blocks_tail, Chain, SealAbort, SealTimeMode, TAIL_BLOCK_CAP};
+pub use chain::{absorb_blocks_tail, Chain, SealAbort, SealEntry, SealTimeMode, TAIL_BLOCK_CAP};
 pub use display::{format_pwm, parse_decimal_pwm_units, PWM_RAW_SCALE};
 pub use genesis::{dev_net, ClaimPhaseConfig, FundingCfg, GRow, GenCfg, RewPol, VRow, ValCfg};
 pub use marks::{compute_block_reward, compute_lazy_marks, MARKS_CAP};

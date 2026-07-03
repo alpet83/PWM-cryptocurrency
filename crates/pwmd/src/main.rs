@@ -55,6 +55,20 @@ struct Cli {
     /// Optional explicit JSON snapshot path override (`blocks` + `state`).
     #[arg(long, value_name = "PATH")]
     data_file: Option<PathBuf>,
+    /// Static RPC source IP allowlist entries (`IP` or `CIDR`, comma-separated).
+    #[arg(
+        long = "rpc-allowed-ip",
+        env = "PWM_RPC_ALLOWED_IPS",
+        value_delimiter = ','
+    )]
+    rpc_allowed_ips: Vec<String>,
+    /// Seconds after startup during which RPC source IPs auto-enroll into the allowlist.
+    #[arg(
+        long = "rpc-allowed-auto",
+        env = "PWM_RPC_ALLOWED_AUTO",
+        default_value_t = 0
+    )]
+    rpc_allowed_auto: u16,
     /// Enable real socket transport loop (seed connect + NodeHello handshake).
     #[arg(long, default_value_t = false)]
     transport_real: bool,
@@ -330,6 +344,9 @@ struct Cli {
         default_value_t = 100
     )]
     cluster_seal_ahead_ms: u64,
+    /// Proposer: include full block bodies in ClusterPropose.tail_blocks (default sends lean proposals).
+    #[arg(long = "cluster-propose-full-blocks", default_value_t = false, action = clap::ArgAction::SetTrue)]
+    cluster_prop_full_blocks: bool,
     /// Max local-vs-attester tip lag tolerated for sync-ready preflight.
     #[arg(
         long = "cluster-attest-max-tip-lag",
@@ -620,6 +637,8 @@ async fn main() {
         listen,
         genesis,
         data_file,
+        rpc_allowed_ips: cli.rpc_allowed_ips,
+        rpc_allowed_auto: cli.rpc_allowed_auto,
         #[cfg(feature = "clickhouse-snapshot")]
         clickhouse_url: cli.clickhouse_url,
         #[cfg(feature = "clickhouse-snapshot")]
@@ -666,6 +685,7 @@ async fn main() {
             quorum_n: cli.cluster_quorum_n,
             attest_timeout_ms: ClusterCfg::default().attest_timeout_ms,
             seal_ahead_ms: cli.cluster_seal_ahead_ms,
+            full_blocks: cli.cluster_prop_full_blocks,
             block_timing_path: if block_timing_enabled {
                 Some(
                     cli.block_timing_path

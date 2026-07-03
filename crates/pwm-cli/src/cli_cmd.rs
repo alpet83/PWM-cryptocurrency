@@ -108,6 +108,15 @@ pub(crate) enum Cmd {
         max_try: u32,
         #[arg(
             long,
+            default_value_t = 1,
+            help = "Number of matching addresses to find and append to the wallet (default: 1). \
+                    Each found address is saved immediately; the next search resumes after the \
+                    last found derivation index. Exits with an error if the full count cannot be \
+                    reached within --max-try attempts from the resume index."
+        )]
+        count: u32,
+        #[arg(
+            long,
             help = "Wallet output path. Default: ~/.pwm-crypto/default-wallet.yaml"
         )]
         wallet_out: Option<PathBuf>,
@@ -373,6 +382,8 @@ pub(crate) enum Cmd {
             help = "Fee in raw units (1 PWM = 1_000_000 raw)."
         )]
         fee: u128,
+        #[arg(long, help = "Override sender nonce; skips RPC nonce fetch when set.")]
+        nonce: Option<u64>,
     },
     /// POST signed STAKE.
     TxStake {

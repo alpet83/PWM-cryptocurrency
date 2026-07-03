@@ -4,7 +4,7 @@ use crate::config::{base_url, http_client, parse_status_shard_label, DEBUG_FETCH
 use crate::marks_display::{effective_marks_at_height, marks_sat_pct};
 use crate::models::{
     parse_hex_account_id, parse_u128, parse_u16, parse_u32, parse_u64, AcctRow,
-    UNKNOWN_BALANCE_SENTINEL, UNKNOWN_INIT_NONCE_SENTINEL,
+    PendingConservationRow, UNKNOWN_BALANCE_SENTINEL, UNKNOWN_INIT_NONCE_SENTINEL,
 };
 use crate::roaming::submit_roaming_intent;
 use crate::status::{
@@ -139,6 +139,7 @@ pub fn acct_row_for_id(rows: &[AcctRow], id: &AccountId, label: Option<String>) 
             marks_last_block: 0,
             effective_marks: None,
             marks_sat_pct: None,
+            pending_conservation: Vec::new(),
             staked: 0,
             rescue_address: None,
             active_policies: 0,
@@ -272,6 +273,25 @@ pub fn poll_snapshot(client: &reqwest::blocking::Client) -> PollSnapshot {
                                 marks_last_block: parse_u64(&x["marks_last_block"]),
                                 effective_marks: None,
                                 marks_sat_pct: None,
+                                pending_conservation: x["pending_conservation"]
+                                    .as_array()
+                                    .map(|rows| {
+                                        rows.iter()
+                                            .map(|row| PendingConservationRow {
+                                                recipient: row["recipient"]
+                                                    .as_str()
+                                                    .unwrap_or("")
+                                                    .to_string(),
+                                                amount_pwm: parse_u128(&row["amount_pwm"]),
+                                                nonce: parse_u64(&row["nonce"]),
+                                                enqueue_height: parse_u64(&row["enqueue_height"]),
+                                                execute_at_height: parse_u64(
+                                                    &row["execute_at_height"],
+                                                ),
+                                            })
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
                                 staked: x["staked"]
                                     .as_str()
                                     .and_then(|s| s.parse::<u128>().ok())

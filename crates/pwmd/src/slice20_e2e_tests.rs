@@ -473,6 +473,9 @@ fn slice20_dual_flow_ok() {
     wait_ready(&client, &cy_base);
     wait_ready(&client, &do_base);
 
+    let sender_di_arg = sender_di.to_string();
+    let receiver_di_arg = receiver_di.to_string();
+    let do_dest_di_arg = do_dest_di.to_string();
     run_checked_capture(
         Command::new(&pwm_bin)
             .args([
@@ -482,7 +485,7 @@ fn slice20_dual_flow_ok() {
                 "--wallet",
                 wallet_recv_cy.to_str().unwrap(),
                 "--index",
-                "0",
+                &receiver_di_arg,
                 "--flags",
                 "0",
             ])
@@ -497,7 +500,7 @@ fn slice20_dual_flow_ok() {
                 "--wallet",
                 wallet_do_dest.to_str().unwrap(),
                 "--index",
-                "0",
+                &do_dest_di_arg,
                 "--flags",
                 "0",
             ])
@@ -542,6 +545,8 @@ fn slice20_dual_flow_ok() {
         "tx-send",
         "--wallet",
         wallet_cy.to_str().unwrap(),
+        "--index",
+        &sender_di_arg,
         "--to",
         &receiver_hex,
         "--amount",
@@ -599,7 +604,7 @@ fn slice20_dual_flow_ok() {
         break;
     }
 
-    // Logs: guard labels and tx commit delta observability.
+    // Logs: guard labels remain at INFO; per-transfer commit deltas are DEBUG-only.
     let cy_log_txt = std::fs::read_to_string(&cy_log).expect("cy log read");
     assert!(
         cy_log_txt.contains("tx routing guard: shard=CY"),
@@ -609,10 +614,6 @@ fn slice20_dual_flow_ok() {
         !cy_log_txt.contains("shard=A"),
         "legacy shard=A must not appear"
     );
-    assert!(
-        cy_log_txt.contains("tx commit delta: kind=transfer"),
-        "missing transfer tx commit delta"
-    );
 
     // Step B: cross-shard CY export -> finalize -> DO import
     let stdout_export = run_checked_capture(Command::new(&pwm_bin).args([
@@ -621,6 +622,8 @@ fn slice20_dual_flow_ok() {
         "tx-send",
         "--wallet",
         wallet_cy.to_str().unwrap(),
+        "--index",
+        &sender_di_arg,
         "--to",
         &do_dest_hex,
         "--amount",

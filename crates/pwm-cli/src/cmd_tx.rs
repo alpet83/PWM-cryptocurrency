@@ -284,18 +284,34 @@ pub(crate) fn run_tx_policy_deactivate(
     post_signed_tx(&c, rpc_base, &tx).unwrap_or_else(|e| exit_user_error(&e));
 }
 
-pub(crate) fn run_tx_send(
-    rpc_base: &str,
-    wallet: Option<PathBuf>,
-    master: Option<String>,
-    domain: Option<String>,
-    wallet_passphrase: Option<&str>,
-    upgrade_wallet: bool,
-    index: u32,
-    to: String,
-    amount: Option<u128>,
-    fee: u128,
-) {
+pub(crate) struct TxSendOpts<'a> {
+    pub(crate) rpc_base: &'a str,
+    pub(crate) wallet: Option<PathBuf>,
+    pub(crate) master: Option<String>,
+    pub(crate) domain: Option<String>,
+    pub(crate) wallet_passphrase: Option<&'a str>,
+    pub(crate) upgrade_wallet: bool,
+    pub(crate) index: u32,
+    pub(crate) to: String,
+    pub(crate) amount: Option<u128>,
+    pub(crate) fee: u128,
+    pub(crate) nonce: Option<u64>,
+}
+
+pub(crate) fn run_tx_send(opts: TxSendOpts<'_>) {
+    let TxSendOpts {
+        rpc_base,
+        wallet,
+        master,
+        domain,
+        wallet_passphrase,
+        upgrade_wallet,
+        index,
+        to,
+        amount,
+        fee,
+        nonce,
+    } = opts;
     let source = load_tx_wallet_signer(
         wallet.clone(),
         master.clone(),
@@ -327,7 +343,9 @@ pub(crate) fn run_tx_send(
             "tx-send note: target recipient preflight is unavailable in this source-RPC flow; target tx-import will reject missing/uninitialized recipients"
         );
     }
-    let nonce = fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e));
+    let nonce = nonce.unwrap_or_else(|| {
+        fetch_nonce(&c, rpc_base, source.from).unwrap_or_else(|e| exit_user_error(&e))
+    });
     let tx = SignedTx::sign_body(
         &source.sk,
         source.dom,

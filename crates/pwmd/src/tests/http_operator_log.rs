@@ -166,6 +166,42 @@ async fn op_log_remote_denied() {
 }
 
 #[tokio::test]
+async fn admin_rpc_remote_denied() {
+    let app = mk_log_app();
+    let svc = router_dev(app).into_service();
+
+    let res = svc
+        .oneshot(req_conn(
+            Request::post("/v1/shutdown")
+                .body(Body::empty())
+                .expect("shutdown req"),
+            SocketAddr::from(([10, 10, 0, 9], 5056)),
+        ))
+        .await
+        .expect("shutdown response");
+
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn bridge_reset_remote_denied() {
+    let app = mk_log_app();
+    let svc = router_dev(app).into_service();
+
+    let res = svc
+        .oneshot(req_conn(
+            Request::post("/v1/bridge-federation/reset")
+                .body(Body::empty())
+                .expect("bridge reset req"),
+            SocketAddr::from(([10, 10, 0, 9], 5057)),
+        ))
+        .await
+        .expect("bridge reset response");
+
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn op_log_token_allows() {
     let mut app = mk_log_app();
     app.op_token = Some(Arc::<str>::from("pwmd-secret"));

@@ -1,10 +1,12 @@
 //! Graceful node shutdown: persist snapshot then stop HTTP server.
 
+use super::common::ensure_operator_auth;
 use crate::snapshot::SealPersistMode;
 use crate::state::InitPhase;
 use crate::App;
-use axum::extract::State;
-use axum::http::StatusCode;
+use axum::extract::{ConnectInfo, State};
+use axum::http::{HeaderMap, StatusCode};
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use tracing::{error, info};
@@ -34,15 +36,33 @@ pub(crate) async fn graceful_shutdown_request(
         return Ok(());
     }
 
+    let mut writer_err = None;
+    if let Some(writer) = app.block_writer.as_ref() {
+        if let Err(err) = writer.flush() {
+            writer_err = Some(format!("shutdown block writer flush failed: {err}"));
+        }
+        if let Err(err) = writer.shutdown() {
+            writer_err.get_or_insert_with(|| format!("shutdown block writer failed: {err}"));
+        }
+    }
+
     let mut snapshot_err = None;
     if let Some(skip_reason) = shutdown_skip_reason(app).await {
         info!("shutdown snapshot persist skipped reason={skip_reason}");
+        snapshot_err = writer_err;
     } else {
         let inner = app.inner.read().await;
         if let Some(ref backend) = app.autosnapshot_backend {
             if let Err(err) = backend.save_seal_persist(&inner, SealPersistMode::ShutdownFull) {
-                snapshot_err = Some(format!("shutdown snapshot persist failed: {err}"));
+                snapshot_err = Some(match writer_err {
+                    Some(writer_err) => {
+                        format!("{writer_err}; shutdown snapshot persist failed: {err}")
+                    }
+                    None => format!("shutdown snapshot persist failed: {err}"),
+                });
             }
+        } else {
+            snapshot_err = writer_err;
         }
     }
     if let Ok(mut slot) = app.shutdown_tx.lock() {
@@ -107,7 +127,10 @@ async fn would_regress_checkpoint(app: &App, summary_path: &Path) -> Result<bool
 
 pub(super) async fn v1_shutdown(
     State(app): State<App>,
+    conn: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    ensure_operator_auth(&app, conn.map(|v| v.0), &headers)?;
     graceful_shutdown_request(&app, ShutdownReason::Rpc)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;

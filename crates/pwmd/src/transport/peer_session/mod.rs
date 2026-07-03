@@ -681,30 +681,39 @@ async fn mk_cluster_prop(app: &App, remote_tip_h: Option<u64>) -> Option<Cluster
     let g = app.inner.read().await;
     let tip_h = g.chain.tip_h();
     let height = manual_target_h.max(tip_h.saturating_add(1));
-    let mut st = g.chain.st.clone();
-    roll_epoch_if_needed(&g.chain.cfg, &mut st, height);
-    let prod_idx = pick_prod_idx(height, &st.active_validator_indices).ok()? as usize;
+    let active_idxs =
+        if g.chain.cfg.epoch_length_blocks > 0 && height % g.chain.cfg.epoch_length_blocks == 0 {
+            let mut st = g.chain.st.clone();
+            roll_epoch_if_needed(&g.chain.cfg, &mut st, height);
+            st.active_validator_indices
+        } else {
+            g.chain.st.active_validator_indices.clone()
+        };
+    let prod_idx = pick_prod_idx(height, &active_idxs).ok()? as usize;
     if app.cluster_cfg.members.get(prod_idx).map(String::as_str) != Some(proposer) {
         return None;
     }
     let tip_hash = hex::encode(g.chain.tip_hash());
     let vote = format!("vo1:{height}:{tip_hash}");
-    let gap = remote_tip_h.map(|h| tip_h.saturating_sub(h)).unwrap_or(0);
-    let tail_depth = usize::try_from(gap.saturating_add(2))
-        .unwrap_or(CLUSTER_PROP_TAIL_CAP)
-        .clamp(1, CLUSTER_PROP_TAIL_CAP);
-    let mut tail_blocks: Vec<SyncBlockWire> = g
-        .chain
-        .blocks
-        .iter()
-        .rev()
-        .take(tail_depth)
-        .map(|blk| SyncBlockWire {
-            height: blk.hdr.height,
-            hash: hex::encode(hdr_hash(&blk.hdr)),
-            block: Some(blk.clone()),
-        })
-        .collect();
+    let mut tail_blocks: Vec<SyncBlockWire> = if app.cluster_cfg.full_blocks {
+        let gap = remote_tip_h.map(|h| tip_h.saturating_sub(h)).unwrap_or(0);
+        let tail_depth = usize::try_from(gap.saturating_add(2))
+            .unwrap_or(CLUSTER_PROP_TAIL_CAP)
+            .clamp(1, CLUSTER_PROP_TAIL_CAP);
+        g.chain
+            .blocks
+            .iter()
+            .rev()
+            .take(tail_depth)
+            .map(|blk| SyncBlockWire {
+                height: blk.hdr.height,
+                hash: hex::encode(hdr_hash(&blk.hdr)),
+                block: Some(blk.clone()),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     tail_blocks.reverse();
     Some(ClusterProposeWire {
         height,
@@ -1022,8 +1031,13 @@ async fn route_cluster_stub(
             );
             drop(hs);
             let out = mk_cluster_attest(app, &msg).await;
+            let proc_ms = proc_start_at.elapsed().as_secs_f64() * 1000.0;
+            info!(
+                target: "pwmd::peer",
+                "cluster_attest_proc h={} round={} proc_ms={:.2}",
+                height, round, proc_ms
+            );
             if let Some(bt) = app.block_timing.as_ref() {
-                let proc_ms = proc_start_at.elapsed().as_secs_f64() * 1000.0;
                 block_timing::note_att_proc(
                     bt,
                     block_timing::ProcCtx {
@@ -3052,6 +3066,32 @@ mod tests {
             .to_bytes();
         let sig_msg = cluster_sig_msg(h, 0, &ack.vote_object, &ack.candidate_hash, None);
         assert!(verify_attest_sig(&ack.signature, &local_pk, &sig_msg));
+    }
+
+    #[tokio::test]
+    async fn cluster_prop_tail_modes() {
+        let mut app = app_from_dev_net();
+        app.cluster_cfg.enabled = true;
+        app.cluster_cfg.role = crate::handshake::ClusterRole::Proposer;
+        app.cluster_cfg.members = vec!["node-a".to_string(), "node-b".to_string()];
+        app.cluster_cfg.quorum_n = 2;
+        app.cluster_cfg.quorum_k = 1;
+        app.node_instance_id = "node-a".to_string();
+        {
+            let mut g = app.inner.write().await;
+            g.chain.seal(Vec::new()).expect("seed tail block");
+        }
+
+        let lean = mk_cluster_prop(&app, None).await.expect("lean propose");
+        assert!(lean.tail_blocks.is_empty());
+        assert_eq!(lean.round, 0);
+        assert!(!lean.vote_object.is_empty());
+        assert!(!lean.candidate_hash.is_empty());
+
+        app.cluster_cfg.full_blocks = true;
+        let full = mk_cluster_prop(&app, None).await.expect("full propose");
+        assert!(!full.tail_blocks.is_empty());
+        assert!(full.tail_blocks.iter().all(|blk| blk.block.is_some()));
     }
 
     #[tokio::test]

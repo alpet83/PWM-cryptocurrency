@@ -1765,6 +1765,8 @@ fn tx_send_cli_to_pretty() {
         &recipient,
         "--amount",
         "7",
+        "--nonce",
+        "42",
     ])
     .expect("must parse tx-send with pretty recipient");
     match cli.cmd {
@@ -1776,6 +1778,7 @@ fn tx_send_cli_to_pretty() {
             to,
             amount,
             fee,
+            nonce,
         } => {
             assert_eq!(wallet.unwrap(), PathBuf::from("wallet.yaml"));
             assert!(master.is_none());
@@ -1784,6 +1787,7 @@ fn tx_send_cli_to_pretty() {
             assert_eq!(parse_account_id(&to).unwrap(), recipient_id);
             assert_eq!(amount, Some(7));
             assert_eq!(fee, 1);
+            assert_eq!(nonce, Some(42));
         }
         _ => panic!("unexpected cmd"),
     }

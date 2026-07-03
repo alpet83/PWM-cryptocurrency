@@ -1,6 +1,6 @@
 [package]
 name = "pwmd"
-version = "0.1.68"
+version = "0.1.84"
 edition.workspace = true
 license.workspace = true
 
@@ -33,7 +33,10 @@ clickhouse-snapshot = []
 
 [dependencies]
 pwm-core = { path = "../pwm-core" }
+arc-swap = "1"
+thread-priority = "1"
 axum.workspace = true
+sha2 = "0.10"
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

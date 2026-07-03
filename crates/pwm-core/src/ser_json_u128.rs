@@ -54,7 +54,48 @@ impl<'de> Visitor<'de> for U128Visitor {
         self.visit_str(&v)
     }
 
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        u128::try_from(v).map_err(|_| E::custom("negative integer is invalid for u128"))
+    }
+
+    fn visit_i128<E: de::Error>(self, v: i128) -> Result<Self::Value, E> {
+        u128::try_from(v).map_err(|_| E::custom("negative integer is invalid for u128"))
+    }
+
     fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
         Ok(v as u128)
+    }
+
+    fn visit_u128<E: de::Error>(self, v: u128) -> Result<Self::Value, E> {
+        Ok(v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::deserialize;
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct Row {
+        #[serde(deserialize_with = "deserialize")]
+        amount: u128,
+    }
+
+    #[test]
+    fn neg_int_rejects_precise() {
+        let err = serde_json::from_str::<Row>(r#"{"amount":-1}"#).expect_err("negative u128");
+
+        assert!(err
+            .to_string()
+            .contains("negative integer is invalid for u128"));
+    }
+
+    #[test]
+    fn u128_str_max_ok() {
+        let row = serde_json::from_str::<Row>(&format!(r#"{{"amount":"{}"}}"#, u128::MAX))
+            .expect("u128 max string");
+
+        assert_eq!(row.amount, u128::MAX);
     }
 }

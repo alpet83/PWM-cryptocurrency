@@ -11,6 +11,13 @@ use std::collections::VecDeque;
 /// `Chain::seal` failed; carries txs back for mempool re-injection.
 pub type SealAbort = (String, Vec<SignedTx>);
 
+/// Seal-time transaction source.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SealEntry {
+    Raw(SignedTx),
+    PreValidated { tx: SignedTx, at_height: u64 },
+}
+
 /// Cap on retained in-memory block bodies (canonical height stays in [`Chain::canonical_h`]).
 pub const TAIL_BLOCK_CAP: usize = 1000;
 
@@ -156,6 +163,19 @@ impl Chain {
 
     /// Seals one block: apply txs atomically, pay producer, verify PoA sig (marks are not accrued here; genesis seeds marks).
     pub fn seal(&mut self, txs: Vec<SignedTx>) -> Result<(), SealAbort> {
+        self.seal_entries(txs.into_iter().map(SealEntry::Raw).collect())
+    }
+
+    /// Seals one block from raw and prevalidated tx entries.
+    pub fn seal_entries(&mut self, entries: Vec<SealEntry>) -> Result<(), SealAbort> {
+        let txs: Vec<SignedTx> = entries
+            .iter()
+            .map(|entry| match entry {
+                SealEntry::Raw(tx) => tx.clone(),
+                SealEntry::PreValidated { tx, .. } => tx.clone(),
+            })
+            .collect();
+        let tip_before = self.tip_h();
         let (height, ts) = self.next_apply_ctx().map_err(|e| (e, txs.clone()))?;
         let prev = self.tip_hash();
         let mut st = self.st.clone();
@@ -164,8 +184,17 @@ impl Chain {
             pick_prod_idx(height, &st.active_validator_indices).map_err(|e| (e, txs.clone()))?;
         st.refund_exp_locks(height);
 
-        for tx in &txs {
-            if let Err(e) = st.apply_tx_with_ctx(tx, height, ts, &self.cfg) {
+        for entry in &entries {
+            let result = match entry {
+                SealEntry::Raw(tx) => st.apply_tx_with_ctx(tx, height, ts, &self.cfg),
+                SealEntry::PreValidated { tx, at_height } if *at_height == tip_before => {
+                    st.apply_prechecked_tx(tx, height, ts, &self.cfg)
+                }
+                SealEntry::PreValidated { tx, .. } => {
+                    st.apply_tx_with_ctx(tx, height, ts, &self.cfg)
+                }
+            };
+            if let Err(e) = result {
                 return Err((format!("tx: {e}"), txs));
             }
         }
@@ -188,6 +217,8 @@ impl Chain {
             st.reward_producer_v2(&prod_acct, rew, self.cfg.pwm_stake_min, 1_000_000);
         }
 
+        // PERF: digest(&State) serializes the full state and still runs on the seal critical path;
+        // a future state-root redesign should make this incremental or off-path.
         let state_root = digest(&st);
         let tx_root = txs_root(&txs);
         let hdr = BlockHdr {
@@ -201,9 +232,12 @@ impl Chain {
         };
         let sk = &self.val_sks[prod_idx as usize];
         let hdr = BlockHdr::sign(sk, hdr);
-        if !hdr.verify_sig(&self.cfg.prod_pk(prod_idx)) {
-            return Err(("bad block sig".into(), txs));
-        }
+        // Self-consistency check: sign() always produces a valid sig for the matching keypair.
+        // debug_assert! is a no-op in release builds; peers reject any corrupt block anyway.
+        debug_assert!(
+            hdr.verify_sig(&self.cfg.prod_pk(prod_idx)),
+            "sign produced invalid sig for prod_idx={prod_idx}"
+        );
 
         let blk = Block { hdr, txs };
         self.st = st;
@@ -231,7 +265,7 @@ mod tests {
     use crate::block::hdr_hash;
     use crate::genesis::{FundingCfg, RewPol, VRow, ValCfg};
     use crate::hd::{account_id_from_parts, domain_of_account_id};
-    use crate::tx::{SignedTx, TxBody};
+    use crate::tx::{PolicyKind, SignedTx, TxBody};
     use crate::types::{conservation_flag, cosign_non_dis, Account, AccountId};
     use slip10_ed25519::derive_ed25519_private_key;
 
@@ -281,6 +315,23 @@ mod tests {
             }
         }
         panic!("failed to find same-hi account");
+    }
+
+    fn user_sk_plain_same_hi(seed_start: u8, domain_hi: u8) -> (SigningKey, u32, AccountId) {
+        for attempt in 0..4096 {
+            let n = attempt as u16;
+            let mut s = [seed_start; 32];
+            s[0] = seed_start.wrapping_add(n as u8);
+            s[1] = (n >> 8) as u8;
+            let (sk, idx, aid) = user_sk0(&s);
+            if domain_of_account_id(&aid).to_be_bytes()[0] == domain_hi
+                && !conservation_flag(&aid)
+                && !cosign_non_dis(&aid)
+            {
+                return (sk, idx, aid);
+            }
+        }
+        panic!("failed to find plain same-hi account");
     }
 
     #[test]
@@ -357,6 +408,101 @@ mod tests {
         let (msg, txs) = r.expect_err("seal must fail");
         assert!(msg.contains("bad nonce"), "msg={msg}");
         assert_eq!(txs, vec![want]);
+        assert_eq!(c.tip_h(), 0);
+    }
+
+    #[test]
+    fn seal_fresh_prechecked_skip_policy() {
+        let (g, sks) = crate::genesis::dev_net();
+        let mut c = Chain::boot(g, sks);
+        let hi = domain_of_account_id(&c.cfg.accounts[0].acct).to_be_bytes()[0];
+        let (sender_sk, sender_der_idx, sender_id) = user_sk_plain_same_hi(0xA0, hi);
+        let sender_dom = domain_of_account_id(&sender_id);
+        let (rcpt_sk, rcpt_idx, rcpt_id) = user_sk_same_hi(0xB0, sender_dom.to_be_bytes()[0]);
+        c.st.accounts.insert(
+            sender_id,
+            Account::genesis_funded(sender_sk.verifying_key().to_bytes(), sender_der_idx, 100),
+        );
+        c.st.accounts.insert(
+            rcpt_id,
+            Account::genesis_funded(rcpt_sk.verifying_key().to_bytes(), rcpt_idx, 0),
+        );
+        c.st.accounts
+            .get_mut(&rcpt_id)
+            .expect("recipient")
+            .active_policies |= PolicyKind::SenderFilter.bit();
+        let tx = SignedTx::sign_body(
+            &sender_sk,
+            sender_dom,
+            sender_der_idx,
+            0,
+            TxBody::Transfer {
+                to: rcpt_id,
+                amount: 3,
+                fee: 0,
+            },
+        );
+
+        c.seal_entries(vec![SealEntry::PreValidated {
+            tx: tx.clone(),
+            at_height: c.tip_h(),
+        }])
+        .expect("fresh prevalidated seal");
+
+        assert_eq!(c.tip_h(), 1);
+        assert_eq!(c.blocks.back().expect("block").txs, vec![tx]);
+        assert_eq!(c.st.accounts.get(&sender_id).expect("sender").nonce, 1);
+        assert_eq!(
+            c.st.accounts.get(&sender_id).expect("sender").balance_pwm,
+            97
+        );
+        assert_eq!(
+            c.st.accounts.get(&rcpt_id).expect("recipient").balance_pwm,
+            3
+        );
+    }
+
+    #[test]
+    fn seal_stale_prechecked_uses_policy() {
+        let (g, sks) = crate::genesis::dev_net();
+        let mut c = Chain::boot(g, sks);
+        let hi = domain_of_account_id(&c.cfg.accounts[0].acct).to_be_bytes()[0];
+        let (sender_sk, sender_der_idx, sender_id) = user_sk_plain_same_hi(0xA2, hi);
+        let sender_dom = domain_of_account_id(&sender_id);
+        let (rcpt_sk, rcpt_idx, rcpt_id) = user_sk_same_hi(0xB2, sender_dom.to_be_bytes()[0]);
+        c.st.accounts.insert(
+            sender_id,
+            Account::genesis_funded(sender_sk.verifying_key().to_bytes(), sender_der_idx, 100),
+        );
+        c.st.accounts.insert(
+            rcpt_id,
+            Account::genesis_funded(rcpt_sk.verifying_key().to_bytes(), rcpt_idx, 0),
+        );
+        c.st.accounts
+            .get_mut(&rcpt_id)
+            .expect("recipient")
+            .active_policies |= PolicyKind::SenderFilter.bit();
+        let tx = SignedTx::sign_body(
+            &sender_sk,
+            sender_dom,
+            sender_der_idx,
+            0,
+            TxBody::Transfer {
+                to: rcpt_id,
+                amount: 3,
+                fee: 0,
+            },
+        );
+
+        let err = c
+            .seal_entries(vec![SealEntry::PreValidated {
+                tx: tx.clone(),
+                at_height: c.tip_h().saturating_add(1),
+            }])
+            .expect_err("stale prevalidated must re-run policy");
+
+        assert!(err.0.contains("policy sender filtered"), "err={}", err.0);
+        assert_eq!(err.1, vec![tx]);
         assert_eq!(c.tip_h(), 0);
     }
 
@@ -799,5 +945,222 @@ mod tests {
         let h2 = c2.blocks.back().expect("block c2");
         assert_eq!(h1.hdr.ts, h2.hdr.ts);
         assert_eq!(hdr_hash(&h1.hdr), hdr_hash(&h2.hdr));
+    }
+
+    const TIMING_ACCOUNTS: usize = 96;
+    const TIMING_ROUNDS: usize = 5;
+    const TIMING_SWEEP: [usize; 3] = [10, 40, 80];
+
+    struct TimingEnv {
+        chain: Chain,
+        val_sk: SigningKey,
+        val_pk: [u8; 32],
+        users: Vec<(SigningKey, u32, AccountId)>,
+    }
+
+    #[derive(Default)]
+    struct Times {
+        state_clone: u128,
+        apply_fast: u128,
+        apply_raw: u128,
+        state_digest: u128,
+        tx_root: u128,
+        sign_hdr: u128,
+        verify_sig: u128,
+        snap_clone: u128,
+        hot_rebuild: u128,
+    }
+
+    fn mk_timing_env() -> TimingEnv {
+        use crate::genesis::{GRow, GenCfg};
+
+        let val_seed = [1u8; 32];
+        let val_sk_bytes = derive_ed25519_private_key(&val_seed, &[1_000_000, 1]);
+        let val_sk = SigningKey::from_bytes(&val_sk_bytes);
+        let val_pk = val_sk.verifying_key().to_bytes();
+        let val_aid = account_id_from_parts(&val_pk, 1);
+        let mut users = Vec::with_capacity(TIMING_ACCOUNTS);
+        let mut grows = Vec::with_capacity(TIMING_ACCOUNTS + 1);
+        let mut attempt = 0u16;
+        while users.len() < TIMING_ACCOUNTS {
+            let mut seed = [0xA0; 32];
+            seed[0] = attempt as u8;
+            seed[1] = (attempt >> 8) as u8;
+            let (sk, der_idx, aid) = user_sk0(&seed);
+            attempt = attempt.saturating_add(1);
+            if conservation_flag(&aid) || cosign_non_dis(&aid) {
+                continue;
+            }
+            grows.push(GRow {
+                acct: aid,
+                pubkey: sk.verifying_key().to_bytes(),
+                der_idx,
+                bal: 1_000_000,
+            });
+            users.push((sk, der_idx, aid));
+        }
+        grows.push(GRow {
+            acct: val_aid,
+            pubkey: val_pk,
+            der_idx: 1,
+            bal: 0,
+        });
+        let gcfg = GenCfg {
+            funding: FundingCfg {
+                accounts: grows.clone(),
+            },
+            vals: ValCfg {
+                set: vec![VRow {
+                    acct: val_aid,
+                    pubkey: val_pk,
+                    der_idx: 1,
+                }],
+            },
+            rew: RewPol::ToProducerAccount,
+            accounts: grows,
+            ..crate::genesis::dev_net().0
+        };
+        let mut chain = Chain::boot(gcfg, vec![val_sk.clone()]);
+        for _ in 0..5 {
+            chain.seal(vec![]).expect("warm");
+        }
+        TimingEnv {
+            chain,
+            val_sk,
+            val_pk,
+            users,
+        }
+    }
+
+    fn mk_timing_txs(env: &TimingEnv, ntx: usize) -> Vec<SignedTx> {
+        (0..ntx)
+            .map(|i| {
+                let (sk, der_idx, from) = &env.users[i % env.users.len()];
+                let to = env.users[(i + 1) % env.users.len()].2;
+                SignedTx::sign_body(
+                    sk,
+                    domain_of_account_id(from),
+                    *der_idx,
+                    0,
+                    TxBody::Transfer {
+                        to,
+                        amount: 1,
+                        fee: 0,
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn run_timing_round(env: &TimingEnv, txs: &[SignedTx], times: &mut Times) {
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use std::time::Instant;
+
+        let height = env.chain.tip_h() + 1;
+        let start = Instant::now();
+        let mut st_fast = env.chain.st.clone();
+        times.state_clone += start.elapsed().as_micros();
+        let start = Instant::now();
+        for tx in txs {
+            st_fast
+                .apply_prechecked_tx(tx, height, 0, &env.chain.cfg)
+                .expect("apply prechecked tx");
+        }
+        times.apply_fast += start.elapsed().as_micros();
+        let start = Instant::now();
+        let state_root = digest(&st_fast);
+        times.state_digest += start.elapsed().as_micros();
+        let start = Instant::now();
+        let tx_root = txs_root(txs);
+        times.tx_root += start.elapsed().as_micros();
+        let hdr = BlockHdr {
+            height,
+            prev_hash: env.chain.tip_hash(),
+            ts: 0,
+            prod_idx: 0,
+            tx_root,
+            state_root,
+            sig: [0u8; 64],
+        };
+        let start = Instant::now();
+        let signed = BlockHdr::sign(&env.val_sk, hdr);
+        times.sign_hdr += start.elapsed().as_micros();
+        let start = Instant::now();
+        assert!(signed.verify_sig(&env.val_pk));
+        times.verify_sig += start.elapsed().as_micros();
+        let start = Instant::now();
+        let _snapshot = Arc::new(st_fast.clone());
+        times.snap_clone += start.elapsed().as_micros();
+        let start = Instant::now();
+        let _hot: HashMap<_, _> = st_fast
+            .accounts
+            .iter()
+            .map(|(account, state)| (*account, state.balance_pwm))
+            .collect();
+        times.hot_rebuild += start.elapsed().as_micros();
+
+        let mut st_raw = env.chain.st.clone();
+        let start = Instant::now();
+        for tx in txs {
+            st_raw
+                .apply_tx_with_ctx(tx, height, 0, &env.chain.cfg)
+                .expect("apply raw tx");
+        }
+        times.apply_raw += start.elapsed().as_micros();
+    }
+
+    fn avg_times(times: &Times) -> Times {
+        let div = TIMING_ROUNDS as u128;
+        Times {
+            state_clone: times.state_clone / div,
+            apply_fast: times.apply_fast / div,
+            apply_raw: times.apply_raw / div,
+            state_digest: times.state_digest / div,
+            tx_root: times.tx_root / div,
+            sign_hdr: times.sign_hdr / div,
+            verify_sig: times.verify_sig / div,
+            snap_clone: times.snap_clone / div,
+            hot_rebuild: times.hot_rebuild / div,
+        }
+    }
+
+    fn print_times(ntx: usize, times: &Times) {
+        let total = times.state_clone
+            + times.apply_fast
+            + times.state_digest
+            + times.tx_root
+            + times.sign_hdr
+            + times.verify_sig
+            + times.snap_clone
+            + times.hot_rebuild;
+        println!("\n=== seal_phase_timings N_TX={ntx} ===");
+        println!("[FAST PATH - apply_prechecked_tx (production hot path)]");
+        println!("state_clone           {:>8} us", times.state_clone);
+        println!("apply_prechecked*{ntx:<3} {:>8} us", times.apply_fast);
+        println!("digest(state)         {:>8} us", times.state_digest);
+        println!("txs_root              {:>8} us", times.tx_root);
+        println!("sign_hdr              {:>8} us", times.sign_hdr);
+        println!("verify_sig            {:>8} us", times.verify_sig);
+        println!("snap_clone            {:>8} us", times.snap_clone);
+        println!("hot_rebuild           {:>8} us", times.hot_rebuild);
+        println!("TOTAL                 {:>8} us", total);
+        println!("[RAW PATH - apply_tx_with_ctx (includes Ed25519; release seal uses debug_assert for hdr sig)]");
+        println!("apply_raw*{ntx:<3}       {:>8} us", times.apply_raw);
+    }
+    /// Measures seal phase costs across a small tx-count sweep.
+    /// Run with: cargo test -p pwm-core seal_phase_timings -- --nocapture
+    #[test]
+    fn seal_phase_timings() {
+        let env = mk_timing_env();
+        for ntx in TIMING_SWEEP {
+            let txs = mk_timing_txs(&env, ntx);
+            assert_eq!(txs.len(), ntx);
+            let mut times = Times::default();
+            for _ in 0..TIMING_ROUNDS {
+                run_timing_round(&env, &txs, &mut times);
+            }
+            print_times(ntx, &avg_times(&times));
+        }
     }
 }

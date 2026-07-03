@@ -1,4 +1,4 @@
-//! Json epoch files: one block per line (JSONL bytes inside `block_e*.json`), atomic manifest.
+//! Epoch files: one block per line (JSONL, `block_e*.jsonl`), atomic manifest.
 //!
 //! There is no true lazy block cache yet: logs that mention sequential epoch JSONL read measure the
 //! disk-bound phase; trimming the in-memory tip is `absorb_blocks_tail` in `lifecycle` (cheap).
@@ -11,9 +11,11 @@ use super::telemetry::SNAP_STARTUP_TARGET;
 use crate::state::Inner;
 use pwm_core::block::{hdr_hash, Block};
 use std::fs;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::time::Instant;
+
+const TAIL_WINDOW: u64 = 128 * 1024;
 
 /// Lines hold one [`Block`] JSON per line (JSONL). `.json` suffix is historical; content is newline-delimited JSON.
 pub(crate) fn append_block_for_epoch(summary_path: &Path, blk: &Block) -> Result<(), String> {
@@ -24,69 +26,63 @@ pub(crate) fn append_block_for_epoch(summary_path: &Path, blk: &Block) -> Result
     if let Some(dir) = epoch_path.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("epochs mkdir: {e}"))?;
     }
-    let lines = read_jsonl_lines(&epoch_path)?;
-    if lines.is_empty() {
+    let last_h = read_last_block_height(&epoch_path)?;
+    if last_h.is_none() {
         if h != er.first_h {
+            cleanup_empty_gap_file(&epoch_path, h, er.first_h)?;
             return Err(format!(
-                "epoch append: first height in file must be {}, got {}",
+                "epoch append gap: first height in file must be {}, got {}",
                 er.first_h, h
             ));
         }
     } else {
-        let last: Block =
-            serde_json::from_str(lines.last().expect("lines non-empty after is_empty=false"))
-                .map_err(|e| format!("epoch file corrupt tail line: {e}"))?;
-        if last.hdr.height != h - 1 {
+        let prev_h = h
+            .checked_sub(1)
+            .ok_or_else(|| "epoch append: height 0 has no previous height".to_string())?;
+        let tail_h = last_h.expect("last height present after is_none=false");
+        if tail_h != prev_h {
             return Err(format!(
                 "epoch append: want prev height {}, file tail height {}",
-                h - 1,
-                last.hdr.height
+                prev_h, tail_h
             ));
         }
     }
+    let mut man = if let Some(m) = load_manifest(summary_path)? {
+        m
+    } else {
+        mk_manifest(h, hex::encode(hdr_hash(&blk.hdr)), vec![])
+    };
+    let first_h = if last_h.is_none() {
+        er.first_h
+    } else {
+        man.epochs
+            .iter()
+            .find(|m| m.idx == eidx)
+            .map(|m| m.first_h)
+            .ok_or_else(|| format!("epoch append: existing file missing manifest row {eidx}"))?
+    };
     let line = serde_json::to_string(blk).map_err(|e| format!("encode block: {e}"))?;
-    let mut new_body = String::new();
-    for (i, l) in lines.iter().enumerate() {
-        if i > 0 {
-            new_body.push('\n');
-        }
-        new_body.push_str(l);
-    }
-    if !new_body.is_empty() {
-        new_body.push('\n');
-    }
-    new_body.push_str(&line);
-    new_body.push('\n');
-
-    let tmp_ep = epoch_path.with_extension("json.tmp");
     {
-        let mut f = fs::File::create(&tmp_ep).map_err(|e| format!("epoch tmp create: {e}"))?;
-        f.write_all(new_body.as_bytes())
-            .map_err(|e| format!("epoch tmp write: {e}"))?;
-        f.sync_all().map_err(|e| format!("epoch tmp fsync: {e}"))?;
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&epoch_path)
+            .map_err(|e| format!("epoch append open: {e}"))?;
+        f.write_all(line.as_bytes())
+            .and_then(|_| f.write_all(b"\n"))
+            .map_err(|e| format!("epoch append write: {e}"))?;
+        f.flush().map_err(|e| format!("epoch append flush: {e}"))?;
+        f.sync_all()
+            .map_err(|e| format!("epoch append fsync: {e}"))?;
     }
-    fs::rename(&tmp_ep, &epoch_path).map_err(|e| format!("epoch rename: {e}"))?;
 
     let tip_hash = hex::encode(hdr_hash(&blk.hdr));
     let fname = epoch_file_name(eidx);
-    let first_h = if lines.is_empty() {
-        h
-    } else {
-        let fst: Block = serde_json::from_str(&lines[0])
-            .map_err(|e| format!("epoch file corrupt head line: {e}"))?;
-        fst.hdr.height
-    };
     let meta = EpochMeta {
         idx: eidx,
         first_h,
         last_h: h,
         file_name: fname,
-    };
-
-    let mut man = if let Some(m) = load_manifest(summary_path)? {
-        m
-    } else {
-        mk_manifest(h, tip_hash.clone(), vec![meta.clone()])
     };
     man.canonical_h = h;
     man.tip_hash = tip_hash;
@@ -99,6 +95,72 @@ pub(crate) fn append_block_for_epoch(summary_path: &Path, blk: &Block) -> Result
     }
     write_manifest(summary_path, &man)?;
     Ok(())
+}
+
+fn cleanup_empty_gap_file(epoch_path: &Path, h: u64, first_h: u64) -> Result<(), String> {
+    match fs::metadata(epoch_path) {
+        Ok(meta) if meta.len() == 0 => {
+            fs::remove_file(epoch_path)
+                .map_err(|e| format!("epoch append gap cleanup {}: {e}", epoch_path.display()))?;
+            tracing::warn!(
+                path = %epoch_path.display(),
+                height = h,
+                first_h,
+                "removed empty epoch file after append gap"
+            );
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("stat {}: {e}", epoch_path.display())),
+    }
+    Ok(())
+}
+
+fn read_last_block_height(p: &Path) -> Result<Option<u64>, String> {
+    let mut f = match fs::File::open(p) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("open {}: {e}", p.display())),
+    };
+    let len = f
+        .metadata()
+        .map_err(|e| format!("stat {}: {e}", p.display()))?
+        .len();
+    if len == 0 {
+        return Ok(None);
+    }
+
+    let start = len.saturating_sub(TAIL_WINDOW);
+    f.seek(SeekFrom::Start(start))
+        .map_err(|e| format!("seek {} tail: {e}", p.display()))?;
+    let mut tail = Vec::with_capacity((len - start) as usize);
+    f.read_to_end(&mut tail)
+        .map_err(|e| format!("read {} tail: {e}", p.display()))?;
+
+    let Some(end) = tail.iter().rposition(|b| !b.is_ascii_whitespace()) else {
+        if start > 0 {
+            return Err(format!(
+                "epoch file tail line starts before {TAIL_WINDOW} byte window: {}",
+                p.display()
+            ));
+        }
+        return Ok(None);
+    };
+    let line_start = match tail[..end].iter().rposition(|b| *b == b'\n') {
+        Some(i) => i + 1,
+        None if start == 0 => 0,
+        None => {
+            return Err(format!(
+                "epoch file tail line starts before {TAIL_WINDOW} byte window: {}",
+                p.display()
+            ))
+        }
+    };
+    let line = std::str::from_utf8(&tail[line_start..=end])
+        .map_err(|e| format!("epoch file corrupt tail utf-8: {e}"))?;
+    let last: Block =
+        serde_json::from_str(line).map_err(|e| format!("epoch file corrupt tail line: {e}"))?;
+    Ok(Some(last.hdr.height))
 }
 
 /// Appends the current tip block from RAM (must match [`Inner::chain`](crate::state::Inner::chain) tip height).
@@ -510,7 +572,7 @@ fn write_manifest(summary_path: &Path, man: &EpochManifest) -> Result<(), String
         fs::create_dir_all(dir).map_err(|e| format!("manifest mkdir: {e}"))?;
     }
     let body = serde_json::to_string_pretty(man).map_err(|e| format!("encode manifest: {e}"))?;
-    let tmp = p.with_extension("json.tmp");
+    let tmp = p.with_extension("json.tmp"); // manifest остаётся .json, не .jsonl
     {
         let mut f = fs::File::create(&tmp).map_err(|e| format!("manifest tmp: {e}"))?;
         f.write_all(body.as_bytes())
@@ -524,6 +586,7 @@ fn write_manifest(summary_path: &Path, man: &EpochManifest) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::block_writer::BlockWriter;
     use crate::bootstrap::app_from_dev_net;
     use crate::snapshot::epoch::epoch_file_path;
     use crate::snapshot::epoch::EPOCH_MAN_SCHEMA_CUR;
@@ -531,7 +594,136 @@ mod tests {
     use crate::snapshot::io::{json_file_seal_persist, save_checkpoint_summary};
     use crate::snapshot::{encode_inner_snap_json, load_snapshot};
     use pwm_core::block::Block;
+    use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_case(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let sfx = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pwm-{tag}-{sfx}"));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let summary = dir.join("pwm-data.json");
+        (dir, summary)
+    }
+
+    fn sealed_blocks(count: usize) -> Vec<Block> {
+        let app = app_from_dev_net();
+        let mut out = Vec::with_capacity(count);
+        let mut g = app.inner.try_write().expect("inner");
+        for _ in 0..count {
+            g.chain.seal(vec![]).expect("seal");
+            out.push(g.chain.blocks.back().expect("tip").clone());
+        }
+        out
+    }
+
+    #[test]
+    fn epoch_gap_mid_start() {
+        let (dir, summary) = temp_case("epoch-gap-mid-start");
+        let app = app_from_dev_net();
+        let block_30 = {
+            let mut inner = app.inner.try_write().expect("inner");
+            for _ in 0..29 {
+                inner.chain.seal(vec![]).expect("seal");
+            }
+            sync_epoch_to_tip(&summary, &inner).expect("sync to 29");
+            inner.chain.seal(vec![]).expect("seal 30");
+            inner.chain.blocks.back().expect("block 30").clone()
+        };
+
+        let writer = BlockWriter::new(summary.clone()).expect("writer");
+        writer.enqueue(Arc::new(block_30)).expect("enqueue");
+        writer.flush().expect("flush");
+        writer.shutdown().expect("shutdown");
+
+        let blocks = load_blocks_from_epochs(&summary).expect("load");
+        assert_eq!(blocks.len(), 30);
+        assert_eq!(blocks.last().map(|block| block.hdr.height), Some(30));
+        std::fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn append_continuity() {
+        let (dir, summary) = temp_case("append-continuity");
+        let blocks = sealed_blocks(2);
+        append_block_for_epoch(&summary, &blocks[0]).expect("append one");
+        append_block_for_epoch(&summary, &blocks[1]).expect("append two");
+
+        let epoch = epoch_file_path(&summary, 0);
+        assert_eq!(read_last_block_height(&epoch).expect("tail"), Some(2));
+        let man = read_epoch_manifest(&summary)
+            .expect("manifest")
+            .expect("present");
+        assert_eq!(man.epochs[0].first_h, 1);
+        assert_eq!(man.epochs[0].last_h, 2);
+        assert_eq!(read_jsonl_lines(&epoch).expect("lines").len(), 2);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_duplicate_gap() {
+        let (dir, summary) = temp_case("append-reject");
+        let blocks = sealed_blocks(3);
+        append_block_for_epoch(&summary, &blocks[0]).expect("append one");
+
+        let duplicate = append_block_for_epoch(&summary, &blocks[0]).expect_err("duplicate");
+        assert!(duplicate.contains("want prev height 0"), "{duplicate}");
+        let gap = append_block_for_epoch(&summary, &blocks[2]).expect_err("gap");
+        assert!(gap.contains("want prev height 2"), "{gap}");
+        assert_eq!(
+            read_jsonl_lines(&epoch_file_path(&summary, 0))
+                .unwrap()
+                .len(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn legacy_arrays_read() {
+        let (dir, summary) = temp_case("legacy-arrays");
+        let block = sealed_blocks(1).remove(0);
+        let mut value = serde_json::to_value(&block).expect("value");
+        let hdr = value["hdr"].as_object_mut().expect("header object");
+        hdr.insert("prev_hash".into(), serde_json::json!(block.hdr.prev_hash));
+        hdr.insert("tx_root".into(), serde_json::json!(block.hdr.tx_root));
+        hdr.insert("state_root".into(), serde_json::json!(block.hdr.state_root));
+        hdr.insert("sig".into(), serde_json::json!(block.hdr.sig.as_slice()));
+        let epoch = epoch_file_path(&summary, 0);
+        std::fs::create_dir_all(epoch.parent().expect("epoch parent")).expect("mkdir epochs");
+        std::fs::write(
+            &epoch,
+            format!("{}\n", serde_json::to_string(&value).unwrap()),
+        )
+        .expect("write legacy");
+
+        assert_eq!(
+            read_last_block_height(&epoch).expect("legacy tail"),
+            Some(1)
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn tail_window_bounds() {
+        let (dir, summary) = temp_case("tail-window");
+        let block = sealed_blocks(1).remove(0);
+        let epoch = epoch_file_path(&summary, 0);
+        std::fs::create_dir_all(epoch.parent().expect("epoch parent")).expect("mkdir epochs");
+        let line = serde_json::to_string(&block).expect("encode");
+        std::fs::write(&epoch, format!("{line}\n\n  \r\n")).expect("write tail");
+        assert_eq!(
+            read_last_block_height(&epoch).expect("spaced tail"),
+            Some(1)
+        );
+
+        std::fs::write(&epoch, vec![b'x'; TAIL_WINDOW as usize + 1]).expect("write long");
+        let err = read_last_block_height(&epoch).expect_err("bounded tail");
+        assert!(err.contains("starts before 131072 byte window"), "{err}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn legacy_inline_load_roundtrip() {

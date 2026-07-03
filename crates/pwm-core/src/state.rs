@@ -77,6 +77,7 @@ pub enum PolicyDecision {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExportProvenance {
+    #[serde(with = "crate::ser_bin::hex32")]
     pub to: AccountId,
     pub target_domain: u16,
     #[serde(with = "crate::ser_json_u128")]
@@ -356,10 +357,38 @@ impl State {
         &mut self,
         tx: &SignedTx,
         inclusion_height: u64,
-        _block_unix_time: u64,
+        block_unix_time: u64,
         gen_cfg: &GenCfg,
     ) -> Result<(), TxError> {
-        crate::tx::validate_tx_shape(tx)?;
+        self.apply_tx_impl(tx, inclusion_height, block_unix_time, gen_cfg, false)
+    }
+
+    /// Applies a tx already checked against this chain-tip context, without re-running policy.
+    pub fn apply_prechecked_tx(
+        &mut self,
+        tx: &SignedTx,
+        inclusion_height: u64,
+        block_unix_time: u64,
+        gen_cfg: &GenCfg,
+    ) -> Result<(), TxError> {
+        self.apply_tx_impl(tx, inclusion_height, block_unix_time, gen_cfg, true)
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn apply_tx_impl(
+        &mut self,
+        tx: &SignedTx,
+        inclusion_height: u64,
+        _block_unix_time: u64,
+        gen_cfg: &GenCfg,
+        skip_policy: bool,
+    ) -> Result<(), TxError> {
+        // Precheck workers already verified the sig; skip the expensive Ed25519 re-verify.
+        if skip_policy {
+            crate::tx::validate_shape_no_sig(tx)?;
+        } else {
+            crate::tx::validate_tx_shape(tx)?;
+        }
         let id = tx.computed_account_id();
 
         if matches!(&tx.body, TxBody::Init { .. }) && !self.accounts.contains_key(&id) {
@@ -390,10 +419,12 @@ impl State {
             return Err(TxError::BadNonce);
         }
         let mut redir_to = None;
-        match self.evaluate_policy(tx, inclusion_height) {
-            PolicyDecision::Allow => {}
-            PolicyDecision::Reject(err) => return Err(err),
-            PolicyDecision::Redirect(to) => redir_to = Some(to),
+        if !skip_policy {
+            match self.evaluate_policy(tx, inclusion_height) {
+                PolicyDecision::Allow => {}
+                PolicyDecision::Reject(err) => return Err(err),
+                PolicyDecision::Redirect(to) => redir_to = Some(to),
+            }
         }
         if self.has_pending_conserv(&id) && pending_tx_conflict(&tx.body) {
             return Err(TxError::ConservationPendingExists);
@@ -669,29 +700,36 @@ impl State {
                 if *target_account != id {
                     return Err(TxError::PolicyDenied);
                 }
-                if acc.balance_pwm < *fee {
-                    return Err(TxError::Insufficient);
-                }
                 let mut a = acc;
                 touch_acct_mrks(&mut a, inclusion_height, gen_cfg);
                 validate_pol_action(self, &a, action, tx)?;
                 let evac_target = emergency_act_target(action);
                 apply_policy_action(&mut a, action, inclusion_height)?;
+                a.balance_pwm = a
+                    .balance_pwm
+                    .checked_sub(*fee)
+                    .ok_or(TxError::Insufficient)?;
+                self.fee_pool = self.fee_pool.saturating_add(*fee);
                 if let Some(target) = evac_target {
                     self.pending_conservation.retain(|row| row.sender != id);
                     let amount = a.balance_pwm;
-                    if amount > 0 && target != id {
+                    let stake = a.staked_pwm_raw;
+                    if target != id {
                         let target_acc = self
                             .accounts
                             .get_mut(&target)
                             .expect("activation target validated");
-                        target_acc.balance_pwm = target_acc.balance_pwm.saturating_add(amount);
-                        a.balance_pwm = 0;
+                        if amount > 0 {
+                            target_acc.balance_pwm = target_acc.balance_pwm.saturating_add(amount);
+                            a.balance_pwm = 0;
+                        }
+                        if stake > 0 {
+                            target_acc.balance_pwm = target_acc.balance_pwm.saturating_add(stake);
+                            a.staked_pwm_raw = 0;
+                        }
                     }
                 }
-                a.balance_pwm -= *fee;
                 a.nonce += 1;
-                self.fee_pool = self.fee_pool.saturating_add(*fee);
                 self.accounts.insert(id, a);
             }
         }
@@ -1082,9 +1120,11 @@ mod tests {
     use super::CrossShardLockState;
     use super::EvidenceRecord;
     use super::EvidenceType;
+    use super::ExportProvenance;
     use super::PendingConservationTransfer;
     use super::PolicyDecision;
     use super::State;
+    use crate::chain::{recompute_active_idxs, roll_epoch_if_needed};
     use crate::crypto::sign;
     use crate::genesis::{dev_net, ClaimPhaseConfig};
     use crate::hd::{account_id_from_parts, domain_of_account_id};
@@ -2508,6 +2548,31 @@ mod tests {
     }
 
     #[test]
+    fn export_prov_json_hex() {
+        let provenance = ExportProvenance {
+            to: [0xab; 32],
+            target_domain: 7,
+            amount: 11,
+        };
+        let mut json = serde_json::to_value(&provenance).expect("export provenance json encode");
+        let to = json["to"].as_str().expect("to must be a hex string");
+        assert_eq!(to.len(), 64);
+        assert_eq!(to, "ab".repeat(32));
+        assert_eq!(
+            serde_json::from_value::<ExportProvenance>(json.clone())
+                .expect("hex export provenance decode"),
+            provenance
+        );
+
+        json["to"] = serde_json::json!(provenance.to);
+        assert_eq!(
+            serde_json::from_value::<ExportProvenance>(json)
+                .expect("legacy export provenance decode"),
+            provenance
+        );
+    }
+
+    #[test]
     fn st_v6_json_roundtrip() {
         let sender = [0x11; 32];
         let recv = [0x22; 32];
@@ -3905,6 +3970,7 @@ mod tests {
             owner.rescue_address = Some(rescue_id);
             owner.dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
             owner.balance_pwm = 1234;
+            owner.staked_pwm_raw = 777;
         }
         let rescue_before = st.get(&rescue_id).expect("rescue").balance_pwm;
 
@@ -3934,8 +4000,210 @@ mod tests {
         let rescue = st.get(&rescue_id).expect("rescue");
         assert!(owner.finalized);
         assert_eq!(owner.balance_pwm, 0);
-        assert_eq!(rescue.balance_pwm, rescue_before + 1234);
+        assert_eq!(owner.staked_pwm_raw, 0);
+        assert_eq!(rescue.balance_pwm, rescue_before + 1234 + 777);
         assert_eq!(rescue.nonce, 1);
+    }
+
+    #[test]
+    fn conservation_emergency_evac_with_fee() {
+        let (g, _) = dev_net();
+        let mut st = State::default();
+        let (owner_sk, owner_idx, owner_id) = user_sk_conserv(0xA0);
+        let owner_dom = domain_of_account_id(&owner_id);
+        st.apply_tx_with_ctx(
+            &SignedTx::sign_body(
+                &owner_sk,
+                owner_dom,
+                owner_idx,
+                0,
+                TxBody::Init {
+                    index: 13,
+                    flags: 0,
+                },
+            ),
+            0,
+            0,
+            &g,
+        )
+        .expect("init conservation owner");
+        let owner_hi = owner_dom.to_be_bytes()[0];
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0xB0, owner_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx_with_ctx(
+            &SignedTx::sign_body(
+                &rescue_sk,
+                rescue_dom,
+                rescue_idx,
+                0,
+                TxBody::Init {
+                    index: 14,
+                    flags: 0,
+                },
+            ),
+            0,
+            0,
+            &g,
+        )
+        .expect("init rescue");
+        {
+            let owner = st.accounts.get_mut(&owner_id).expect("owner");
+            owner.rescue_address = Some(rescue_id);
+            owner.dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+            owner.balance_pwm = 1000;
+        }
+        let rescue_before = st.get(&rescue_id).expect("rescue").balance_pwm;
+        let pool_before = st.fee_pool;
+
+        let mut tx = SignedTx::sign_body(
+            &owner_sk,
+            owner_dom,
+            owner_idx,
+            st.get(&owner_id).expect("owner").nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                    activation_target: Some(rescue_id),
+                },
+                fee: 5,
+            },
+        );
+        let msg = tx.signing_message();
+        tx.cosigns.push(Cosignature {
+            signer_pk: rescue_sk.verifying_key().to_bytes(),
+            role: CosignRole::Rescue,
+            signature: sign(&rescue_sk, &msg),
+        });
+        st.apply_tx_with_ctx(&tx, 1, 0, &g)
+            .expect("fee is deducted before emergency evacuation");
+
+        let owner = st.get(&owner_id).expect("owner");
+        let rescue = st.get(&rescue_id).expect("rescue");
+        assert_eq!(owner.balance_pwm, 0);
+        assert_eq!(rescue.balance_pwm, rescue_before + 995);
+        assert_eq!(st.fee_pool, pool_before + 5);
+    }
+
+    #[test]
+    fn emergency_evac_epoch_index() {
+        let (mut cfg, sks) = dev_net();
+        cfg.min_validator_stake = 100;
+        cfg.epoch_length_blocks = 1;
+        let mut st = cfg.state0();
+        let owner_sk = &sks[0];
+        let owner_id = cfg.accounts[0].acct;
+        let owner_dom = domain_of_account_id(&owner_id);
+        let owner_hi = owner_dom.to_be_bytes()[0];
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0x94, owner_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rescue_sk,
+            rescue_dom,
+            rescue_idx,
+            0,
+            TxBody::Init {
+                index: 12,
+                flags: 0,
+            },
+        ))
+        .expect("init rescue");
+        {
+            let owner = st.accounts.get_mut(&owner_id).expect("owner");
+            owner.rescue_address = Some(rescue_id);
+            owner.dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+            owner.balance_pwm = 1234;
+            owner.staked_pwm_raw = 777;
+        }
+        st.active_validator_indices = recompute_active_idxs(&cfg, &st);
+        assert_eq!(st.active_validator_indices, vec![0]);
+
+        let mut tx = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            cfg.accounts[0].der_idx,
+            st.get(&owner_id).expect("owner").nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                    activation_target: Some(rescue_id),
+                },
+                fee: 0,
+            },
+        );
+        let msg = tx.signing_message();
+        tx.cosigns.push(Cosignature {
+            signer_pk: rescue_sk.verifying_key().to_bytes(),
+            role: CosignRole::Rescue,
+            signature: sign(&rescue_sk, &msg),
+        });
+        st.apply_tx(&tx).expect("emergency activation sweeps");
+        roll_epoch_if_needed(&cfg, &mut st, 1);
+
+        let owner = st.get(&owner_id).expect("owner");
+        assert_eq!(owner.staked_pwm_raw, 0);
+        assert!(st.active_validator_indices.is_empty());
+    }
+    #[test]
+    fn emergency_activation_no_stake() {
+        let (g, sks) = dev_net();
+        let mut st = g.state0();
+        let owner_sk = &sks[0];
+        let owner_id = g.accounts[0].acct;
+        let owner_dom = domain_of_account_id(&owner_id);
+        let owner_hi = owner_dom.to_be_bytes()[0];
+        let (rescue_sk, rescue_idx, rescue_id) = user_sk_new_domain(&st, 0x91, owner_hi);
+        let rescue_dom = domain_of_account_id(&rescue_id);
+        st.apply_tx(&SignedTx::sign_body(
+            &rescue_sk,
+            rescue_dom,
+            rescue_idx,
+            0,
+            TxBody::Init {
+                index: 10,
+                flags: 0,
+            },
+        ))
+        .expect("init rescue");
+        {
+            let owner = st.accounts.get_mut(&owner_id).expect("owner");
+            owner.rescue_address = Some(rescue_id);
+            owner.dormant_policies |= PolicyKind::RoutingEmergencyRedirect.bit();
+            owner.balance_pwm = 1234;
+            owner.staked_pwm_raw = 0;
+        }
+        let rescue_before = st.get(&rescue_id).expect("rescue").balance_pwm;
+
+        let mut tx = SignedTx::sign_body(
+            owner_sk,
+            owner_dom,
+            g.accounts[0].der_idx,
+            st.get(&owner_id).expect("owner").nonce,
+            TxBody::Policy {
+                target_account: owner_id,
+                action: PolicyAction::ActivatePolicy {
+                    policy_id: PolicyKind::RoutingEmergencyRedirect.policy_id(),
+                    activation_target: Some(rescue_id),
+                },
+                fee: 0,
+            },
+        );
+        let msg = tx.signing_message();
+        tx.cosigns.push(Cosignature {
+            signer_pk: rescue_sk.verifying_key().to_bytes(),
+            role: CosignRole::Rescue,
+            signature: sign(&rescue_sk, &msg),
+        });
+        st.apply_tx(&tx)
+            .expect("emergency activation sweeps liquid");
+
+        let owner = st.get(&owner_id).expect("owner");
+        let rescue = st.get(&rescue_id).expect("rescue");
+        assert!(owner.finalized);
+        assert_eq!(owner.balance_pwm, 0);
+        assert_eq!(owner.staked_pwm_raw, 0);
+        assert_eq!(rescue.balance_pwm, rescue_before + 1234);
     }
 
     #[test]

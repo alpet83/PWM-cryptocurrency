@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/pwm-core", "crates/pwmd", "crates/pwm-cli", "crates/pwm-tui"]
+members = ["crates/pwm-core", "crates/pwmd", "crates/pwm-cli", "crates/pwm-tui", "crates/cqds-delegation-smoke"]
 
 [workspace.package]
 edition = "2021"
@@ -14,6 +14,15 @@ too_many_lines = "warn"
 cognitive_complexity = "warn"
 module_inception = "warn"
 items_after_test_module = "warn"
+
+# release profile: keep arithmetic overflow traps enabled for safety-critical code
+[profile.release]
+overflow-checks = true
+
+# flamegraph profile: release-speed + debug symbols for samply/perf
+[profile.flamegraph]
+inherits = "release"
+debug = true
 
 [workspace.dependencies]
 axum = "0.7"

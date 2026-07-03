@@ -1,11 +1,12 @@
 //! HTTP handlers for signed transaction submission (`POST /v1/tx`).
 
 use super::common::{
-    acct_view, ensure_user_tx_allowed, persist_snap, push_readiness_reject_flow, push_tx_flow,
+    acct_view, ensure_user_tx_allowed, push_readiness_reject_flow, push_tx_flow,
     readiness_reject_json, rollback_commit, snap_save_locked, take_bak, tx_id_hex, tx_kind,
     tx_reject_json,
 };
 use crate::ledger::{summary_log_line, SUMMARY_BLOCK_INTERVAL};
+use crate::pipeline::{counters, dispatch, ClientTxJob, DispatchInput, TxRejectReason};
 use crate::relay;
 use crate::roaming::ACTIVE_LOCK_ERR_TEXT;
 use crate::tx_policy::{
@@ -14,30 +15,42 @@ use crate::tx_policy::{
 };
 use crate::App;
 use axum::{extract::State, http::StatusCode, Json};
-use pwm_core::tx::{TxBody, TxError};
+use pwm_core::tx::TxBody;
 use pwm_core::{validate_tx_shape, SignedTx};
-use tracing::{error, info};
+use std::sync::Arc;
+use tokio::sync::oneshot;
+use tracing::{debug_span, error, info};
 
-fn tx_tip_precheck_err(tx: &SignedTx, e: TxError) -> (StatusCode, String) {
-    use TxError::*;
-    let status = match e {
-        BadNonce | Insufficient | InsufficientMarks | AlreadyInit | DuplicateImport => {
-            StatusCode::CONFLICT
-        }
-        _ => StatusCode::BAD_REQUEST,
-    };
-    (
-        status,
-        tx_reject_json(tx, "preflight", &e, format!("tx cannot apply at tip: {e}")),
-    )
+fn count_reject(err: (StatusCode, String)) -> (StatusCode, String) {
+    counters::inc_rejected();
+    err
+}
+fn worker_reject_status(reason: &TxRejectReason) -> StatusCode {
+    match reason {
+        TxRejectReason::ShapeInvalid(_) => StatusCode::BAD_REQUEST,
+        _ => StatusCode::UNPROCESSABLE_ENTITY,
+    }
+}
+
+fn worker_reject_msg(tx: &SignedTx, reason: &TxRejectReason) -> String {
+    match reason {
+        TxRejectReason::ShapeInvalid(detail) => tx_reject_json(
+            tx,
+            "preflight",
+            detail,
+            format!("tx validation failed: {detail}"),
+        ),
+        _ => reason.to_string(),
+    }
 }
 
 pub(super) async fn v1_tx(
     State(a): State<App>,
     Json(tx): Json<SignedTx>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    ensure_user_tx_allowed(&a).await?;
-    enforce_recipient_prefilter(&tx)?;
+    counters::inc_incoming();
+    ensure_user_tx_allowed(&a).await.map_err(count_reject)?;
+    enforce_recipient_prefilter(&tx).map_err(count_reject)?;
     if a.identity.mode.is_shard_enforced() {
         if relay::is_foreign_import(&tx, a.identity.cluster_domain_hi) {
             match relay::relay_import(&a, &tx).await {
@@ -48,11 +61,12 @@ pub(super) async fn v1_tx(
                         _ => None,
                     };
                     relay::log_relay_absence(&a, "import", &e, ex.as_deref(), None).await;
-                    return Err((e.status, e.message));
+                    return Err(count_reject((e.status, e.message)));
                 }
             }
         }
-        enforce_local_tx_guards(&tx, a.shard, a.identity.cluster_domain_hi)?;
+        enforce_local_tx_guards(&tx, a.shard, a.identity.cluster_domain_hi)
+            .map_err(count_reject)?;
     }
     if let TxBody::Import { export_id, .. } = &tx.body {
         info!(
@@ -62,8 +76,9 @@ pub(super) async fn v1_tx(
     }
     {
         let g = a.inner.read().await;
-        enforce_import_provenance_prefilter(&tx, &g.chain.st, &g.cross_shard)?;
-        enforce_recipient_init_gate(&tx, &g.chain.st)?;
+        enforce_import_provenance_prefilter(&tx, &g.chain.st, &g.cross_shard)
+            .map_err(count_reject)?;
+        enforce_recipient_init_gate(&tx, &g.chain.st).map_err(count_reject)?;
     }
     if let TxBody::Import { export_id, .. } = &tx.body {
         info!(
@@ -71,20 +86,20 @@ pub(super) async fn v1_tx(
             "v1_tx: local import passed prefilter and recipient gate"
         );
     }
-    validate_tx_shape(&tx).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            tx_reject_json(&tx, "preflight", &e, format!("tx validation failed: {e}")),
-        )
-    })?;
-    let mut g = a.inner.write().await;
-    let now_h = g.chain.tip_h();
-    g.roaming_pool.expire_by_height(now_h);
-    if g.roaming_pool.lock_conflict_for(&tx).is_some() {
-        return Err((StatusCode::CONFLICT, ACTIVE_LOCK_ERR_TEXT.to_string()));
+    let lock_conflict = {
+        let g = a.inner.read().await;
+        g.roaming_pool.lock_conflict_for(&tx).is_some()
+    };
+    if lock_conflict {
+        return Err(count_reject((
+            StatusCode::CONFLICT,
+            ACTIVE_LOCK_ERR_TEXT.to_string(),
+        )));
     }
+    let now_h = { a.inner.read().await.chain.tip_h() };
     match &tx.body {
         TxBody::Export { .. } | TxBody::Import { .. } | TxBody::ClaimIPv4Batch { .. } => {
+            let mut g = a.inner.write().await;
             // Cancellation contract: this direct-seal branch is not fully cancel-safe once
             // `g.chain.seal` succeeds. Explicit seal/snapshot errors roll back via `bak`,
             // but an HTTP future cancelled after seal can leave the block committed before
@@ -92,20 +107,33 @@ pub(super) async fn v1_tx(
             // Retried submissions are expected to be idempotent at the chain layer via
             // nonce/export-id replay checks (usually BadNonce/DuplicateImport); durable
             // cancellation robustness would need a separate background/idempotent section.
+            let sender = tx.computed_account_id();
             if matches!(tx.body, TxBody::Export { .. }) {
-                let now_ms = crate::current_time_ms()?;
-                let sender = tx.computed_account_id();
+                let now_ms = crate::current_time_ms().map_err(count_reject)?;
                 let (_, sender_nonce) = acct_view(&g.chain.st, &sender);
                 if let Err(reject) =
                     g.roaming_pool
                         .consume_readiness(&tx, now_ms, sender_nonce, now_h)
                 {
                     push_readiness_reject_flow(&mut g, &tx, reject.code, now_h);
-                    return Err((StatusCode::CONFLICT, readiness_reject_json(reject.code)));
+                    return Err(count_reject((
+                        StatusCode::CONFLICT,
+                        readiness_reject_json(reject.code),
+                    )));
                 }
             }
+            if let Err(err) = validate_tx_shape(&tx) {
+                return Err(count_reject((
+                    StatusCode::BAD_REQUEST,
+                    tx_reject_json(
+                        &tx,
+                        "preflight",
+                        &err,
+                        format!("tx validation failed: {err}"),
+                    ),
+                )));
+            }
             let bak = take_bak(&g);
-            let sender = tx.computed_account_id();
             let (bal_before, nonce_before) = acct_view(&g.chain.st, &sender);
             let h = g.chain.tip_h();
             push_tx_flow(&mut g, &tx, h, "accepted", None);
@@ -118,10 +146,10 @@ pub(super) async fn v1_tx(
             }
             if let Err((msg, _)) = g.chain.seal(vec![tx.clone()]) {
                 rollback_commit(&mut g, bak);
-                return Err((
+                return Err(count_reject((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     format!("seal after roaming tx failed: {msg}"),
-                ));
+                )));
             }
             let h = g.chain.tip_h();
             push_tx_flow(
@@ -214,50 +242,62 @@ pub(super) async fn v1_tx(
                             .unwrap_or_else(|| "-".into()),
                         e
                     );
-                    return Err((
+                    return Err(count_reject((
                         StatusCode::INTERNAL_SERVER_ERROR,
                         format!("tx commit rolled back: snapshot save failed: {e}"),
-                    ));
+                    )));
                 }
+                counters::inc_sealed();
                 drop(g);
                 let mut st = a.init.write().await;
                 *st = crate::state::InitState::ready(path);
                 return Ok(StatusCode::NO_CONTENT);
             }
-            return Ok(StatusCode::NO_CONTENT);
+            counters::inc_sealed();
+            Ok(StatusCode::NO_CONTENT)
         }
         _ => {
-            let (next_h, next_ts) = g.chain.next_apply_ctx().map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("precheck context resolve failed: {e}"),
-                )
-            })?;
-            if let Err(e) = g
-                .chain
-                .st
-                .precheck_apply_with_ctx(&tx, next_h, next_ts, &g.chain.cfg)
-            {
-                return Err(tx_tip_precheck_err(&tx, e));
-            }
-            g.pool.push(tx.clone()).map_err(|_| {
-                (
-                    StatusCode::INSUFFICIENT_STORAGE,
-                    "mempool is full".to_string(),
-                )
-            })?;
-            let h = g.chain.tip_h();
-            push_tx_flow(
-                &mut g,
-                &tx,
-                h,
-                "accepted",
-                Some("queued in mempool".to_string()),
-            );
+            let tx_id = tx_id_hex(&tx);
+            run_worker_precheck(&a, Arc::new(tx)).await?;
+            let h = { a.inner.read().await.chain.tip_h() };
+            info!(tx_id = %tx_id, h = h, "accepted: queued via worker");
+            Ok(StatusCode::NO_CONTENT)
         }
     }
-    let save_result = snap_save_locked(&a, &g);
-    drop(g);
-    persist_snap(&a, save_result, "after_tx").await?;
-    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn run_worker_precheck(a: &App, tx: Arc<SignedTx>) -> Result<(), (StatusCode, String)> {
+    let (reply, rx) = oneshot::channel();
+    let job = ClientTxJob::new(Arc::clone(&tx), reply);
+    let depth = a.pipeline_metrics.start_dispatch();
+    {
+        let _span = debug_span!("dispatch").entered();
+        if dispatch(&a.worker_queues, DispatchInput::ClientTx(job)).is_err() {
+            a.pipeline_metrics.cancel_dispatch();
+            counters::inc_rejected();
+            return Err((
+                StatusCode::INSUFFICIENT_STORAGE,
+                "tx worker queue is full".to_string(),
+            ));
+        }
+    }
+    a.pipeline_metrics.commit_dispatch(depth);
+    a.pipeline_metrics.inc_enqueued();
+    match rx.await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(reason)) => {
+            counters::inc_rejected();
+            Err((
+                worker_reject_status(&reason),
+                worker_reject_msg(tx.as_ref(), &reason),
+            ))
+        }
+        Err(_) => {
+            counters::inc_rejected();
+            Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "tx worker reply canceled".to_string(),
+            ))
+        }
+    }
 }

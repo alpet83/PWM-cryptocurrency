@@ -5,12 +5,17 @@ use crate::handshake::{DeploymentProfile, SealRole};
 use crate::identity::RuntimeIdentity;
 use crate::lease::{LeaseBackendMode, LeaseCfg, LeaseRuntime, LeaseStats};
 use crate::lease_backend::LeaseBackend;
-use crate::ledger::CrossShardLedger;
+use crate::ledger::{CrossShardLedger, CrossShardStatus};
+use crate::offchain::OffchainStore;
+use crate::pipeline::{
+    DispatchQueues, HotIndex, QueueMetrics, TxEvent, TxIngressChannel, ValidatedTx, WorkerPool,
+};
 use crate::roaming::RoamingPool;
 use crate::transport::HandshakeState;
 use crate::ClusterCfg;
 use crate::SealControlMode;
 use crate::TransportConfig;
+use arc_swap::ArcSwap;
 use pwm_core::tx::TxBody;
 use pwm_core::{Chain, Mpool, SignedTx};
 use serde::Serialize;
@@ -18,8 +23,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, Notify, RwLock};
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct LogOvrState {
@@ -48,12 +52,45 @@ pub(crate) struct SealManualState {
 }
 
 #[derive(Clone)]
+pub struct StateSnapshot {
+    inner: Arc<ArcSwap<pwm_core::state::State>>,
+}
+
+impl StateSnapshot {
+    pub fn new(state: Arc<pwm_core::state::State>) -> Self {
+        Self {
+            inner: Arc::new(ArcSwap::from(state)),
+        }
+    }
+
+    pub fn load(&self) -> Arc<pwm_core::state::State> {
+        self.inner.load_full()
+    }
+
+    pub fn store(&self, state: Arc<pwm_core::state::State>) {
+        self.inner.store(state);
+    }
+}
+
+#[derive(Clone)]
 pub struct App {
     pub inner: Arc<RwLock<Inner>>,
+    pub(crate) state_snapshot: Arc<StateSnapshot>,
+    pub(crate) hot_index: Arc<HotIndex>,
+    pub(crate) tx_ingress: Arc<TxIngressChannel>,
+    pub(crate) worker_queues: Arc<DispatchQueues>,
+    pub(crate) worker_tip_height: Arc<AtomicU64>,
+    pub(crate) _worker_pool: Arc<WorkerPool>,
+    pub(crate) offchain: Arc<OffchainStore>,
+    pub(crate) _validated_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<ValidatedTx>>>,
+    pub(crate) pipeline_metrics: Arc<QueueMetrics>,
+    pub(crate) tx_events: tokio::sync::broadcast::Sender<TxEvent>,
     pub(crate) init: Arc<RwLock<InitState>>,
     pub(crate) data_file: Option<PathBuf>,
     /// Autosnapshot target (explicit CH or JSON beside `data_file`).
     pub(crate) autosnapshot_backend: Option<crate::snapshot::SnapshotBackend>,
+    /// Ordered JsonFile epoch appender; absent when persistence is disabled or uses ClickHouse.
+    pub(crate) block_writer: Option<crate::block_writer::BlockWriter>,
     pub(crate) shard: crate::identity::DevLane,
     pub(crate) handshake: Arc<RwLock<HandshakeState>>,
     pub(crate) dev_profile: bool,
@@ -81,7 +118,7 @@ pub struct App {
     pub(crate) lease_renew_log_tip: Arc<AtomicU64>,
     pub(crate) cluster_cfg: ClusterCfg,
     /// Wall-clock ms when proposer entered cluster prep wait; 0 means not waiting.
-    pub(crate) cluster_prep_waiting_since_ms: Arc<AtomicU64>,
+    pub(crate) cluster_prep_wait_ms: Arc<AtomicU64>,
     /// Set by seal loop ahead-trigger; steady_session sends wire propose before next heartbeat sleep.
     pub(crate) cluster_prop_nudge: Arc<AtomicBool>,
     /// Wakes proposer seal loop when a fresh cluster attest arrives.
@@ -114,6 +151,8 @@ pub struct App {
     pub(crate) log_ovr_rev: Arc<AtomicU64>,
     /// Optional operator bearer token used for non-loopback auth gate.
     pub(crate) op_token: Option<Arc<str>>,
+    /// RPC source IP allowlist and auto-enrollment state.
+    pub(crate) rpc_allow: crate::rpc_allow::RpcAllowState,
 }
 
 pub struct Inner {
@@ -181,10 +220,18 @@ impl Inner {
         &mut self,
         facts: Vec<crate::ledger::CrossShardFact>,
     ) -> usize {
-        facts
-            .into_iter()
-            .filter(|fact| self.cross_shard.insert_peer_fact(fact.clone()))
-            .count()
+        let mut changed = 0usize;
+        for fact in facts {
+            let imported = fact.status == CrossShardStatus::Imported;
+            let export_id = fact.export_id;
+            if self.cross_shard.insert_peer_fact(fact) {
+                changed = changed.saturating_add(1);
+            }
+            if imported {
+                self.roaming_pool.mark_import_by_export(export_id);
+            }
+        }
+        changed
     }
 
     pub(crate) fn local_account_views(
@@ -342,5 +389,23 @@ impl InitState {
     /// Seal loop / canonical advancement only while persistence has not reported fatal degradation.
     pub(crate) fn allows_chain_progress(&self) -> bool {
         matches!(self.phase, InitPhase::Ready)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_loads_stored() {
+        let mut state_a = pwm_core::state::State::default();
+        state_a.fee_pool = 1;
+        let mut state_b = pwm_core::state::State::default();
+        state_b.fee_pool = 2;
+        let snapshot = StateSnapshot::new(Arc::new(state_a));
+
+        snapshot.store(Arc::new(state_b));
+
+        assert_eq!(snapshot.load().fee_pool, 2);
     }
 }

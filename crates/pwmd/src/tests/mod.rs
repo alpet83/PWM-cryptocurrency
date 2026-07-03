@@ -2,6 +2,7 @@
 
 mod prelude;
 
+mod determinism;
 mod helpers;
 mod http_export;
 mod http_operator_log;

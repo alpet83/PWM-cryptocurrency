@@ -3,7 +3,7 @@
 use clap::Parser;
 use pwm_core::{blocking_http_client_rpc, parse_rpc_timeout_ms};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
@@ -25,6 +25,49 @@ pub struct Args {
     /// Auto-lock encrypted wallet after this many seconds (min 1, max 604800). Env: `PWM_TUI_WALLET_UNLOCK_SECS`.
     #[arg(long = "wallet-unlock-secs", env = "PWM_TUI_WALLET_UNLOCK_SECS", default_value_t = DEFAULT_WALLET_UNLOCK_SECS)]
     pub wallet_unlock_secs: u64,
+}
+
+pub const TX_HISTORY_DIR: &str = "tx-history";
+
+pub fn resolve_wallet_dir(wallet_path: &Path) -> Option<PathBuf> {
+    if wallet_path.is_file() {
+        return wallet_path.parent().map(Path::to_path_buf);
+    }
+    wallet_path
+        .is_dir()
+        .then(|| wallet_path.to_path_buf())
+        .and_then(|dir| wallet_file_in_dir(&dir).is_some().then_some(dir))
+}
+
+pub fn resolve_wallet_file(wallet_path: &Path) -> Option<PathBuf> {
+    if wallet_path.is_file() {
+        return Some(wallet_path.to_path_buf());
+    }
+    wallet_path
+        .is_dir()
+        .then(|| wallet_file_in_dir(wallet_path))
+        .flatten()
+}
+
+pub fn init_tx_history_dir(wallet_path: Option<&Path>) {
+    let Some(wallet_dir) = wallet_path.and_then(resolve_wallet_dir) else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(wallet_dir.join(TX_HISTORY_DIR));
+}
+
+pub fn wallet_dir(args: &Args) -> Option<PathBuf> {
+    args.wallet.as_deref().and_then(resolve_wallet_dir)
+}
+
+fn wallet_file_in_dir(dir: &Path) -> Option<PathBuf> {
+    let wallet_json = dir.join("wallet.json");
+    if wallet_json.is_file() {
+        return Some(wallet_json);
+    }
+    let stem = dir.file_name()?.to_string_lossy();
+    let named = dir.join(format!("{stem}.json"));
+    named.is_file().then_some(named)
 }
 
 pub fn base_url() -> String {
@@ -124,4 +167,71 @@ pub fn http_client() -> reqwest::blocking::Client {
         "pwm-tui",
         "PWM_TUI_RPC_TIMEOUT_MS",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{init_tx_history_dir, resolve_wallet_dir, resolve_wallet_file, TX_HISTORY_DIR};
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn tmp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "pwm_tui_wallet_dir_{name}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("mkdir temp wallet dir");
+        dir
+    }
+
+    #[test]
+    fn wallet_dir_file_parent() {
+        let dir = tmp_dir("file_parent");
+        let wallet = dir.join("wallet.json");
+        fs::write(&wallet, "{}").expect("write wallet file");
+
+        assert_eq!(resolve_wallet_dir(&wallet), Some(dir.clone()));
+        assert_eq!(resolve_wallet_file(&wallet), Some(wallet));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn wallet_dir_contains_json() {
+        let dir = tmp_dir("dir_wallet_json");
+        let wallet = dir.join("wallet.json");
+        fs::write(&wallet, "{}").expect("write wallet file");
+
+        assert_eq!(resolve_wallet_dir(&dir), Some(dir.clone()));
+        assert_eq!(resolve_wallet_file(&dir), Some(wallet));
+        assert!(!dir.join(TX_HISTORY_DIR).exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn wallet_dir_named_json() {
+        let dir = tmp_dir("named_json");
+        let name = dir.file_name().expect("dir name").to_string_lossy();
+        let wallet = dir.join(format!("{name}.json"));
+        fs::write(&wallet, "{}").expect("write named wallet file");
+
+        assert_eq!(resolve_wallet_dir(&dir), Some(dir.clone()));
+        assert_eq!(resolve_wallet_file(&dir), Some(wallet));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn init_history_creates_dir() {
+        let dir = tmp_dir("history_init");
+        let wallet = dir.join("wallet.json");
+        fs::write(&wallet, "{}").expect("write wallet file");
+
+        init_tx_history_dir(Some(&wallet));
+
+        assert!(dir.join(TX_HISTORY_DIR).is_dir());
+        let _ = fs::remove_dir_all(dir);
+    }
 }

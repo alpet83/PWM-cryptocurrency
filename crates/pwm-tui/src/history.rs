@@ -29,6 +29,7 @@ pub struct OperationHistoryEntry {
     pub to_human: String,
     pub amount_units: u128,
     pub fee_units: u128,
+    pub nonce: u64,
     pub status: OpStatus,
     pub note: String,
 }

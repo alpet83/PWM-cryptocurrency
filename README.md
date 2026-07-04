@@ -8,7 +8,7 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ## Current status (MVP v7 — owner sign-off complete)
 
-**Published milestone: MVP v7** (performance gate + offchain batch API + emergency stake evacuation): sprint gates **V7-1…V7-5 PASS**; throughput gate ≥50 tx/s closed at ~76 tx/s; rust audit artifact done; **owner sign-off approved** (2026-06-29). PoA lab topology — not a production mainnet product launch. Plan: [docs/plans/mvp_v7.md](docs/plans/mvp_v7.md).
+**Published milestone: MVP v7** (performance gate + security hardening + offchain batch API + emergency stake evacuation): sprint gates **V7-1…V7-7 PASS**; throughput gate ≥50 tx/s closed at ~80 tx/s on capable hardware; rust audit artifact done; security hardening pass complete; **owner sign-off approved** (2026-07-03). PoA lab topology — not a production mainnet product launch. Plan: [docs/plans/mvp_v7.md](docs/plans/mvp_v7.md).
 
 **Prior published milestone: MVP v6** (incremental PoS + address security runtime, 2026-06-17) — see [releases/v6.0.0.md](docs/releases/v6.0.0.md).
 
@@ -16,12 +16,13 @@ PWM is a **native cryptocurrency using a matrixchain** model — see [MATRIXCHAI
 
 ### MVP v7 highlights (devnet lab)
 
-- **Pipeline performance gate:** ~76 tx/s sustained throughput; flamegraph-driven fixes: lean `ClusterPropose`, `block_timing` tail-read, seal digest gating, `Arc<SignedTx>` ingress.
+- **Pipeline performance gate:** ~80 tx/s sustained on capable hardware (was ~3 tx/s); flamegraph-driven fixes: lean `ClusterPropose`, `block_timing` tail-read, seal digest gating, `Arc<SignedTx>` ingress.
+- **Security hardening:** operator auth gate on shutdown, bridge-reset, and backfill endpoints; RPC IP allowlist (`rpc_allowed_ips` + auto-enrollment window); SSRF prevention in backfill `peer_base`; offchain batch entry/store caps; HTTP handler lock audit (snapshot-before-await); wire serde shape guards.
 - **Operator UX:** TUI + `/v1/account` expose pending conservation transfers with `fee_pwm` for operator parity.
-- **Emergency stake recovery (ADR 0012):** `ActivatePolicy` evacuates liquid + `staked_pwm_raw` to rescue atomically (closes V6 gap).
+- **Emergency stake recovery (ADR 0012):** `ActivatePolicy` evacuates liquid + `staked_pwm_raw` to rescue atomically (closes V6 gap).
 - **Offchain batch API:** production `/v1/offchain/*` Merkle batch/proof surface with chain-visible anchor surrogate.
 - **Devnet genesis:** `configs/devnet-genesis.json` 21B launch-candidate manifest, validator onboarding runbook.
-- **BFT ADR-gate (ADR 0015):** V7 Option A continuation chosen; CometBFT/ABCI study deferred to Phase 4.
+- **BFT ADR-gate (ADR 0015):** V7 Option A continuation chosen; CometBFT/ABCI study deferred to Phase 4.
 - **CLI addr-bruteforce v2:** occupied-skip + CPU-MT for correct brute across intersecting flag profiles.
 
 ### MVP v6 highlights (devnet lab)

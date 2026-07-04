@@ -8,7 +8,7 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ## Текущий статус (MVP v7 — owner sign-off завершён)
 
-**Опубликованный milestone — MVP v7** (performance gate + offchain batch API + emergency stake evacuation): спринты **V7-1…V7-5 PASS**; throughput gate ≥50 tx/s достигнут (~76 tx/s); rust audit готов; **owner sign-off одобрен** (2026-06-29). PoA lab — не production mainnet. План: [docs/plans/mvp_v7.md](docs/plans/mvp_v7.md).
+**Опубликованный milestone — MVP v7** (performance gate + security hardening + offchain batch API + emergency stake evacuation): спринты **V7-1…V7-7 PASS**; throughput gate ≥50 tx/s достигнут (~80 tx/s на производительном железе); rust audit готов; security hardening pass завершён; **owner sign-off одобрен** (2026-07-03). PoA lab — не production mainnet. План: [docs/plans/mvp_v7.md](docs/plans/mvp_v7.md).
 
 **Предыдущий опубликованный milestone — MVP v6** (incremental PoS + runtime address flags, 2026-06-17) — см. [releases/v6.0.0.md](docs/releases/v6.0.0.md).
 
@@ -16,12 +16,13 @@ PWM — **нативная криптовалюта с моделью matrixchai
 
 ### MVP v7 (devnet lab)
 
-- **Pipeline performance gate:** ~76 tx/s sustained throughput; оптимизации по flamegraph: lean `ClusterPropose`, `block_timing` tail-read, seal digest gating, `Arc<SignedTx>` ingress.
+- **Pipeline performance gate:** ~80 tx/s на производительном железе в режиме минимального кластера (было ~3 tx/s); оптимизации по flamegraph: lean `ClusterPropose`, `block_timing` tail-read, seal digest gating, `Arc<SignedTx>` ingress.
+- **Security hardening:** operator auth gate на endpoint'ах shutdown, bridge-reset и backfill; RPC IP allowlist (`rpc_allowed_ips` + окно auto-enrollment); SSRF-защита в backfill `peer_base`; caps для offchain batch entries/store; аудит lock guard в HTTP handler'ах (snapshot-before-await); wire serde shape guards.
 - **Operator UX:** TUI + `/v1/account` отображают pending conservation transfers с `fee_pwm`.
-- **Emergency stake evacuation (ADR 0012):** `ActivatePolicy` атомарно эвакуирует liquid + `staked_pwm_raw` на rescue (закрывает gap V6).
+- **Emergency stake evacuation (ADR 0012):** `ActivatePolicy` атомарно эвакуирует liquid + `staked_pwm_raw` на rescue (закрывает gap V6).
 - **Offchain batch API:** production `/v1/offchain/*` Merkle batch/proof с chain-visible anchor surrogate.
 - **Devnet genesis:** `configs/devnet-genesis.json` манифест 21B, runbook по onboarding валидаторов.
-- **BFT ADR-gate (ADR 0015):** выбран Option A continuation; CometBFT/ABCI — Фаза 4.
+- **BFT ADR-gate (ADR 0015):** выбран Option A continuation; CometBFT/ABCI — Фаза 4.
 - **CLI addr-bruteforce v2:** occupied-skip + CPU-MT для корректного перебора при пересекающихся профилях флагов.
 
 ### MVP v6 (devnet lab)
